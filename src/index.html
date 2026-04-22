@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>云数中心工具集</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    
+    :root {
+      /* Brand */
+      --primary: #285ab9;
+      --primary_dim: #154dac;
+      --primary_container: #d9e2ff;
+      --on_primary_container: #144dab;
+      
+      /* Surfaces & Tonal Depth */
+      --surface: #f9f9ff;
+      --surface_container_lowest: #ffffff;
+      --surface_container_low: #f1f3ff;
+      --surface_container: #e8edff;
+      --surface_container_high: #e0e8ff;
+      --surface_container_highest: #d7e2ff;
+      
+      /* Typography */
+      --on_surface: #00316b;
+      --on_surface_variant: #005cbf;
+      
+      /* Feedback & Status */
+      --error: #9f403d;
+      --error_container: #fe8983;
+      --on_error_container: #752121;
+      --success: #38a169;
+      
+      /* Utilities */
+      --outline: #2d78e4;
+      --outline_variant: #8ab2ff;
+      --ghost-border: rgba(138, 178, 255, 0.15);
+      --ambient-shadow: 0 8px 32px rgba(0, 49, 107, 0.06);
+      
+      --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-family);
+      background: var(--surface);
+      color: var(--on_surface);
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ====== Views ====== */
+    .view {
+      display: none;
+      flex: 1;
+      animation: fadeIn 0.4s ease-out;
+      height: 100%;
+      overflow: hidden;
+    }
+    
+    .view.active {
+      display: flex;
+      flex-direction: column;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ========= TOOL HUB VIEW ========= */
+    #view-hub {
+      padding: 20px 40px;
+      align-items: center;
+      position: relative;
+    }
+
+    .brand-logo {
+      position: absolute;
+      top: 20px;
+      left: 24px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--on_surface);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-logo::before {
+      content: '';
+      width: 4px;
+      height: 16px;
+      background: var(--primary);
+      border-radius: 2px;
+    }
+
+    .hub-header {
+      text-align: center;
+      margin-bottom: 60px;
+    }
+    
+    .hub-header h1 {
+      font-size: 2.2rem;
+      font-weight: 800;
+      margin: 0 0 10px 0;
+      color: var(--on_surface);
+      letter-spacing: -0.5px;
+    }
+
+    .hub-header p {
+      color: var(--on_surface_variant);
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 500;
+    }
+
+    .app-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 30px;
+      width: 100%;
+      max-width: 1000px;
+    }
+
+    .app-card {
+      background: var(--surface_container_lowest);
+      border-radius: 16px;
+      padding: 30px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      cursor: pointer;
+      box-shadow: var(--ambient-shadow);
+      transition: all 0.3s ease;
+      border: 1px solid var(--ghost-border);
+    }
+
+    .app-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 40px rgba(0, 49, 107, 0.1);
+      border-color: var(--outline_variant);
+    }
+
+    .app-icon {
+      width: 64px;
+      height: 64px;
+      background: var(--surface_container);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      margin-bottom: 20px;
+      color: var(--primary);
+      transition: all 0.3s ease;
+    }
+
+    .app-card:hover .app-icon {
+      background: var(--primary_container);
+      color: var(--primary_dim);
+    }
+
+    .app-title {
+      font-weight: 700;
+      font-size: 1.1rem;
+      margin-bottom: 6px;
+    }
+    
+    .app-desc {
+      font-size: 0.85rem;
+      color: var(--on_surface_variant);
+      line-height: 1.4;
+    }
+
+    /* ========= TOOL UI (BENEFIT ANALYSIS) ========= */
+    .tool-header-bar {
+      height: 64px;
+      background: var(--surface_container_lowest);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      border-bottom: 1px solid var(--ghost-border);
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .back-btn {
+      background: none;
+      border: none;
+      color: var(--on_surface_variant);
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .back-btn:hover {
+      background: var(--surface_container_low);
+      color: var(--primary);
+    }
+
+    .tool-title {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--on_surface);
+      border-left: 2px solid var(--surface_container_highest);
+      padding-left: 16px;
+    }
+
+    .tool-layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* Left Sidebar: Controls */
+    .sidebar {
+      width: 340px;
+      background: var(--surface_container_low);
+      padding: 16px 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      border-right: 1px solid var(--ghost-border);
+    }
+
+    /* Right Main Panel: Results & Batch */
+    .main-panel {
+      flex: 1;
+      padding: 32px 40px;
+      overflow-y: auto;
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    .section-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 800;
+      color: var(--on_surface_variant);
+      margin-bottom: 12px;
+      margin-top: 0;
+      opacity: 0.7;
+    }
+
+    /* Sub-navigation in sidebar */
+    .nav-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 24px;
+    }
+
+    .nav-item {
+      padding: 12px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--on_surface_variant);
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .nav-item:hover {
+      background: var(--surface_container);
+      color: var(--primary);
+    }
+
+    .nav-item.active {
+      background: var(--primary_container);
+      color: var(--on_primary_container);
+    }
+
+    .sub-view {
+      display: none;
+    }
+    .sub-view.active {
+      display: block;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--on_surface_variant);
+    }
+    
+    input[type="number"], input[type="text"] {
+      background: var(--surface_container_lowest);
+      border: 1px solid transparent; 
+      color: var(--on_surface);
+      padding: 10px 14px;
+      border-radius: 6px;
+      outline: none;
+      font-size: 0.95rem;
+      transition: all 0.2s ease;
+      font-weight: 600;
+    }
+    
+    input[type="number"]:focus, input[type="text"]:focus {
+      border-color: var(--outline);
+      box-shadow: 0 0 0 2px rgba(45, 120, 228, 0.15);
+    }
+
+    .radio-card {
+      background: var(--surface_container_lowest);
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: var(--ambient-shadow);
+    }
+
+    .radio-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--on_surface);
+      padding: 4px 0;
+    }
+    
+    .radio-item input {
+      accent-color: var(--primary);
+      width: 16px;
+      height: 16px;
+    }
+
+    button.primary-btn {
+      background: linear-gradient(180deg, var(--primary) 0%, var(--primary_dim) 100%);
+      color: white;
+      border: none;
+      padding: 14px 24px;
+      border-radius: 6px;
+      font-size: 1rem;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+      width: 100%;
+      box-shadow: var(--ambient-shadow);
+    }
+    
+    button.primary-btn:hover {
+      background: var(--primary_dim);
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(0, 49, 107, 0.15);
+    }
+    
+    button.primary-btn:active {
+      transform: translateY(1px);
+    }
+
+    /* Warning Banner */
+    .warning-banner {
+      background: var(--error_container);
+      color: var(--on_error_container);
+      padding: 12px 16px;
+      border-radius: 6px;
+      display: none;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    
+    .warning-banner.show {
+      display: flex;
+      animation: fadeIn 0.3s;
+    }
+
+    /* Tables */
+    .table-card {
+      background: var(--surface_container_lowest);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: var(--ambient-shadow);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0 6px; /* Row gaps */
+      font-size: 0.9rem;
+    }
+    
+    th, td {
+      text-align: right;
+      padding: 12px 16px;
+    }
+    
+    td {
+      background: var(--surface_container_low);
+    }
+    
+    th:first-child, td:first-child { 
+      text-align: left; 
+      border-top-left-radius: 6px;
+      border-bottom-left-radius: 6px;
+    }
+    
+    th:last-child, td:last-child {
+      border-top-right-radius: 6px;
+      border-bottom-right-radius: 6px;
+    }
+    
+    th {
+      color: var(--on_surface_variant);
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+      padding-bottom: 4px;
+    }
+    
+    .row-total td {
+      font-weight: 700;
+      background: var(--primary_container) !important;
+      color: var(--on_primary_container);
+    }
+
+    /* Metrics Board */
+    .metrics-board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 24px;
+    }
+    
+    .metric-card {
+      background: var(--surface_container_low);
+      border-radius: 8px;
+      padding: 16px;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    
+    .metric-label {
+      color: var(--on_surface_variant);
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    
+    .metric-value {
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: var(--primary);
+      margin-top: 4px;
+    }
+
+    /* Batch Processing */
+    .batch-card {
+      background: var(--surface_container_lowest);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: var(--ambient-shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .batch-desc {
+      font-size: 0.85rem;
+      color: var(--on_surface_variant);
+      line-height: 1.6;
+    }
+    
+    .upload-area {
+      border: 2px dashed var(--ghost-border);
+      border-radius: 8px;
+      padding: 30px 20px;
+      text-align: center;
+      background: var(--surface_container_low);
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .upload-area:hover {
+      border-color: var(--primary);
+      background: var(--surface_container_lowest);
+    }
+
+    .upload-area .upload-icon {
+      font-size: 2rem;
+      margin-bottom: 8px;
+      color: var(--on_surface_variant);
+    }
+
+    .upload-area:hover .upload-icon {
+      color: var(--primary);
+    }
+    
+    #batch-result-msg {
+      font-size: 0.85rem;
+      font-weight: 600;
+      display: none;
+      padding: 12px;
+      border-radius: 6px;
+      background: var(--surface_container_highest);
+      color: var(--on_surface);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- =============================== -->
+  <!-- 1. TOOL HUB VIEW (大厅)          -->
+  <!-- =============================== -->
+  <div id="view-hub" class="view active">
+    <div class="brand-logo">云数中心工具集</div>
+    
+    <div style="margin-top: 100px;"></div>
+    
+    <div class="app-grid">
+      <!-- 效益测算工具卡片 -->
+      <div class="app-card" onclick="openTool('benefit_tool')">
+        <div class="app-icon">
+          <svg width="64" height="64" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="256" height="256" rx="48" fill="#F1F3FF"/>
+            <rect x="50" y="50" width="156" height="156" rx="12" fill="#285ab9"/>
+            <rect x="74" y="78" width="108" height="30" rx="4" fill="#D9E2FF"/>
+            <rect x="74" y="128" width="24" height="24" rx="4" fill="white" opacity="0.9"/>
+            <rect x="116" y="128" width="24" height="24" rx="4" fill="white" opacity="0.9"/>
+            <rect x="158" y="128" width="24" height="24" rx="4" fill="white" opacity="0.9"/>
+            <rect x="74" y="164" width="24" height="24" rx="4" fill="white" opacity="0.9"/>
+            <rect x="116" y="164" width="66" height="24" rx="4" fill="#8AB2FF"/>
+          </svg>
+        </div>
+        <div class="app-title">项目效益分析</div>
+      </div>
+      <!-- 申报材料制作卡片 -->
+      <div class="app-card" onclick="openTool('docfill_tool')">
+        <div class="app-icon" style="color: var(--success); background: #e6f4ea">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </div>
+        <div class="app-title">申报材料制作</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =============================== -->
+  <!-- 2. TOOL VIEW (效益测算工具)       -->
+  <!-- =============================== -->
+  <div id="view-benefit-tool" class="view">
+    <!-- Top Bar -->
+    <div class="tool-header-bar">
+      <button class="back-btn" onclick="openTool('hub')">
+        <span>←</span> 返回集市
+      </button>
+      <h2 class="tool-title">项目效益分析</h2>
+    </div>
+
+    <!-- Main Layout -->
+    <div class="tool-layout">
+      <!-- Left Sidebar: Controls -->
+      <div class="sidebar">
+        <h3 class="section-title">效益分析导航</h3>
+        <div class="nav-group">
+          <div class="nav-item active" id="nav-single" onclick="switchBenefitSubView('single')">
+            <span>📊</span> 单项效益测算
+          </div>
+          <div class="nav-item" id="nav-batch" onclick="switchBenefitSubView('batch')">
+            <span>📁</span> 批量效益处理
+          </div>
+        </div>
+
+        <div id="sidebar-single-controls" class="sub-view active">
+          <h3 class="section-title">计算配置</h3>
+          
+          <div class="form-group">
+            <label>含税总收入 (元)</label>
+            <input type="number" step="0.01" id="total_income_incl" value="1000000">
+          </div>
+          
+          <div class="form-group">
+            <label>IT税率</label>
+            <input type="number" step="0.01" id="tax_rate_it" value="0.06">
+          </div>
+          <div class="form-group">
+            <label>CT税率</label>
+            <input type="number" step="0.01" id="tax_rate_ct" value="0.06">
+          </div>
+          
+          <div class="form-group">
+            <label>CT产品含税总额 (选填限制)</label>
+            <input type="number" step="0.01" id="ct_income_incl_opt" placeholder="未填则由系统智能推算">
+          </div>
+
+          <h3 class="section-title">模式选择</h3>
+          <div class="radio-card" id="mode_radios">
+            <label class="radio-item">
+               <input type="radio" name="calc_mode" value="margin" checked>
+               [模式1] 指定毛利润反推投入
+            </label>
+            <label class="radio-item">
+               <input type="radio" name="calc_mode" value="npv">
+               [模式2] 指定净现值率反推投入
+            </label>
+            <label class="radio-item">
+               <input type="radio" name="calc_mode" value="total_cost">
+               [模式3] 已知总投入正算效益
+            </label>
+          </div>
+
+          <div class="form-group" id="target_value_container" style="margin-top:16px;">
+            <label id="target_value_label">目标毛利润率 (小数)</label>
+            <input type="number" step="0.0001" id="target_value" value="0.15">
+          </div>
+
+          <button class="primary-btn" style="margin-top:20px;" onclick="performCalculation()">执行分析</button>
+
+          <div class="warning-banner" id="warning_banner" style="margin-top:16px;">
+            <span>⚠️</span> 
+            <span id="warning_text"></span>
+          </div>
+        </div>
+
+        <div id="sidebar-batch-controls" class="sub-view">
+           <h3 class="section-title">批量处理说明</h3>
+           <p style="font-size:0.8rem; color:var(--on_surface_variant); line-height:1.6;">
+             批量模式下，系统将读取 Excel 中的「项目名称」、「项目总收入」、「项目总投入」等列进行自动测算并生成报告。
+           </p>
+        </div>
+      </div>
+
+      <!-- Right Panel: Data Presentation & Batch -->
+      <div class="main-panel">
+        <div id="subview-single-main" class="sub-view active">
+          <div class="table-card">
+            <h3 class="section-title">单项测算结果账单</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>资金流向明细</th>
+                  <th>含税总收入</th>
+                  <th>不含税收入</th>
+                  <th>含税总投入</th>
+                  <th>不含税投入</th>
+                </tr>
+              </thead>
+              <tbody id="result_table">
+                <tr>
+                  <td>IT集成部分</td>
+                  <td id="it_inc_incl">0.00</td>
+                  <td id="it_inc_excl">0.00</td>
+                  <td id="it_cost_incl">0.00</td>
+                  <td id="it_cost_excl">0.00</td>
+                </tr>
+                <tr>
+                  <td>CT产品部分</td>
+                  <td id="ct_inc_incl">0.00</td>
+                  <td id="ct_inc_excl">0.00</td>
+                  <td id="ct_cost_incl">0.00</td>
+                  <td id="ct_cost_excl">0.00</td>
+                </tr>
+                <tr class="row-total">
+                  <td>项目合并总计</td>
+                  <td id="tot_inc_incl">0.00</td>
+                  <td id="tot_inc_excl">0.00</td>
+                  <td id="tot_cost_incl">0.00</td>
+                  <td id="tot_cost_excl">0.00</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="metrics-board">
+              <div class="metric-card">
+                <div class="metric-label">项目毛利润率</div>
+                <div class="metric-value" id="res_margin">0.00%</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">项目整体 NPV 回报率</div>
+                <div class="metric-value" id="res_npv">0.00%</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">仅 IT 侧 NPV 回报率</div>
+                <div class="metric-value" id="res_it_npv">0.00%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="subview-batch-main" class="sub-view">
+          <div class="batch-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <h3 class="section-title" style="margin-bottom: 0;">批量导入处理</h3>
+              <button class="back-btn" style="border: 1px solid var(--primary); color: var(--primary); background: transparent;" onclick="triggerDownloadTemplate()">⬇️ 下载 Excel 模板</button>
+            </div>
+            <div class="batch-desc" style="margin-top: 0;">
+              支持一键处理多项目 Excel 清单。文件须包含 <strong>项目名称</strong>, <strong>含税总收入</strong> 以及 <strong>项目总投入</strong>（或利润率）。系统将自动识别运算模式。执行完毕后，将生成包含详细指标的批处理结果。
+            </div>
+            <div class="upload-area" onclick="triggerBatchProcess()" style="margin-top:20px;">
+              <div class="upload-icon">📁</div>
+              <div>点击选择本地 Excel (.xlsx)</div>
+            </div>
+            <div id="batch-result-msg" style="margin-top:16px;"></div>
+            <div id="batch-actions" style="display:none; margin-top: 24px; display: flex; gap: 16px;">
+              <button class="primary-btn" onclick="openLastResult()" style="background:var(--secondary); flex: 1;">📂 打开结果文件并编辑</button>
+              <button class="primary-btn" onclick="triggerBatchDocGen()" style="flex: 1;">📄 批量生成签批表</button>
+            </div>
+          </div>
+        </div>
+
+    </div>
+  </div>
+</div>
+
+  <!-- =============================== -->
+  <!-- 3. DOCFILL TOOL                 -->
+  <!-- =============================== -->
+  <div id="view-docfill-tool" class="view">
+    <div class="tool-header-bar">
+      <button class="back-btn" onclick="openTool('hub')">
+        <span>←</span> 返回集市
+      </button>
+      <h2 class="tool-title">申报材料制作</h2>
+    </div>
+
+    <div class="tool-layout">
+      <!-- Left Sidebar: Controls -->
+      <div class="sidebar">
+        <h3 class="section-title">1. 上传模板文件</h3>
+        <div class="upload-area" onclick="triggerSelectTemplate()" style="padding: 20px 10px;">
+          <div class="upload-icon">📄</div>
+          <div style="font-size:0.85rem">选择本地 Docx 模板</div>
+        </div>
+        <div id="docfill_template_name" style="font-size:0.8rem; color:var(--primary); margin-top:8px; word-break: break-all;">未选择模板</div>
+
+        <button class="primary-btn" style="margin-top:20px" onclick="triggerGenerateDoc()">执行生成</button>
+      </div>
+
+      <!-- Right Panel: Data Presentation -->
+      <div class="main-panel">
+        <div class="table-card" style="flex:1;">
+          <h3 class="section-title">2. 填写材料信息</h3>
+          <p style="font-size:0.85rem; color:var(--on_surface_variant); margin-bottom: 24px;">
+            请在左侧选择模板后，系统会自动提取变量（形如 {变量名} ）。
+          </p>
+          <div id="docfill_form_container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px;">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =============================== -->
+  <!-- SCRIPTS                         -->
+  <!-- =============================== -->
+  <script>
+    // == Navigation Manager ==
+    function openTool(toolId) {
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      if(toolId === 'hub') {
+        document.getElementById('view-hub').classList.add('active');
+        document.title = "云数中心工具集";
+      } else if (toolId === 'benefit_tool') {
+        document.getElementById('view-benefit-tool').classList.add('active');
+        document.title = "项目效益分析";
+        switchBenefitSubView('single'); // Reset to single by default
+        performCalculation(); // auto calculate on open
+      } else if (toolId === 'docfill_tool') {
+        document.getElementById('view-docfill-tool').classList.add('active');
+        document.title = "申报材料制作";
+      }
+    }
+
+    function switchBenefitSubView(mode) {
+      // Toggle nav active state
+      document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+      document.getElementById('nav-' + mode).classList.add('active');
+
+      // Toggle content sub-views
+      document.querySelectorAll('.sidebar .sub-view').forEach(v => v.classList.remove('active'));
+      document.querySelectorAll('.main-panel .sub-view').forEach(v => v.classList.remove('active'));
+
+      if (mode === 'single') {
+        document.getElementById('sidebar-single-controls').classList.add('active');
+        document.getElementById('subview-single-main').classList.add('active');
+      } else {
+        document.getElementById('sidebar-batch-controls').classList.add('active');
+        document.getElementById('subview-batch-main').classList.add('active');
+      }
+    }
+
+    // == Tool UI Logic ==
+    const radios = document.querySelectorAll('input[name="calc_mode"]');
+    const targetLabel = document.getElementById('target_value_label');
+    const targetInput = document.getElementById('target_value');
+    
+    radios.forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        const val = e.target.value;
+        if (val === 'margin') {
+            targetLabel.innerText = '目标毛利润率 (小数, 例: 0.15)';
+            targetInput.value = '0.15';
+            targetInput.step = '0.0001';
+        } else if (val === 'npv') {
+            targetLabel.innerText = '目标净现值率 (小数, 例: 0.15)';
+            targetInput.value = '0.15';
+            targetInput.step = '0.0001';
+        } else if (val === 'total_cost') {
+            targetLabel.innerText = '已知含税总投入 (元)';
+            targetInput.value = '800000';
+            targetInput.step = '0.01';
+        }
+      });
+    });
+
+    function formatCurrency(valStr) {
+        let val = Number(valStr);
+        if(isNaN(val)) return '0.00';
+        return val.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    
+    function formatPercent(valStr) {
+        let val = Number(valStr);
+        if(isNaN(val)) return '0.00%';
+        return (val * 100).toFixed(2) + '%';
+    }
+
+    async function performCalculation() {
+      try {
+        if (!window.__TAURI__) { return; }
+        const invoke = window.__TAURI__.core.invoke;
+        
+        let ct_opt_val = document.getElementById('ct_income_incl_opt').value.trim();
+
+        const input = {
+          tax_rate_it: String(document.getElementById('tax_rate_it').value),
+          tax_rate_ct: String(document.getElementById('tax_rate_ct').value),
+          total_income_incl: String(document.getElementById('total_income_incl').value),
+          calc_mode: document.querySelector('input[name="calc_mode"]:checked').value,
+          target_value: String(document.getElementById('target_value').value),
+          ct_income_incl_opt: ct_opt_val === "" ? null : ct_opt_val
+        };
+
+        const res = await invoke('calculate_benefit', { input });
+        
+        ['it_inc_incl', 'it_inc_excl', 'it_cost_incl', 'it_cost_excl',
+         'ct_inc_incl', 'ct_inc_excl', 'ct_cost_incl', 'ct_cost_excl',
+         'tot_inc_incl', 'tot_inc_excl', 'tot_cost_incl', 'tot_cost_excl'].forEach(id => {
+           let key = id;
+           if(id.startsWith('tot_')) key = key.replace('tot_', 'total_');
+           if(id.includes('_inc_')) key = key.replace('_inc_', '_income_');
+           document.getElementById(id).innerText = formatCurrency(res[key]);
+         });
+
+        document.getElementById('res_margin').innerText = formatPercent(res.margin_rate);
+        document.getElementById('res_npv').innerText = formatPercent(res.npv_rate);
+        document.getElementById('res_it_npv').innerText = formatPercent(res.it_npv_rate);
+
+        const warnBanner = document.getElementById('warning_banner');
+        if (res.warning_message) {
+          document.getElementById('warning_text').innerText = res.warning_message;
+          warnBanner.classList.add('show');
+        } else {
+          warnBanner.classList.remove('show');
+        }
+      } catch (error) {
+        console.error(error);
+        alert('发生计算错误: ' + error);
+      }
+    }
+    
+    // Batch Process
+    let lastBatchOutput = "";
+
+    async function triggerBatchProcess() {
+      if (!window.__TAURI__) return alert("未检测到 Tauri 运行环境！");
+      const invoke = window.__TAURI__.core.invoke;
+      try {
+        let selected = null;
+        try {
+          selected = await invoke('plugin:dialog|open', {
+            multiple: false,
+            filters: [{ name: 'Excel Files', extensions: ['xlsx', 'xls'] }]
+          });
+        } catch(e) {
+          if(window.__TAURI__.dialog) {
+             selected = await window.__TAURI__.dialog.open({
+               multiple: false,
+               filters: [{ name: 'Excel Files', extensions: ['xlsx', 'xls'] }]
+             });
+          }
+        }
+        
+        if (selected) {
+           const resultMsgBox = document.getElementById('batch-result-msg');
+           resultMsgBox.style.display = 'block';
+           resultMsgBox.style.color = 'var(--on_surface)';
+           resultMsgBox.innerText = `⏳ 正在处理文件...，请勿关闭窗口。`;
+           
+           try {
+             await new Promise(r => setTimeout(r, 100));
+             const filePath = typeof selected === 'object' && selected.path ? selected.path : selected;
+             
+             const outPath = await invoke('process_excel_batch', { filePath: filePath });
+             lastBatchOutput = outPath;
+             resultMsgBox.style.color = 'var(--success)';
+             resultMsgBox.innerText = `✅ 处理成功！\n文件生成至:\n${outPath}`;
+             document.getElementById('batch-actions').style.display = 'flex';
+           } catch(err) {
+             resultMsgBox.style.color = 'var(--error)';
+             resultMsgBox.innerText = `❌ 处理失败:\n${err}`;
+           }
+        }
+      } catch (e) {
+         console.error(e);
+         alert("出现错误: " + e);
+      }
+    }
+
+    async function openLastResult() {
+      if(!lastBatchOutput) return;
+      try {
+        await window.__TAURI__.core.invoke('open_file', { path: lastBatchOutput });
+      } catch(e) {
+        alert("无法打开文件: " + e);
+      }
+    }
+
+    async function triggerBatchDocGen() {
+      if (!window.__TAURI__) return;
+      const invoke = window.__TAURI__.core.invoke;
+      try {
+        // 1. Select Excel file
+        let excelSelected = null;
+        try {
+          excelSelected = await invoke('plugin:dialog|open', {
+            multiple: false,
+            defaultPath: lastBatchOutput || null,
+            filters: [{ name: 'Excel Files', extensions: ['xlsx'] }]
+          });
+        } catch(e) {
+          if(window.__TAURI__.dialog) {
+            excelSelected = await window.__TAURI__.dialog.open({
+              multiple: false,
+              defaultPath: lastBatchOutput || null,
+              filters: [{ name: 'Excel Files', extensions: ['xlsx'] }]
+            });
+          }
+        }
+
+        if(excelSelected) {
+          let excelPath = typeof excelSelected === 'object' && excelSelected.path ? excelSelected.path : excelSelected;
+          
+          // 2. Select template file
+          let templateSelected = null;
+          try {
+            templateSelected = await invoke('plugin:dialog|open', {
+              multiple: false,
+              filters: [{ name: 'Word Documents', extensions: ['docx'] }]
+            });
+          } catch(e) {
+            if(window.__TAURI__.dialog) {
+              templateSelected = await window.__TAURI__.dialog.open({
+                multiple: false,
+                filters: [{ name: 'Word Documents', extensions: ['docx'] }]
+              });
+            }
+          }
+          
+          if(templateSelected) {
+            let templatePath = typeof templateSelected === 'object' && templateSelected.path ? templateSelected.path : templateSelected;
+            const resultMsgBox = document.getElementById('batch-result-msg');
+            resultMsgBox.innerText = `⏳ 正在批量生成签批表...`;
+            
+            const result = await invoke('batch_generate_docx_from_excel', { excelPath: excelPath, templatePath: templatePath });
+            resultMsgBox.innerText = result;
+          }
+        }
+      } catch(e) {
+        alert("批量生成失败: " + e);
+      }
+    }
+
+    async function triggerDownloadTemplate() {
+      try {
+        if (!window.__TAURI__) return alert("未检测到 Tauri 运行环境！");
+        const invoke = window.__TAURI__.core.invoke;
+        
+        let outPath = null;
+        try {
+          outPath = await invoke('plugin:dialog|save', {
+            defaultPath: '效益测算_批量导入模板.xlsx',
+            filters: [{ name: 'Excel', extensions: ['xlsx'] }]
+          });
+        } catch(e) {
+          if(window.__TAURI__.dialog) {
+             outPath = await window.__TAURI__.dialog.save({
+               defaultPath: '效益测算_批量导入模板.xlsx',
+               filters: [{ name: 'Excel', extensions: ['xlsx'] }]
+             });
+          }
+        }
+        
+        if (outPath) {
+           let actualPath = typeof outPath === 'object' && outPath.path ? outPath.path : outPath;
+           await invoke('generate_excel_template', { path: actualPath });
+           const msgBox = document.getElementById('batch-result-msg');
+           msgBox.style.display = 'block';
+           msgBox.style.color = 'var(--success)';
+           msgBox.innerText = `✅ 模板已下载至:\n${actualPath}`;
+        }
+      } catch (e) {
+        alert("下载模板失败: " + e);
+      }
+    }
+
+    // ============================================
+    // DocFill (申报材料制作) Logic
+    // ============================================
+    let currentDocfillTemplate = "";
+    let docfillVariables = [];
+
+    async function triggerSelectTemplate() {
+      if (!window.__TAURI__) return alert("未检测到 Tauri 运行环境！");
+      const invoke = window.__TAURI__.core.invoke;
+      try {
+          let selected = null;
+          try {
+            selected = await invoke('plugin:dialog|open', {
+               multiple: false,
+               filters: [{ name: 'Word', extensions: ['docx'] }]
+            });
+          } catch(e) {
+            if(window.__TAURI__.dialog) {
+               selected = await window.__TAURI__.dialog.open({
+                 multiple: false,
+                 filters: [{ name: 'Word Document', extensions: ['docx'] }]
+               });
+            }
+          }
+
+          if (selected) {
+              let path = typeof selected === 'object' && selected.path ? selected.path : selected;
+              currentDocfillTemplate = path;
+              document.getElementById('docfill_template_name').innerText = "已选择:\n" + path;
+              
+              docfillVariables = await invoke('extract_docx_variables', { path });
+              renderDocfillForm();
+          }
+      } catch(e) { 
+          alert("加载模板失败: " + e); 
+      }
+    }
+
+    const docfillVarMap = {
+      'PROJECT_NAME': '项目名称',
+      'CT_PRODUCT_NAME': 'CT产品名',
+      'TOTAL_PROJECT_INVESTMENT': '项目总投入',
+      'IT_INVESTMENT': 'IT投入',
+      'CT_INVESTMENT': 'CT投入',
+      'TOTAL_PROJECT_REVENUE': '项目总收入',
+      'IT_REVENUE': 'IT收入',
+      'CT_REVENUE': 'CT收入',
+      'NET_PRESENT_VALUE_RATE': '项目净现值率',
+      'PROJECT_GROSS_PROFIT_MARGIN': '项目毛利率',
+      'IT_NET_PRESENT_VALUE_RATE': 'IT净现值率',
+      'CONTRACT_DURATION': '项目周期',
+      'CURR_DATE': '当前时间',
+      'IT_TAX_RATE': 'IT税率',
+      'CT_TAX_RATE': 'CT税率'
+    };
+
+    function renderDocfillForm() {
+        const container = document.getElementById('docfill_form_container');
+        container.innerHTML = '';
+        if(docfillVariables.length === 0) {
+            container.innerHTML = '<p style="color:var(--on_surface_variant); grid-column: 1 / -1; font-weight: 600;">⚠️ 未在该文档中发现 {变量名} 式的占位符。<br>系统将不会进行替换，请检查模板是否包含如 {name} 格式的纯文本变量。</p>';
+            return;
+        }
+        docfillVariables.forEach(v => {
+            const div = document.createElement('div');
+            div.className = 'form-group';
+            const label = document.createElement('label');
+            
+            const friendlyName = docfillVarMap[v] || v;
+            label.innerText = `${friendlyName} {${v}}`;
+            
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.id = 'docgen_var_' + v;
+            
+            if (v === 'CURR_DATE') {
+              let d = new Date();
+              input.value = `${d.getFullYear()}年${String(d.getMonth()+1).padStart(2,'0')}月${String(d.getDate()).padStart(2,'0')}日`;
+            } else {
+              input.placeholder = `请输入 ${friendlyName}...`;
+            }
+            
+            div.appendChild(label);
+            div.appendChild(input);
+            container.appendChild(div);
+        });
+    }
+
+    async function triggerGenerateDoc() {
+        if(!currentDocfillTemplate) return alert("请先选择模板!");
+        if (!window.__TAURI__) return;
+        const invoke = window.__TAURI__.core.invoke;
+        
+        let vars = {};
+        docfillVariables.forEach(v => {
+            vars[v] = document.getElementById('docgen_var_' + v).value;
+        });
+        
+        try {
+            // Determine filename based on user request "立项签批表-项目名称"
+            let projName = vars['PROJECT_NAME'];
+            let defaultSaveName = projName ? `立项签批表-${projName}.docx` : `立项签批表_已生成.docx`;
+            
+            let outputPath = null;
+
+            try {
+              outputPath = await invoke('plugin:dialog|save', {
+                  defaultPath: defaultSaveName,
+                  filters: [{ name: 'Word', extensions: ['docx'] }]
+              });
+            } catch(e) {
+              if(window.__TAURI__.dialog) {
+                  outputPath = await window.__TAURI__.dialog.save({
+                      defaultPath: defaultSaveName,
+                      filters: [{ name: 'Word Document', extensions: ['docx'] }]
+                  });
+              }
+            }
+
+            if(outputPath) {
+                let actualPath = typeof outputPath === 'object' && outputPath.path ? outputPath.path : outputPath;
+                await invoke('generate_docx', { 
+                    templatePath: currentDocfillTemplate, 
+                    outputPath: actualPath, 
+                    variables: vars 
+                });
+                alert("✅ 生成成功!\n保存至: " + actualPath);
+            }
+        } catch(e) { 
+            alert("❌ 生成失败: " + e); 
+        }
+    }
+  </script>
+</body>
+</html>

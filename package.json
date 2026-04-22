@@ -1,0 +1,11 @@
+{
+  "name": "benefit-calculator",
+  "version": "1.0.0",
+  "description": "Project Benefit Calculation Tool",
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

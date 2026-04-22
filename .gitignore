@@ -1,0 +1,66 @@
+# Rust build artifacts
+target/
+
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Editor directories and files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Tauri specific
+/src-tauri/target/
+/src-tauri/gen/
+
+# Log files
+*.log
+
+# OS generated files
+Thumbs.db
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Build logs
+build.log
+build_web.log
+build_web2.log
+check_err.log
+check_out.log
+error.log
+run.log
+
+# Test directories
+test/
+
+# Binary files
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Temporary files
+*.tmp
+*.temp
+
+# Demo directories
+hello_test/
+logic_demo/

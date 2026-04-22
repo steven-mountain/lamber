@@ -1,0 +1,22 @@
+    Checking tauri v2.10.3
+   Compiling benefit-calculator v0.1.0 (D:\HermesJang\CMCC\tools\Benefitcostanalysis\src-tauri)
+error: failed to run custom build command for `benefit-calculator v0.1.0 (D:\HermesJang\CMCC\tools\Benefitcostanalysis\src-tauri)`
+
+Caused by:
+  process didn't exit successfully: `D:\HermesJang\CMCC\tools\Benefitcostanalysis\src-tauri\target\debug\build\benefit-calculator-66cd5cee28cc1af0\build-script-build` (exit code: 1)
+  --- stdout
+  cargo:rerun-if-env-changed=TAURI_CONFIG
+  cargo:rustc-check-cfg=cfg(desktop)
+  cargo:rustc-cfg=desktop
+  cargo:rustc-check-cfg=cfg(mobile)
+  cargo:rerun-if-changed=D:\HermesJang\CMCC\tools\Benefitcostanalysis\src-tauri\tauri.conf.json
+  cargo:rustc-env=TAURI_ANDROID_PACKAGE_NAME_APP_NAME=benefitcalc
+  cargo:rustc-env=TAURI_ANDROID_PACKAGE_NAME_PREFIX=com_cmcc
+  cargo:rustc-check-cfg=cfg(dev)
+  cargo:PERMISSION_FILES_PATH=D:\HermesJang\CMCC\tools\Benefitcostanalysis\src-tauri\target\debug\build\benefit-calculator-ef191664b4359e6b\out\app-manifest\__app__-permission-files
+  cargo:rerun-if-changed=capabilities
+  cargo:rerun-if-env-changed=REMOVE_UNUSED_COMMANDS
+  cargo:rustc-env=TAURI_ENV_TARGET_TRIPLE=x86_64-pc-windows-msvc
+  package.metadata does not exist
+  `icons/icon.ico` not found; required for generating a Windows Resource file during tauri-build
+warning: build failed, waiting for other jobs to finish...
