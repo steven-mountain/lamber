@@ -16,7 +16,7 @@ pub fn extract_docx_variables(path: String) -> Result<Vec<String>, String> {
     
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).unwrap();
-        if file.name() == "word/document.xml" || file.name() == "word/header1.xml" || file.name() == "word/footer1.xml" {
+        if file.name().ends_with(".xml") {
             let mut content = String::new();
             if file.read_to_string(&mut content).is_ok() {
                 doc_xml.push_str(&content);
@@ -25,7 +25,7 @@ pub fn extract_docx_variables(path: String) -> Result<Vec<String>, String> {
     }
 
     if doc_xml.is_empty() {
-        return Err("Could not find document.xml in the provided docx file.".into());
+        return Err("Could not find any xml files in the provided archive.".into());
     }
 
     // Strip all XML tags to find pure text content
@@ -78,7 +78,14 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
 
                 for (k, v) in variables {
                     let pattern = format!("{{{}}}", k);
-                    xml_str = xml_str.replace(&pattern, v);
+                    
+                    // We must escape XML characters in `v` first!
+                    let escaped_v = v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+                    
+                    // Replace newlines with docx line breaks
+                    // Since {VAR} is inside a <w:t> tag, replacing it with text</w:t><w:br/><w:t>text will create valid line breaks
+                    let docx_v = escaped_v.replace("\n", "</w:t><w:br/><w:t>");
+                    xml_str = xml_str.replace(&pattern, &docx_v);
                 }
 
                 zip_writer.start_file(name, options).map_err(|e| e.to_string())?;
@@ -111,6 +118,109 @@ fn clean_xml_placeholders(xml: &str) -> String {
             matched.to_string()
         }
     }).to_string()
+}
+
+#[tauri::command]
+pub fn get_available_templates() -> Result<Vec<String>, String> {
+    use std::fs;
+    let current_dir = std::env::current_dir().map_err(|e| format!("无法获取当前目录: {}", e))?;
+    let project_root = if current_dir.ends_with("src-tauri") {
+        current_dir.parent().unwrap().to_path_buf()
+    } else {
+        current_dir.clone()
+    };
+    let template_dir = project_root.join("项目全生命周期文件模版");
+    
+    if !template_dir.exists() {
+        return Ok(vec![]);
+    }
+    
+    let mut templates = Vec::new();
+    if let Ok(entries) = fs::read_dir(&template_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    let ext_str = ext.to_string_lossy().to_lowercase();
+                    let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+                    if ext_str == "docx" && !file_name.starts_with("~$") && !file_name.starts_with(".~") {
+                        templates.push(file_name);
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(templates)
+}
+
+#[tauri::command]
+pub fn generate_lifecycle_docs(variables: HashMap<String, String>, selected_templates: Vec<String>) -> Result<String, String> {
+    use std::fs;
+    
+    let current_dir = std::env::current_dir().map_err(|e| format!("无法获取当前目录: {}", e))?;
+    
+    let project_root = if current_dir.ends_with("src-tauri") {
+        current_dir.parent().unwrap().to_path_buf()
+    } else {
+        current_dir.clone()
+    };
+    
+    let template_dir = project_root.join("项目全生命周期文件模版");
+    
+    if !template_dir.exists() {
+        return Err(format!("未找到模板目录: {}", template_dir.display()));
+    }
+    
+    let output_dir = project_root.join("一键生成全生命周期结果");
+    if !output_dir.exists() {
+        fs::create_dir_all(&output_dir).map_err(|e| format!("创建输出目录失败: {}", e))?;
+    }
+    
+    let mut generated_count = 0;
+    
+    // Iterate over files in template directory
+    let entries = fs::read_dir(&template_dir).map_err(|e| e.to_string())?;
+    for entry_result in entries {
+        let entry = entry_result.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        
+        if path.is_file() {
+            if let Some(ext) = path.extension() {
+                let ext_str = ext.to_string_lossy().to_lowercase();
+                let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+                
+                // Ignore temporary files created by MS Word (starting with ~$)
+                if ext_str == "docx" && !file_name.starts_with("~$") && !file_name.starts_with(".~") {
+                    
+                    // Only generate files that the user explicitly selected
+                    if !selected_templates.contains(&file_name) {
+                        continue;
+                    }
+                    
+                    let proj_name = variables.get("PROJECT_NAME").cloned().unwrap_or_else(|| "未命名".to_string());
+                    let safe_proj_name = proj_name.chars().filter(|c| !r#"\/:*?"<>|"#.contains(*c)).collect::<String>();
+                    let out_name = file_name.replace("模板", &format!("-{}", safe_proj_name));
+                    
+                    let out_path = output_dir.join(&out_name);
+                    
+                    // We only want to generate files that actually match a template the user requested
+                    // For now, let's process all valid .docx files, but if one fails to read as zip, we should just skip it and warn, not fail the whole process.
+                    if let Err(e) = internal_generate_docx(path.to_str().unwrap(), out_path.to_str().unwrap(), &variables) {
+                        println!("Warning: failed to process template {}: {}", file_name, e);
+                        continue;
+                    }
+                    generated_count += 1;
+                }
+            }
+        }
+    }
+    
+    if generated_count == 0 {
+        return Err("模板目录中未找到任何 .docx 模板文件。".into());
+    }
+    
+    Ok(output_dir.to_string_lossy().to_string())
 }
 
 #[tauri::command]

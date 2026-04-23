@@ -57,6 +57,12 @@
       font-variant-numeric: tabular-nums;
     }
 
+    /* Input placeholders */
+    ::placeholder {
+      color: #9aa5b1;
+      font-weight: 400;
+    }
+
     /* ====== Views ====== */
     .view {
       display: none;
@@ -313,8 +319,8 @@
     }
     
     input[type="number"], input[type="text"] {
-      background: var(--surface_container_lowest);
-      border: 1px solid transparent; 
+      background: var(--surface_container);
+      border: 1px solid var(--ghost-border); 
       color: var(--on_surface);
       padding: 10px 14px;
       border-radius: 6px;
@@ -325,8 +331,19 @@
     }
     
     input[type="number"]:focus, input[type="text"]:focus {
-      border-color: var(--outline);
-      box-shadow: 0 0 0 2px rgba(45, 120, 228, 0.15);
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(45, 120, 228, 0.2);
+      background: #ffffff; /* Make active input stand out */
+    }
+
+    /* Hide the up/down arrows (spinners) in number inputs */
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type="number"] {
+      -moz-appearance: textfield;
     }
 
     .radio-card {
@@ -572,6 +589,18 @@
         </div>
         <div class="app-title">申报材料制作</div>
       </div>
+      <!-- ict项目全生命周期卡片 -->
+      <div class="app-card" onclick="openTool('ict_lifecycle')">
+        <div class="app-icon" style="color: #d97706; background: #fef3c7">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+          </svg>
+        </div>
+        <div class="app-title">ICT项目全生命周期</div>
+        <div class="app-desc" style="margin-top: 4px;">经济效益与过程评估</div>
+      </div>
     </div>
   </div>
 
@@ -781,9 +810,778 @@
   </div>
 
   <!-- =============================== -->
+  <!-- 4. ICT PROJECT LIFECYCLE TOOL   -->
+  <!-- =============================== -->
+  <div id="view-ict-lifecycle" class="view">
+    <div class="tool-header-bar">
+      <button class="back-btn" onclick="openTool('hub')">
+        <span>←</span> 返回集市
+      </button>
+      <h2 class="tool-title">ICT项目全生命周期 - 经济效益评估</h2>
+    </div>
+
+    <div class="tool-layout" style="flex-direction: row;">
+      <!-- Left Navigation -->
+      <div class="sidebar" style="width: 240px; flex-shrink: 0;">
+        <h3 class="section-title">测算流程</h3>
+        <div class="nav-group">
+          <div class="nav-item active" id="nav-ict-basic" onclick="switchIctTab('basic')"><span>📋</span> 项目概况与参数</div>
+          <div class="nav-item" id="nav-ict-revenue" onclick="switchIctTab('revenue')"><span>💰</span> 收入侧测算</div>
+          <div class="nav-item" id="nav-ict-cost" onclick="switchIctTab('cost')"><span>💸</span> 支出侧测算</div>
+          <div class="nav-item" id="nav-ict-cashflow" onclick="switchIctTab('cashflow')"><span>📈</span> 10年现金流推演</div>
+          <div class="nav-item" id="nav-ict-generate" onclick="switchIctTab('generate')"><span>📄</span> 一键生成全生命周期文档</div>
+        </div>
+      </div>
+
+      <!-- Center Form Area -->
+      <div class="main-panel" style="flex: 1; padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto;">
+        
+        <!-- Tab: Basic Info -->
+        <div id="ict-tab-basic" class="ict-tab-content" style="display: block;">
+          <div class="table-card" style="margin-bottom: 24px;">
+            <h3 class="section-title">项目概况</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div class="form-group">
+                <label>项目名称</label>
+                <input type="text" id="ict_proj_name" value="易诚国际高楼消防监测项目">
+              </div>
+              <div class="form-group">
+                <label>产权归属</label>
+                <input type="text" id="ict_property_rights" value="客户">
+              </div>
+              <div class="form-group">
+                <label>折现率 (默认5.5%)</label>
+                <input type="number" step="0.001" id="ict_discount_rate" value="0.055">
+              </div>
+              <div class="form-group">
+                <label>项目建设/服务周期 (年)</label>
+                <input type="number" step="1" min="1" max="10" id="ict_project_years" value="1" onchange="updateCashflowModelUI()">
+              </div>
+            </div>
+          </div>
+
+          <div class="table-card">
+            <h3 class="section-title">资金收付模型 (现金流时间分布)</h3>
+            <div style="margin-bottom: 16px;">
+              <select id="ict_cashflow_model" onchange="updateCashflowModelUI()" style="width: 100%; padding: 10px 14px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container_lowest); color: var(--on_surface); font-size: 0.95rem; font-family: inherit; font-weight: 600; outline: none;">
+                <option value="model_a">模型 A: 100% 在第一年收付</option>
+                <option value="model_b">模型 B: 按周期等额收付 (每年 1/n)</option>
+                <option value="model_c">模型 C: 尾款质保金 (首年95%，末年5%)</option>
+                <option value="model_d">模型 D: 高级自定义分配</option>
+              </select>
+            </div>
+            
+            <div id="ict_custom_distribution" style="display: none; border: 1px solid var(--ghost-border); border-radius: 8px; padding: 16px; background: var(--surface_container_low);">
+              <div style="font-size: 0.8rem; color: var(--on_surface_variant); margin-bottom: 16px; font-weight: 600;">
+                请手动输入 1-10 年的资金分配比例 (小数形式，如 0.3 代表 30%)，总和必须为 1.0。
+              </div>
+              
+              <!-- Years 1-5 -->
+              <div style="display: grid; grid-template-columns: 70px repeat(5, 1fr); gap: 12px; text-align: center; align-items: center; margin-bottom: 16px;">
+                <div style="font-weight: 700; font-size: 0.8rem; color: var(--on_surface_variant); text-align: right; padding-right: 8px;">年份</div>
+                <div>1</div><div>2</div><div>3</div><div>4</div><div>5</div>
+                
+                <div style="font-weight: 700; font-size: 0.8rem; color: var(--on_surface_variant); text-align: right; padding-right: 8px;">收入比例</div>
+                <input type="number" step="0.01" class="dist-rev" value="1.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-rev" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-rev" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-rev" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-rev" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+
+                <div style="font-weight: 700; font-size: 0.8rem; color: var(--on_surface_variant); text-align: right; padding-right: 8px;">支出比例</div>
+                <input type="number" step="0.01" class="dist-cost" value="1.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-cost" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-cost" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-cost" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-cost" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+              </div>
+
+              <!-- Years 6-10 -->
+              <div style="display: grid; grid-template-columns: 70px repeat(5, 1fr); gap: 12px; text-align: center; align-items: center; padding-top: 16px; border-top: 1px dashed var(--ghost-border);">
+                <div style="font-weight: 700; font-size: 0.8rem; color: var(--on_surface_variant); text-align: right; padding-right: 8px;">年份</div>
+                <div>6</div><div>7</div><div>8</div><div>9</div><div>10</div>
+                
+                <div style="font-weight: 700; font-size: 0.8rem; color: var(--on_surface_variant); text-align: right; padding-right: 8px;">收入比例</div>
+                <input type="number" step="0.01" class="dist-rev" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-rev" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-rev" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-rev" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-rev" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+
+                <div style="font-weight: 700; font-size: 0.8rem; color: var(--on_surface_variant); text-align: right; padding-right: 8px;">支出比例</div>
+                <input type="number" step="0.01" class="dist-cost" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-cost" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-cost" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-cost" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+                <input type="number" step="0.01" class="dist-cost" value="0.0" style="padding:6px; font-size:0.85rem; text-align:center;">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Revenue -->
+        <div id="ict-tab-revenue" class="ict-tab-content" style="display: none;">
+          <!-- Quick Revenue Split Calculator -->
+          <div class="table-card" style="margin-bottom: 24px; border: 1px dashed var(--primary); background: var(--surface_container_lowest);">
+            <h3 class="section-title" style="color: var(--primary);">快捷收入拆分计算器</h3>
+            <p style="font-size:0.85rem; color:var(--on_surface_variant); margin-bottom: 16px;">
+              输入含税总收入与含税产品收入，自动计算出“系统集成服务收入”。计算结果可手动填入下方的详细测算表中。
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; align-items: end;">
+              <div class="form-group">
+                <label>含税总收入</label>
+                <input type="number" id="quick_rev_total" placeholder="输入含税总收入" oninput="calcQuickRevenue('total')">
+              </div>
+              <div class="form-group">
+                <label>含税产品收入</label>
+                <input type="number" id="quick_rev_product" placeholder="自动计算或输入" oninput="calcQuickRevenue('product')">
+              </div>
+              <div class="form-group">
+                <label>系统集成服务收入 (自动)</label>
+                <input type="number" id="quick_rev_integration" disabled style="background:var(--surface_container_highest); color: var(--primary); font-weight: bold;">
+              </div>
+            </div>
+          </div>
+
+          <div class="table-card" style="margin-bottom: 24px;">
+            <h3 class="section-title">IT/移动云收入</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div class="form-group"><label>系统集成服务收入</label><div style="display:flex; gap:8px;"><input type="number" id="rev_it_integration_incl" class="tax-linked" placeholder="含税金额" value="13700"><input type="number" id="rev_it_integration_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="rev_it_integration_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>维保收入</label><div style="display:flex; gap:8px;"><input type="number" id="rev_it_maintenance_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="rev_it_maintenance_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="rev_it_maintenance_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>设备销售收入</label><div style="display:flex; gap:8px;"><input type="number" id="rev_it_device_sales_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="rev_it_device_sales_tax" class="tax-linked" placeholder="税率(%)" value="13" style="width: 80px;"><input type="number" id="rev_it_device_sales_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>设备租赁收入</label><div style="display:flex; gap:8px;"><input type="number" id="rev_it_device_lease_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="rev_it_device_lease_tax" class="tax-linked" placeholder="税率(%)" value="13" style="width: 80px;"><input type="number" id="rev_it_device_lease_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>其他收入</label><div style="display:flex; gap:8px;"><input type="number" id="rev_it_other_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="rev_it_other_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="rev_it_other_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>移动云-定制化收入</label><div style="display:flex; gap:8px;"><input type="number" id="rev_it_cloud_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="rev_it_cloud_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="rev_it_cloud_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+            </div>
+          </div>
+          <div class="table-card" style="margin-bottom: 24px;">
+            <h3 class="section-title">CT收入</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div class="form-group"><label>专线收入</label><div style="display:flex; gap:8px;"><input type="number" id="rev_ct_line_incl" class="tax-linked" placeholder="含税金额" value="648"><input type="number" id="rev_ct_line_tax" class="tax-linked" placeholder="税率(%)" value="9" style="width: 80px;"><input type="number" id="rev_ct_line_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>产品收入</label><div style="display:flex; gap:8px;"><input type="number" id="rev_ct_product_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="rev_ct_product_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="rev_ct_product_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+            </div>
+          </div>
+          <div class="table-card">
+            <h3 class="section-title">非IT/CT收入</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div class="form-group"><label>工程施工收入等</label><div style="display:flex; gap:8px;"><input type="number" id="rev_non_it_ct_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="rev_non_it_ct_tax" class="tax-linked" placeholder="税率(%)" value="9" style="width: 80px;"><input type="number" id="rev_non_it_ct_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Tab: Cost -->
+        <div id="ict-tab-cost" class="ict-tab-content" style="display: none;">
+          <!-- Quick Cost Split Calculator -->
+          <div class="table-card" style="margin-bottom: 24px; border: 1px dashed var(--primary); background: var(--surface_container_lowest);">
+            <h3 class="section-title" style="color: var(--primary);">快捷投入拆分计算器</h3>
+            <p style="font-size:0.85rem; color:var(--on_surface_variant); margin-bottom: 16px;">
+              输入含税总投入与含税产品投入，自动计算出“系统集成服务投入”。计算结果可手动填入下方的详细测算表中。
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; align-items: end;">
+              <div class="form-group">
+                <label>含税总投入</label>
+                <input type="number" id="quick_cost_total" placeholder="输入含税总投入" oninput="calcQuickCost('total')">
+              </div>
+              <div class="form-group">
+                <label>含税产品投入</label>
+                <input type="number" id="quick_cost_product" placeholder="自动计算或输入" oninput="calcQuickCost('product')">
+              </div>
+              <div class="form-group">
+                <label>系统集成服务投入 (自动)</label>
+                <input type="number" id="quick_cost_integration" disabled style="background:var(--surface_container_highest); color: var(--primary); font-weight: bold;">
+              </div>
+            </div>
+          </div>
+
+          <!-- Selection Price Calculator -->
+          <div class="table-card" style="margin-bottom: 24px; border: 1px solid var(--outline_variant);">
+            <h3 class="section-title" style="color: var(--primary);">甄选限价计算器 (用于辅助核算成本)</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; align-items: end;">
+              <div class="form-group">
+                <label>厂家报价</label>
+                <input type="number" id="calc_vendor_quote" value="12700" placeholder="含税报价" oninput="updateSelectionCalc('quote')">
+              </div>
+              <div class="form-group">
+                <label>甄选费用 (自动)</label>
+                <input type="number" id="calc_selection_fee" disabled style="background:var(--surface_container_lowest);">
+              </div>
+              <div class="form-group">
+                <label>厂家实际费用 (自动)</label>
+                <input type="number" id="calc_actual_cost" disabled style="background:var(--surface_container_lowest);">
+              </div>
+              <div class="form-group">
+                <label>甄选上浮</label>
+                <input type="number" id="calc_markup" value="50" placeholder="上浮额" oninput="updateSelectionCalc('markup')">
+              </div>
+              <div class="form-group">
+                <label>最终甄选限价</label>
+                <input type="number" id="calc_final_limit" placeholder="输入反算厂家报价" style="background:var(--primary_container); color: var(--on_primary_container); font-weight: 800;" oninput="updateSelectionCalc('limit')">
+              </div>
+              <div class="form-group">
+                <button class="primary-btn" style="padding: 10px 16px;" onclick="applySelectionLimit()">⬇️ 填入集成服务</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-card" style="margin-bottom: 24px;">
+            <h3 class="section-title">IT/移动云投入</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div class="form-group"><label>主要设备/甲供材料</label><div style="display:flex; gap:8px;"><input type="number" id="cost_it_device_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_it_device_tax" class="tax-linked" placeholder="税率(%)" value="13" style="width: 80px;"><input type="number" id="cost_it_device_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>施工</label><div style="display:flex; gap:8px;"><input type="number" id="cost_it_construction_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_it_construction_tax" class="tax-linked" placeholder="税率(%)" value="9" style="width: 80px;"><input type="number" id="cost_it_construction_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>勘察设计/预备费</label><div style="display:flex; gap:8px;"><input type="number" id="cost_it_survey_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_it_survey_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="cost_it_survey_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>集成服务</label><div style="display:flex; gap:8px;"><input type="number" id="cost_it_integration_incl" class="tax-linked" placeholder="含税金额" value="12854.78"><input type="number" id="cost_it_integration_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="cost_it_integration_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>其他投入</label><div style="display:flex; gap:8px;"><input type="number" id="cost_it_other_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_it_other_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="cost_it_other_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>维护费用</label><div style="display:flex; gap:8px;"><input type="number" id="cost_it_maintenance_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_it_maintenance_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="cost_it_maintenance_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>其他运行支出（电费等）</label><div style="display:flex; gap:8px;"><input type="number" id="cost_it_running_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_it_running_tax" class="tax-linked" placeholder="税率(%)" value="13" style="width: 80px;"><input type="number" id="cost_it_running_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>中标服务费</label><div style="display:flex; gap:8px;"><input type="number" id="cost_it_bidding_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_it_bidding_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="cost_it_bidding_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>设计院成本评估费</label><div style="display:flex; gap:8px;"><input type="number" id="cost_it_design_eval_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_it_design_eval_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="cost_it_design_eval_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>第三方审计评估费</label><div style="display:flex; gap:8px;"><input type="number" id="cost_it_audit_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_it_audit_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="cost_it_audit_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+            </div>
+          </div>
+          <div class="table-card" style="margin-bottom: 24px;">
+            <h3 class="section-title">CT投入</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div class="form-group"><label>专线建设</label><div style="display:flex; gap:8px;"><input type="number" id="cost_ct_construction_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_ct_construction_tax" class="tax-linked" placeholder="税率(%)" value="9" style="width: 80px;"><input type="number" id="cost_ct_construction_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>专线维护</label><div style="display:flex; gap:8px;"><input type="number" id="cost_ct_maintenance_incl" class="tax-linked" placeholder="含税金额" value="297"><input type="number" id="cost_ct_maintenance_tax" class="tax-linked" placeholder="税率(%)" value="9" style="width: 80px;"><input type="number" id="cost_ct_maintenance_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>其他产品成本</label><div style="display:flex; gap:8px;"><input type="number" id="cost_ct_other_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_ct_other_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="cost_ct_other_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>专线带宽成本</label><div style="display:flex; gap:8px;"><input type="number" id="cost_ct_bandwidth_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_ct_bandwidth_tax" class="tax-linked" placeholder="税率(%)" value="9" style="width: 80px;"><input type="number" id="cost_ct_bandwidth_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>专线/其他产品续签成本</label><div style="display:flex; gap:8px;"><input type="number" id="cost_ct_renewal_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_ct_renewal_tax" class="tax-linked" placeholder="税率(%)" value="9" style="width: 80px;"><input type="number" id="cost_ct_renewal_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+            </div>
+          </div>
+          <div class="table-card" style="margin-bottom: 24px;">
+            <h3 class="section-title">非IT/CT投入 & 综合类成本</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div class="form-group"><label>工程施工投入等</label><div style="display:flex; gap:8px;"><input type="number" id="cost_non_it_ct_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_non_it_ct_tax" class="tax-linked" placeholder="税率(%)" value="9" style="width: 80px;"><input type="number" id="cost_non_it_ct_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>融合营销成本</label><div style="display:flex; gap:8px;"><input type="number" id="cost_mix_marketing_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_mix_marketing_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="cost_mix_marketing_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>渠道酬金</label><div style="display:flex; gap:8px;"><input type="number" id="cost_mix_channel_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_mix_channel_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="cost_mix_channel_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+              <div class="form-group"><label>其他管理费用等</label><div style="display:flex; gap:8px;"><input type="number" id="cost_mix_other_incl" class="tax-linked" placeholder="含税金额" value="0"><input type="number" id="cost_mix_other_tax" class="tax-linked" placeholder="税率(%)" value="6" style="width: 80px;"><input type="number" id="cost_mix_other_excl" class="tax-linked-excl" placeholder="不含税金额"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Cashflow Table -->
+        <div id="ict-tab-cashflow" class="ict-tab-content" style="display: none;">
+          <div class="table-card">
+            <h3 class="section-title">1-10年项目现金流测算</h3>
+            <div style="overflow-x: auto;">
+              <table style="min-width: 800px; white-space: nowrap;">
+                <thead>
+                  <tr>
+                    <th style="text-align: left;">年份</th>
+                    <th>现金流入</th>
+                    <th>项目现金流出</th>
+                    <th>净现金流量</th>
+                    <th>累计净现金流量</th>
+                    <th>净现金流量现值</th>
+                    <th>累计净现金流量现值</th>
+                  </tr>
+                </thead>
+                <tbody id="ict_cashflow_tbody">
+                  <!-- JS Dynamic Content -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Generate Docs -->
+        <div id="ict-tab-generate" class="ict-tab-content" style="display: none;">
+          <div class="table-card">
+            <h3 class="section-title">一键生成全流程文档</h3>
+            <p style="font-size:0.85rem; color:var(--on_surface_variant); margin-bottom: 24px;">
+              系统将根据您当前填写的参数（项目概况、收支测算、各项效益指标），自动填充预设的 docx 模板文件。投资估算等数据将自动从当前模型带入。
+            </p>
+            
+            <h4 style="font-size: 0.9rem; margin-top: 0; color: var(--primary);">选择要生成的文件模版</h4>
+            <div id="gen_template_list" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; max-height: 150px; overflow-y: auto; background: var(--surface_container_low); padding: 12px; border-radius: 8px; border: 1px solid var(--ghost-border);">
+              <!-- JS Dynamic Content -->
+            </div>
+            
+            <h4 style="font-size: 0.9rem; margin-top: 0; color: var(--primary);">补充文档信息 (会审纪要等所需)</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+              <div class="form-group">
+                <label>会审开始日期</label>
+                <input type="date" id="gen_meet_start">
+              </div>
+              <div class="form-group">
+                <label>会审结束日期</label>
+                <input type="date" id="gen_meet_end">
+              </div>
+              <div class="form-group">
+                <label>会审方式</label>
+                <select id="gen_meet_mode" style="padding: 10px 14px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-size: 0.95rem; color: var(--on_surface);">
+                  <option value="线上">线上</option>
+                  <option value="线下">线下</option>
+                </select>
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>项目规模 (决定参会人名单)</label>
+                <select id="gen_project_scale" onchange="updateAttendeesList()" style="padding: 10px 14px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-size: 0.95rem; color: var(--on_surface);">
+                  <option value="large">大项目 (市公司政企部 + 分公司)</option>
+                  <option value="small">小项目 (仅分公司)</option>
+                </select>
+              </div>
+              <div class="form-group" id="gen_city_attendees_group" style="grid-column: 1 / -1;">
+                <label>市公司政企部参会人员</label>
+                <input type="text" id="gen_city_attendees" placeholder="例如：人员A、人员B、人员C">
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>分公司参会人员</label>
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="gen_branch_name" placeholder="分公司名称 (例如: 滨江)" value="XXXX" style="width: 150px;">
+                  <input type="text" id="gen_branch_attendees" placeholder="例如：人员D、人员E、人员F" style="flex: 1;">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>驻点支撑人员</label>
+                <input type="text" id="gen_onsite_support" placeholder="例: 张三、李四">
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>项目背景</label>
+                <textarea id="gen_proj_bg" rows="3" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;" placeholder="简要叙述项目背景...">本项目为响应市委号召，全面升级高楼消防监测网络，实现全市高层建筑消防设施的智能化、可视化管理，保障人民群众生命财产安全。</textarea>
+              </div>
+              <div class="form-group">
+                <label>IT建设内容</label>
+                <textarea id="gen_it_content" rows="2" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;" placeholder="如硬件、集成、维保等">1. 消防物联网网关设备采购与安装
+2. 消防预警云平台软件定制开发
+3. 系统集成与三年期维保服务</textarea>
+              </div>
+              <div class="form-group">
+                <label>CT建设内容</label>
+                <textarea id="gen_ct_content" rows="2" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;" placeholder="如X条互联网/数据专线、X张物联卡等">1. 2条100M互联网专线接入
+2. 500张NB-IoT物联卡，用于传感器数据回传</textarea>
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>技术方案</label>
+                <textarea id="gen_tech_solution" rows="2" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;" placeholder="简述技术方案">采用端-管-云架构，前端传感器通过NB-IoT网络接入中国移动物联网平台，最终汇总至定制开发的消防预警云平台进行统一展示和报警联动。</textarea>
+              </div>
+              <div class="form-group">
+                <label>自主三问</label>
+                <input type="text" id="gen_self_three" placeholder="与立项汇报材料模板填写内容一致" value="是，能力可复用，符合自主研发要求">
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>中台三问</label>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <label style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="gen_has_mid_three" onchange="toggleMidThree()" style="width: 16px; height: 16px;" checked>
+                    涉及中台能力调用
+                  </label>
+                  <div id="gen_mid_three_group" style="display: flex; gap: 12px; margin-top: 4px;">
+                    <input type="text" id="gen_mid_three_code" placeholder="能力编号 (例如: A301000041)" value="A301000041" style="flex: 1;">
+                    <input type="text" id="gen_mid_three_name" placeholder="能力名称 (例如: 视频监控能力)" value="视频监控能力" style="flex: 1;">
+                  </div>
+                </div>
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>三化方案</label>
+                <input type="text" id="gen_threeization" placeholder="融三化，则写名称、揭榜省、实现的功能；未融则简要描述未融原因。" value="已融入“智慧安消”三化方案（浙江省揭榜），实现设备在线巡检功能">
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>结论</label>
+                <input type="text" id="gen_tech_conclusion" value="方案可行同时能满足客户需求。">
+              </div>
+              <div class="form-group">
+                <label>收入侧收款方式</label>
+                <input type="text" id="gen_rev_collection" placeholder="项目XXXX交付后客户单位/按服务进度付款等" value="项目初验交付后客户单位支付60%，终验后支付40%">
+              </div>
+              <div class="form-group">
+                <label>支出侧付款方式</label>
+                <input type="text" id="gen_exp_payment" placeholder="XXX后支付XXX%，XXXX之后支付剩余XXX%" value="背靠背付款，客户回款后再支付给供应商">
+              </div>
+              <div class="form-group">
+                <label>IT部分商务模式</label>
+                <select id="gen_it_bus_mode" style="padding: 10px 14px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-size: 0.95rem; color: var(--on_surface);">
+                  <option value="投资">投资</option>
+                  <option value="设备销售">设备销售</option>
+                  <option value="服务购销">服务购销</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>IT部分资金来源</label>
+                <select id="gen_it_fund_src" style="padding: 10px 14px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-size: 0.95rem; color: var(--on_surface);">
+                  <option value="分公司成本开支">分公司成本开支</option>
+                  <option value="资本开支">资本开支</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>IT部分询价过程</label>
+                <input type="text" id="gen_it_inquiry" placeholder="原则上询价厂商不少于3家" value="已对华为、中兴、海康威视等3家厂商进行询价比选">
+              </div>
+              <div class="form-group">
+                <label>是否涉及联合体投标</label>
+                <input type="text" id="gen_is_joint" placeholder="如填是，应描述主体附体及合作伙伴名称" value="否">
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>项目评审表适用及填写是否准确完整</label>
+                <input type="text" id="gen_review_acc" placeholder="填写审核情况" value="是，项目投入收入核算完整，各表填写准确">
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label style="display: flex; align-items: center; gap: 8px;">
+                  <input type="checkbox" id="gen_has_single_source" onchange="toggleSingleSource()" style="width: 16px; height: 16px;">
+                  是否涉及单一来源
+                </label>
+              </div>
+              <div class="form-group" id="gen_single_source_group" style="grid-column: 1 / -1; display: none;">
+                <label>单一来源情况说明</label>
+                <textarea id="gen_single_source" rows="6" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;">9、单一来源情况说明
+（1）单一来源决策依据：符合单一来源场景X，（场景描述根据具体场景进行描述！！例如：符合单一来源场景6：集团客户项目中需从唯一供应商处采购的工程、货物、服务等（包括客户指定、业务置换等）。
+（2）单一来源供应商：XXXXXX公司
+（3）预计单一来源采购金额：XXXX(含税)，XXXXX（不含税）。</textarea>
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>时间要求（要求上线、验收时间）</label>
+                <textarea id="gen_construction_time_req" rows="2" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;" placeholder="例：计划2026年06月30日前上线，2026年07月31日前完成验收。"></textarea>
+              </div>
+              <div class="form-group">
+                <label>采购方式</label>
+                <select id="gen_procurement_method" onchange="toggleProcurementMethod()" style="padding: 10px 14px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-size: 0.95rem; color: var(--on_surface);">
+                  <option value="短名单甄选" selected>短名单甄选</option>
+                  <option value="采购">采购</option>
+                  <option value="其他">其他</option>
+                </select>
+              </div>
+              <div class="form-group" id="gen_procurement_method_other_group" style="display: none;">
+                <label>其他采购方式</label>
+                <input type="text" id="gen_procurement_method_other" placeholder="请输入其他采购方式">
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>售中建设及施工界面</label>
+                <textarea id="gen_construction_interface" rows="2" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;">本项目采购统一集成单位实施。分公司负责客户侧的协调工作，并协调管理合作伙伴完成交付。</textarea>
+              </div>
+            </div>
+
+            <button class="primary-btn" id="btn-generate-docs" onclick="triggerLifecycleDocGen()">🚀 一键生成选中文件</button>
+            <div id="gen-docs-result-msg" style="margin-top:16px; font-size: 0.85rem; font-weight: 600; display: none; padding: 12px; border-radius: 6px; background: var(--surface_container_highest); color: var(--success);"></div>
+            <div id="gen-docs-actions" style="display:none; margin-top: 16px;">
+              <button class="primary-btn" style="background:var(--success); color: white;" onclick="openGeneratedDocsFolder()">📂 打开生成结果文件夹</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Centered Bottom Metrics -->
+        <div style="margin-top: auto; padding-top: 24px; border-top: 1px solid var(--ghost-border);">
+          <h3 class="section-title">实时效益评估结果</h3>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin-bottom: 24px;">
+            <div class="metric-card" style="background: var(--surface_container_low);">
+              <div class="metric-label">项目净现值 (NPV)</div>
+              <div class="metric-value" style="font-size: 1.5rem;" id="ict_res_npv">1,061.04</div>
+            </div>
+            <div class="metric-card" style="background: var(--surface_container_low);">
+              <div class="metric-label">净现值率</div>
+              <div class="metric-value" style="font-size: 1.5rem; color: var(--success);" id="ict_res_npv_rate">9.03%</div>
+            </div>
+            <div class="metric-card" style="background: var(--surface_container_low);">
+              <div class="metric-label">毛利润率</div>
+              <div class="metric-value" style="font-size: 1.5rem; color: var(--success);" id="ict_res_margin">8.28%</div>
+            </div>
+            <div class="metric-card" style="background: var(--surface_container_low);">
+              <div class="metric-label">动态回收期 (年)</div>
+              <div class="metric-value" style="font-size: 1.5rem;" id="ict_res_dynamic_payback">1</div>
+            </div>
+            <div class="metric-card" style="background: var(--surface_container_low);">
+              <div class="metric-label">内部收益率 (IRR)</div>
+              <div class="metric-value" style="font-size: 1.5rem;" id="ict_res_irr">--</div>
+            </div>
+          </div>
+
+          <h3 class="section-title">IT部分独立效益</h3>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+            <div class="metric-card" style="background: var(--surface_container_low);">
+              <div class="metric-label">IT净现值</div>
+              <div class="metric-value" style="font-size: 1.5rem;" id="ict_res_it_npv">755.81</div>
+            </div>
+            <div class="metric-card" style="background: var(--surface_container_low);">
+              <div class="metric-label">IT净现值率</div>
+              <div class="metric-value" style="font-size: 1.5rem; color: var(--success);" id="ict_res_it_npv_rate">6.58%</div>
+            </div>
+            <div class="metric-card" style="background: var(--surface_container_low);">
+              <div class="metric-label">IT毛利率</div>
+              <div class="metric-value" style="font-size: 1.5rem; color: var(--success);" id="ict_res_it_margin">6.17%</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right Metrics Panel -->
+      <div class="sidebar" style="width: 300px; flex-shrink: 0; background: var(--surface_container_lowest); border-left: 1px solid var(--ghost-border); border-right: none;">
+        <h3 class="section-title">智能反算投入</h3>
+        <div class="table-card" style="padding: 16px; margin-bottom: 12px; background: var(--surface_container_low); border: 1px solid var(--outline_variant); box-shadow: none;">
+          <div style="font-size: 0.75rem; color: var(--on_surface_variant); margin-bottom: 12px; font-weight: 600; line-height: 1.4;">
+            已知当前收入，根据目标效益指标，自动反算并填入<strong style="color:var(--primary);">IT集成服务</strong>的含税最高限价。
+          </div>
+          
+          <div class="radio-card" style="box-shadow: none; border: 1px solid var(--ghost-border); padding: 8px;">
+            <label class="radio-item">
+               <input type="radio" name="ict_reverse_target_type" value="margin" checked>
+               目标毛利润率
+            </label>
+            <label class="radio-item">
+               <input type="radio" name="ict_reverse_target_type" value="npv_rate">
+               目标净现值率
+            </label>
+          </div>
+
+          <div class="form-group" style="margin-top: 12px;">
+            <label>目标值 (小数，如0.15代表15%)</label>
+            <input type="number" step="0.0001" id="ict_reverse_target_value" value="0.15" style="background: var(--surface_container_lowest);">
+          </div>
+          
+          <button class="primary-btn" style="margin-top: 12px; padding: 10px; font-size: 0.9rem;" onclick="performIctReverseCalculation()">⚡ 智能反算限价</button>
+        </div>
+
+        <button class="primary-btn" style="margin-top: 24px;" onclick="performIctCalculation()">🔄 重新计算</button>
+        <button class="primary-btn" style="margin-top: 12px; background: var(--surface_container_highest); color: var(--on_surface);">📥 导出完整报告</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =============================== -->
   <!-- SCRIPTS                         -->
   <!-- =============================== -->
   <script>
+    // 监听输入并自动计算不含税金额 (双向绑定)
+    function setupTaxCalculations() {
+      const formGroups = document.querySelectorAll('.ict-tab-content .form-group');
+      
+      formGroups.forEach(group => {
+        const inclInput = group.querySelector('.tax-linked');
+        const taxInput = group.querySelector('input[placeholder="税率(%)"]');
+        const exclInput = group.querySelector('.tax-linked-excl');
+
+        if (inclInput && taxInput && exclInput) {
+          // Ensure we don't add multiple listeners if called multiple times
+          if (inclInput.dataset.listenerAdded) return;
+          inclInput.dataset.listenerAdded = 'true';
+          
+          // 1. 含税 -> 算不含税
+          const updateExcl = () => {
+            const inclVal = parseFloat(inclInput.value);
+            const taxRate = parseFloat(taxInput.value) / 100;
+            if (!isNaN(inclVal) && !isNaN(taxRate)) {
+              exclInput.value = (inclVal / (1 + taxRate)).toFixed(2);
+            } else {
+              exclInput.value = '';
+            }
+            
+            // CT 平过逻辑：如果在收入侧填写了 CT 收入，自动同步到成本侧对应项
+            if (inclInput.id === 'rev_ct_product_incl') {
+                const costCtProduct = document.getElementById('cost_ct_other_incl');
+                if (costCtProduct && costCtProduct.value !== inclInput.value) {
+                    costCtProduct.value = inclInput.value;
+                    costCtProduct.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            } else if (inclInput.id === 'rev_ct_line_incl') {
+                const costCtLine = document.getElementById('cost_ct_bandwidth_incl');
+                if (costCtLine && costCtLine.value !== inclInput.value) {
+                    costCtLine.value = inclInput.value;
+                    costCtLine.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+            
+            performIctCalculation();
+          };
+
+          // 2. 不含税 -> 反算含税
+          const updateIncl = () => {
+            const exclVal = parseFloat(exclInput.value);
+            const taxRate = parseFloat(taxInput.value) / 100;
+            if (!isNaN(exclVal) && !isNaN(taxRate)) {
+              inclInput.value = (exclVal * (1 + taxRate)).toFixed(2);
+            } else {
+              inclInput.value = '';
+            }
+            performIctCalculation();
+          };
+
+          // Bind events
+          inclInput.addEventListener('input', updateExcl);
+          taxInput.addEventListener('input', updateExcl);
+          exclInput.addEventListener('input', updateIncl);
+
+          // Initial calculate (without triggering performIctCalculation repeatedly)
+          const inclVal = parseFloat(inclInput.value);
+          const taxRate = parseFloat(taxInput.value) / 100;
+          if (!isNaN(inclVal) && !isNaN(taxRate)) {
+            exclInput.value = (inclVal / (1 + taxRate)).toFixed(2);
+          }
+        }
+      });
+    }
+
+    async function performIctCalculation() {
+      try {
+        if (!window.__TAURI__) { return; }
+        const invoke = window.__TAURI__.core.invoke;
+        
+        const input = getIctInputData();
+
+        const res = await invoke('calculate_ict_benefit', { input });
+        
+        document.getElementById('ict_res_npv').innerText = formatCurrency(res.npv);
+        document.getElementById('ict_res_npv_rate').innerText = formatPercent(res.npv_rate);
+        document.getElementById('ict_res_margin').innerText = formatPercent(res.margin_rate);
+        document.getElementById('ict_res_dynamic_payback').innerText = res.dynamic_payback;
+        document.getElementById('ict_res_irr').innerText = res.irr;
+        
+        document.getElementById('ict_res_it_npv').innerText = formatCurrency(res.it_npv);
+        document.getElementById('ict_res_it_npv_rate').innerText = formatPercent(res.it_npv_rate);
+        document.getElementById('ict_res_it_margin').innerText = formatPercent(res.it_margin_rate);
+
+        const tbody = document.getElementById('ict_cashflow_tbody');
+        tbody.innerHTML = '';
+        
+        const yearLabels = ["第一年", "第二年", "第三年", "第四年", "第五年", "第六年", "第七年", "第八年", "第九年", "第十年"];
+        
+        res.cashflow.forEach(row => {
+          const tr = document.createElement('tr');
+          const yLabel = yearLabels[row.year - 1] || `第${row.year}年`;
+          tr.innerHTML = `
+            <td style="text-align: left; font-weight: 600;">${yLabel}</td>
+            <td>${formatCurrency(row.cash_in)}</td>
+            <td>${formatCurrency(row.cash_out)}</td>
+            <td>${formatCurrency(row.net_cash)}</td>
+            <td>${formatCurrency(row.cum_net_cash)}</td>
+            <td>${formatCurrency(row.pv)}</td>
+            <td>${formatCurrency(row.cum_pv)}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+      } catch (error) {
+        console.error(error);
+        alert('发生计算错误: ' + error);
+      }
+    }
+
+    function getIctInputData() {
+        const getIctItem = (idBase) => {
+          return {
+            incl_tax: String(document.getElementById(idBase + '_incl').value || "0"),
+            tax_rate: String(document.getElementById(idBase + '_tax').value || "0")
+          };
+        };
+
+        // Extract distributions
+        const revInputs = document.querySelectorAll('.dist-rev');
+        const costInputs = document.querySelectorAll('.dist-cost');
+        const revDist = Array.from(revInputs).map(inp => parseFloat(inp.value) || 0.0);
+        const costDist = Array.from(costInputs).map(inp => parseFloat(inp.value) || 0.0);
+
+        return {
+          project_name: String(document.getElementById('ict_proj_name').value),
+          property_rights: String(document.getElementById('ict_property_rights').value),
+          discount_rate: String(document.getElementById('ict_discount_rate').value),
+          
+          rev_distribution: revDist,
+          cost_distribution: costDist,
+          
+          rev_it_integration: getIctItem('rev_it_integration'),
+          rev_it_maintenance: getIctItem('rev_it_maintenance'),
+          rev_it_device_sales: getIctItem('rev_it_device_sales'),
+          rev_it_device_lease: getIctItem('rev_it_device_lease'),
+          rev_it_other: getIctItem('rev_it_other'),
+          rev_it_cloud: getIctItem('rev_it_cloud'),
+          
+          rev_ct_line: getIctItem('rev_ct_line'),
+          rev_ct_product: getIctItem('rev_ct_product'),
+          
+          rev_non_it_ct: getIctItem('rev_non_it_ct'),
+
+          cost_it_device: getIctItem('cost_it_device'),
+          cost_it_construction: getIctItem('cost_it_construction'),
+          cost_it_survey: getIctItem('cost_it_survey'),
+          cost_it_integration: getIctItem('cost_it_integration'),
+          cost_it_other: getIctItem('cost_it_other'),
+          cost_it_maintenance: getIctItem('cost_it_maintenance'),
+          cost_it_running: getIctItem('cost_it_running'),
+          cost_it_bidding: getIctItem('cost_it_bidding'),
+          cost_it_design_eval: getIctItem('cost_it_design_eval'),
+          cost_it_audit: getIctItem('cost_it_audit'),
+          
+          cost_ct_construction: getIctItem('cost_ct_construction'),
+          cost_ct_maintenance: getIctItem('cost_ct_maintenance'),
+          cost_ct_other: getIctItem('cost_ct_other'),
+          cost_ct_bandwidth: getIctItem('cost_ct_bandwidth'),
+          cost_ct_renewal: getIctItem('cost_ct_renewal'),
+          
+          cost_non_it_ct: getIctItem('cost_non_it_ct'),
+          cost_mix_marketing: getIctItem('cost_mix_marketing'),
+          cost_mix_channel: getIctItem('cost_mix_channel'),
+          cost_mix_other: getIctItem('cost_mix_other'),
+        };
+    }
+
+    async function performIctReverseCalculation() {
+      try {
+        if (!window.__TAURI__) { return; }
+        const invoke = window.__TAURI__.core.invoke;
+        
+        const input = getIctInputData();
+        const targetType = document.querySelector('input[name="ict_reverse_target_type"]:checked').value;
+        const targetValue = document.getElementById('ict_reverse_target_value').value;
+
+        if (!targetValue) {
+          alert('请先输入目标值！');
+          return;
+        }
+
+        // Show loading state on button
+        const btn = document.querySelector('.table-card button[onclick="performIctReverseCalculation()"]');
+        const oldText = btn.innerText;
+        btn.innerText = "⏳ 正在反推...";
+        btn.disabled = true;
+
+        const maxCostStr = await invoke('reverse_calc_ict_target', { 
+          input: input, 
+          targetType: targetType, 
+          targetValue: String(targetValue) 
+        });
+        
+        btn.innerText = oldText;
+        btn.disabled = false;
+
+        // Apply calculated limit back to the form (to Integration Service)
+        const integrationInput = document.getElementById('cost_it_integration_incl');
+        integrationInput.value = maxCostStr;
+        
+        // Trigger input to update taxes automatically
+        integrationInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+        // ALSO: Apply to Final Selection Limit and reverse-calculate the Quote
+        const finalLimitInput = document.getElementById('calc_final_limit');
+        finalLimitInput.value = maxCostStr;
+        updateSelectionCalc('limit');
+        
+        // Switch to the Cost tab to show the user the updated field
+        switchIctTab('cost');
+        
+        // Flash the input field background to highlight the change
+        integrationInput.style.transition = 'background 0.5s';
+        integrationInput.style.background = 'var(--primary_container)';
+        finalLimitInput.style.transition = 'background 0.5s';
+        finalLimitInput.style.background = 'var(--primary_container)';
+        
+        setTimeout(() => {
+          integrationInput.style.background = 'var(--surface_container)';
+          finalLimitInput.style.background = 'var(--primary_container)'; // keep it distinct as per CSS
+        }, 1500);
+
+        // Finally, refresh the dashboard calculations
+        performIctCalculation();
+
+      } catch (error) {
+        console.error(error);
+        alert('反算失败: ' + error);
+        const btn = document.querySelector('.table-card button[onclick="performIctReverseCalculation()"]');
+        if(btn) { btn.innerText = "⚡ 智能反算限价"; btn.disabled = false; }
+      }
+    }
+    // Auto update cashflow chart on custom edits
+    document.querySelectorAll('.dist-rev, .dist-cost').forEach(inp => {
+      inp.addEventListener('input', performIctCalculation);
+    });
+
     // == Navigation Manager ==
     function openTool(toolId) {
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -798,7 +1596,279 @@
       } else if (toolId === 'docfill_tool') {
         document.getElementById('view-docfill-tool').classList.add('active');
         document.title = "申报材料制作";
+      } else if (toolId === 'ict_lifecycle') {
+        document.getElementById('view-ict-lifecycle').classList.add('active');
+        document.title = "ICT项目全生命周期";
+        switchIctTab('basic');
+        setupTaxCalculations(); // Initialize tax calculations
+        updateSelectionCalc();  // Initialize selection limit calculator
+        
+        loadAvailableTemplates(); // Load the list of templates for generation
+        
+        // Default gen dates
+        let d = new Date();
+        let defaultDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        if(document.getElementById('gen_meet_start')) document.getElementById('gen_meet_start').value = defaultDate;
+        if(document.getElementById('gen_meet_end')) document.getElementById('gen_meet_end').value = defaultDate;
+        
+        // Add global event listener for text inputs outside of tax-linked logic to trigger calculations
+        document.querySelectorAll('#view-ict-lifecycle input').forEach(inp => {
+           if (!inp.classList.contains('tax-linked') && !inp.classList.contains('tax-linked-excl') && !inp.closest('#ict_custom_distribution')) {
+              inp.addEventListener('input', performIctCalculation);
+           }
+        });
+
+        performIctCalculation(); // Trigger initial calculation
       }
+    }
+
+    function calcQuickRevenue(source = 'total') {
+      let total = parseFloat(document.getElementById('quick_rev_total').value) || 0;
+      
+      // Auto calculate product revenue from total if total was changed
+      if (source === 'total') {
+        let minProduct = total * 0.01;
+        let product = Math.ceil(minProduct / 24) * 24;
+        document.getElementById('quick_rev_product').value = product > 0 ? product : 0;
+      }
+      
+      let product = parseFloat(document.getElementById('quick_rev_product').value) || 0;
+      let integration = total - product;
+      document.getElementById('quick_rev_integration').value = integration > 0 ? integration.toFixed(2) : 0;
+      
+      // Auto-apply to the main tables
+      applyQuickRevenue();
+      
+      // Also sync product revenue to the quick cost calculator (CT 平过)
+      document.getElementById('quick_cost_product').value = document.getElementById('quick_rev_product').value;
+      calcQuickCost('product');
+    }
+
+    function calcQuickCost(source = 'total') {
+      let total = parseFloat(document.getElementById('quick_cost_total').value) || 0;
+      
+      // Only auto-calc if user is manually typing total cost and hasn't defined product cost, 
+      // but usually product cost is synced from revenue. Let's just follow the same rule if they want.
+      if (source === 'total') {
+        let minProduct = total * 0.01;
+        let product = Math.ceil(minProduct / 24) * 24;
+        document.getElementById('quick_cost_product').value = product > 0 ? product : 0;
+      }
+
+      let product = parseFloat(document.getElementById('quick_cost_product').value) || 0;
+      let integration = total - product;
+      document.getElementById('quick_cost_integration').value = integration > 0 ? integration.toFixed(2) : 0;
+      
+      // Auto-apply to the main tables
+      applyQuickCost();
+    }
+
+    function applyQuickRevenue() {
+      const integrationVal = document.getElementById('quick_rev_integration').value;
+      const productVal = document.getElementById('quick_rev_product').value;
+      
+      let changed = false;
+      if (integrationVal) {
+        document.getElementById('rev_it_integration_incl').value = integrationVal;
+        document.getElementById('rev_it_integration_incl').dispatchEvent(new Event('input', { bubbles: true }));
+        changed = true;
+      }
+      if (productVal) {
+        document.getElementById('rev_ct_product_incl').value = productVal;
+        document.getElementById('rev_ct_product_incl').dispatchEvent(new Event('input', { bubbles: true }));
+        changed = true;
+      }
+      if (changed) performIctCalculation();
+    }
+
+    function applyQuickCost() {
+      const integrationVal = document.getElementById('quick_cost_integration').value;
+      const productVal = document.getElementById('quick_cost_product').value;
+      
+      let changed = false;
+      if (integrationVal) {
+        document.getElementById('cost_it_integration_incl').value = integrationVal;
+        document.getElementById('cost_it_integration_incl').dispatchEvent(new Event('input', { bubbles: true }));
+        changed = true;
+      }
+      if (productVal) {
+        document.getElementById('cost_ct_product_incl').value = productVal;
+        document.getElementById('cost_ct_product_incl').dispatchEvent(new Event('input', { bubbles: true }));
+        changed = true;
+      }
+      if (changed) performIctCalculation();
+    }
+
+    function updateSelectionCalc(triggerSource = 'quote') {
+      const quoteInput = document.getElementById('calc_vendor_quote');
+      const markupInput = document.getElementById('calc_markup');
+      const limitInput = document.getElementById('calc_final_limit');
+      const selectionFeeInput = document.getElementById('calc_selection_fee');
+      const actualCostInput = document.getElementById('calc_actual_cost');
+
+      const markup = parseFloat(markupInput.value || 0);
+
+      // If calculating forwards (Quote -> Limit)
+      if (triggerSource === 'quote' || triggerSource === 'markup') {
+        const quoteStr = quoteInput.value;
+        if (!quoteStr) {
+          selectionFeeInput.value = '';
+          actualCostInput.value = '';
+          limitInput.value = '';
+          return;
+        }
+        
+        const quote = parseFloat(quoteStr);
+        let selectionFee = 0;
+        if (quote <= 12100) {
+          selectionFee = 100;
+        } else if (quote <= 48500) {
+          selectionFee = Math.round(quote * 0.00825 * 100) / 100;
+        } else if (quote <= 100000) {
+          selectionFee = 400;
+        } else if (quote <= 500000) {
+          selectionFee = Math.round(quote * 0.009408 * 100) / 100;
+        } else {
+          selectionFee = 0;
+        }
+        
+        const actualCost = quote + selectionFee;
+        const finalLimit = actualCost + markup;
+        
+        selectionFeeInput.value = selectionFee.toFixed(2);
+        actualCostInput.value = actualCost.toFixed(2);
+        limitInput.value = finalLimit.toFixed(2);
+      } 
+      // If calculating backwards (Limit -> Quote)
+      else if (triggerSource === 'limit') {
+        const limitStr = limitInput.value;
+        if (!limitStr) {
+          selectionFeeInput.value = '';
+          actualCostInput.value = '';
+          quoteInput.value = '';
+          return;
+        }
+        
+        const finalLimit = parseFloat(limitStr);
+        const actualCostTarget = finalLimit - markup;
+
+        // We need to find the 'quote' such that: quote + selectionFee(quote) = actualCostTarget
+        // We can do this algebraically based on the tier segments.
+        let quote = 0;
+        let selectionFee = 0;
+
+        // Tier 1: quote <= 12100 => fee = 100 => actualCost <= 12200
+        if (actualCostTarget <= 12200) {
+          quote = actualCostTarget - 100;
+          selectionFee = 100;
+        } 
+        // Tier 2: 12100 < quote <= 48500 => fee = quote * 0.00825 => actualCost = quote * 1.00825
+        // max actualCost for this tier: 48500 * 1.00825 = 48900.125
+        else if (actualCostTarget <= 48900.125) {
+          quote = actualCostTarget / 1.00825;
+          selectionFee = actualCostTarget - quote;
+        } 
+        // Tier 3: 48500 < quote <= 100000 => fee = 400 => actualCost <= 100400
+        else if (actualCostTarget <= 100400) {
+          quote = actualCostTarget - 400;
+          selectionFee = 400;
+        } 
+        // Tier 4: 100000 < quote <= 500000 => fee = quote * 0.009408 => actualCost = quote * 1.009408
+        // max actualCost for this tier: 500000 * 1.009408 = 504704
+        else if (actualCostTarget <= 504704) {
+          quote = actualCostTarget / 1.009408;
+          selectionFee = actualCostTarget - quote;
+        } 
+        // Tier 5: > 500000 => fee = 0
+        else {
+          quote = actualCostTarget;
+          selectionFee = 0;
+        }
+
+        quoteInput.value = quote.toFixed(2);
+        selectionFeeInput.value = selectionFee.toFixed(2);
+        actualCostInput.value = actualCostTarget.toFixed(2);
+      }
+    }
+
+    function applySelectionLimit() {
+      const finalLimit = document.getElementById('calc_final_limit').value;
+      if (finalLimit) {
+        const integrationInput = document.getElementById('cost_it_integration_incl');
+        integrationInput.value = finalLimit;
+        // Trigger the input event to recalculate taxes
+        integrationInput.dispatchEvent(new Event('input', { bubbles: true }));
+        // Trigger overall ICT calculation
+        performIctCalculation();
+      }
+    }
+
+    function updateCashflowModelUI() {
+      const model = document.getElementById('ict_cashflow_model').value;
+      const years = parseInt(document.getElementById('ict_project_years').value) || 1;
+      const customDiv = document.getElementById('ict_custom_distribution');
+      
+      const revInputs = document.querySelectorAll('.dist-rev');
+      const costInputs = document.querySelectorAll('.dist-cost');
+
+      // Reset all to 0
+      revInputs.forEach(inp => { inp.value = "0.0"; inp.disabled = true; });
+      costInputs.forEach(inp => { inp.value = "0.0"; inp.disabled = true; });
+
+      if (model === 'model_a') {
+        customDiv.style.display = 'none';
+        revInputs[0].value = "1.0";
+        costInputs[0].value = "1.0";
+      } else if (model === 'model_b') {
+        customDiv.style.display = 'none';
+        const ratio = (1.0 / years).toFixed(4);
+        for (let i = 0; i < years; i++) {
+          if (i === years - 1) {
+            // Adjust last year to make exactly 1.0 due to rounding
+            const rem = (1.0 - (ratio * (years - 1))).toFixed(4);
+            revInputs[i].value = rem;
+            costInputs[i].value = rem;
+          } else {
+            revInputs[i].value = ratio;
+            costInputs[i].value = ratio;
+          }
+        }
+      } else if (model === 'model_c') {
+        customDiv.style.display = 'none';
+        if (years === 1) {
+           revInputs[0].value = "1.0";
+           costInputs[0].value = "1.0";
+        } else {
+           revInputs[0].value = "0.95";
+           costInputs[0].value = "0.95";
+           revInputs[years - 1].value = "0.05";
+           costInputs[years - 1].value = "0.05";
+        }
+      } else if (model === 'model_d') {
+        customDiv.style.display = 'block';
+        revInputs.forEach(inp => inp.disabled = false);
+        costInputs.forEach(inp => inp.disabled = false);
+        // Keep previous values if any, but default to 1.0 at year 1 if all are 0
+        const totalRev = Array.from(revInputs).reduce((s, i) => s + parseFloat(i.value||0), 0);
+        if (totalRev === 0) revInputs[0].value = "1.0";
+        const totalCost = Array.from(costInputs).reduce((s, i) => s + parseFloat(i.value||0), 0);
+        if (totalCost === 0) costInputs[0].value = "1.0";
+      }
+      
+      // Auto trigger recalculation
+      if (model !== 'model_d') {
+        performIctCalculation();
+      }
+    }
+
+    function switchIctTab(tabId) {
+      // Toggle active nav item
+      document.querySelectorAll('#view-ict-lifecycle .nav-item').forEach(item => item.classList.remove('active'));
+      document.getElementById('nav-ict-' + tabId).classList.add('active');
+
+      // Hide all contents and show target
+      document.querySelectorAll('.ict-tab-content').forEach(content => content.style.display = 'none');
+      document.getElementById('ict-tab-' + tabId).style.display = 'block';
     }
 
     function switchBenefitSubView(mode) {
@@ -1045,6 +2115,254 @@
     }
 
     // ============================================
+    // ICT Lifecycle Doc Gen Logic
+    // ============================================
+    let genDocsOutputDir = "";
+
+    function updateAttendeesList() {
+      const scale = document.getElementById('gen_project_scale').value;
+      const cityGroup = document.getElementById('gen_city_attendees_group');
+      if (scale === 'large') {
+        cityGroup.style.display = 'block';
+      } else {
+        cityGroup.style.display = 'none';
+      }
+    }
+
+    function toggleSingleSource() {
+      const checkbox = document.getElementById('gen_has_single_source');
+      const group = document.getElementById('gen_single_source_group');
+      if (checkbox.checked) {
+        group.style.display = 'block';
+      } else {
+        group.style.display = 'none';
+      }
+    }
+
+    function toggleMidThree() {
+      const checkbox = document.getElementById('gen_has_mid_three');
+      const group = document.getElementById('gen_mid_three_group');
+      if (checkbox.checked) {
+        group.style.display = 'flex';
+      } else {
+        group.style.display = 'none';
+      }
+    }
+ 
+    function toggleProcurementMethod() {
+      const select = document.getElementById('gen_procurement_method');
+      const group = document.getElementById('gen_procurement_method_other_group');
+      if (!select || !group) return;
+      if (select.value === '其他') {
+        group.style.display = 'block';
+      } else {
+        group.style.display = 'none';
+      }
+    }
+
+    async function loadAvailableTemplates() {
+      if (!window.__TAURI__) return;
+      const invoke = window.__TAURI__.core.invoke;
+      try {
+        const templates = await invoke('get_available_templates');
+        const container = document.getElementById('gen_template_list');
+        container.innerHTML = '';
+        
+        if (templates.length === 0) {
+            container.innerHTML = '<div style="font-size: 0.85rem; color: var(--on_surface_variant);">未找到任何 .docx 模板文件，请检查 "项目全生命周期文件模版" 文件夹。</div>';
+            return;
+        }
+        
+        templates.forEach(t => {
+            const label = document.createElement('label');
+            label.className = 'radio-item';
+            label.style.background = 'var(--surface_container_lowest)';
+            label.style.padding = '8px 12px';
+            label.style.borderRadius = '6px';
+            label.style.border = '1px solid var(--ghost-border)';
+            
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.value = t;
+            input.className = 'template-checkbox';
+            input.checked = true; // Default to checked
+            
+            const span = document.createElement('span');
+            span.innerText = t;
+            
+            label.appendChild(input);
+            label.appendChild(span);
+            container.appendChild(label);
+        });
+      } catch(e) {
+          console.error("加载模板列表失败:", e);
+      }
+    }
+
+    async function triggerLifecycleDocGen() {
+      if (!window.__TAURI__) return alert("未检测到 Tauri 运行环境！");
+      const invoke = window.__TAURI__.core.invoke;
+
+      const btn = document.getElementById('btn-generate-docs');
+      const msgBox = document.getElementById('gen-docs-result-msg');
+      const actionBox = document.getElementById('gen-docs-actions');
+      
+      btn.innerText = "⏳ 正在生成中...";
+      btn.disabled = true;
+      msgBox.style.display = 'none';
+      actionBox.style.display = 'none';
+
+      try {
+        let d = new Date();
+        let currDate = `${d.getFullYear()}年${String(d.getMonth()+1).padStart(2,'0')}月${String(d.getDate()).padStart(2,'0')}日`;
+
+        const getExcl = (id) => parseFloat(document.getElementById(id + '_excl')?.value || 0);
+        
+        let itRev = getExcl('rev_it_integration') + getExcl('rev_it_maintenance') + getExcl('rev_it_device_sales') + getExcl('rev_it_device_lease') + getExcl('rev_it_other') + getExcl('rev_it_cloud');
+        let ctRev = getExcl('rev_ct_line') + getExcl('rev_ct_product');
+        let nonItRev = getExcl('rev_non_it_ct');
+        let totalRev = itRev + ctRev + nonItRev;
+
+        let itCost = getExcl('cost_it_device') + getExcl('cost_it_construction') + getExcl('cost_it_survey') + getExcl('cost_it_integration') + getExcl('cost_it_other') + getExcl('cost_it_maintenance') + getExcl('cost_it_running') + getExcl('cost_it_bidding') + getExcl('cost_it_design_eval') + getExcl('cost_it_audit');
+        let ctCost = getExcl('cost_ct_construction') + getExcl('cost_ct_maintenance') + getExcl('cost_ct_other') + getExcl('cost_ct_bandwidth') + getExcl('cost_ct_renewal');
+        let nonItCost = getExcl('cost_non_it_ct');
+        let mixCost = getExcl('cost_mix_marketing') + getExcl('cost_mix_channel') + getExcl('cost_mix_other');
+        let totalCost = itCost + ctCost + nonItCost + mixCost;
+
+        // Construct investment string
+        let itConstruction = getExcl('cost_it_device') + getExcl('cost_it_construction') + getExcl('cost_it_survey') + getExcl('cost_it_integration') + getExcl('cost_it_other');
+        let itMaintenance = getExcl('cost_it_maintenance') + getExcl('cost_it_running');
+        let ctConstruction = getExcl('cost_ct_construction');
+        let ctMaintenance = getExcl('cost_ct_maintenance');
+        let ctProduct = getExcl('cost_ct_other') + getExcl('cost_ct_bandwidth') + getExcl('cost_ct_renewal');
+        let itOther = getExcl('cost_it_bidding') + getExcl('cost_it_design_eval') + getExcl('cost_it_audit');
+        let isZero = (n) => Math.abs(n) < 0.005;
+        let fmtWan = (n) => n.toFixed(2);
+        let parts = [];
+        let itParts = [];
+        if (!isZero(itConstruction)) itParts.push(`建设投入${fmtWan(itConstruction)}万元（不含税）`);
+        if (!isZero(itMaintenance)) itParts.push(`维护投入${fmtWan(itMaintenance)}万元（不含税）`);
+        if (itParts.length) parts.push(`IT部分${itParts.join('，')}`);
+        let ctParts = [];
+        if (!isZero(ctConstruction)) ctParts.push(`建设投入${fmtWan(ctConstruction)}万元（不含税）`);
+        if (!isZero(ctMaintenance)) ctParts.push(`维护投入${fmtWan(ctMaintenance)}万元（不含税）`);
+        if (ctParts.length) parts.push(`CT部分${ctParts.join('，')}`);
+        if (!isZero(ctProduct)) parts.push(`产品投入${fmtWan(ctProduct)}万元（不含税）`);
+        if (!isZero(itOther)) parts.push(`中标服务费/专项审计/第三方项目核算等费用${fmtWan(itOther)}万元（不含税）`);
+        let projTotalInvestStr = `整体投入${fmtWan(totalCost)}万元`;
+        if (parts.length) {
+          projTotalInvestStr += `，其中${parts.join('；')}。`;
+        } else {
+          projTotalInvestStr += `。`;
+        }
+
+        // Format dates
+        const formatDateStr = (val) => {
+            if (!val) return "";
+            const parts = val.split('-');
+            if (parts.length === 3) return `${parts[0]}年${parts[1]}月${parts[2]}日`;
+            return val;
+        };
+
+        let variables = {
+          'PROJECT_NAME': document.getElementById('ict_proj_name').value || "未命名项目",
+          'CT_PRODUCT_NAME': "专线及产品", 
+          'TOTAL_PROJECT_INVESTMENT': totalCost.toFixed(2),
+          'IT_INVESTMENT': itCost.toFixed(2),
+          'CT_INVESTMENT': ctCost.toFixed(2),
+          'TOTAL_PROJECT_REVENUE': totalRev.toFixed(2),
+          'IT_REVENUE': itRev.toFixed(2),
+          'CT_REVENUE': ctRev.toFixed(2),
+          'NET_PRESENT_VALUE_RATE': document.getElementById('ict_res_npv_rate').innerText,
+          'PROJECT_GROSS_PROFIT_MARGIN': document.getElementById('ict_res_margin').innerText,
+          'IT_NET_PRESENT_VALUE_RATE': document.getElementById('ict_res_it_npv_rate').innerText,
+          'CONTRACT_DURATION': document.getElementById('ict_project_years').value,
+          'CURR_DATE': currDate,
+          'IT_TAX_RATE': document.getElementById('rev_it_integration_tax').value + "%",
+          'CT_TAX_RATE': document.getElementById('rev_ct_line_tax').value + "%",
+          
+          // Meeting specific variables
+          'MEETING_START_DATE': formatDateStr(document.getElementById('gen_meet_start')?.value),
+          'MEETING_END_DATE': formatDateStr(document.getElementById('gen_meet_end')?.value),
+          'MEETING_MODE': document.getElementById('gen_meet_mode')?.value || "",
+          'ATTENDEES': (() => {
+              let str = "";
+              const scale = document.getElementById('gen_project_scale')?.value;
+              if (scale === 'large') {
+                  const cityAtt = document.getElementById('gen_city_attendees')?.value || "";
+                  str += "市公司政企部（解决方案、交付支撑、计划部）\n           " + cityAtt + "\n";
+              }
+              const branchName = document.getElementById('gen_branch_name')?.value || "XXXX";
+              const branchAtt = document.getElementById('gen_branch_attendees')?.value || "";
+              str += `${branchName}分公司（建设、维护、网络/信息安全员）\n           ${branchAtt}`;
+              return str;
+          })(),
+          'ONSITE_SUPPORT': document.getElementById('gen_onsite_support')?.value || "",
+          'PROJECT_BACKGROUND': document.getElementById('gen_proj_bg')?.value || "",
+          'IT_CONTENT': document.getElementById('gen_it_content')?.value || "",
+          'CT_CONTENT': document.getElementById('gen_ct_content')?.value || "",
+          'TECH_SOLUTION': document.getElementById('gen_tech_solution')?.value || "",
+          'SELF_THREE_Q': document.getElementById('gen_self_three')?.value || "",
+          'MID_THREE_Q': document.getElementById('gen_has_mid_three')?.checked 
+                          ? `本项目涉及中台能力编号：${document.getElementById('gen_mid_three_code')?.value || ''}，能力名称：${document.getElementById('gen_mid_three_name')?.value || ''}。`
+                          : "不涉及",
+          'THREEIZATION_PLAN': document.getElementById('gen_threeization')?.value || "",
+          'TECH_CONCLUSION': document.getElementById('gen_tech_conclusion')?.value || "",
+          'IT_BUSINESS_MODE': document.getElementById('gen_it_bus_mode')?.value || "",
+          'IT_FUNDING_SOURCE': document.getElementById('gen_it_fund_src')?.value || "",
+          'IT_INQUIRY_PROCESS': document.getElementById('gen_it_inquiry')?.value || "",
+          'IS_JOINT_BIDDING': document.getElementById('gen_is_joint')?.value || "",
+          'REVENUE_COLLECTION_METHOD': document.getElementById('gen_rev_collection')?.value || "",
+          'EXPENDITURE_PAYMENT_METHOD': document.getElementById('gen_exp_payment')?.value || "",
+          'PROJECT_REVIEW_ACCURACY': document.getElementById('gen_review_acc')?.value || "",
+          'SINGLE_SOURCE_EXPLANATION': document.getElementById('gen_has_single_source')?.checked ? (document.getElementById('gen_single_source')?.value || "") : "",
+          'CONSTRUCTION_TIME_REQ': document.getElementById('gen_construction_time_req')?.value || "",
+          'PROCUREMENT_METHOD': (document.getElementById('gen_procurement_method')?.value === '其他') ? (document.getElementById('gen_procurement_method_other')?.value || "其他") : (document.getElementById('gen_procurement_method')?.value || ""),
+          'CONSTRUCTION_INTERFACE': document.getElementById('gen_construction_interface')?.value || "",
+          'PROJECT_TOTAL_INVESTMENT': projTotalInvestStr
+        };
+
+        const selectedTemplates = Array.from(document.querySelectorAll('.template-checkbox:checked')).map(cb => cb.value);
+        if(selectedTemplates.length === 0) {
+            alert("请至少选择一个要生成的模板！");
+            btn.innerText = "🚀 一键生成选中文件";
+            btn.disabled = false;
+            return;
+        }
+
+        const resultPath = await invoke('generate_lifecycle_docs', { 
+            variables: variables,
+            selectedTemplates: selectedTemplates
+        });
+        genDocsOutputDir = resultPath;
+
+        msgBox.style.display = 'block';
+        msgBox.style.color = 'var(--success)';
+        msgBox.style.backgroundColor = 'var(--surface_container_highest)';
+        msgBox.innerText = `✅ 生成成功！\n文件保存在:\n${resultPath}`;
+        actionBox.style.display = 'flex';
+
+      } catch(e) {
+        msgBox.style.display = 'block';
+        msgBox.style.color = 'var(--on_error_container)';
+        msgBox.style.backgroundColor = 'var(--error_container)';
+        msgBox.innerText = `❌ 生成失败:\n${e}`;
+      } finally {
+        btn.innerText = "🚀 自动生成所有文档";
+        btn.disabled = false;
+      }
+    }
+
+    async function openGeneratedDocsFolder() {
+      if (!genDocsOutputDir) return;
+      try {
+        await window.__TAURI__.core.invoke('open_file', { path: genDocsOutputDir });
+      } catch(e) {
+        alert("无法打开文件夹: " + e);
+      }
+    }
+
+    // ============================================
     // DocFill (申报材料制作) Logic
     // ============================================
     let currentDocfillTemplate = "";
@@ -1097,7 +2415,32 @@
       'CONTRACT_DURATION': '项目周期',
       'CURR_DATE': '当前时间',
       'IT_TAX_RATE': 'IT税率',
-      'CT_TAX_RATE': 'CT税率'
+      'CT_TAX_RATE': 'CT税率',
+      'MEETING_START_DATE': '会审开始日期',
+      'MEETING_END_DATE': '会审结束日期',
+      'MEETING_MODE': '会审方式(线上/线下)',
+      'ATTENDEES': '参会单位/人员',
+      'ONSITE_SUPPORT': '驻点支撑人员',
+      'PROJECT_BACKGROUND': '项目背景',
+      'IT_CONTENT': 'IT建设内容',
+      'CT_CONTENT': 'CT建设内容',
+      'TECH_SOLUTION': '技术方案',
+      'SELF_THREE_Q': '自主三问',
+      'MID_THREE_Q': '中台三问',
+      'THREEIZATION_PLAN': '三化方案',
+      'TECH_CONCLUSION': '结论',
+      'IT_BUSINESS_MODE': 'IT部分商务模式',
+      'IT_FUNDING_SOURCE': 'IT部分资金来源',
+      'PROJECT_TOTAL_INVESTMENT': '项目整体投入金额',
+      'IT_INQUIRY_PROCESS': 'IT部分询价过程',
+      'IS_JOINT_BIDDING': '是否涉及联合体投标',
+      'REVENUE_COLLECTION_METHOD': '收入侧收款方式',
+      'EXPENDITURE_PAYMENT_METHOD': '支出侧付款方式',
+      'PROJECT_REVIEW_ACCURACY': '项目评审表适用及填写是否准确完整',
+      'SINGLE_SOURCE_EXPLANATION': '单一来源情况说明',
+      'CONSTRUCTION_TIME_REQ': '时间要求(上线/验收)',
+      'PROCUREMENT_METHOD': '采购方式',
+      'CONSTRUCTION_INTERFACE': '售中建设及施工界面'
     };
 
     function renderDocfillForm() {
@@ -1107,23 +2450,77 @@
             container.innerHTML = '<p style="color:var(--on_surface_variant); grid-column: 1 / -1; font-weight: 600;">⚠️ 未在该文档中发现 {变量名} 式的占位符。<br>系统将不会进行替换，请检查模板是否包含如 {name} 格式的纯文本变量。</p>';
             return;
         }
+        
+        // Define fields that should be textarea
+        const textareaFields = ['PROJECT_BACKGROUND', 'IT_CONTENT', 'CT_CONTENT', 'TECH_SOLUTION', 'SELF_THREE_Q', 'MID_THREE_Q', 'THREEIZATION_PLAN', 'TECH_CONCLUSION', 'PROJECT_TOTAL_INVESTMENT', 'SINGLE_SOURCE_EXPLANATION', 'ATTENDEES', 'CONSTRUCTION_TIME_REQ', 'CONSTRUCTION_INTERFACE'];
+        // Define fields that should be date
+        const dateFields = ['MEETING_START_DATE', 'MEETING_END_DATE', 'CURR_DATE'];
+        
         docfillVariables.forEach(v => {
             const div = document.createElement('div');
             div.className = 'form-group';
-            const label = document.createElement('label');
             
+            // If it's a textarea, let it span 2 columns if container allows
+            if (textareaFields.includes(v)) {
+                div.style.gridColumn = '1 / -1';
+            }
+            
+            const label = document.createElement('label');
             const friendlyName = docfillVarMap[v] || v;
             label.innerText = `${friendlyName} {${v}}`;
             
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.id = 'docgen_var_' + v;
-            
-            if (v === 'CURR_DATE') {
-              let d = new Date();
-              input.value = `${d.getFullYear()}年${String(d.getMonth()+1).padStart(2,'0')}月${String(d.getDate()).padStart(2,'0')}日`;
+            let input;
+            if (textareaFields.includes(v)) {
+                input = document.createElement('textarea');
+                input.rows = 4;
+                input.style.width = '100%';
+                input.style.padding = '10px 14px';
+                input.style.borderRadius = '6px';
+                input.style.border = '1px solid var(--ghost-border)';
+                input.style.background = 'var(--surface_container)';
+                input.style.fontFamily = 'inherit';
+                input.style.fontSize = '0.95rem';
+                input.style.color = 'var(--on_surface)';
+                input.style.resize = 'vertical';
+                
+                // Add default text for some fields
+                if (v === 'SINGLE_SOURCE_EXPLANATION') {
+                    input.rows = 6;
+                    input.value = `9、单一来源情况说明（如有单一来源需写这条，没有的删除）\n（1）单一来源决策依据：符合单一来源场景X，（场景描述根据具体场景进行描述！！例如：符合单一来源场景6：集团客户项目中需从唯一供应商处采购的工程、货物、服务等（包括客户指定、业务置换等）。\n（2）单一来源供应商：XXXXXX公司\n（3）预计单一来源采购金额：XXXX(含税)，XXXXX（不含税）。`;
+                } else if (v === 'PROJECT_TOTAL_INVESTMENT') {
+                    input.value = `整体投入XXXX万元，其中,IT部分建设投入XXX万元（不含税），维护投入XXX万元(不含税)；CT部分建设投入XXX万元（不含税），维护投入XXX万元（不含税）；产品投入XXXX万元（不含税）；中标服务费/专项审计/第三方项目核算等费用XXX万元（不含税）；网络信息安全服务费等。\n（此处CT指：短信、流量、专线、物联卡、云计算、大数据等标准产品，分别列明）`;
+                }
+            } else if (dateFields.includes(v)) {
+                input = document.createElement('input');
+                input.type = 'date';
+                let d = new Date();
+                // Default to today in YYYY-MM-DD format
+                input.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+            } else if (v === 'MEETING_MODE') {
+                input = document.createElement('select');
+                input.style.padding = '10px 14px';
+                input.style.borderRadius = '6px';
+                input.style.border = '1px solid var(--ghost-border)';
+                input.style.background = 'var(--surface_container)';
+                input.style.fontSize = '0.95rem';
+                input.style.color = 'var(--on_surface)';
+                
+                const opt1 = document.createElement('option');
+                opt1.value = '线上';
+                opt1.text = '线上';
+                const opt2 = document.createElement('option');
+                opt2.value = '线下';
+                opt2.text = '线下';
+                input.add(opt1);
+                input.add(opt2);
             } else {
-              input.placeholder = `请输入 ${friendlyName}...`;
+                input = document.createElement('input');
+                input.type = 'text';
+            }
+            
+            input.id = 'docgen_var_' + v;
+            if (input.type !== 'date' && input.tagName !== 'SELECT') {
+                input.placeholder = `请输入 ${friendlyName}...`;
             }
             
             div.appendChild(label);
@@ -1139,13 +2536,23 @@
         
         let vars = {};
         docfillVariables.forEach(v => {
-            vars[v] = document.getElementById('docgen_var_' + v).value;
+            let val = document.getElementById('docgen_var_' + v).value;
+            // Format date correctly if it's a date field
+            if (['MEETING_START_DATE', 'MEETING_END_DATE', 'CURR_DATE'].includes(v) && val) {
+                const parts = val.split('-');
+                if (parts.length === 3) {
+                    val = `${parts[0]}年${parts[1]}月${parts[2]}日`;
+                }
+            }
+            vars[v] = val;
         });
         
         try {
-            // Determine filename based on user request "立项签批表-项目名称"
+            // Determine filename based on template name
+            let templateName = currentDocfillTemplate.split(/[/\\]/).pop();
+            templateName = templateName.replace('.docx', '');
             let projName = vars['PROJECT_NAME'];
-            let defaultSaveName = projName ? `立项签批表-${projName}.docx` : `立项签批表_已生成.docx`;
+            let defaultSaveName = projName ? `${templateName}-${projName}.docx` : `${templateName}_已生成.docx`;
             
             let outputPath = null;
 

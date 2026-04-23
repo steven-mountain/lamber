@@ -42,6 +42,274 @@ fn round_4(val: Decimal) -> Decimal {
     val.round_dp(4)
 }
 
+#[derive(Deserialize, Clone)]
+pub struct IctItem {
+    pub incl_tax: String,
+    pub tax_rate: String,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct IctInput {
+    pub project_name: String,
+    pub property_rights: String,
+    pub discount_rate: String,
+    
+    // The revenue and cost distributions over 10 years (e.g., [1.0, 0.0, ..., 0.0])
+    pub rev_distribution: Vec<f64>,
+    pub cost_distribution: Vec<f64>,
+    
+    pub rev_it_integration: IctItem,
+    pub rev_it_maintenance: IctItem,
+    pub rev_it_device_sales: IctItem,
+    pub rev_it_device_lease: IctItem,
+    pub rev_it_other: IctItem,
+    pub rev_it_cloud: IctItem,
+    
+    pub rev_ct_line: IctItem,
+    pub rev_ct_product: IctItem,
+    
+    pub rev_non_it_ct: IctItem,
+
+    pub cost_it_device: IctItem,
+    pub cost_it_construction: IctItem,
+    pub cost_it_survey: IctItem,
+    pub cost_it_integration: IctItem,
+    pub cost_it_other: IctItem,
+    pub cost_it_maintenance: IctItem,
+    pub cost_it_running: IctItem,
+    pub cost_it_bidding: IctItem,
+    pub cost_it_design_eval: IctItem,
+    pub cost_it_audit: IctItem,
+    
+    pub cost_ct_construction: IctItem,
+    pub cost_ct_maintenance: IctItem,
+    pub cost_ct_other: IctItem,
+    pub cost_ct_bandwidth: IctItem,
+    pub cost_ct_renewal: IctItem,
+    
+    pub cost_non_it_ct: IctItem,
+    pub cost_mix_marketing: IctItem,
+    pub cost_mix_channel: IctItem,
+    pub cost_mix_other: IctItem,
+}
+
+#[derive(Serialize)]
+pub struct IctCashflowRow {
+    pub year: i32,
+    pub cash_in: String,
+    pub cash_out: String,
+    pub net_cash: String,
+    pub cum_net_cash: String,
+    pub pv: String,
+    pub cum_pv: String,
+}
+
+#[derive(Serialize)]
+pub struct IctResult {
+    pub npv: String,
+    pub npv_rate: String,
+    pub margin_rate: String,
+    pub dynamic_payback: String,
+    pub irr: String,
+    
+    pub it_npv: String,
+    pub it_npv_rate: String,
+    pub it_margin_rate: String,
+    
+    pub cashflow: Vec<IctCashflowRow>,
+}
+
+fn get_excl(item: &IctItem) -> Decimal {
+    let incl = Decimal::from_str(&item.incl_tax).unwrap_or(Decimal::ZERO);
+    let rate = Decimal::from_str(&item.tax_rate).unwrap_or(Decimal::ZERO) / Decimal::new(100, 0);
+    if incl.is_zero() {
+        return Decimal::ZERO;
+    }
+    (incl / (Decimal::ONE + rate)).round_dp(2)
+}
+
+#[tauri::command]
+pub fn calculate_ict_benefit(input: IctInput) -> Result<IctResult, String> {
+    let discount_rate = Decimal::from_str(&input.discount_rate).unwrap_or(Decimal::new(55, 3)); // 0.055
+
+    // IT Revenue
+    let it_rev = get_excl(&input.rev_it_integration)
+        + get_excl(&input.rev_it_maintenance)
+        + get_excl(&input.rev_it_device_sales)
+        + get_excl(&input.rev_it_device_lease)
+        + get_excl(&input.rev_it_other)
+        + get_excl(&input.rev_it_cloud);
+
+    // CT Revenue
+    let ct_rev = get_excl(&input.rev_ct_line)
+        + get_excl(&input.rev_ct_product);
+
+    // Non-IT Revenue
+    let non_it_rev = get_excl(&input.rev_non_it_ct);
+
+    let total_rev = it_rev + ct_rev + non_it_rev;
+
+    // IT Cost
+    let it_cost = get_excl(&input.cost_it_device)
+        + get_excl(&input.cost_it_construction)
+        + get_excl(&input.cost_it_survey)
+        + get_excl(&input.cost_it_integration)
+        + get_excl(&input.cost_it_other)
+        + get_excl(&input.cost_it_maintenance)
+        + get_excl(&input.cost_it_running)
+        + get_excl(&input.cost_it_bidding)
+        + get_excl(&input.cost_it_design_eval)
+        + get_excl(&input.cost_it_audit);
+
+    // CT Cost
+    let ct_cost = get_excl(&input.cost_ct_construction)
+        + get_excl(&input.cost_ct_maintenance)
+        + get_excl(&input.cost_ct_other)
+        + get_excl(&input.cost_ct_bandwidth)
+        + get_excl(&input.cost_ct_renewal);
+
+    // Non-IT Cost & Mix Cost
+    let non_it_cost = get_excl(&input.cost_non_it_ct);
+    let mix_cost = get_excl(&input.cost_mix_marketing)
+        + get_excl(&input.cost_mix_channel)
+        + get_excl(&input.cost_mix_other);
+
+    let total_cost = it_cost + ct_cost + non_it_cost + mix_cost;
+
+    let margin_rate = if total_rev.is_zero() { Decimal::ZERO } else { ((total_rev - total_cost) / total_rev).round_dp(4) };
+    let it_margin_rate = if it_rev.is_zero() { Decimal::ZERO } else { ((it_rev - it_cost) / it_rev).round_dp(4) };
+
+    // --- 10 Year Cashflow Simulation ---
+    let mut cashflow = Vec::new();
+    
+    let mut cum_net_cash = Decimal::ZERO;
+    let mut cum_pv = Decimal::ZERO;
+    
+    let mut total_pv_in = Decimal::ZERO;
+    let mut total_pv_out = Decimal::ZERO;
+    let mut total_it_pv_in = Decimal::ZERO;
+    let mut total_it_pv_out = Decimal::ZERO;
+
+    let mut dynamic_payback_year = 0;
+    let mut payback_found = false;
+
+    // Use provided distributions or fallback to 100% Year 1 if not provided/empty
+    let default_dist = vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    let rev_dist = if input.rev_distribution.len() == 10 { &input.rev_distribution } else { &default_dist };
+    let cost_dist = if input.cost_distribution.len() == 10 { &input.cost_distribution } else { &default_dist };
+
+    for year in 1..=10 {
+        let rev_ratio = Decimal::from_f64_retain(rev_dist[year - 1]).unwrap_or(Decimal::ZERO);
+        let cost_ratio = Decimal::from_f64_retain(cost_dist[year - 1]).unwrap_or(Decimal::ZERO);
+
+        let cash_in = (total_rev * rev_ratio).round_dp(2);
+        let cash_out = (total_cost * cost_ratio).round_dp(2);
+        let net_cash = cash_in - cash_out;
+
+        // IT specific breakdown
+        let it_cash_in = (it_rev * rev_ratio).round_dp(2);
+        let it_cash_out = (it_cost * cost_ratio).round_dp(2);
+
+        // Discount factor for the current year: (1 + discount_rate)^year
+        // In standard NPV formulas, Year 1 cash flow is discounted by (1+r)^1, Year 2 by (1+r)^2, etc.
+        let mut pv_factor = Decimal::ONE;
+        for _ in 0..year {
+            pv_factor *= (Decimal::ONE + discount_rate);
+        }
+
+        let pv_in = (cash_in / pv_factor).round_dp(2);
+        let pv_out = (cash_out / pv_factor).round_dp(2);
+        let pv_net = pv_in - pv_out;
+
+        let it_pv_in = (it_cash_in / pv_factor).round_dp(2);
+        let it_pv_out = (it_cash_out / pv_factor).round_dp(2);
+
+        total_pv_in += pv_in;
+        total_pv_out += pv_out;
+        
+        total_it_pv_in += it_pv_in;
+        total_it_pv_out += it_pv_out;
+
+        cum_net_cash += net_cash;
+        cum_pv += pv_net;
+
+        // Determine dynamic payback period
+        if !payback_found && cum_pv >= Decimal::ZERO {
+            dynamic_payback_year = year;
+            payback_found = true;
+        }
+
+        cashflow.push(IctCashflowRow {
+            year: year as i32,
+            cash_in: cash_in.to_string(),
+            cash_out: cash_out.to_string(),
+            net_cash: net_cash.to_string(),
+            cum_net_cash: cum_net_cash.to_string(),
+            pv: pv_net.to_string(),
+            cum_pv: cum_pv.to_string(),
+        });
+    }
+
+    let npv = total_pv_in - total_pv_out;
+    let npv_rate = if total_pv_out.is_zero() { Decimal::ZERO } else { (npv / total_pv_out).round_dp(4) };
+
+    let it_npv = total_it_pv_in - total_it_pv_out;
+    let it_npv_rate = if total_it_pv_out.is_zero() { Decimal::ZERO } else { (it_npv / total_it_pv_out).round_dp(4) };
+
+    let dynamic_payback_str = if payback_found {
+        dynamic_payback_year.to_string()
+    } else {
+        ">10".to_string()
+    };
+
+    Ok(IctResult {
+        npv: npv.to_string(),
+        npv_rate: npv_rate.to_string(),
+        margin_rate: margin_rate.to_string(),
+        dynamic_payback: dynamic_payback_str,
+        irr: "--".to_string(),
+        it_npv: it_npv.to_string(),
+        it_npv_rate: it_npv_rate.to_string(),
+        it_margin_rate: it_margin_rate.to_string(),
+        cashflow,
+    })
+}
+
+#[tauri::command]
+pub fn reverse_calc_ict_target(input: IctInput, target_type: String, target_value: String) -> Result<String, String> {
+    let target = Decimal::from_str(&target_value).unwrap_or(Decimal::ZERO);
+    let mut low = Decimal::ZERO;
+    let mut high = Decimal::new(10_000_000_000, 0); // 10 billion limit
+    let mut best_mid = Decimal::ZERO;
+
+    for _ in 0..100 {
+        let mid = (low + high) / Decimal::new(2, 0);
+        best_mid = mid;
+
+        let mut test_input = input.clone();
+        test_input.cost_it_integration.incl_tax = mid.to_string();
+
+        let res = calculate_ict_benefit(test_input)?;
+        
+        let current_val = if target_type == "margin" {
+            Decimal::from_str(&res.margin_rate).unwrap_or(Decimal::ZERO)
+        } else {
+            Decimal::from_str(&res.npv_rate).unwrap_or(Decimal::ZERO)
+        };
+
+        // As cost increases, margin_rate and npv_rate both decrease.
+        if current_val > target {
+            // We have a higher metric than target -> need to decrease metric -> need to INCREASE cost
+            low = mid;
+        } else {
+            // We have a lower metric than target -> need to increase metric -> need to DECREASE cost
+            high = mid;
+        }
+    }
+
+    Ok(best_mid.round_dp(2).to_string())
+}
+
 #[tauri::command]
 pub fn calculate_benefit(input: CalcInput) -> Result<CalcResult, String> {
     let d1 = Decimal::ONE;
