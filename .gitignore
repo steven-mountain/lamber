@@ -64,3 +64,15 @@ test/
 # Demo directories
 hello_test/
 logic_demo/
+
+# Project specific ignored files and folders
+ESOP附件/
+一键生成全生命周期结果/
+项目全生命周期文件模版/
+效益分析表*.xlsx
+立项签批表.docx
+算账表解析.xlsx
+
+# MS Office Temp Files
+~$*
+.~*
