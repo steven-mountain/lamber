@@ -829,7 +829,10 @@
           <div class="nav-item" id="nav-ict-revenue" onclick="switchIctTab('revenue')"><span>💰</span> 收入侧测算</div>
           <div class="nav-item" id="nav-ict-cost" onclick="switchIctTab('cost')"><span>💸</span> 支出侧测算</div>
           <div class="nav-item" id="nav-ict-cashflow" onclick="switchIctTab('cashflow')"><span>📈</span> 10年现金流推演</div>
-          <div class="nav-item" id="nav-ict-generate" onclick="switchIctTab('generate')"><span>📄</span> 一键生成全生命周期文档</div>
+        </div>
+        <h3 class="section-title" style="margin-top: 32px; border-top: 1px solid var(--ghost-border); padding-top: 16px;">一键生成全流程文档</h3>
+        <div id="sidebar_templates_container" style="display: flex; flex-direction: column; gap: 8px;">
+          <!-- Document templates will be populated here -->
         </div>
       </div>
 
@@ -1087,15 +1090,10 @@
         <!-- Tab: Generate Docs -->
         <div id="ict-tab-generate" class="ict-tab-content" style="display: none;">
           <div class="table-card">
-            <h3 class="section-title">一键生成全流程文档</h3>
+            <h3 class="section-title">填写申报材料补充参数</h3>
             <p style="font-size:0.85rem; color:var(--on_surface_variant); margin-bottom: 24px;">
-              系统将根据您当前填写的参数（项目概况、收支测算、各项效益指标），自动填充预设的 docx 模板文件。投资估算等数据将自动从当前模型带入。
+              系统将根据您当前填写的参数，自动填充预设的 docx 模板文件。投资估算等数据将自动从当前模型带入。
             </p>
-            
-            <h4 style="font-size: 0.9rem; margin-top: 0; color: var(--primary);">选择要生成的文件模版</h4>
-            <div id="gen_template_list" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; max-height: 150px; overflow-y: auto; background: var(--surface_container_low); padding: 12px; border-radius: 8px; border: 1px solid var(--ghost-border);">
-              <!-- JS Dynamic Content -->
-            </div>
             
             <h4 style="font-size: 0.9rem; margin-top: 0; color: var(--primary);">补充文档信息 (会审纪要等所需)</h4>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
@@ -1142,14 +1140,19 @@
               </div>
               <div class="form-group">
                 <label>IT建设内容</label>
-                <textarea id="gen_it_content" rows="2" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;" placeholder="如硬件、集成、维保等">1. 消防物联网网关设备采购与安装
-2. 消防预警云平台软件定制开发
-3. 系统集成与三年期维保服务</textarea>
+                <textarea id="gen_it_content" rows="2" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;" placeholder="如硬件、集成、维保等">集成</textarea>
               </div>
               <div class="form-group">
                 <label>CT建设内容</label>
-                <textarea id="gen_ct_content" rows="2" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;" placeholder="如X条互联网/数据专线、X张物联卡等">1. 2条100M互联网专线接入
-2. 500张NB-IoT物联卡，用于传感器数据回传</textarea>
+                <textarea id="gen_ct_content" rows="2" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;" placeholder="如X条互联网/数据专线、X张物联卡等">视频监控</textarea>
+              </div>
+
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>技术方案可行性清单 (自动生成表格)</label>
+                <div id="tech_items_container" style="display: flex; flex-direction: column; gap: 8px;">
+                  <!-- Dynamic rows will be added here -->
+                </div>
+                <button type="button" class="secondary-btn" onclick="addTechItem()" style="margin-top: 8px;">+ 添加方案清单</button>
               </div>
               <div class="form-group" style="grid-column: 1 / -1;">
                 <label>技术方案</label>
@@ -1174,7 +1177,7 @@
               </div>
               <div class="form-group" style="grid-column: 1 / -1;">
                 <label>三化方案</label>
-                <input type="text" id="gen_threeization" placeholder="融三化，则写名称、揭榜省、实现的功能；未融则简要描述未融原因。" value="已融入“智慧安消”三化方案（浙江省揭榜），实现设备在线巡检功能">
+                <input type="text" id="gen_threeization" placeholder="融三化，则写名称、揭榜省、实现的功能；未融则简要描述未融原因。" value="本项目不涉及三化方案。">
               </div>
               <div class="form-group" style="grid-column: 1 / -1;">
                 <label>结论</label>
@@ -1203,9 +1206,19 @@
                   <option value="资本开支">资本开支</option>
                 </select>
               </div>
-              <div class="form-group">
-                <label>IT部分询价过程</label>
-                <input type="text" id="gen_it_inquiry" placeholder="原则上询价厂商不少于3家" value="已对华为、中兴、海康威视等3家厂商进行询价比选">
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>IT部分询价过程 (自动生成表格)</label>
+                <div id="inq_vendors_container" style="display: flex; flex-direction: column; gap: 8px;">
+                  <!-- Dynamic rows will be added here -->
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                  <button type="button" class="secondary-btn" onclick="addInqVendor()">+ 添加询价厂商</button>
+                  <button type="button" class="secondary-btn" onclick="autoGenerateInquiry()" style="border-color: var(--primary); color: var(--primary);">🤖 一键智能生成三家报价</button>
+                </div>
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>风险点及其他责任人</label>
+                <input type="text" id="gen_risk_owner" placeholder="填写风险责任人，例如：人员A" value="人员A">
               </div>
               <div class="form-group">
                 <label>是否涉及联合体投标</label>
@@ -1249,11 +1262,14 @@
                 <textarea id="gen_construction_interface" rows="2" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;">本项目采购统一集成单位实施。分公司负责客户侧的协调工作，并协调管理合作伙伴完成交付。</textarea>
               </div>
             </div>
-
-            <button class="primary-btn" id="btn-generate-docs" onclick="triggerLifecycleDocGen()">🚀 一键生成选中文件</button>
-            <div id="gen-docs-result-msg" style="margin-top:16px; font-size: 0.85rem; font-weight: 600; display: none; padding: 12px; border-radius: 6px; background: var(--surface_container_highest); color: var(--success);"></div>
-            <div id="gen-docs-actions" style="display:none; margin-top: 16px;">
-              <button class="primary-btn" style="background:var(--success); color: white;" onclick="openGeneratedDocsFolder()">📂 打开生成结果文件夹</button>
+          </div>
+          
+          <div id="gen_single_action_area" style="display: none; background: var(--surface_container_lowest); padding: 24px; border-radius: 8px; border: 1px solid var(--ghost-border); text-align: center; margin-top: 24px;">
+            <h3 id="gen_single_title" style="margin-bottom: 16px; font-size: 1.1rem; color: var(--primary);">即将生成：请在左侧选择模板</h3>
+            <button class="primary-btn" id="btn-generate-single-doc" style="padding: 12px 32px; font-size: 1.05rem; margin-bottom: 16px;">🚀 立即生成此文件</button>
+            <div id="gen-docs-result-msg" style="font-size: 0.95rem; font-weight: 600; display: none; padding: 12px; border-radius: 6px; background: var(--surface_container_highest); color: var(--success); margin-bottom: 16px;"></div>
+            <div id="gen-docs-actions" style="display:none; justify-content: center;">
+              <button class="primary-btn" style="background:var(--success); color: white;" onclick="openGeneratedDocsFolder()">📂 打开生成结果所在文件夹</button>
             </div>
           </div>
         </div>
@@ -1427,6 +1443,10 @@
         document.getElementById('ict_res_it_npv').innerText = formatCurrency(res.it_npv);
         document.getElementById('ict_res_it_npv_rate').innerText = formatPercent(res.it_npv_rate);
         document.getElementById('ict_res_it_margin').innerText = formatPercent(res.it_margin_rate);
+
+        // 联动更新：同步更新报价单，但是只有在用户能看到的时候才强制更新，或者保持数据随时同步。
+        // 这里每次测算完成都会把最新的 IT 限价传递过去并自动重算三家报价。
+        autoGenerateInquiry();
 
         const tbody = document.getElementById('ict_cashflow_tbody');
         tbody.innerHTML = '';
@@ -1862,13 +1882,15 @@
     }
 
     function switchIctTab(tabId) {
-      // Toggle active nav item
+      // Toggle active nav item safely
       document.querySelectorAll('#view-ict-lifecycle .nav-item').forEach(item => item.classList.remove('active'));
-      document.getElementById('nav-ict-' + tabId).classList.add('active');
+      const targetNav = document.getElementById('nav-ict-' + tabId);
+      if (targetNav) targetNav.classList.add('active');
 
       // Hide all contents and show target
       document.querySelectorAll('.ict-tab-content').forEach(content => content.style.display = 'none');
-      document.getElementById('ict-tab-' + tabId).style.display = 'block';
+      const targetTab = document.getElementById('ict-tab-' + tabId);
+      if (targetTab) targetTab.style.display = 'block';
     }
 
     function switchBenefitSubView(mode) {
@@ -2119,6 +2141,101 @@
     // ============================================
     let genDocsOutputDir = "";
 
+    function addTechItem(name = '', desc = '', qty = '', unit = '') {
+      const container = document.getElementById('tech_items_container');
+      if(!container) return;
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.gap = '8px';
+      row.innerHTML = `
+        <input type="text" placeholder="服务名称" value="${name}" style="flex: 2;">
+        <input type="text" placeholder="服务说明" value="${desc}" style="flex: 3;">
+        <input type="number" placeholder="数量" value="${qty}" style="flex: 1;">
+        <input type="text" placeholder="单位" value="${unit}" style="flex: 1;">
+        <button type="button" class="secondary-btn" style="padding: 0 12px; color: var(--error);" onclick="this.parentElement.remove()">删</button>
+      `;
+      container.appendChild(row);
+    }
+
+    function addInqVendor(name = '', amount = '', tax = '', remark = '') {
+      const container = document.getElementById('inq_vendors_container');
+      if(!container) return;
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.gap = '8px';
+      row.innerHTML = `
+        <input type="text" placeholder="厂商名称" value="${name}" style="flex: 2;">
+        <input type="number" placeholder="报价金额(含税)" value="${amount}" style="flex: 2;">
+        <input type="text" placeholder="税率(如6%)" value="${tax}" style="flex: 1;">
+        <input type="text" placeholder="备注(如最低)" value="${remark}" style="flex: 1;">
+        <button type="button" class="secondary-btn" style="padding: 0 12px; color: var(--error);" onclick="this.parentElement.remove()">删</button>
+      `;
+      container.appendChild(row);
+    }
+
+    function autoGenerateInquiry() {
+      const container = document.getElementById('inq_vendors_container');
+      if(!container) return;
+      container.innerHTML = '';
+      
+      let limit = 0;
+      // Extract IT limit directly from the "集成服务" input box which is the source of truth for the IT calculation
+      const itInputVal = document.getElementById('cost_it_integration_incl')?.value;
+      if(itInputVal) {
+          limit = parseFloat(itInputVal);
+      } else {
+          // Fallback to table sum if not found
+          document.querySelectorAll('#cost-table-body tr').forEach(tr => {
+            const type = tr.querySelector('select')?.value;
+            if(type && type.includes('IT')) {
+                const costText = tr.querySelector('.cost-total')?.innerText.replace(/,/g, '');
+                if(costText) limit += parseFloat(costText);
+            }
+          });
+      }
+      if(limit === 0) limit = 167400;
+
+      // 产生随机系数：v1 介于 1.011 到 1.025 之间
+      const factor1 = 1.011 + Math.random() * 0.014;
+      // 产生随机系数：v3 介于 1.026 到 1.045 之间
+      const factor3 = 1.026 + Math.random() * 0.019;
+
+      let v1 = (limit * factor1).toFixed(2);
+      let v2 = limit.toFixed(2);
+      let v3 = (limit * factor3).toFixed(2);
+      
+      let vendors = [
+        { name: '公司A', amount: v1, remark: '' },
+        { name: '公司B', amount: v2, remark: '最低' },
+        { name: '公司C', amount: v3, remark: '' }
+      ];
+      
+      // 打乱数组顺序 (Fisher-Yates shuffle)
+      for (let i = vendors.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [vendors[i], vendors[j]] = [vendors[j], vendors[i]];
+      }
+
+      vendors.forEach(v => {
+        addInqVendor(v.name, v.amount, '6%', v.remark);
+      });
+    }
+
+    // Initialize defaults when loaded
+    window.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        if(document.getElementById('tech_items_container')?.children.length === 0) {
+            addTechItem('视频监控服务', '包含摄像头、网关等设备采购及安装', '1', '套');
+            addTechItem('信息化改造及集成服务', '包含专线及网络集成', '1', '套');
+        }
+        if(document.getElementById('inq_vendors_container')?.children.length === 0) {
+            addInqVendor('公司A', '170000', '6%', '');
+            addInqVendor('公司B', '167400', '6%', '最低');
+            addInqVendor('公司C', '173500', '6%', '');
+        }
+      }, 500);
+    });
+
     function updateAttendeesList() {
       const scale = document.getElementById('gen_project_scale').value;
       const cityGroup = document.getElementById('gen_city_attendees_group');
@@ -2142,10 +2259,21 @@
     function toggleMidThree() {
       const checkbox = document.getElementById('gen_has_mid_three');
       const group = document.getElementById('gen_mid_three_group');
+      const ctContent = document.getElementById('gen_ct_content');
       if (checkbox.checked) {
         group.style.display = 'flex';
+        // 联动：如果勾选了中台能力，则CT建设内容默认带入中台能力名称
+        const midName = document.getElementById('gen_mid_three_name')?.value || '';
+        if (ctContent && !ctContent.value && midName) {
+            ctContent.value = midName.replace('能力', '');
+        }
       } else {
         group.style.display = 'none';
+        // 联动：取消勾选时，如果CT建设内容恰好是当前中台能力名称，则清空
+        const midName = document.getElementById('gen_mid_three_name')?.value || '';
+        if (ctContent && ctContent.value === midName.replace('能力', '')) {
+            ctContent.value = '';
+        }
       }
     }
  
@@ -2165,50 +2293,61 @@
       const invoke = window.__TAURI__.core.invoke;
       try {
         const templates = await invoke('get_available_templates');
-        const container = document.getElementById('gen_template_list');
+        const container = document.getElementById('sidebar_templates_container');
         container.innerHTML = '';
         
         if (templates.length === 0) {
-            container.innerHTML = '<div style="font-size: 0.85rem; color: var(--on_surface_variant);">未找到任何 .docx 模板文件，请检查 "项目全生命周期文件模版" 文件夹。</div>';
+            container.innerHTML = '<span style="color:var(--on_surface_variant); font-size:0.85rem; padding-left:16px;">未找到模板文件</span>';
             return;
         }
         
         templates.forEach(t => {
-            const label = document.createElement('label');
-            label.className = 'radio-item';
-            label.style.background = 'var(--surface_container_lowest)';
-            label.style.padding = '8px 12px';
-            label.style.borderRadius = '6px';
-            label.style.border = '1px solid var(--ghost-border)';
+            const row = document.createElement('div');
+            row.className = 'nav-item';
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.fontSize = '0.85rem';
+            row.innerHTML = `<span style="margin-right: 6px;">📄</span> ${t.replace('.docx', '').replace('【2024版】', '').replace('【2025版】', '')}`;
             
-            const input = document.createElement('input');
-            input.type = 'checkbox';
-            input.value = t;
-            input.className = 'template-checkbox';
-            input.checked = true; // Default to checked
+            row.onclick = () => {
+                switchIctTab('generate');
+                document.querySelectorAll('#sidebar_templates_container .nav-item').forEach(el => el.classList.remove('active'));
+                row.classList.add('active');
+                
+                const tableCard = document.querySelector('#ict-tab-generate .table-card');
+                if (t.includes('会审纪要')) {
+                    tableCard.style.display = 'block';
+                } else {
+                    tableCard.style.display = 'none';
+                }
+                
+                document.getElementById('gen_single_action_area').style.display = 'block';
+                document.getElementById('gen_single_title').innerText = `即将生成：${t}`;
+                document.getElementById('gen-docs-result-msg').style.display = 'none';
+                document.getElementById('gen-docs-actions').style.display = 'none';
+                
+                const genBtn = document.getElementById('btn-generate-single-doc');
+                genBtn.innerText = `🚀 立即生成此文件`;
+                genBtn.onclick = () => triggerLifecycleDocGenSingle(t, genBtn);
+            };
             
-            const span = document.createElement('span');
-            span.innerText = t;
-            
-            label.appendChild(input);
-            label.appendChild(span);
-            container.appendChild(label);
+            container.appendChild(row);
         });
       } catch(e) {
           console.error("加载模板列表失败:", e);
       }
     }
 
-    async function triggerLifecycleDocGen() {
+    async function triggerLifecycleDocGenSingle(templateFilename, btnElement) {
       if (!window.__TAURI__) return alert("未检测到 Tauri 运行环境！");
       const invoke = window.__TAURI__.core.invoke;
 
-      const btn = document.getElementById('btn-generate-docs');
+      const originalText = btnElement.innerText;
+      btnElement.innerText = "⏳ 正在生成中...";
+      btnElement.disabled = true;
+      
       const msgBox = document.getElementById('gen-docs-result-msg');
       const actionBox = document.getElementById('gen-docs-actions');
-      
-      btn.innerText = "⏳ 正在生成中...";
-      btn.disabled = true;
       msgBox.style.display = 'none';
       actionBox.style.display = 'none';
 
@@ -2237,19 +2376,19 @@
         let ctProduct = getExcl('cost_ct_other') + getExcl('cost_ct_bandwidth') + getExcl('cost_ct_renewal');
         let itOther = getExcl('cost_it_bidding') + getExcl('cost_it_design_eval') + getExcl('cost_it_audit');
         let isZero = (n) => Math.abs(n) < 0.005;
-        let fmtWan = (n) => n.toFixed(2);
+        let fmtYuan = (n) => n.toFixed(2);
         let parts = [];
         let itParts = [];
-        if (!isZero(itConstruction)) itParts.push(`建设投入${fmtWan(itConstruction)}万元（不含税）`);
-        if (!isZero(itMaintenance)) itParts.push(`维护投入${fmtWan(itMaintenance)}万元（不含税）`);
+        if (!isZero(itConstruction)) itParts.push(`建设投入${fmtYuan(itConstruction)}元（不含税）`);
+        if (!isZero(itMaintenance)) itParts.push(`维护投入${fmtYuan(itMaintenance)}元（不含税）`);
         if (itParts.length) parts.push(`IT部分${itParts.join('，')}`);
         let ctParts = [];
-        if (!isZero(ctConstruction)) ctParts.push(`建设投入${fmtWan(ctConstruction)}万元（不含税）`);
-        if (!isZero(ctMaintenance)) ctParts.push(`维护投入${fmtWan(ctMaintenance)}万元（不含税）`);
+        if (!isZero(ctConstruction)) ctParts.push(`建设投入${fmtYuan(ctConstruction)}元（不含税）`);
+        if (!isZero(ctMaintenance)) ctParts.push(`维护投入${fmtYuan(ctMaintenance)}元（不含税）`);
         if (ctParts.length) parts.push(`CT部分${ctParts.join('，')}`);
-        if (!isZero(ctProduct)) parts.push(`产品投入${fmtWan(ctProduct)}万元（不含税）`);
-        if (!isZero(itOther)) parts.push(`中标服务费/专项审计/第三方项目核算等费用${fmtWan(itOther)}万元（不含税）`);
-        let projTotalInvestStr = `整体投入${fmtWan(totalCost)}万元`;
+        if (!isZero(ctProduct)) parts.push(`产品投入${fmtYuan(ctProduct)}元（不含税）`);
+        if (!isZero(itOther)) parts.push(`中标服务费/专项审计/第三方项目核算等费用${fmtYuan(itOther)}元（不含税）`);
+        let projTotalInvestStr = `整体投入${fmtYuan(totalCost)}元`;
         if (parts.length) {
           projTotalInvestStr += `，其中${parts.join('；')}。`;
         } else {
@@ -2264,7 +2403,32 @@
             return val;
         };
 
-        let variables = {
+
+          let techItems = [];
+          document.querySelectorAll('#tech_items_container > div').forEach((row, i) => {
+              let inputs = row.querySelectorAll('input');
+              techItems.push({
+                  'TECH_ITEM_INDEX': (i+1).toString(),
+                  'TECH_ITEM_NAME': inputs[0].value,
+                  'TECH_ITEM_DESC': inputs[1].value,
+                  'TECH_ITEM_QTY': inputs[2].value,
+                  'TECH_ITEM_UNIT': inputs[3].value
+              });
+          });
+          
+          let inqVendors = [];
+          document.querySelectorAll('#inq_vendors_container > div').forEach((row, i) => {
+              let inputs = row.querySelectorAll('input');
+              inqVendors.push({
+                  'INQ_VENDOR_INDEX': (i + 1).toString(),
+                  'INQ_VENDOR_NAME': inputs[0].value,
+                  'INQ_QUOTE': inputs[1].value,
+                  'INQ_TAX_RATE': inputs[2].value,
+                  'INQ_REMARK': inputs[3].value
+              });
+          });
+
+          let variables = {
           'PROJECT_NAME': document.getElementById('ict_proj_name').value || "未命名项目",
           'CT_PRODUCT_NAME': "专线及产品", 
           'TOTAL_PROJECT_INVESTMENT': totalCost.toFixed(2),
@@ -2273,10 +2437,50 @@
           'TOTAL_PROJECT_REVENUE': totalRev.toFixed(2),
           'IT_REVENUE': itRev.toFixed(2),
           'CT_REVENUE': ctRev.toFixed(2),
+          'VENDOR_SCREENSHOT_LIST': "",
           'NET_PRESENT_VALUE_RATE': document.getElementById('ict_res_npv_rate').innerText,
           'PROJECT_GROSS_PROFIT_MARGIN': document.getElementById('ict_res_margin').innerText,
           'IT_NET_PRESENT_VALUE_RATE': document.getElementById('ict_res_it_npv_rate').innerText,
+          'NET_PRESENT_VALUE': document.getElementById('ict_res_npv')?.innerText || "0",
+          'INTERNAL_RATE_OF_RETURN': document.getElementById('ict_res_irr')?.innerText || "0",
+          'DYNAMIC_PAYBACK_PERIOD': document.getElementById('ict_res_dynamic_payback')?.innerText || "0",
+          'STATIC_PAYBACK_PERIOD': document.getElementById('ict_res_dynamic_payback')?.innerText || "0",
+          'IT_NET_PRESENT_VALUE': document.getElementById('ict_res_it_npv')?.innerText || "0",
+          'IT_GROSS_PROFIT_MARGIN': document.getElementById('ict_res_it_margin')?.innerText || "0",
           'CONTRACT_DURATION': document.getElementById('ict_project_years').value,
+          
+          'EXCEL_REV_IT_INTEGRATION_EXCL': document.getElementById('rev_it_integration_excl').value || "0",
+          'EXCEL_REV_IT_MAINTENANCE_EXCL': document.getElementById('rev_it_maintenance_excl').value || "0",
+          'EXCEL_REV_IT_DEVICE_SALES_EXCL': document.getElementById('rev_it_device_sales_excl').value || "0",
+          'EXCEL_REV_IT_DEVICE_LEASE_EXCL': document.getElementById('rev_it_device_lease_excl').value || "0",
+          'EXCEL_REV_IT_OTHER_EXCL': document.getElementById('rev_it_other_excl').value || "0",
+          'EXCEL_REV_IT_CLOUD_EXCL': document.getElementById('rev_it_cloud_excl').value || "0",
+          'EXCEL_REV_CT_LINE_EXCL': document.getElementById('rev_ct_line_excl').value || "0",
+          'EXCEL_REV_CT_PRODUCT_INCL': document.getElementById('rev_ct_product_incl').value || "0",
+          'EXCEL_REV_NON_IT_CT_EXCL': document.getElementById('rev_non_it_ct_excl').value || "0",
+
+          'EXCEL_COST_IT_DEVICE_EXCL': document.getElementById('cost_it_device_excl').value || "0",
+          'EXCEL_COST_IT_CONSTRUCTION_EXCL': document.getElementById('cost_it_construction_excl').value || "0",
+          'EXCEL_COST_IT_SURVEY_EXCL': document.getElementById('cost_it_survey_excl').value || "0",
+          'EXCEL_COST_IT_INTEGRATION_EXCL': document.getElementById('cost_it_integration_excl').value || "0",
+          'EXCEL_COST_IT_OTHER_EXCL': document.getElementById('cost_it_other_excl').value || "0",
+          'EXCEL_COST_IT_MAINTENANCE_EXCL': document.getElementById('cost_it_maintenance_excl').value || "0",
+          'EXCEL_COST_IT_RUNNING_EXCL': document.getElementById('cost_it_running_excl').value || "0",
+          'EXCEL_COST_IT_BIDDING_EXCL': document.getElementById('cost_it_bidding_excl').value || "0",
+          'EXCEL_COST_IT_DESIGN_EVAL_EXCL': document.getElementById('cost_it_design_eval_excl').value || "0",
+          'EXCEL_COST_IT_AUDIT_EXCL': document.getElementById('cost_it_audit_excl').value || "0",
+
+          'EXCEL_COST_CT_CONSTRUCTION_INCL': document.getElementById('cost_ct_construction_incl').value || "0",
+          'EXCEL_COST_CT_MAINTENANCE_INCL': document.getElementById('cost_ct_maintenance_incl').value || "0",
+          'EXCEL_COST_CT_OTHER_INCL': document.getElementById('cost_ct_other_incl').value || "0",
+          'EXCEL_COST_CT_BANDWIDTH_EXCL': document.getElementById('cost_ct_bandwidth_excl').value || "0",
+          'EXCEL_COST_CT_RENEWAL_EXCL': document.getElementById('cost_ct_renewal_excl').value || "0",
+
+          'EXCEL_COST_NON_IT_CT_EXCL': document.getElementById('cost_non_it_ct_excl').value || "0",
+          'EXCEL_COST_MIX_MARKETING_EXCL': document.getElementById('cost_mix_marketing_excl').value || "0",
+          'EXCEL_COST_MIX_CHANNEL_EXCL': document.getElementById('cost_mix_channel_excl').value || "0",
+          'EXCEL_COST_MIX_OTHER_EXCL': document.getElementById('cost_mix_other_excl').value || "0",
+
           'CURR_DATE': currDate,
           'IT_TAX_RATE': document.getElementById('rev_it_integration_tax').value + "%",
           'CT_TAX_RATE': document.getElementById('rev_ct_line_tax').value + "%",
@@ -2286,16 +2490,16 @@
           'MEETING_END_DATE': formatDateStr(document.getElementById('gen_meet_end')?.value),
           'MEETING_MODE': document.getElementById('gen_meet_mode')?.value || "",
           'ATTENDEES': (() => {
-              let str = "";
+              let parts = [];
               const scale = document.getElementById('gen_project_scale')?.value;
               if (scale === 'large') {
                   const cityAtt = document.getElementById('gen_city_attendees')?.value || "";
-                  str += "市公司政企部（解决方案、交付支撑、计划部）\n           " + cityAtt + "\n";
+                  parts.push("市公司政企部（解决方案、交付支撑、计划部）：\n        " + cityAtt);
               }
               const branchName = document.getElementById('gen_branch_name')?.value || "XXXX";
               const branchAtt = document.getElementById('gen_branch_attendees')?.value || "";
-              str += `${branchName}分公司（建设、维护、网络/信息安全员）\n           ${branchAtt}`;
-              return str;
+              parts.push(`${branchName}分公司（建设、维护、网络/信息安全员）：\n        ${branchAtt}`);
+              return parts.join('\n');
           })(),
           'ONSITE_SUPPORT': document.getElementById('gen_onsite_support')?.value || "",
           'PROJECT_BACKGROUND': document.getElementById('gen_proj_bg')?.value || "",
@@ -2310,46 +2514,64 @@
           'TECH_CONCLUSION': document.getElementById('gen_tech_conclusion')?.value || "",
           'IT_BUSINESS_MODE': document.getElementById('gen_it_bus_mode')?.value || "",
           'IT_FUNDING_SOURCE': document.getElementById('gen_it_fund_src')?.value || "",
-          'IT_INQUIRY_PROCESS': document.getElementById('gen_it_inquiry')?.value || "",
+          'IT_INQUIRY_PROCESS': "",
+          'VENDOR_SCREENSHOT_LIST': (() => {
+              let arr = [];
+              document.querySelectorAll('#inq_vendors_container > div').forEach((row, i) => {
+                  let name = row.querySelectorAll('input')[0]?.value;
+                  if(name) {
+                      arr.push(`（${i+1}）${name}\n报价截图`);
+                  }
+              });
+              return arr.join('\n');
+          })(),
           'IS_JOINT_BIDDING': document.getElementById('gen_is_joint')?.value || "",
           'REVENUE_COLLECTION_METHOD': document.getElementById('gen_rev_collection')?.value || "",
           'EXPENDITURE_PAYMENT_METHOD': document.getElementById('gen_exp_payment')?.value || "",
           'PROJECT_REVIEW_ACCURACY': document.getElementById('gen_review_acc')?.value || "",
           'SINGLE_SOURCE_EXPLANATION': document.getElementById('gen_has_single_source')?.checked ? (document.getElementById('gen_single_source')?.value || "") : "",
           'CONSTRUCTION_TIME_REQ': document.getElementById('gen_construction_time_req')?.value || "",
-          'PROCUREMENT_METHOD': (document.getElementById('gen_procurement_method')?.value === '其他') ? (document.getElementById('gen_procurement_method_other')?.value || "其他") : (document.getElementById('gen_procurement_method')?.value || ""),
+                    'PROCUREMENT_METHOD': (document.getElementById('gen_procurement_method')?.value === '其他') ? (document.getElementById('gen_procurement_method_other')?.value || "其他") : (document.getElementById('gen_procurement_method')?.value || ""),
           'CONSTRUCTION_INTERFACE': document.getElementById('gen_construction_interface')?.value || "",
-          'PROJECT_TOTAL_INVESTMENT': projTotalInvestStr
+          'PROJECT_TOTAL_INVESTMENT': projTotalInvestStr,
+          'TABLE_TECH_ITEMS': JSON.stringify(techItems),
+          'TABLE_INQ_VENDORS': JSON.stringify(inqVendors),
+          'RISK_OWNER': document.getElementById('gen_risk_owner')?.value || ""
         };
-
-        const selectedTemplates = Array.from(document.querySelectorAll('.template-checkbox:checked')).map(cb => cb.value);
-        if(selectedTemplates.length === 0) {
-            alert("请至少选择一个要生成的模板！");
-            btn.innerText = "🚀 一键生成选中文件";
-            btn.disabled = false;
-            return;
-        }
 
         const resultPath = await invoke('generate_lifecycle_docs', { 
             variables: variables,
-            selectedTemplates: selectedTemplates
+            selectedTemplates: [templateFilename]
         });
         genDocsOutputDir = resultPath;
 
+        btnElement.innerHTML = "✅ 生成成功";
+        setTimeout(() => {
+          btnElement.innerHTML = originalText;
+          btnElement.disabled = false;
+        }, 3000);
+
+        const msgBox = document.getElementById('gen-docs-result-msg');
         msgBox.style.display = 'block';
         msgBox.style.color = 'var(--success)';
         msgBox.style.backgroundColor = 'var(--surface_container_highest)';
-        msgBox.innerText = `✅ 生成成功！\n文件保存在:\n${resultPath}`;
+        msgBox.innerText = `✅ 生成成功！\n文件已保存至:\n${resultPath}`;
+        
+        const actionBox = document.getElementById('gen-docs-actions');
         actionBox.style.display = 'flex';
 
       } catch(e) {
+        btnElement.innerHTML = "❌ 生成失败";
+        setTimeout(() => {
+          btnElement.innerHTML = originalText;
+          btnElement.disabled = false;
+        }, 3000);
+        
+        const msgBox = document.getElementById('gen-docs-result-msg');
         msgBox.style.display = 'block';
         msgBox.style.color = 'var(--on_error_container)';
         msgBox.style.backgroundColor = 'var(--error_container)';
         msgBox.innerText = `❌ 生成失败:\n${e}`;
-      } finally {
-        btn.innerText = "🚀 自动生成所有文档";
-        btn.disabled = false;
       }
     }
 

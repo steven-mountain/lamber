@@ -76,6 +76,57 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
                 // Pre-process XML to join fragmented placeholders like {<w:t>V</w:t><w:t>AR</w:t>}
                 xml_str = clean_xml_placeholders(&xml_str);
 
+                // Handle dynamic tables passed as JSON array string
+                for (k, v) in variables {
+                    if k.starts_with("TABLE_") {
+                        if let Ok(rows_data) = serde_json::from_str::<Vec<std::collections::HashMap<String, String>>>(v) {
+                            // Find the first key to locate the row. We have to guess the key if it's empty.
+                            // But usually, we map TABLE_TECH_ITEMS -> TECH_ITEM_NAME. 
+                            // Let's deduce it from the key name if possible, or if the array is empty, we might not be able to find it easily unless we hardcode.
+                            // To be safe, we always send at least one item, or we look for specific known keys.
+                            let first_key = if !rows_data.is_empty() {
+                                rows_data[0].keys().next().cloned()
+                            } else {
+                                if k == "TABLE_TECH_ITEMS" { Some("TECH_ITEM_NAME".to_string()) }
+                                else if k == "TABLE_INQ_VENDORS" { Some("INQ_VENDOR_NAME".to_string()) }
+                                else { None }
+                            };
+                            
+                            if let Some(first_key) = first_key {
+                                let pattern = format!("{{{}}}", first_key);
+                                
+                                if let Some(idx) = xml_str.find(&pattern) {
+                                    let tr_start = xml_str[..idx].rfind("<w:tr>").or_else(|| xml_str[..idx].rfind("<w:tr ")).unwrap_or(0);
+                                    let tr_end_rel = xml_str[idx..].find("</w:tr>").unwrap_or(xml_str.len() - idx);
+                                    let tr_end = idx + tr_end_rel + 7;
+                                    
+                                    if tr_start < tr_end && tr_end <= xml_str.len() {
+                                        let row_xml = &xml_str[tr_start..tr_end];
+                                        let mut new_rows = String::new();
+                                        
+                                        for row_data in rows_data {
+                                            let mut new_row = row_xml.to_string();
+                                            for (rk, rv) in &row_data {
+                                                let r_pattern = format!("{{{}}}", rk);
+                                                let escaped_rv = rv.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+                                                let docx_rv = escaped_rv.replace("\n", "</w:t><w:br/><w:t>");
+                                                new_row = new_row.replace(&r_pattern, &docx_rv);
+                                            }
+                                            // Also clean up any remaining unresolved {} in this row (optional, but good practice)
+                                            let re = regex::Regex::new(r"\{[A-Z_0-9]+\}").unwrap();
+                                            new_row = re.replace_all(&new_row, "").to_string();
+                                            
+                                            new_rows.push_str(&new_row);
+                                        }
+                                        
+                                        xml_str = format!("{}{}{}", &xml_str[..tr_start], new_rows, &xml_str[tr_end..]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 for (k, v) in variables {
                     let pattern = format!("{{{}}}", k);
                     
@@ -87,6 +138,9 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
                     let docx_v = escaped_v.replace("\n", "</w:t><w:br/><w:t>");
                     xml_str = xml_str.replace(&pattern, &docx_v);
                 }
+
+                let unresolved_re = Regex::new(r"\{[a-zA-Z0-9_\u4e00-\u9fa5]+\}").unwrap();
+                xml_str = unresolved_re.replace_all(&xml_str, "").to_string();
 
                 zip_writer.start_file(name, options).map_err(|e| e.to_string())?;
                 zip_writer.write_all(xml_str.as_bytes()).map_err(|e| e.to_string())?;
@@ -143,7 +197,7 @@ pub fn get_available_templates() -> Result<Vec<String>, String> {
                 if let Some(ext) = path.extension() {
                     let ext_str = ext.to_string_lossy().to_lowercase();
                     let file_name = path.file_name().unwrap().to_string_lossy().to_string();
-                    if ext_str == "docx" && !file_name.starts_with("~$") && !file_name.starts_with(".~") {
+                    if (ext_str == "docx" || ext_str == "xlsx") && !file_name.starts_with("~$") && !file_name.starts_with(".~") {
                         templates.push(file_name);
                     }
                 }
@@ -190,8 +244,8 @@ pub fn generate_lifecycle_docs(variables: HashMap<String, String>, selected_temp
                 let ext_str = ext.to_string_lossy().to_lowercase();
                 let file_name = path.file_name().unwrap().to_string_lossy().to_string();
                 
-                // Ignore temporary files created by MS Word (starting with ~$)
-                if ext_str == "docx" && !file_name.starts_with("~$") && !file_name.starts_with(".~") {
+                // Ignore temporary files created by MS Word/Excel (starting with ~$)
+                if (ext_str == "docx" || ext_str == "xlsx") && !file_name.starts_with("~$") && !file_name.starts_with(".~") {
                     
                     // Only generate files that the user explicitly selected
                     if !selected_templates.contains(&file_name) {
@@ -204,12 +258,23 @@ pub fn generate_lifecycle_docs(variables: HashMap<String, String>, selected_temp
                     
                     let out_path = output_dir.join(&out_name);
                     
-                    // We only want to generate files that actually match a template the user requested
-                    // For now, let's process all valid .docx files, but if one fails to read as zip, we should just skip it and warn, not fail the whole process.
-                    if let Err(e) = internal_generate_docx(path.to_str().unwrap(), out_path.to_str().unwrap(), &variables) {
-                        println!("Warning: failed to process template {}: {}", file_name, e);
-                        continue;
+                    if ext_str == "docx" {
+                        if let Err(e) = internal_generate_docx(path.to_str().unwrap(), out_path.to_str().unwrap(), &variables) {
+                            println!("Warning: failed to process docx template {}: {}", file_name, e);
+                            continue;
+                        }
+                    } else if ext_str == "xlsx" {
+                        // Create a copy of the excel file to output path
+                        if let Err(e) = fs::copy(&path, &out_path) {
+                            println!("Warning: failed to copy xlsx template {}: {}", file_name, e);
+                            continue;
+                        }
+                        if let Err(e) = internal_generate_xlsx(out_path.to_str().unwrap(), &variables) {
+                            println!("Warning: failed to process xlsx template {}: {}", file_name, e);
+                            continue;
+                        }
                     }
+                    
                     generated_count += 1;
                 }
             }
@@ -307,3 +372,79 @@ pub fn batch_generate_docx_from_excel(excel_path: String, template_path: String)
 
     Ok(format!("成功生成 {} 份签批表，保存在目录：\n{}", count, output_dir.display()))
 }
+
+fn internal_generate_xlsx(output_path: &str, variables: &HashMap<String, String>) -> Result<(), String> {
+    use umya_spreadsheet::*;
+    let mut book = reader::xlsx::read(std::path::Path::new(output_path))
+        .map_err(|e| format!("无法读取 Excel: {}", e))?;
+
+    if let Some(sheet) = book.get_sheet_by_name_mut("3-直接经济效益评估表") {
+        if let Some(v) = variables.get("PROJECT_NAME") {
+            let c = sheet.get_cell_mut("D2");
+            c.set_value(v);
+            c.set_formula("");
+        }
+        
+        let mut set_val = |cell: &str, key: &str| {
+            if let Some(v) = variables.get(key) {
+                let mut num_str = v.replace(",", "");
+                let mut is_pct = false;
+                if num_str.ends_with('%') {
+                    num_str = num_str.trim_end_matches('%').to_string();
+                    is_pct = true;
+                }
+                
+                let cell_obj = sheet.get_cell_mut(cell);
+                // Do NOT clear formula if we are just filling inputs. Wait, if it's an input cell, we should clear formula if any? No, we only target cells we know. But wait, we target Q10, Q23, Q24, Q25. If they have formulas, we overwrite. If they don't, we overwrite.
+                // Wait, if the user explicitly wants to overwrite a cell, we overwrite it. But we MUST NOT overwrite C45-C50, C64-C66.
+                
+                if let Ok(mut num) = num_str.parse::<f64>() {
+                    if is_pct {
+                        num /= 100.0;
+                    }
+                    cell_obj.set_value_number(num);
+                } else {
+                    cell_obj.set_value(v);
+                }
+            }
+        };
+
+        set_val("G3", "EXCEL_REV_IT_INTEGRATION_EXCL");
+        set_val("G4", "EXCEL_REV_IT_MAINTENANCE_EXCL");
+        set_val("G5", "EXCEL_REV_IT_DEVICE_SALES_EXCL");
+        set_val("G6", "EXCEL_REV_IT_DEVICE_LEASE_EXCL");
+        set_val("G7", "EXCEL_REV_IT_OTHER_EXCL");
+        set_val("G8", "EXCEL_REV_IT_CLOUD_EXCL");
+        set_val("G9", "EXCEL_REV_CT_LINE_EXCL");
+        set_val("Q10", "EXCEL_REV_CT_PRODUCT_INCL"); // formula in G10 uses Q10
+        set_val("G11", "EXCEL_REV_NON_IT_CT_EXCL");
+
+        set_val("G13", "EXCEL_COST_IT_DEVICE_EXCL");
+        set_val("G14", "EXCEL_COST_IT_CONSTRUCTION_EXCL");
+        set_val("G15", "EXCEL_COST_IT_SURVEY_EXCL");
+        set_val("G16", "EXCEL_COST_IT_INTEGRATION_EXCL");
+        set_val("G17", "EXCEL_COST_IT_OTHER_EXCL");
+        set_val("G18", "EXCEL_COST_IT_MAINTENANCE_EXCL");
+        set_val("G19", "EXCEL_COST_IT_RUNNING_EXCL");
+        set_val("G20", "EXCEL_COST_IT_BIDDING_EXCL");
+        set_val("G21", "EXCEL_COST_IT_DESIGN_EVAL_EXCL");
+        set_val("G22", "EXCEL_COST_IT_AUDIT_EXCL");
+
+        set_val("Q23", "EXCEL_COST_CT_CONSTRUCTION_INCL"); // formula in G23 uses Q23
+        set_val("Q24", "EXCEL_COST_CT_MAINTENANCE_INCL"); // formula in G24 uses Q24
+        set_val("Q25", "EXCEL_COST_CT_OTHER_INCL"); // formula in G25 uses Q25
+        set_val("G26", "EXCEL_COST_CT_BANDWIDTH_EXCL");
+        set_val("G27", "EXCEL_COST_CT_RENEWAL_EXCL");
+
+        set_val("G28", "EXCEL_COST_NON_IT_CT_EXCL");
+        set_val("G29", "EXCEL_COST_MIX_MARKETING_EXCL");
+        set_val("G30", "EXCEL_COST_MIX_CHANNEL_EXCL");
+        set_val("G31", "EXCEL_COST_MIX_OTHER_EXCL");
+    }
+
+    writer::xlsx::write(&book, std::path::Path::new(output_path))
+        .map_err(|e| format!("保存 Excel 失败: {}", e))?;
+
+    Ok(())
+}
+

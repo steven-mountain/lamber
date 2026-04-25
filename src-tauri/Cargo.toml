@@ -20,6 +20,7 @@ zip = "8.5.1"
 regex = "1.12.3"
 chrono = "0.4"
 docx-template = "0.2.7"
+umya-spreadsheet = "2.3.3"
 
 [features]
 default = [ "custom-protocol" ]
