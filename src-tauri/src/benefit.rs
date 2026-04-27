@@ -453,6 +453,8 @@ pub async fn process_excel_batch(file_path: String) -> Result<String, String> {
     let mut ct_amt_col = None;
     let mut it_tax_col = None;
     let mut ct_tax_col = None;
+    let mut rev_col = None;
+    let mut exp_col = None;
     
     let percent_format = Format::new().set_num_format("0.00%");
 
@@ -469,6 +471,8 @@ pub async fn process_excel_batch(file_path: String) -> Result<String, String> {
                     "CT产品含税总额" | "CT产品名" | "CT产品" => ct_amt_col = Some(c_idx),
                     "IT税率" => it_tax_col = Some(c_idx),
                     "CT税率" => ct_tax_col = Some(c_idx),
+                    "收款方式" => rev_col = Some(c_idx),
+                    "付款方式" => exp_col = Some(c_idx),
                     _ => {}
                 }
                 out_sheet.write_string(row_idx, c_idx as u16, &h_str).unwrap();
@@ -646,7 +650,7 @@ pub fn generate_excel_template(path: String) -> Result<(), String> {
     let mut workbook = Workbook::new();
     let worksheet = workbook.add_worksheet();
     
-    let headers = ["项目名称", "含税总收入", "含税总投入", "目标利润率", "目标净现值率", "项目周期", "CT产品名", "CT产品含税总额", "IT税率", "CT税率"];
+    let headers = ["项目名称", "含税总收入", "含税总投入", "目标利润率", "目标净现值率", "项目周期", "CT产品名", "CT产品含税总额", "IT税率", "CT税率", "收款方式", "付款方式"];
     for (col, header) in headers.iter().enumerate() {
         worksheet.write_string(0, col as u16, *header).unwrap();
     }
@@ -662,6 +666,8 @@ pub fn generate_excel_template(path: String) -> Result<(), String> {
     worksheet.write_string(1, 7, "").unwrap(); // CT产品含税总额
     worksheet.write_number(1, 8, 0.06).unwrap(); // IT税率
     worksheet.write_number(1, 9, 0.06).unwrap(); // CT税率
+    worksheet.write_string(1, 10, "合同签订后支付XX%").unwrap(); // 收款方式
+    worksheet.write_string(1, 11, "背靠背支付").unwrap(); // 付款方式
     
     workbook.save(&path).map_err(|e| format!("写入模板失败: {}", e))?;
     Ok(())

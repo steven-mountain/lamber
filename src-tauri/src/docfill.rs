@@ -254,7 +254,18 @@ pub fn generate_lifecycle_docs(variables: HashMap<String, String>, selected_temp
                     
                     let proj_name = variables.get("PROJECT_NAME").cloned().unwrap_or_else(|| "未命名".to_string());
                     let safe_proj_name = proj_name.chars().filter(|c| !r#"\/:*?"<>|"#.contains(*c)).collect::<String>();
-                    let out_name = file_name.replace("模板", &format!("-{}", safe_proj_name));
+                    
+                    // First clean up some generic template markings
+                    let mut clean_name = file_name.replace("模板", "").replace("【2024版】", "").replace("【2025版】", "").replace("_变量版", "");
+                    // Remove extension
+                    if let Some(dot_idx) = clean_name.rfind('.') {
+                        clean_name = clean_name[..dot_idx].to_string();
+                    }
+                    // Trim trailing hyphens or underscores
+                    clean_name = clean_name.trim_end_matches('-').trim_end_matches('_').to_string();
+                    
+                    // Reconstruct: clean_name-project_name.extension
+                    let out_name = format!("{}-{}.{}", clean_name, safe_proj_name, ext_str);
                     
                     let out_path = output_dir.join(&out_name);
                     
@@ -331,6 +342,8 @@ pub fn batch_generate_docx_from_excel(excel_path: String, template_path: String)
         ("项目毛利率", "PROJECT_GROSS_PROFIT_MARGIN"),
         ("IT净现值率", "IT_NET_PRESENT_VALUE_RATE"),
         ("项目周期", "CONTRACT_DURATION"),
+        ("收款方式", "REV_COLLECTION"),
+        ("付款方式", "EXP_PAYMENT"),
     ];
 
     let curr_date = Local::now().format("%Y年%m月%d日").to_string();
@@ -339,6 +352,13 @@ pub fn batch_generate_docx_from_excel(excel_path: String, template_path: String)
     for row in rows {
         let mut vars = HashMap::new();
         vars.insert("CURR_DATE".to_string(), curr_date.clone());
+        
+        // Add default values for new dynamic subjects to ensure batch generation doesn't leave un-replaced placeholders
+        vars.insert("SUBJECT_IT_COST".to_string(), "IT集成".to_string());
+        vars.insert("SUBJECT_CT_COST".to_string(), "CT-专线及产品".to_string());
+        vars.insert("SUBJECT_IT_REV".to_string(), "小微ICT业务-IoT-集成".to_string());
+        vars.insert("SUBJECT_CT_REV".to_string(), "CT-专线及产品".to_string());
+        vars.insert("PROJECT_BACKGROUND".to_string(), "".to_string());
 
         for (ch_key, en_key) in mapping {
             if let Some(&idx) = headers.get(ch_key) {
@@ -440,6 +460,39 @@ fn internal_generate_xlsx(output_path: &str, variables: &HashMap<String, String>
         set_val("G29", "EXCEL_COST_MIX_MARKETING_EXCL");
         set_val("G30", "EXCEL_COST_MIX_CHANNEL_EXCL");
         set_val("G31", "EXCEL_COST_MIX_OTHER_EXCL");
+    }
+
+    if let Some(sheet2) = book.get_sheet_by_name_mut("2-ICT项目评估结果") {
+        if let Some(v) = variables.get("PROJECT_NAME") {
+            let c = sheet2.get_cell_mut("B4");
+            c.set_value(v);
+            c.set_formula("");
+        }
+        if let Some(v) = variables.get("CUSTOMER_NAME") {
+            let c = sheet2.get_cell_mut("B5");
+            c.set_value(v);
+            c.set_formula("");
+        }
+        if let Some(v) = variables.get("RENEWAL_PROJECT_FLAG") {
+            let c = sheet2.get_cell_mut("B6");
+            c.set_value(v);
+            c.set_formula("");
+        }
+        if let Some(v) = variables.get("IT_BUSINESS_MODE") {
+            let c = sheet2.get_cell_mut("B7");
+            c.set_value(v);
+            c.set_formula("");
+        }
+        if let Some(v) = variables.get("CONTRACT_DURATION") {
+            let c = sheet2.get_cell_mut("B8");
+            c.set_value(v);
+            c.set_formula("");
+        }
+        if let Some(v) = variables.get("IT_FUNDING_SOURCE") {
+            let c = sheet2.get_cell_mut("B9");
+            c.set_value(v);
+            c.set_formula("");
+        }
     }
 
     writer::xlsx::write(&book, std::path::Path::new(output_path))
