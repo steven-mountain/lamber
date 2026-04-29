@@ -311,6 +311,38 @@ pub fn reverse_calc_ict_target(input: IctInput, target_type: String, target_valu
 }
 
 #[tauri::command]
+pub fn reverse_calc_ict_revenue_target(input: IctInput, target_type: String, target_value: String) -> Result<String, String> {
+    let target = Decimal::from_str(&target_value).unwrap_or(Decimal::ZERO);
+    let mut low = Decimal::ZERO;
+    let mut high = Decimal::new(10_000_000_000, 0);
+    let mut best_mid = Decimal::ZERO;
+
+    for _ in 0..100 {
+        let mid = (low + high) / Decimal::new(2, 0);
+        best_mid = mid;
+
+        let mut test_input = input.clone();
+        test_input.rev_it_integration.incl_tax = mid.to_string();
+
+        let res = calculate_ict_benefit(test_input)?;
+
+        let current_val = if target_type == "margin" {
+            Decimal::from_str(&res.margin_rate).unwrap_or(Decimal::ZERO)
+        } else {
+            Decimal::from_str(&res.npv_rate).unwrap_or(Decimal::ZERO)
+        };
+
+        if current_val < target {
+            low = mid;
+        } else {
+            high = mid;
+        }
+    }
+
+    Ok(best_mid.round_dp(2).to_string())
+}
+
+#[tauri::command]
 pub fn calculate_benefit(input: CalcInput) -> Result<CalcResult, String> {
     let d1 = Decimal::ONE;
     let d72 = Decimal::new(72, 0);

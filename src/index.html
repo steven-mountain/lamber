@@ -397,6 +397,100 @@
       transform: translateY(1px);
     }
 
+    .collapse-content {
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      transition: max-height 0.25s ease, opacity 0.25s ease;
+    }
+
+    .collapse-content.show {
+      max-height: 800px;
+      opacity: 1;
+    }
+
+    .demand-config-card {
+      border: 1px solid var(--ghost-border);
+      border-radius: 12px;
+      background: var(--surface_container_low);
+      overflow: hidden;
+    }
+
+    .demand-config-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--ghost-border);
+      background: var(--surface_container_lowest);
+      font-weight: 800;
+      color: var(--on_surface);
+      font-size: 0.95rem;
+    }
+
+    .demand-config-body {
+      padding: 14px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .demand-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .demand-inline-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      color: var(--on_surface);
+      font-weight: 700;
+    }
+
+    .demand-subcard {
+      margin-top: 8px;
+      padding: 12px;
+      border-radius: 10px;
+      background: var(--surface_container_lowest);
+      border: 1px dashed var(--ghost-border);
+      border-left: 4px solid var(--outline_variant);
+    }
+
+    .demand-dropzone {
+      border: 2px dashed var(--ghost-border);
+      border-radius: 12px;
+      padding: 16px;
+      background: var(--surface_container_lowest);
+      cursor: default;
+      text-align: left;
+      transition: border-color 0.2s ease, background 0.2s ease;
+      outline: none;
+    }
+
+    .demand-dropzone:focus,
+    .demand-dropzone:hover {
+      border-color: var(--outline_variant);
+      background: var(--surface_container_low);
+    }
+
+    .demand-dropzone-title {
+      font-weight: 800;
+      font-size: 0.9rem;
+      color: var(--on_surface);
+      margin-bottom: 6px;
+    }
+
+    .demand-dropzone-hint {
+      font-size: 0.8rem;
+      color: var(--on_surface_variant);
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
     /* Warning Banner */
     .warning-banner {
       background: var(--error_container);
@@ -1148,7 +1242,7 @@
               </div>
               <div class="form-group">
                 <label>IT建设内容</label>
-                <textarea id="gen_it_content" rows="2" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;" placeholder="如硬件、集成、维保等">集成</textarea>
+                <textarea id="gen_it_content" rows="2" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;" placeholder="如硬件、集成、维保等"></textarea>
               </div>
               <div class="form-group">
                 <label>CT建设内容</label>
@@ -1339,6 +1433,89 @@
               </div>
             </div>
 
+            <div id="gen_demand_import_area" style="display: none; margin-bottom: 20px;">
+              <div class="demand-config-card">
+                <div class="demand-config-header">
+                  <span>⚙️</span>
+                  <span>《ICT项目需求导入表》专属配置</span>
+                </div>
+                <div class="demand-config-body">
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label>服务内容</label>
+                    <textarea id="gen_demand_service_content" rows="2" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;" placeholder="IT；CT"></textarea>
+                  </div>
+
+                  <div class="demand-grid-2">
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label>设备需求清单</label>
+                      <input type="text" id="gen_demand_device_list" value="不涉及" style="background: var(--surface_container_lowest);">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label>客户确认</label>
+                      <input type="text" id="gen_demand_customer_confirm" value="微信截图" style="background: var(--surface_container_lowest);">
+                    </div>
+                  </div>
+
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label>部署环境要求</label>
+                    <input type="text" id="gen_demand_env_require" value="客户提供部署环境，不包含在本次项目范围内" style="background: var(--surface_container_lowest);">
+                  </div>
+
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label class="demand-inline-toggle">
+                      <input type="checkbox" id="gen_demand_has_public_url" style="width: 16px; height: 16px;">
+                      项目有效的公示网址及招标文件
+                    </label>
+                    <div id="gen_demand_public_url_section" class="collapse-content">
+                      <div class="demand-subcard">
+                        <div style="font-size: 0.75rem; font-weight: 700; color: var(--on_surface_variant); margin-bottom: 6px;">请填写有效网址</div>
+                        <input type="text" id="gen_demand_public_url" placeholder="https://..." style="background: var(--surface_container_lowest);">
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label class="demand-inline-toggle">
+                      <input type="checkbox" id="gen_demand_has_security" style="width: 16px; height: 16px;">
+                      信息安全、密评
+                    </label>
+                    <div id="gen_demand_security_section" class="collapse-content">
+                      <div class="demand-subcard">
+                        <div style="font-size: 0.75rem; font-weight: 700; color: var(--on_surface_variant); margin-bottom: 6px;">填写安全状态（默认：无）</div>
+                        <input type="text" id="gen_demand_security_detail" placeholder="例如：已做密评/待补充" style="background: var(--surface_container_lowest);">
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label>附件1截图（客户确认材料）</label>
+                    <input type="file" id="gen_demand_attach1_file" accept="image/*" style="display:none;">
+                    <div id="gen_demand_attach1_paste" class="demand-dropzone" contenteditable="true" tabindex="0">
+                      <div class="demand-dropzone-title"><span class="upload-link" style="color:var(--primary); text-decoration:underline; cursor:pointer;">点击选择图片</span>，或直接粘贴（Ctrl+V / Cmd+V）</div>
+                      <div class="demand-dropzone-hint">支持 JPG / PNG 格式</div>
+                    </div>
+                    <img id="gen_demand_attach1_preview" style="display:none; margin-top: 10px; max-width: 100%; border-radius: 10px; border: 1px solid var(--ghost-border);" />
+                    <button class="primary-btn" id="gen_demand_attach1_clear" type="button" style="display:none; margin-top: 10px; padding: 8px 12px; background: var(--surface_container_highest); color: var(--on_surface);">清除图片</button>
+                    <input type="hidden" id="gen_demand_attach1_image" value="">
+                  </div>
+
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <div id="gen_demand_attach2_group" class="collapse-content">
+                      <label style="display:block; font-weight: 800; margin-bottom: 6px;">附件2截图（招标文件/挂网截图）</label>
+                      <input type="file" id="gen_demand_attach2_file" accept="image/*" style="display:none;">
+                      <div id="gen_demand_attach2_paste" class="demand-dropzone" contenteditable="true" tabindex="0">
+                        <div class="demand-dropzone-title"><span class="upload-link" style="color:var(--primary); text-decoration:underline; cursor:pointer;">点击选择图片</span>，或直接粘贴（Ctrl+V / Cmd+V）</div>
+                        <div class="demand-dropzone-hint">勾选公示网址后启用</div>
+                      </div>
+                      <img id="gen_demand_attach2_preview" style="display:none; margin-top: 10px; max-width: 100%; border-radius: 10px; border: 1px solid var(--ghost-border);" />
+                      <button class="primary-btn" id="gen_demand_attach2_clear" type="button" style="display:none; margin-top: 10px; padding: 8px 12px; background: var(--surface_container_highest); color: var(--on_surface);">清除图片</button>
+                      <input type="hidden" id="gen_demand_attach2_image" value="">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <button class="primary-btn" id="btn-generate-single-doc" style="padding: 12px 32px; font-size: 1.05rem; margin-bottom: 16px;">🚀 立即生成此文件</button>
             <div id="gen-docs-result-msg" style="font-size: 0.95rem; font-weight: 600; display: none; padding: 12px; border-radius: 6px; background: var(--surface_container_highest); color: var(--success); margin-bottom: 16px;"></div>
             <div id="gen-docs-actions" style="display:none; justify-content: center;">
@@ -1394,10 +1571,21 @@
 
       <!-- Right Metrics Panel -->
       <div class="sidebar" style="width: 300px; flex-shrink: 0; background: var(--surface_container_lowest); border-left: 1px solid var(--ghost-border); border-right: none;">
-        <h3 class="section-title">智能反算投入</h3>
+        <h3 class="section-title">智能反算</h3>
         <div class="table-card" style="padding: 16px; margin-bottom: 12px; background: var(--surface_container_low); border: 1px solid var(--outline_variant); box-shadow: none;">
           <div style="font-size: 0.75rem; color: var(--on_surface_variant); margin-bottom: 12px; font-weight: 600; line-height: 1.4;">
-            已知当前收入，根据目标效益指标，自动反算并填入<strong style="color:var(--primary);">IT集成服务</strong>的含税最高限价。
+            根据目标效益指标，自动反算并填入<strong style="color:var(--primary);">IT集成服务</strong>的投入或收入（含税）。
+          </div>
+
+          <div class="radio-card" style="box-shadow: none; border: 1px solid var(--ghost-border); padding: 8px; margin-bottom: 12px;">
+            <label class="radio-item">
+               <input type="radio" name="ict_reverse_mode" value="cost" checked>
+               反算投入
+            </label>
+            <label class="radio-item">
+               <input type="radio" name="ict_reverse_mode" value="revenue">
+               反算收入
+            </label>
           </div>
           
           <div class="radio-card" style="box-shadow: none; border: 1px solid var(--ghost-border); padding: 8px;">
@@ -1416,7 +1604,7 @@
             <input type="number" step="0.0001" id="ict_reverse_target_value" value="0.15" style="background: var(--surface_container_lowest);">
           </div>
           
-          <button class="primary-btn" style="margin-top: 12px; padding: 10px; font-size: 0.9rem;" onclick="performIctReverseCalculation()">⚡ 智能反算限价</button>
+          <button class="primary-btn" style="margin-top: 12px; padding: 10px; font-size: 0.9rem;" onclick="performIctReverseCalculation()">⚡ 智能反算</button>
         </div>
 
         <button class="primary-btn" style="margin-top: 24px;" onclick="performIctCalculation()">🔄 重新计算</button>
@@ -1606,6 +1794,9 @@
     }
 
     async function performIctReverseCalculation() {
+      const mode = document.querySelector('input[name="ict_reverse_mode"]:checked')?.value || 'cost';
+      const btn = document.querySelector('.table-card button[onclick="performIctReverseCalculation()"]');
+      const oldText = btn ? btn.innerText : '';
       try {
         if (!window.__TAURI__) { return; }
         const invoke = window.__TAURI__.core.invoke;
@@ -1619,46 +1810,53 @@
           return;
         }
 
-        // Show loading state on button
-        const btn = document.querySelector('.table-card button[onclick="performIctReverseCalculation()"]');
-        const oldText = btn.innerText;
-        btn.innerText = "⏳ 正在反推...";
-        btn.disabled = true;
+        if (btn) {
+          btn.innerText = "⏳ 正在反推...";
+          btn.disabled = true;
+        }
 
-        const maxCostStr = await invoke('reverse_calc_ict_target', { 
+        const valStr = await invoke(mode === 'revenue' ? 'reverse_calc_ict_revenue_target' : 'reverse_calc_ict_target', { 
           input: input, 
           targetType: targetType, 
           targetValue: String(targetValue) 
         });
         
-        btn.innerText = oldText;
-        btn.disabled = false;
+        if (btn) {
+          btn.innerText = oldText;
+          btn.disabled = false;
+        }
 
-        // Apply calculated limit back to the form (to Integration Service)
-        const integrationInput = document.getElementById('cost_it_integration_incl');
-        integrationInput.value = maxCostStr;
-        
-        // Trigger input to update taxes automatically
-        integrationInput.dispatchEvent(new Event('input', { bubbles: true }));
+        if (mode === 'revenue') {
+          const integrationInput = document.getElementById('rev_it_integration_incl');
+          integrationInput.value = valStr;
+          integrationInput.dispatchEvent(new Event('input', { bubbles: true }));
+          switchIctTab('revenue');
+          integrationInput.style.transition = 'background 0.5s';
+          integrationInput.style.background = 'var(--primary_container)';
+          setTimeout(() => {
+            integrationInput.style.background = 'var(--surface_container)';
+          }, 1500);
+        } else {
+          const integrationInput = document.getElementById('cost_it_integration_incl');
+          integrationInput.value = valStr;
+          integrationInput.dispatchEvent(new Event('input', { bubbles: true }));
 
-        // ALSO: Apply to Final Selection Limit and reverse-calculate the Quote
-        const finalLimitInput = document.getElementById('calc_final_limit');
-        finalLimitInput.value = maxCostStr;
-        updateSelectionCalc('limit');
-        
-        // Switch to the Cost tab to show the user the updated field
-        switchIctTab('cost');
-        
-        // Flash the input field background to highlight the change
-        integrationInput.style.transition = 'background 0.5s';
-        integrationInput.style.background = 'var(--primary_container)';
-        finalLimitInput.style.transition = 'background 0.5s';
-        finalLimitInput.style.background = 'var(--primary_container)';
-        
-        setTimeout(() => {
-          integrationInput.style.background = 'var(--surface_container)';
-          finalLimitInput.style.background = 'var(--primary_container)'; // keep it distinct as per CSS
-        }, 1500);
+          const finalLimitInput = document.getElementById('calc_final_limit');
+          finalLimitInput.value = valStr;
+          updateSelectionCalc('limit');
+          
+          switchIctTab('cost');
+          
+          integrationInput.style.transition = 'background 0.5s';
+          integrationInput.style.background = 'var(--primary_container)';
+          finalLimitInput.style.transition = 'background 0.5s';
+          finalLimitInput.style.background = 'var(--primary_container)';
+          
+          setTimeout(() => {
+            integrationInput.style.background = 'var(--surface_container)';
+            finalLimitInput.style.background = 'var(--primary_container)';
+          }, 1500);
+        }
 
         // Finally, refresh the dashboard calculations
         performIctCalculation();
@@ -1666,8 +1864,7 @@
       } catch (error) {
         console.error(error);
         alert('反算失败: ' + error);
-        const btn = document.querySelector('.table-card button[onclick="performIctReverseCalculation()"]');
-        if(btn) { btn.innerText = "⚡ 智能反算限价"; btn.disabled = false; }
+        if(btn) { btn.innerText = oldText || "⚡ 智能反算"; btn.disabled = false; }
       }
     }
     // Auto update cashflow chart on custom edits
@@ -2371,6 +2568,26 @@
         // Initialize dynamic fields based on default checkbox state
         toggleMidThree();
         
+        // Sync IT Content with Project Name
+        const projNameInput = document.getElementById('ict_proj_name');
+        const itContentInput = document.getElementById('gen_it_content');
+        
+        function syncItContent() {
+            if (projNameInput && itContentInput) {
+                let name = projNameInput.value;
+                let itContent = name.replace(/项目/g, '');
+                if (!itContent.includes('服务') && itContent.trim() !== '') {
+                    itContent += '服务';
+                }
+                itContentInput.value = itContent;
+            }
+        }
+        
+        if (projNameInput && itContentInput) {
+            projNameInput.addEventListener('input', syncItContent);
+            syncItContent(); // Initial sync
+        }
+
         // Sync project backgrounds
         const bgParam = document.getElementById('gen_project_background');
         const bgDoc = document.getElementById('gen_proj_bg');
@@ -2488,6 +2705,134 @@
                         billingArea.style.display = 'none';
                     }
                 }
+
+                const demandArea = document.getElementById('gen_demand_import_area');
+                if (demandArea) {
+                    if (t.includes('需求导入表')) {
+                        demandArea.style.display = 'block';
+                        const it = (document.getElementById('gen_it_content')?.value || "").trim();
+                        const ct = (document.getElementById('gen_ct_content')?.value || "").trim();
+                        const defaultSvc = [it, ct].filter(v => v && v !== "无").join('；');
+                        const svcEl = document.getElementById('gen_demand_service_content');
+                        if (svcEl && !svcEl.value.trim()) svcEl.value = defaultSvc;
+
+                        const devEl = document.getElementById('gen_demand_device_list');
+                        if (devEl && !devEl.value.trim()) devEl.value = "不涉及";
+
+                        const envEl = document.getElementById('gen_demand_env_require');
+                        if (envEl && !envEl.value.trim()) envEl.value = "客户提供部署环境，不包含在本次项目范围内";
+
+                        const confirmEl = document.getElementById('gen_demand_customer_confirm');
+                        if (confirmEl && !confirmEl.value.trim()) confirmEl.value = "微信截图";
+
+                        const pubCb = document.getElementById('gen_demand_has_public_url');
+                        const pubSection = document.getElementById('gen_demand_public_url_section');
+                        const attach2Group = document.getElementById('gen_demand_attach2_group');
+                        if (pubCb) {
+                            if (pubSection) pubSection.classList.toggle('show', pubCb.checked);
+                            if (attach2Group) attach2Group.classList.toggle('show', pubCb.checked);
+                            pubCb.onchange = () => { 
+                                if (pubSection) pubSection.classList.toggle('show', pubCb.checked);
+                                if (attach2Group) attach2Group.classList.toggle('show', pubCb.checked);
+                                if (!pubCb.checked) {
+                                    const clear2 = document.getElementById('gen_demand_attach2_clear');
+                                    if (clear2) clear2.click();
+                                }
+                            };
+                        }
+
+                        const secCb = document.getElementById('gen_demand_has_security');
+                        const secSection = document.getElementById('gen_demand_security_section');
+                        if (secCb) {
+                            if (secSection) secSection.classList.toggle('show', secCb.checked);
+                            secCb.onchange = () => { if (secSection) secSection.classList.toggle('show', secCb.checked); };
+                        }
+
+                        const setupImagePicker = (fileId, pasteId, previewId, hiddenId, clearBtnId) => {
+                            const fileEl = document.getElementById(fileId);
+                            const pasteEl = document.getElementById(pasteId);
+                            const previewEl = document.getElementById(previewId);
+                            const hiddenEl = document.getElementById(hiddenId);
+                            const clearEl = document.getElementById(clearBtnId);
+                            if (!fileEl || !pasteEl || !previewEl || !hiddenEl || !clearEl) return;
+
+                            const resetText = () => {
+                                pasteEl.innerHTML = '<div class="demand-dropzone-title"><span class="upload-link" style="color:var(--primary); text-decoration:underline; cursor:pointer;">点击选择图片</span>，或直接粘贴（Ctrl+V / Cmd+V）</div><div class="demand-dropzone-hint">支持 JPG / PNG 格式</div>';
+                            };
+
+                            const setDataUrl = (dataUrl) => {
+                                hiddenEl.value = dataUrl || "";
+                                if (dataUrl) {
+                                    previewEl.src = dataUrl;
+                                    previewEl.style.display = 'block';
+                                    clearEl.style.display = 'inline-flex';
+                                } else {
+                                    previewEl.removeAttribute('src');
+                                    previewEl.style.display = 'none';
+                                    clearEl.style.display = 'none';
+                                }
+                            };
+
+                            if (!fileEl.dataset.listenerAdded) {
+                                fileEl.dataset.listenerAdded = 'true';
+                                fileEl.addEventListener('change', async () => {
+                                    const f = fileEl.files && fileEl.files[0];
+                                    if (!f) return;
+                                    const reader = new FileReader();
+                                    reader.onload = () => setDataUrl(String(reader.result || ""));
+                                    reader.readAsDataURL(f);
+                                });
+                            }
+
+                            if (!pasteEl.dataset.clickAdded) {
+                                pasteEl.dataset.clickAdded = 'true';
+                                pasteEl.addEventListener('click', (e) => {
+                                    if (e.target.classList.contains('upload-link')) {
+                                        fileEl.click();
+                                    }
+                                });
+                            }
+
+                            if (!pasteEl.dataset.listenerAdded) {
+                                pasteEl.dataset.listenerAdded = 'true';
+                                pasteEl.addEventListener('paste', (e) => {
+                                    const items = e.clipboardData && e.clipboardData.items ? Array.from(e.clipboardData.items) : [];
+                                    const imgItem = items.find(it => it.type && it.type.startsWith('image/'));
+                                    if (!imgItem) return;
+                                    e.preventDefault();
+                                    const blob = imgItem.getAsFile();
+                                    if (!blob) return;
+                                    const reader = new FileReader();
+                                    reader.onload = () => setDataUrl(String(reader.result || ""));
+                                    reader.readAsDataURL(blob);
+                                    pasteEl.innerText = '已粘贴图片，可继续粘贴覆盖';
+                                });
+                            }
+
+                            if (!clearEl.dataset.listenerAdded) {
+                                clearEl.dataset.listenerAdded = 'true';
+                                clearEl.addEventListener('click', () => {
+                                    fileEl.value = '';
+                                    hiddenEl.value = '';
+                                    previewEl.removeAttribute('src');
+                                    previewEl.style.display = 'none';
+                                    clearEl.style.display = 'none';
+                                    resetText();
+                                });
+                            }
+
+                            if (!pasteEl.dataset.resetAdded) {
+                                pasteEl.dataset.resetAdded = 'true';
+                                resetText();
+                            }
+                        };
+
+                        setupImagePicker('gen_demand_attach1_file', 'gen_demand_attach1_paste', 'gen_demand_attach1_preview', 'gen_demand_attach1_image', 'gen_demand_attach1_clear');
+                        setupImagePicker('gen_demand_attach2_file', 'gen_demand_attach2_paste', 'gen_demand_attach2_preview', 'gen_demand_attach2_image', 'gen_demand_attach2_clear');
+                    } else {
+                        demandArea.style.display = 'none';
+                    }
+                }
                 document.getElementById('gen-docs-result-msg').style.display = 'none';
                 document.getElementById('gen-docs-actions').style.display = 'none';
                 
@@ -2521,11 +2866,52 @@
         let currDate = `${d.getFullYear()}年${String(d.getMonth()+1).padStart(2,'0')}月${String(d.getDate()).padStart(2,'0')}日`;
 
         const getExcl = (id) => parseFloat(document.getElementById(id + '_excl')?.value || 0);
+        const getIncl = (id) => parseFloat(document.getElementById(id + '_incl')?.value || 0);
         
         let itRev = getExcl('rev_it_integration') + getExcl('rev_it_maintenance') + getExcl('rev_it_device_sales') + getExcl('rev_it_device_lease') + getExcl('rev_it_other') + getExcl('rev_it_cloud');
         let ctRev = getExcl('rev_ct_line') + getExcl('rev_ct_product');
         let nonItRev = getExcl('rev_non_it_ct');
         let totalRev = itRev + ctRev + nonItRev;
+
+        let totalRevIncl = getIncl('rev_it_integration') + getIncl('rev_it_maintenance') + getIncl('rev_it_device_sales') + getIncl('rev_it_device_lease') + getIncl('rev_it_other') + getIncl('rev_it_cloud') + getIncl('rev_ct_line') + getIncl('rev_ct_product') + getIncl('rev_non_it_ct');
+        let leaderLine = totalRevIncl >= 3000000 ? "分管领导（签字）：" : "";
+        let demandServiceContent = (() => {
+            const manual = (document.getElementById('gen_demand_service_content')?.value || "").trim();
+            if (manual) return manual;
+            const it = (document.getElementById('gen_it_content')?.value || "").trim();
+            const ct = (document.getElementById('gen_ct_content')?.value || "").trim();
+            return [it, ct].filter(v => v && v !== "无").join('；');
+        })();
+        let demandCustomerConfirm = (document.getElementById('gen_demand_customer_confirm')?.value || "微信截图").trim();
+        if (!demandCustomerConfirm) demandCustomerConfirm = "微信截图";
+        let demandDeviceList = (document.getElementById('gen_demand_device_list')?.value || "不涉及").trim();
+        if (!demandDeviceList) demandDeviceList = "不涉及";
+        let demandEnvRequire = (document.getElementById('gen_demand_env_require')?.value || "客户提供部署环境，不包含在本次项目范围内").trim();
+        if (!demandEnvRequire) demandEnvRequire = "客户提供部署环境，不包含在本次项目范围内";
+        let demandPublicUrlLine = (() => {
+            const cb = document.getElementById('gen_demand_has_public_url');
+            if (!cb || !cb.checked) return "";
+            const url = (document.getElementById('gen_demand_public_url')?.value || "").trim();
+            return url ? `\n7、项目有效的公示网址及招标文件：${url}` : "\n7、项目有效的公示网址及招标文件：";
+        })();
+        let demandSecurityLine = (() => {
+            const pubCb = document.getElementById('gen_demand_has_public_url');
+            const securityIndex = pubCb && pubCb.checked ? 8 : 7;
+            const cb = document.getElementById('gen_demand_has_security');
+            if (!cb || !cb.checked) return `\n${securityIndex}、信息安全、密评：无`;
+            const detail = (document.getElementById('gen_demand_security_detail')?.value || "").trim();
+            return `\n${securityIndex}、信息安全、密评：${detail || "有"}`;
+        })();
+
+        const attach1Image = (document.getElementById('gen_demand_attach1_image')?.value || "").trim();
+        const attach2Image = (document.getElementById('gen_demand_attach2_image')?.value || "").trim();
+        const attach2TitleLine = (() => {
+            const pubCb = document.getElementById('gen_demand_has_public_url');
+            if (!pubCb || !pubCb.checked) return "";
+            const url = (document.getElementById('gen_demand_public_url')?.value || "").trim();
+            const addr = url ? url : "";
+            return `附件2： 客户项目招标文件，挂网公示的有效地址${addr}    （如有），格式自拟。`;
+        })();
 
         let itCost = getExcl('cost_it_device') + getExcl('cost_it_construction') + getExcl('cost_it_survey') + getExcl('cost_it_integration') + getExcl('cost_it_other') + getExcl('cost_it_maintenance') + getExcl('cost_it_running') + getExcl('cost_it_bidding') + getExcl('cost_it_design_eval') + getExcl('cost_it_audit');
         let ctCost = getExcl('cost_ct_construction') + getExcl('cost_ct_maintenance') + getExcl('cost_ct_other') + getExcl('cost_ct_bandwidth') + getExcl('cost_ct_renewal');
@@ -2616,6 +3002,18 @@
           'IT_GROSS_PROFIT_MARGIN': document.getElementById('ict_res_it_margin')?.innerText || "0",
           'CONTRACT_DURATION': document.getElementById('ict_project_years').value,
           'CUSTOMER_NAME': document.getElementById('ict_customer_name')?.value || "",
+          'BRANCH_NAME': document.getElementById('gen_branch_name')?.value || "",
+          'DEMAND_BUDGET': totalRevIncl.toFixed(2),
+          'LEADER_LINE': leaderLine,
+          'DEMAND_SERVICE_CONTENT': demandServiceContent,
+          'DEMAND_DEVICE_LIST': demandDeviceList,
+          'DEMAND_ENV_REQUIRE': demandEnvRequire,
+          'DEMAND_CUSTOMER_CONFIRM': demandCustomerConfirm,
+          'DEMAND_PUBLIC_URL_LINE': demandPublicUrlLine,
+          'DEMAND_SECURITY_LINE': demandSecurityLine,
+          'ATTACH1_IMAGE': attach1Image,
+          'ATTACH2_TITLE_LINE': attach2TitleLine,
+          'ATTACH2_IMAGE': (document.getElementById('gen_demand_has_public_url')?.checked ? attach2Image : ""),
           'RENEWAL_PROJECT_FLAG': (() => {
               let renewalCost = parseFloat(document.getElementById('cost_ct_renewal_excl')?.value || 0);
               return renewalCost > 0 ? "是" : "否";

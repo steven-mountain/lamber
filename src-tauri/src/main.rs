@@ -30,6 +30,7 @@ fn main() {
             benefit::calculate_benefit, 
             benefit::calculate_ict_benefit,
             benefit::reverse_calc_ict_target,
+            benefit::reverse_calc_ict_revenue_target,
             benefit::process_excel_batch,
             benefit::generate_excel_template,
             docfill::extract_docx_variables,

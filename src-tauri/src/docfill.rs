@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
 use regex::Regex;
+use base64::Engine;
 
 /// Attempts to parse out `{variable}` placeholders. 
 /// In raw XML, tags might be fragmented like `<w:t>{</w:t> ... <w:t>name</w:t>`. 
@@ -64,92 +65,175 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
         .compression_method(zip::CompressionMethod::Stored)
         .unix_permissions(0o755);
 
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i).unwrap();
-        let name = file.name().to_string();
-        
+        let mut f = archive.by_index(i).unwrap();
+        let name = f.name().to_string();
         let mut content = Vec::new();
-        file.read_to_end(&mut content).map_err(|e| format!("Read error: {}", e))?;
-        
-        if name.starts_with("word/") && name.ends_with(".xml") {
-            if let Ok(mut xml_str) = String::from_utf8(content.clone()) {
-                // Pre-process XML to join fragmented placeholders like {<w:t>V</w:t><w:t>AR</w:t>}
-                xml_str = clean_xml_placeholders(&xml_str);
+        f.read_to_end(&mut content).map_err(|e| format!("Read error: {}", e))?;
+        files.push((name, content));
+    }
 
-                // Handle dynamic tables passed as JSON array string
-                for (k, v) in variables {
-                    if k.starts_with("TABLE_") {
-                        if let Ok(rows_data) = serde_json::from_str::<Vec<std::collections::HashMap<String, String>>>(v) {
-                            // Find the first key to locate the row. We have to guess the key if it's empty.
-                            // But usually, we map TABLE_TECH_ITEMS -> TECH_ITEM_NAME. 
-                            // Let's deduce it from the key name if possible, or if the array is empty, we might not be able to find it easily unless we hardcode.
-                            // To be safe, we always send at least one item, or we look for specific known keys.
-                            let first_key = if !rows_data.is_empty() {
-                                rows_data[0].keys().next().cloned()
-                            } else {
-                                if k == "TABLE_TECH_ITEMS" { Some("TECH_ITEM_NAME".to_string()) }
-                                else if k == "TABLE_INQ_VENDORS" { Some("INQ_VENDOR_NAME".to_string()) }
-                                else { None }
-                            };
-                            
-                            if let Some(first_key) = first_key {
-                                let pattern = format!("{{{}}}", first_key);
-                                
-                                if let Some(idx) = xml_str.find(&pattern) {
-                                    let tr_start = xml_str[..idx].rfind("<w:tr>").or_else(|| xml_str[..idx].rfind("<w:tr ")).unwrap_or(0);
-                                    let tr_end_rel = xml_str[idx..].find("</w:tr>").unwrap_or(xml_str.len() - idx);
-                                    let tr_end = idx + tr_end_rel + 7;
-                                    
-                                    if tr_start < tr_end && tr_end <= xml_str.len() {
-                                        let row_xml = &xml_str[tr_start..tr_end];
-                                        let mut new_rows = String::new();
-                                        
-                                        for row_data in rows_data {
-                                            let mut new_row = row_xml.to_string();
-                                            for (rk, rv) in &row_data {
-                                                let r_pattern = format!("{{{}}}", rk);
-                                                let escaped_rv = rv.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-                                                let docx_rv = escaped_rv.replace("\n", "</w:t><w:br/><w:t>");
-                                                new_row = new_row.replace(&r_pattern, &docx_rv);
-                                            }
-                                            // Also clean up any remaining unresolved {} in this row (optional, but good practice)
-                                            let re = regex::Regex::new(r"\{[A-Z_0-9]+\}").unwrap();
-                                            new_row = re.replace_all(&new_row, "").to_string();
-                                            
-                                            new_rows.push_str(&new_row);
+    let mut image_inputs: Vec<(String, Vec<u8>, String, String)> = Vec::new();
+    for (k, v) in variables {
+        if !k.contains("IMAGE") { continue; }
+        let val = v.trim();
+        if !val.starts_with("data:image/") { continue; }
+        let (meta, b64) = match val.split_once(',') {
+            Some(x) => x,
+            None => continue,
+        };
+        let ext = if meta.contains("image/png") { "png" } else if meta.contains("image/jpeg") { "jpg" } else if meta.contains("image/jpg") { "jpg" } else { "png" };
+        let ct = if ext == "png" { "image/png" } else { "image/jpeg" };
+        let bytes = base64::engine::general_purpose::STANDARD.decode(b64).map_err(|e| e.to_string())?;
+        image_inputs.push((k.to_string(), bytes, ext.to_string(), ct.to_string()));
+    }
+
+    let mut rels_additions: Vec<(String, String)> = Vec::new();
+    let mut media_additions: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut content_type_additions: Vec<(String, String)> = Vec::new();
+
+    let mut docpr_id: u32 = 3000;
+
+    for (name, content) in files.iter_mut() {
+        if name == "word/document.xml" {
+            let mut xml_str = String::from_utf8(content.clone()).map_err(|e| e.to_string())?;
+            xml_str = clean_xml_placeholders(&xml_str);
+
+            for (k, v) in variables {
+                if k.starts_with("TABLE_") {
+                    if let Ok(rows_data) = serde_json::from_str::<Vec<std::collections::HashMap<String, String>>>(v) {
+                        let first_key = if !rows_data.is_empty() {
+                            rows_data[0].keys().next().cloned()
+                        } else {
+                            if k == "TABLE_TECH_ITEMS" { Some("TECH_ITEM_NAME".to_string()) }
+                            else if k == "TABLE_INQ_VENDORS" { Some("INQ_VENDOR_NAME".to_string()) }
+                            else { None }
+                        };
+
+                        if let Some(first_key) = first_key {
+                            let pattern = format!("{{{}}}", first_key);
+
+                            if let Some(idx) = xml_str.find(&pattern) {
+                                let tr_start = xml_str[..idx].rfind("<w:tr>").or_else(|| xml_str[..idx].rfind("<w:tr ")).unwrap_or(0);
+                                let tr_end_rel = xml_str[idx..].find("</w:tr>").unwrap_or(xml_str.len() - idx);
+                                let tr_end = idx + tr_end_rel + 7;
+
+                                if tr_start < tr_end && tr_end <= xml_str.len() {
+                                    let row_xml = &xml_str[tr_start..tr_end];
+                                    let mut new_rows = String::new();
+
+                                    for row_data in rows_data {
+                                        let mut new_row = row_xml.to_string();
+                                        for (rk, rv) in &row_data {
+                                            let r_pattern = format!("{{{}}}", rk);
+                                            let escaped_rv = rv.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+                                            let docx_rv = escaped_rv.replace("\n", "</w:t><w:br/><w:t>");
+                                            new_row = new_row.replace(&r_pattern, &docx_rv);
                                         }
-                                        
-                                        xml_str = format!("{}{}{}", &xml_str[..tr_start], new_rows, &xml_str[tr_end..]);
+                                        let re = regex::Regex::new(r"\{[A-Z_0-9]+\}").unwrap();
+                                        new_row = re.replace_all(&new_row, "").to_string();
+                                        new_rows.push_str(&new_row);
                                     }
+                                    xml_str = format!("{}{}{}", &xml_str[..tr_start], new_rows, &xml_str[tr_end..]);
                                 }
                             }
                         }
                     }
                 }
+            }
 
-                for (k, v) in variables {
-                    let pattern = format!("{{{}}}", k);
-                    
-                    // We must escape XML characters in `v` first!
-                    let escaped_v = v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-                    
-                    // Replace newlines with docx line breaks
-                    // Since {VAR} is inside a <w:t> tag, replacing it with text</w:t><w:br/><w:t>text will create valid line breaks
-                    let docx_v = escaped_v.replace("\n", "</w:t><w:br/><w:t>");
-                    xml_str = xml_str.replace(&pattern, &docx_v);
+            for (key, bytes, ext, ct) in &image_inputs {
+                let placeholder = format!("{{{}}}", key);
+                if !xml_str.contains(&placeholder) { continue; }
+                if bytes.is_empty() {
+                    xml_str = xml_str.replace(&placeholder, "");
+                    continue;
                 }
 
-                let unresolved_re = Regex::new(r"\{[a-zA-Z0-9_\u4e00-\u9fa5]+\}").unwrap();
-                xml_str = unresolved_re.replace_all(&xml_str, "").to_string();
+                let safe_key = key.to_lowercase().replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_");
+                let media_name = format!("word/media/{}.{}", safe_key, ext);
+                let rid = format!("rId{}", docpr_id);
+                docpr_id += 1;
 
-                zip_writer.start_file(name, options).map_err(|e| e.to_string())?;
-                zip_writer.write_all(xml_str.as_bytes()).map_err(|e| e.to_string())?;
-                continue;
+                rels_additions.push((rid.clone(), format!("media/{}.{}", safe_key, ext)));
+                media_additions.push((media_name, bytes.clone()));
+                content_type_additions.push((ext.clone(), ct.clone()));
+
+                let cx = 5_500_000;
+                let cy = 3_000_000;
+                let pic_xml = format!(
+                    r#"<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="{cx}" cy="{cy}"/><wp:docPr id="{docid}" name="Picture {docid}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="{safe_key}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="{rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>"#,
+                    cx = cx,
+                    cy = cy,
+                    docid = docpr_id,
+                    safe_key = safe_key,
+                    rid = rid
+                );
+
+                let run_re_str = format!(
+                    r#"(?s)<w:r[^>]*>(?:<w:rPr>.*?</w:rPr>)?<w:t[^>]*>\{{{}\}}</w:t></w:r>"#,
+                    regex::escape(key)
+                );
+                if let Ok(run_re) = Regex::new(&run_re_str) {
+                    xml_str = run_re.replace_all(&xml_str, pic_xml).to_string();
+                } else {
+                    xml_str = xml_str.replace(&placeholder, "");
+                }
+                xml_str = xml_str.replace(&placeholder, "");
+            }
+
+            for (k, v) in variables {
+                if k.starts_with("TABLE_") { continue; }
+                if k.contains("IMAGE") { continue; }
+                let pattern = format!("{{{}}}", k);
+                let escaped_v = v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+                let docx_v = escaped_v.replace("\n", "</w:t><w:br/><w:t>");
+                xml_str = xml_str.replace(&pattern, &docx_v);
+            }
+
+            let unresolved_re = Regex::new(r"\{[a-zA-Z0-9_\u4e00-\u9fa5]+\}").unwrap();
+            xml_str = unresolved_re.replace_all(&xml_str, "").to_string();
+
+            *content = xml_str.into_bytes();
+        }
+    }
+
+    if !rels_additions.is_empty() {
+        for (name, content) in files.iter_mut() {
+            if name == "word/_rels/document.xml.rels" {
+                let mut xml = String::from_utf8(content.clone()).map_err(|e| e.to_string())?;
+                if let Some(idx) = xml.rfind("</Relationships>") {
+                    let mut insert = String::new();
+                    for (rid, target) in &rels_additions {
+                        insert.push_str(&format!(r#"<Relationship Id="{}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="{}"/>"#, rid, target));
+                    }
+                    xml = format!("{}{}{}", &xml[..idx], insert, &xml[idx..]);
+                }
+                *content = xml.into_bytes();
+            }
+            if name == "[Content_Types].xml" {
+                let mut xml = String::from_utf8(content.clone()).map_err(|e| e.to_string())?;
+                for (ext, ct) in &content_type_additions {
+                    let pat = format!(r#"Extension="{}""#, ext);
+                    if xml.contains(&pat) { continue; }
+                    if let Some(idx) = xml.rfind("</Types>") {
+                        let insert = format!(r#"<Default Extension="{}" ContentType="{}"/>"#, ext, ct);
+                        xml = format!("{}{}{}", &xml[..idx], insert, &xml[idx..]);
+                    }
+                }
+                *content = xml.into_bytes();
             }
         }
-        
+    }
+
+    for (name, content) in &files {
         zip_writer.start_file(name, options).map_err(|e| e.to_string())?;
-        zip_writer.write_all(&content).map_err(|e| e.to_string())?;
+        zip_writer.write_all(content).map_err(|e| e.to_string())?;
+    }
+    for (name, content) in &media_additions {
+        zip_writer.start_file(name, options).map_err(|e| e.to_string())?;
+        zip_writer.write_all(content).map_err(|e| e.to_string())?;
     }
     
     zip_writer.finish().map_err(|e| format!("Finish zip error: {}", e))?;
@@ -500,4 +584,3 @@ fn internal_generate_xlsx(output_path: &str, variables: &HashMap<String, String>
 
     Ok(())
 }
-
