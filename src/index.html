@@ -1440,6 +1440,21 @@
                   <span>《ICT项目需求导入表》专属配置</span>
                 </div>
                 <div class="demand-config-body">
+                  <div class="demand-grid-2" style="margin-bottom: 12px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label>项目需求单位</label>
+                      <input type="text" id="gen_demand_branch_name" value="XXX分公司" style="background: var(--surface_container_lowest);">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label>业务模式</label>
+                      <select id="gen_demand_it_business_mode" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--ghost-border); background: var(--surface_container_lowest); font-family: inherit; font-size: 0.95rem;">
+                        <option value="服务模式" selected>服务模式</option>
+                        <option value="投资">投资</option>
+                        <option value="购销">购销</option>
+                      </select>
+                    </div>
+                  </div>
+
                   <div class="form-group" style="margin-bottom: 0;">
                     <label>服务内容</label>
                     <textarea id="gen_demand_service_content" rows="2" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--ghost-border); background: var(--surface_container); font-family: inherit; font-size: 0.95rem;" placeholder="IT；CT"></textarea>
@@ -2874,7 +2889,7 @@
         let totalRev = itRev + ctRev + nonItRev;
 
         let totalRevIncl = getIncl('rev_it_integration') + getIncl('rev_it_maintenance') + getIncl('rev_it_device_sales') + getIncl('rev_it_device_lease') + getIncl('rev_it_other') + getIncl('rev_it_cloud') + getIncl('rev_ct_line') + getIncl('rev_ct_product') + getIncl('rev_non_it_ct');
-        let leaderLine = totalRevIncl >= 3000000 ? "分管领导（签字）：" : "";
+        let leaderLine = totalRevIncl >= 3000000 ? "分管领导（签字）：________________" : "";
         let demandServiceContent = (() => {
             const manual = (document.getElementById('gen_demand_service_content')?.value || "").trim();
             if (manual) return manual;
@@ -3002,7 +3017,8 @@
           'IT_GROSS_PROFIT_MARGIN': document.getElementById('ict_res_it_margin')?.innerText || "0",
           'CONTRACT_DURATION': document.getElementById('ict_project_years').value,
           'CUSTOMER_NAME': document.getElementById('ict_customer_name')?.value || "",
-          'BRANCH_NAME': document.getElementById('gen_branch_name')?.value || "",
+          'BRANCH_NAME': document.getElementById('gen_demand_branch_name')?.value || document.getElementById('gen_branch_name')?.value || "",
+          'IT_BUSINESS_MODE（新的变量哈，只适用于需求导入表的）': document.getElementById('gen_demand_it_business_mode')?.value || "服务模式",
           'DEMAND_BUDGET': totalRevIncl.toFixed(2),
           'LEADER_LINE': leaderLine,
           'DEMAND_SERVICE_CONTENT': demandServiceContent,

@@ -34,7 +34,7 @@ pub fn extract_docx_variables(path: String) -> Result<Vec<String>, String> {
     let pure_text = tag_re.replace_all(&doc_xml, "");
 
     // Find all {var_name}
-    let var_re = Regex::new(r"\{([a-zA-Z0-9_\u4e00-\u9fa5]+)\}").unwrap();
+    let var_re = Regex::new(r"\{([a-zA-Z0-9_\u4e00-\u9fa5（）]+)\}").unwrap();
     let mut vars = HashSet::new();
 
     for cap in var_re.captures_iter(&pure_text) {
@@ -192,7 +192,7 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
                 xml_str = xml_str.replace(&pattern, &docx_v);
             }
 
-            let unresolved_re = Regex::new(r"\{[a-zA-Z0-9_\u4e00-\u9fa5]+\}").unwrap();
+            let unresolved_re = Regex::new(r"\{[a-zA-Z0-9_\u4e00-\u9fa5（）]+\}").unwrap();
             xml_str = unresolved_re.replace_all(&xml_str, "").to_string();
 
             *content = xml_str.into_bytes();
