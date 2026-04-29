@@ -1585,45 +1585,46 @@
       </div>
 
       <!-- Right Metrics Panel -->
-      <div class="sidebar" style="width: 300px; flex-shrink: 0; background: var(--surface_container_lowest); border-left: 1px solid var(--ghost-border); border-right: none;">
-        <h3 class="section-title">智能反算</h3>
-        <div class="table-card" style="padding: 16px; margin-bottom: 12px; background: var(--surface_container_low); border: 1px solid var(--outline_variant); box-shadow: none;">
-          <div style="font-size: 0.75rem; color: var(--on_surface_variant); margin-bottom: 12px; font-weight: 600; line-height: 1.4;">
-            根据目标效益指标，自动反算并填入<strong style="color:var(--primary);">IT集成服务</strong>的投入或收入（含税）。
+      <div id="ict_right_sidebar" class="sidebar" style="width: 300px; flex-shrink: 0; background: var(--surface_container_lowest); border-left: 1px solid var(--ghost-border); border-right: none;">
+        <div id="ict_smart_reverse_panel">
+          <h3 class="section-title">智能反算</h3>
+          <div class="table-card" style="padding: 16px; margin-bottom: 12px; background: var(--surface_container_low); border: 1px solid var(--outline_variant); box-shadow: none;">
+            <div style="font-size: 0.75rem; color: var(--on_surface_variant); margin-bottom: 12px; font-weight: 600; line-height: 1.4;">
+              根据目标效益指标，自动反算并填入<strong style="color:var(--primary);">IT集成服务</strong>的投入或收入（含税）。
+            </div>
+
+            <div class="radio-card" style="box-shadow: none; border: 1px solid var(--ghost-border); padding: 8px; margin-bottom: 12px;">
+              <label class="radio-item">
+                 <input type="radio" name="ict_reverse_mode" value="cost" checked>
+                 反算投入
+              </label>
+              <label class="radio-item">
+                 <input type="radio" name="ict_reverse_mode" value="revenue">
+                 反算收入
+              </label>
+            </div>
+            
+            <div class="radio-card" style="box-shadow: none; border: 1px solid var(--ghost-border); padding: 8px;">
+              <label class="radio-item">
+                 <input type="radio" name="ict_reverse_target_type" value="margin" checked>
+                 目标毛利润率
+              </label>
+              <label class="radio-item">
+                 <input type="radio" name="ict_reverse_target_type" value="npv_rate">
+                 目标净现值率
+              </label>
+            </div>
+
+            <div class="form-group" style="margin-top: 12px;">
+              <label>目标值 (小数，如0.15代表15%)</label>
+              <input type="number" step="0.0001" id="ict_reverse_target_value" value="0.15" style="background: var(--surface_container_lowest);">
+            </div>
+            
+            <button class="primary-btn" style="margin-top: 12px; padding: 10px; font-size: 0.9rem;" onclick="performIctReverseCalculation()">⚡ 智能反算</button>
           </div>
 
-          <div class="radio-card" style="box-shadow: none; border: 1px solid var(--ghost-border); padding: 8px; margin-bottom: 12px;">
-            <label class="radio-item">
-               <input type="radio" name="ict_reverse_mode" value="cost" checked>
-               反算投入
-            </label>
-            <label class="radio-item">
-               <input type="radio" name="ict_reverse_mode" value="revenue">
-               反算收入
-            </label>
-          </div>
-          
-          <div class="radio-card" style="box-shadow: none; border: 1px solid var(--ghost-border); padding: 8px;">
-            <label class="radio-item">
-               <input type="radio" name="ict_reverse_target_type" value="margin" checked>
-               目标毛利润率
-            </label>
-            <label class="radio-item">
-               <input type="radio" name="ict_reverse_target_type" value="npv_rate">
-               目标净现值率
-            </label>
-          </div>
-
-          <div class="form-group" style="margin-top: 12px;">
-            <label>目标值 (小数，如0.15代表15%)</label>
-            <input type="number" step="0.0001" id="ict_reverse_target_value" value="0.15" style="background: var(--surface_container_lowest);">
-          </div>
-          
-          <button class="primary-btn" style="margin-top: 12px; padding: 10px; font-size: 0.9rem;" onclick="performIctReverseCalculation()">⚡ 智能反算</button>
+          <button class="primary-btn" style="margin-top: 24px;" onclick="performIctCalculation()">🔄 重新计算</button>
         </div>
-
-        <button class="primary-btn" style="margin-top: 24px;" onclick="performIctCalculation()">🔄 重新计算</button>
-        <button class="primary-btn" style="margin-top: 12px; background: var(--surface_container_highest); color: var(--on_surface);">📥 导出完整报告</button>
       </div>
     </div>
   </div>
@@ -2176,6 +2177,16 @@
       document.querySelectorAll('.ict-tab-content').forEach(content => content.style.display = 'none');
       const targetTab = document.getElementById('ict-tab-' + tabId);
       if (targetTab) targetTab.style.display = 'block';
+
+      // Toggle Right Sidebar visibility: only for revenue and cost tabs
+      const rightSidebar = document.getElementById('ict_right_sidebar');
+      if (rightSidebar) {
+        if (tabId === 'revenue' || tabId === 'cost') {
+          rightSidebar.style.display = 'flex';
+        } else {
+          rightSidebar.style.display = 'none';
+        }
+      }
     }
 
     function switchBenefitSubView(mode) {
