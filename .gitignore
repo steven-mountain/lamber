@@ -76,3 +76,6 @@ ESOP附件/
 # MS Office Temp Files
 ~$*
 .~*
+
+# 项目相关文件
+项目文件/
