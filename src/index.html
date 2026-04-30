@@ -491,6 +491,49 @@
       line-height: 1.4;
     }
 
+    .demand-preview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .demand-preview-item {
+      position: relative;
+      border-radius: 8px;
+      border: 1px solid var(--ghost-border);
+      overflow: hidden;
+      aspect-ratio: 16 / 9;
+      background: var(--surface_container_highest);
+      box-shadow: var(--shadow-sm);
+    }
+    .demand-preview-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #f0f0f0;
+    }
+    .demand-preview-remove {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 24px;
+      height: 24px;
+      background: rgba(0,0,0,0.6);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      cursor: pointer;
+      border: none;
+      backdrop-filter: blur(4px);
+      transition: background 0.2s;
+    }
+    .demand-preview-remove:hover {
+      background: rgba(255, 0, 0, 0.8);
+    }
+
     /* Warning Banner */
     .warning-banner {
       background: var(--error_container);
@@ -1502,31 +1545,29 @@
                     </div>
                   </div>
 
-                  <div class="form-group" style="margin-bottom: 0;">
-                    <label>附件1截图（客户确认材料）</label>
-                    <input type="file" id="gen_demand_attach1_file" accept="image/*" style="display:none;">
-                    <div id="gen_demand_attach1_paste" class="demand-dropzone" contenteditable="true" tabindex="0">
-                      <div class="demand-dropzone-title"><span class="upload-link" style="color:var(--primary); text-decoration:underline; cursor:pointer;">点击选择图片</span>，或直接粘贴（Ctrl+V / Cmd+V）</div>
-                      <div class="demand-dropzone-hint">支持 JPG / PNG 格式</div>
-                    </div>
-                    <img id="gen_demand_attach1_preview" style="display:none; margin-top: 10px; max-width: 100%; border-radius: 10px; border: 1px solid var(--ghost-border);" />
-                    <button class="primary-btn" id="gen_demand_attach1_clear" type="button" style="display:none; margin-top: 10px; padding: 8px 12px; background: var(--surface_container_highest); color: var(--on_surface);">清除图片</button>
-                    <input type="hidden" id="gen_demand_attach1_image" value="">
-                  </div>
-
-                  <div class="form-group" style="margin-bottom: 0;">
-                    <div id="gen_demand_attach2_group" class="collapse-content">
-                      <label style="display:block; font-weight: 800; margin-bottom: 6px;">附件2截图（招标文件/挂网截图）</label>
-                      <input type="file" id="gen_demand_attach2_file" accept="image/*" style="display:none;">
-                      <div id="gen_demand_attach2_paste" class="demand-dropzone" contenteditable="true" tabindex="0">
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label>附件1截图（客户确认材料）</label>
+                      <input type="file" id="gen_demand_attach1_file" accept="image/*" multiple style="display:none;">
+                      <div id="gen_demand_attach1_paste" class="demand-dropzone" contenteditable="true" tabindex="0">
                         <div class="demand-dropzone-title"><span class="upload-link" style="color:var(--primary); text-decoration:underline; cursor:pointer;">点击选择图片</span>，或直接粘贴（Ctrl+V / Cmd+V）</div>
-                        <div class="demand-dropzone-hint">勾选公示网址后启用</div>
+                        <div class="demand-dropzone-hint">可连续粘贴或选择多张图片</div>
                       </div>
-                      <img id="gen_demand_attach2_preview" style="display:none; margin-top: 10px; max-width: 100%; border-radius: 10px; border: 1px solid var(--ghost-border);" />
-                      <button class="primary-btn" id="gen_demand_attach2_clear" type="button" style="display:none; margin-top: 10px; padding: 8px 12px; background: var(--surface_container_highest); color: var(--on_surface);">清除图片</button>
-                      <input type="hidden" id="gen_demand_attach2_image" value="">
+                      <div id="gen_demand_attach1_preview_container" class="demand-preview-grid"></div>
+                      <input type="hidden" id="gen_demand_attach1_image" value="[]">
                     </div>
-                  </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <div id="gen_demand_attach2_group" class="collapse-content">
+                        <label style="display:block; font-weight: 800; margin-bottom: 6px;">附件2截图（招标文件/挂网截图）</label>
+                        <input type="file" id="gen_demand_attach2_file" accept="image/*" multiple style="display:none;">
+                        <div id="gen_demand_attach2_paste" class="demand-dropzone" contenteditable="true" tabindex="0">
+                          <div class="demand-dropzone-title"><span class="upload-link" style="color:var(--primary); text-decoration:underline; cursor:pointer;">点击选择图片</span>，或直接粘贴（Ctrl+V / Cmd+V）</div>
+                          <div class="demand-dropzone-hint">勾选公示网址后启用</div>
+                        </div>
+                        <div id="gen_demand_attach2_preview_container" class="demand-preview-grid"></div>
+                        <input type="hidden" id="gen_demand_attach2_image" value="[]">
+                      </div>
+                    </div>
                 </div>
               </div>
             </div>
@@ -2774,39 +2815,72 @@
                             secCb.onchange = () => { if (secSection) secSection.classList.toggle('show', secCb.checked); };
                         }
 
-                        const setupImagePicker = (fileId, pasteId, previewId, hiddenId, clearBtnId) => {
+                        const getImageSize = async (dataUrl) => {
+                            return new Promise((resolve) => {
+                                const img = new Image();
+                                img.onload = () => resolve({ width: img.width, height: img.height });
+                                img.onerror = () => resolve({ width: 0, height: 0 });
+                                img.src = dataUrl;
+                            });
+                        };
+
+                        const setupImagePicker = (fileId, pasteId, previewContainerId, hiddenId) => {
                             const fileEl = document.getElementById(fileId);
                             const pasteEl = document.getElementById(pasteId);
-                            const previewEl = document.getElementById(previewId);
+                            const containerEl = document.getElementById(previewContainerId);
                             const hiddenEl = document.getElementById(hiddenId);
-                            const clearEl = document.getElementById(clearBtnId);
-                            if (!fileEl || !pasteEl || !previewEl || !hiddenEl || !clearEl) return;
+                            if (!fileEl || !pasteEl || !containerEl || !hiddenEl) return;
 
-                            const resetText = () => {
-                                pasteEl.innerHTML = '<div class="demand-dropzone-title"><span class="upload-link" style="color:var(--primary); text-decoration:underline; cursor:pointer;">点击选择图片</span>，或直接粘贴（Ctrl+V / Cmd+V）</div><div class="demand-dropzone-hint">支持 JPG / PNG 格式</div>';
+                            let images = [];
+                            try {
+                                images = JSON.parse(hiddenEl.value || "[]");
+                            } catch(e) { images = []; }
+
+                            const renderPreviews = () => {
+                                containerEl.innerHTML = '';
+                                images.forEach((img, idx) => {
+                                    const item = document.createElement('div');
+                                    item.className = 'demand-preview-item';
+                                    
+                                    const image = document.createElement('img');
+                                    image.src = img.data;
+                                    item.appendChild(image);
+
+                                    const removeBtn = document.createElement('button');
+                                    removeBtn.className = 'demand-preview-remove';
+                                    removeBtn.innerHTML = '×';
+                                    removeBtn.onclick = (e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        images.splice(idx, 1);
+                                        updateData();
+                                    };
+                                    item.appendChild(removeBtn);
+                                    containerEl.appendChild(item);
+                                });
                             };
 
-                            const setDataUrl = (dataUrl) => {
-                                hiddenEl.value = dataUrl || "";
-                                if (dataUrl) {
-                                    previewEl.src = dataUrl;
-                                    previewEl.style.display = 'block';
-                                    clearEl.style.display = 'inline-flex';
-                                } else {
-                                    previewEl.removeAttribute('src');
-                                    previewEl.style.display = 'none';
-                                    clearEl.style.display = 'none';
-                                }
+                            const updateData = () => {
+                                hiddenEl.value = JSON.stringify(images);
+                                renderPreviews();
+                            };
+
+                            const addImage = async (dataUrl) => {
+                                const size = await getImageSize(dataUrl);
+                                images.push({ data: dataUrl, width: size.width, height: size.height });
+                                updateData();
                             };
 
                             if (!fileEl.dataset.listenerAdded) {
                                 fileEl.dataset.listenerAdded = 'true';
                                 fileEl.addEventListener('change', async () => {
-                                    const f = fileEl.files && fileEl.files[0];
-                                    if (!f) return;
-                                    const reader = new FileReader();
-                                    reader.onload = () => setDataUrl(String(reader.result || ""));
-                                    reader.readAsDataURL(f);
+                                    const files = Array.from(fileEl.files || []);
+                                    for (const f of files) {
+                                        const reader = new FileReader();
+                                        reader.onload = async () => await addImage(String(reader.result || ""));
+                                        reader.readAsDataURL(f);
+                                    }
+                                    fileEl.value = '';
                                 });
                             }
 
@@ -2821,40 +2895,29 @@
 
                             if (!pasteEl.dataset.listenerAdded) {
                                 pasteEl.dataset.listenerAdded = 'true';
-                                pasteEl.addEventListener('paste', (e) => {
+                                pasteEl.addEventListener('paste', async (e) => {
                                     const items = e.clipboardData && e.clipboardData.items ? Array.from(e.clipboardData.items) : [];
-                                    const imgItem = items.find(it => it.type && it.type.startsWith('image/'));
-                                    if (!imgItem) return;
+                                    const imgItems = items.filter(it => it.type && it.type.startsWith('image/'));
+                                    if (imgItems.length === 0) return;
+                                    
                                     e.preventDefault();
-                                    const blob = imgItem.getAsFile();
-                                    if (!blob) return;
-                                    const reader = new FileReader();
-                                    reader.onload = () => setDataUrl(String(reader.result || ""));
-                                    reader.readAsDataURL(blob);
-                                    pasteEl.innerText = '已粘贴图片，可继续粘贴覆盖';
+                                    for (const item of imgItems) {
+                                        const blob = item.getAsFile();
+                                        if (blob) {
+                                            const reader = new FileReader();
+                                            reader.onload = async () => await addImage(String(reader.result || ""));
+                                            reader.readAsDataURL(blob);
+                                        }
+                                    }
                                 });
                             }
 
-                            if (!clearEl.dataset.listenerAdded) {
-                                clearEl.dataset.listenerAdded = 'true';
-                                clearEl.addEventListener('click', () => {
-                                    fileEl.value = '';
-                                    hiddenEl.value = '';
-                                    previewEl.removeAttribute('src');
-                                    previewEl.style.display = 'none';
-                                    clearEl.style.display = 'none';
-                                    resetText();
-                                });
-                            }
-
-                            if (!pasteEl.dataset.resetAdded) {
-                                pasteEl.dataset.resetAdded = 'true';
-                                resetText();
-                            }
+                            // Initial render
+                            renderPreviews();
                         };
 
-                        setupImagePicker('gen_demand_attach1_file', 'gen_demand_attach1_paste', 'gen_demand_attach1_preview', 'gen_demand_attach1_image', 'gen_demand_attach1_clear');
-                        setupImagePicker('gen_demand_attach2_file', 'gen_demand_attach2_paste', 'gen_demand_attach2_preview', 'gen_demand_attach2_image', 'gen_demand_attach2_clear');
+                        setupImagePicker('gen_demand_attach1_file', 'gen_demand_attach1_paste', 'gen_demand_attach1_preview_container', 'gen_demand_attach1_image');
+                        setupImagePicker('gen_demand_attach2_file', 'gen_demand_attach2_paste', 'gen_demand_attach2_preview_container', 'gen_demand_attach2_image');
                     } else {
                         demandArea.style.display = 'none';
                     }
