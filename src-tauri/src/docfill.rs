@@ -74,9 +74,9 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
         files.push((name, content));
     }
 
-    let mut image_map: HashMap<String, Vec<(Vec<u8>, String, String, u32, u32)>> = HashMap::new();
+    let mut image_map: HashMap<String, Vec<(Vec<u8>, String, String, u32, u32, String)>> = HashMap::new();
     for (k, v) in variables {
-        if !k.contains("IMAGE") { continue; }
+        if !k.contains("IMAGE") && !k.contains("SCREENSHOT") { continue; }
         let val = v.trim();
         if val.is_empty() { continue; }
 
@@ -86,17 +86,18 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
             if let Ok(list) = serde_json::from_str::<Vec<serde_json::Value>>(val) {
                 for item in list {
                     if let (Some(data), Some(w), Some(h)) = (item["data"].as_str(), item["width"].as_u64(), item["height"].as_u64()) {
-                        raw_images.push((data.to_string(), w as u32, h as u32));
+                        let title = item["title"].as_str().unwrap_or("").to_string();
+                        raw_images.push((data.to_string(), w as u32, h as u32, title));
                     }
                 }
             }
         } else if val.starts_with("data:image/") {
             // Single image (legacy support)
-            raw_images.push((val.to_string(), 0, 0));
+            raw_images.push((val.to_string(), 0, 0, "".to_string()));
         }
 
         let mut processed = Vec::new();
-        for (data_url, w, h) in raw_images {
+        for (data_url, w, h, title) in raw_images {
             let (meta, b64) = match data_url.split_once(',') {
                 Some(x) => x,
                 None => continue,
@@ -104,7 +105,7 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
             let ext = if meta.contains("image/png") { "png" } else { "jpg" };
             let ct = if ext == "png" { "image/png" } else { "image/jpeg" };
             if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(b64) {
-                processed.push((bytes, ext.to_string(), ct.to_string(), w, h));
+                processed.push((bytes, ext.to_string(), ct.to_string(), w, h, title));
             }
         }
         if !processed.is_empty() {
@@ -171,7 +172,11 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
                 if !xml_str.contains(&placeholder) { continue; }
 
                 let mut combined_xml = String::new();
-                for (idx, (bytes, ext, ct, w, h)) in images.iter().enumerate() {
+                // Close the current text run and paragraph in which the placeholder resides
+                combined_xml.push_str("</w:t></w:r></w:p>");
+
+                let mut prev_title = String::new();
+                for (idx, (bytes, ext, ct, w, h, title)) in images.iter().enumerate() {
                     let safe_key = format!("{}_{}", key.to_lowercase().replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_"), idx);
                     let media_name = format!("word/media/{}.{}", safe_key, ext);
                     let rid = format!("rId{}", docpr_id);
@@ -198,35 +203,80 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
                         }
                     }
 
-                    let pic_xml = format!(
-                        r#"<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="{cx}" cy="{cy}"/><wp:docPr id="{docid}" name="Picture {docid}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="{safe_key}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="{rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"#,
+                    let is_new_vendor = title != &prev_title && !title.is_empty();
+
+                    if is_new_vendor {
+                        if idx > 0 {
+                            // Add empty line between DIFFERENT vendors
+                            combined_xml.push_str("<w:p><w:pPr><w:jc w:val=\"left\"/></w:pPr></w:p>");
+                        }
+                        
+                        // Open left-aligned paragraph for the vendor
+                        combined_xml.push_str("<w:p><w:pPr><w:jc w:val=\"left\"/></w:pPr>");
+
+                        let escaped_title = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+                        // Render Title as a bolded text run, then a break
+                        combined_xml.push_str(&format!(
+                            r#"<w:r><w:rPr><w:b/></w:rPr><w:t>{}</w:t></w:r><w:r><w:br/></w:r>"#,
+                            escaped_title
+                        ));
+                        prev_title = title.clone();
+                    } else {
+                        // Same vendor (or empty title), no empty line, no title, just open a new paragraph
+                        combined_xml.push_str("<w:p><w:pPr><w:jc w:val=\"left\"/></w:pPr>");
+                    }
+
+                    // Render "报价截图" label
+                    combined_xml.push_str(r#"<w:r><w:t>报价截图 </w:t></w:r>"#);
+
+                    // Render the drawing run inside the same paragraph
+                    combined_xml.push_str(&format!(
+                        r#"<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="{cx}" cy="{cy}"/><wp:docPr id="{docid}" name="Picture {docid}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="{safe_key}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="{rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>"#,
                         cx = cx,
                         cy = cy,
                         docid = docpr_id,
                         safe_key = safe_key,
                         rid = rid
-                    );
-                    combined_xml.push_str(&pic_xml);
+                    ));
+
+                    // Close the paragraph
+                    combined_xml.push_str("</w:p>");
                 }
 
-                // Replace the entire paragraph containing the placeholder
-                let para_re_str = format!(
-                    r#"(?s)<w:p[^>]*>(?:<w:pPr>.*?</w:pPr>)?.*?<w:r[^>]*>(?:<w:rPr>.*?</w:rPr>)?<w:t[^>]*>\{{{}\}}</w:t></w:r>.*?</w:p>"#,
-                    regex::escape(key)
-                );
-                if let Ok(para_re) = Regex::new(&para_re_str) {
-                    xml_str = para_re.replace(&xml_str, &combined_xml).to_string();
-                } else {
-                    xml_str = xml_str.replace(&placeholder, &combined_xml);
-                }
+                // Re-open a paragraph and run for subsequent content
+                combined_xml.push_str("<w:p><w:r><w:t>");
+
+                // Safely replace the placeholder within its run, preserving the paragraph and surrounding text
+                xml_str = xml_str.replace(&placeholder, &combined_xml);
             }
 
             for (k, v) in variables {
                 if k.starts_with("TABLE_") { continue; }
-                if k.contains("IMAGE") { continue; }
+                if image_map.contains_key(k) { continue; }
                 let pattern = format!("{{{}}}", k);
                 let escaped_v = v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-                let docx_v = escaped_v.replace("\n", "</w:t><w:br/><w:t>");
+                
+                let docx_v = if k == "VENDOR_SCREENSHOT_LIST" {
+                    let mut formatted = String::new();
+                    // Close original paragraph
+                    formatted.push_str("</w:t></w:r></w:p>");
+                    for line in escaped_v.lines() {
+                        if line.is_empty() {
+                            formatted.push_str("<w:p><w:pPr><w:jc w:val=\"left\"/></w:pPr></w:p>");
+                        } else {
+                            formatted.push_str(&format!(
+                                r#"<w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t>{}</w:t></w:r></w:p>"#,
+                                line
+                            ));
+                        }
+                    }
+                    // Re-open paragraph
+                    formatted.push_str("<w:p><w:r><w:t>");
+                    formatted
+                } else {
+                    escaped_v.replace("\n", "</w:t><w:br/><w:t>")
+                };
+                
                 xml_str = xml_str.replace(&pattern, &docx_v);
             }
 

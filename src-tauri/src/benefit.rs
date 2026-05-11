@@ -704,3 +704,86 @@ pub fn generate_excel_template(path: String) -> Result<(), String> {
     workbook.save(&path).map_err(|e| format!("写入模板失败: {}", e))?;
     Ok(())
 }
+
+#[derive(Serialize)]
+pub struct SelectionFeeResult {
+    pub selection_fee: String,
+    pub actual_cost: String,
+    pub final_limit: String,
+    pub quote: String,
+}
+
+#[tauri::command]
+pub fn calculate_selection_fee(quote: String, markup: String) -> Result<SelectionFeeResult, String> {
+    let quote_val = quote.parse::<f64>().unwrap_or(0.0);
+    let markup_val = markup.parse::<f64>().unwrap_or(0.0);
+    
+    let mut selection_fee = 0.0;
+    if quote_val <= 0.0 {
+        selection_fee = 0.0;
+    } else if quote_val <= 12100.0 {
+        selection_fee = 100.0;
+    } else if quote_val <= 48500.0 {
+        selection_fee = (quote_val * 0.00825 * 100.0).round() / 100.0;
+    } else if quote_val <= 100000.0 {
+        selection_fee = 400.0;
+    } else if quote_val <= 500000.0 {
+        selection_fee = (quote_val * 0.009408 * 100.0).round() / 100.0;
+    } else {
+        selection_fee = 0.0;
+    }
+    
+    let actual_cost = quote_val + selection_fee;
+    let final_limit = actual_cost + markup_val;
+    
+    Ok(SelectionFeeResult {
+        selection_fee: format!("{:.2}", selection_fee),
+        actual_cost: format!("{:.2}", actual_cost),
+        final_limit: format!("{:.2}", final_limit),
+        quote: format!("{:.2}", quote_val),
+    })
+}
+
+#[tauri::command]
+pub fn reverse_calculate_selection_fee(limit: String, markup: String) -> Result<SelectionFeeResult, String> {
+    let limit_val = limit.parse::<f64>().unwrap_or(0.0);
+    let markup_val = markup.parse::<f64>().unwrap_or(0.0);
+    
+    let actual_cost_target = limit_val - markup_val;
+    
+    if actual_cost_target <= 0.0 {
+         return Ok(SelectionFeeResult {
+            selection_fee: "0.00".to_string(),
+            actual_cost: "0.00".to_string(),
+            final_limit: format!("{:.2}", limit_val),
+            quote: "0.00".to_string(),
+        });
+    }
+
+    let mut quote = 0.0;
+    let mut selection_fee = 0.0;
+
+    if actual_cost_target <= 12200.0 { // 12100 + 100
+        selection_fee = 100.0;
+        quote = actual_cost_target - 100.0;
+    } else if actual_cost_target <= 48900.12 { // 48500 + 48500*0.00825(400.125)
+        quote = actual_cost_target / 1.00825;
+        selection_fee = actual_cost_target - quote;
+    } else if actual_cost_target <= 100400.0 { // 100000 + 400
+        selection_fee = 400.0;
+        quote = actual_cost_target - 400.0;
+    } else if actual_cost_target <= 504704.0 { // 500000 + 500000*0.009408(4704)
+        quote = actual_cost_target / 1.009408;
+        selection_fee = actual_cost_target - quote;
+    } else {
+        quote = actual_cost_target;
+        selection_fee = 0.0;
+    }
+
+    Ok(SelectionFeeResult {
+        selection_fee: format!("{:.2}", selection_fee),
+        actual_cost: format!("{:.2}", actual_cost_target),
+        final_limit: format!("{:.2}", limit_val),
+        quote: format!("{:.2}", quote),
+    })
+}

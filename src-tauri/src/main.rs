@@ -33,6 +33,8 @@ fn main() {
             benefit::reverse_calc_ict_revenue_target,
             benefit::process_excel_batch,
             benefit::generate_excel_template,
+            benefit::calculate_selection_fee,
+            benefit::reverse_calculate_selection_fee,
             docfill::extract_docx_variables,
             docfill::generate_docx,
             docfill::batch_generate_docx_from_excel,

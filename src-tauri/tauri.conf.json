@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "identifier": "com.cmcc.benefitcalc",
   "build": {
-    "frontendDist": "../src",
-    "beforeDevCommand": "",
+    "frontendDist": "../src-ui/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev --prefix src-ui",
     "beforeBuildCommand": ""
   },
   "app": {
