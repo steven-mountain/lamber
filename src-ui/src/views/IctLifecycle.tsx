@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import TemplateForms from "./TemplateForms"
+import { validateFinancialData, ValidationReport } from "../lib/financeValidator"
 
 interface TaxItem { incl: number; tax: number; excl: number; }
 const defaultTaxItem = (tax = 6): TaxItem => ({ incl: 0, tax, excl: 0 })
@@ -74,7 +75,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
 
   // --- Selection Fee Calc ---
   const [selQuote, setSelQuote] = useState<string>("")
-  const [selMarkup, setSelMarkup] = useState<string>("")
+  const [selMarkup, setSelMarkup] = useState<string>("50")
   const [selActualCost, setSelActualCost] = useState<string>("")
   const [selFee, setSelFee] = useState<string>("")
   const [selLimit, setSelLimit] = useState<string>("")
@@ -83,34 +84,70 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
   const [templates, setTemplates] = useState<string[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<string>("")
 
-  // Doc Gen Fields
-  // State moved to TemplateForms
+  const [reconciliationErrors, setReconciliationErrors] = useState<ValidationReport[]>([])
+  const [showReconciliationModal, setShowReconciliationModal] = useState(false)
+  const [currentTotalDifference, setCurrentTotalDifference] = useState("0")
+  const [pendingTab, setPendingTab] = useState<{tab: string, template?: string} | null>(null)
+  const [showConfirmIgnore, setShowConfirmIgnore] = useState(false)
+  const [ignoredTailValue, setIgnoredTailValue] = useState<string | null>(null)
+  const [ignoredDataHash, setIgnoredDataHash] = useState<string | null>(null)
 
-  const updateTaxItem = (groupId: string, key: string, field: "incl" | "tax", val: number) => {
+  const handleTabSwitch = (tab: string, templateName?: string, forceIgnore = false) => {
+    const currentHash = JSON.stringify({ revIt, revCt, revNonItCt, costIt, costCt, costMix });
+
+    if ((tab === 'cashflow' || tab === 'generate') && !forceIgnore) {
+      if (currentHash !== ignoredDataHash) {
+        const { errors, totalDifference } = validateFinancialData(
+          { it: revIt, ct: revCt, non_it_ct: { item: revNonItCt } },
+          { it: costIt, ct: costCt, mix: costMix }
+        );
+        if (errors.length > 0) {
+          setReconciliationErrors(errors);
+          setCurrentTotalDifference(totalDifference);
+          setPendingTab({ tab, template: templateName });
+          setShowReconciliationModal(true);
+          return; 
+        }
+      }
+    }
+    
+    if (forceIgnore) {
+      setIgnoredTailValue(currentTotalDifference);
+      setIgnoredDataHash(currentHash);
+    }
+
+    setActiveTab(tab as any);
+    if (templateName) setSelectedTemplate(templateName);
+  }
+
+  const updateTaxItem = (groupId: string, key: string, field: "incl" | "tax" | "excl", val: number) => {
     const processItem = (groupState: any, setGroupState: any, targetKey: string) => {
        const item = { ...groupState[targetKey], [field]: val }
-       item.excl = Number((item.incl / (1 + item.tax / 100)).toFixed(2))
+       if (field === 'incl' || field === 'tax') {
+         item.excl = Number((item.incl / (1 + item.tax / 100)).toFixed(2))
+       }
        setGroupState({ ...groupState, [targetKey]: item })
     }
 
     if (groupId === 'revIt') processItem(revIt, setRevIt, key)
     else if (groupId === 'revCt') {
       processItem(revCt, setRevCt, key)
-      // CT Pass-through logic (平过逻辑)
       if (key === 'product') processItem(costCt, setCostCt, 'other')
       if (key === 'line') processItem(costCt, setCostCt, 'bandwidth')
     }
-    else if (groupId === 'revNonItCt') processItem({item: revNonItCt}, (v: any) => setRevNonItCt(v.item), key)
+    else if (groupId === 'revNonItCt') {
+       const item = { ...revNonItCt, [field]: val }
+       if (field === 'incl' || field === 'tax') item.excl = Number((item.incl / (1 + item.tax / 100)).toFixed(2))
+       setRevNonItCt(item)
+    }
     else if (groupId === 'costIt') processItem(costIt, setCostIt, key)
     else if (groupId === 'costCt') processItem(costCt, setCostCt, key)
     else if (groupId === 'costMix') processItem(costMix, setCostMix, key)
   }
 
-  // Auto calculation
   useEffect(() => { performCalculation() }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectYears, discountRate, cashflowModel, distRev, distCost])
   
   useEffect(() => {
-    // Fetch templates
     invoke('get_available_templates').then((res: any) => setTemplates(res)).catch(e => console.error(e))
   }, [])
 
@@ -120,19 +157,17 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     discount_rate: String(discountRate),
     rev_distribution: distRev,
     cost_distribution: distCost,
-
+    ignore_tail_difference: ignoredTailValue !== null,
+    tail_difference_value: ignoredTailValue || "0",
     rev_it_integration: { incl_tax: String(revIt.integration.incl), tax_rate: String(revIt.integration.tax) },
     rev_it_maintenance: { incl_tax: String(revIt.maintenance.incl), tax_rate: String(revIt.maintenance.tax) },
     rev_it_device_sales: { incl_tax: String(revIt.device_sales.incl), tax_rate: String(revIt.device_sales.tax) },
     rev_it_device_lease: { incl_tax: String(revIt.device_lease.incl), tax_rate: String(revIt.device_lease.tax) },
     rev_it_other: { incl_tax: String(revIt.other.incl), tax_rate: String(revIt.other.tax) },
     rev_it_cloud: { incl_tax: String(revIt.cloud.incl), tax_rate: String(revIt.cloud.tax) },
-
     rev_ct_line: { incl_tax: String(revCt.line.incl), tax_rate: String(revCt.line.tax) },
     rev_ct_product: { incl_tax: String(revCt.product.incl), tax_rate: String(revCt.product.tax) },
-
     rev_non_it_ct: { incl_tax: String(revNonItCt.incl), tax_rate: String(revNonItCt.tax) },
-
     cost_it_device: { incl_tax: String(costIt.device.incl), tax_rate: String(costIt.device.tax) },
     cost_it_construction: { incl_tax: String(costIt.construction.incl), tax_rate: String(costIt.construction.tax) },
     cost_it_survey: { incl_tax: String(costIt.survey.incl), tax_rate: String(costIt.survey.tax) },
@@ -143,13 +178,11 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     cost_it_bidding: { incl_tax: String(costIt.bidding.incl), tax_rate: String(costIt.bidding.tax) },
     cost_it_design_eval: { incl_tax: String(costIt.design_eval.incl), tax_rate: String(costIt.design_eval.tax) },
     cost_it_audit: { incl_tax: String(costIt.audit.incl), tax_rate: String(costIt.audit.tax) },
-
     cost_ct_construction: { incl_tax: String(costCt.construction.incl), tax_rate: String(costCt.construction.tax) },
     cost_ct_maintenance: { incl_tax: String(costCt.maintenance.incl), tax_rate: String(costCt.maintenance.tax) },
     cost_ct_other: { incl_tax: String(costCt.other.incl), tax_rate: String(costCt.other.tax) },
     cost_ct_bandwidth: { incl_tax: String(costCt.bandwidth.incl), tax_rate: String(costCt.bandwidth.tax) },
     cost_ct_renewal: { incl_tax: String(costCt.renewal.incl), tax_rate: String(costCt.renewal.tax) },
-
     cost_non_it_ct: { incl_tax: String(costMix.non_it_ct.incl), tax_rate: String(costMix.non_it_ct.tax) },
     cost_mix_marketing: { incl_tax: String(costMix.marketing.incl), tax_rate: String(costMix.marketing.tax) },
     cost_mix_channel: { incl_tax: String(costMix.channel.incl), tax_rate: String(costMix.channel.tax) },
@@ -194,6 +227,15 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     }
   }
 
+  const applySelectionLimit = () => {
+    if (selLimit) {
+      updateTaxItem('costIt', 'integration', 'incl', Number(selLimit))
+      if (selFee) {
+        updateTaxItem('costIt', 'bidding', 'incl', Number(selFee))
+      }
+    }
+  }
+
   const performReverseCalculation = async () => {
     if (!revTargetValue) return alert("请输入目标值！")
     try {
@@ -210,42 +252,33 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
         setActiveTab("revenue")
       } else {
         updateTaxItem('costIt', 'integration', 'incl', numVal)
-        // Also update the selection limit and re-calculate actual selection quote if needed
         handleSelFeeChange('limit', String(numVal))
         setActiveTab("cost")
       }
-      setTimeout(() => performCalculation(), 100) // Ensure fresh metrics after state batch
+      setTimeout(() => performCalculation(), 100)
     } catch (e) {
       alert("反推失败: " + e)
     }
-  }
-
-
-  const handleApplyQuickRev = () => {
-    const integration = Math.max(0, (Number(quickRevTotal)||0) - (Number(quickRevProduct)||0))
-    updateTaxItem('revIt', 'integration', 'incl', integration)
-    if (quickRevProduct) updateTaxItem('revCt', 'product', 'incl', Number(quickRevProduct))
-  }
-  const handleApplyQuickCost = () => {
-    const integration = Math.max(0, (Number(quickCostTotal)||0) - (Number(quickCostProduct)||0))
-    updateTaxItem('costIt', 'integration', 'incl', integration)
-    if (quickCostProduct) updateTaxItem('costIt', 'device', 'incl', Number(quickCostProduct))
   }
 
   const renderTaxGroup = (title: string, groupId: string, groupState: any, items: {key: string, label: string}[]) => (
     <div className="table-card bg-card border border-border rounded-xl p-6 shadow-sm mb-6">
       <h3 className="font-bold text-lg mb-4">{title}</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {items.map(item => (
-          <div key={item.key} className="flex flex-col gap-1">
-            <label className="text-sm font-semibold text-secondary-foreground">{item.label}</label>
-            <div className="flex gap-2">
-              <input type="number" placeholder="含税" className="w-full bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm" value={groupState[item.key].incl === 0 ? "" : groupState[item.key].incl} onChange={e => updateTaxItem(groupId, item.key, 'incl', Number(e.target.value))} />
-              <input type="number" placeholder="税率" className="w-20 bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm" value={groupState[item.key].tax} onChange={e => updateTaxItem(groupId, item.key, 'tax', Number(e.target.value))} />
-              <input type="number" placeholder="不含税" disabled className="w-full bg-background border border-border px-3 py-2 rounded-md outline-none text-sm text-secondary-foreground" value={groupState[item.key].excl} />
+        {items.map(item => {
+          const itemErr = reconciliationErrors.find(e => e.key === `${groupId}.${item.key}`);
+          return (
+            <div key={item.key} className="flex flex-col gap-1">
+              <label className="text-sm font-semibold text-secondary-foreground">{item.label}</label>
+              <div className="flex gap-2">
+                <input type="number" placeholder="含税" className="w-full bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm" value={groupState[item.key].incl === 0 ? "" : groupState[item.key].incl} onChange={e => updateTaxItem(groupId, item.key, 'incl', Number(e.target.value))} />
+                <input type="number" placeholder="税率" className="w-20 bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm" value={groupState[item.key].tax} onChange={e => updateTaxItem(groupId, item.key, 'tax', Number(e.target.value))} />
+                <input type="number" placeholder="不含税" className={`w-full bg-background border px-3 py-2 rounded-md outline-none text-sm focus:border-primary ${itemErr ? 'border-red-500 ring-1 ring-red-500' : 'border-border'}`} value={groupState[item.key].excl} onChange={e => updateTaxItem(groupId, item.key, 'excl', Number(e.target.value))} />
+              </div>
+              {itemErr && <span className="text-[10px] text-red-500 font-bold">校验失败：偏离 {itemErr.difference} 元，要求：{itemErr.expectedExcl} 元</span>}
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
@@ -261,16 +294,14 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
       </div>
       
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar */}
         <div className="w-[260px] bg-muted p-6 overflow-y-auto flex flex-col gap-4 border-r border-border shrink-0">
           <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mb-1">测算流程</h3>
           <div className="flex flex-col gap-1">
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'basic' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => setActiveTab("basic")}><span>📋</span> 项目概况与参数</button>
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'revenue' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => setActiveTab("revenue")}><span>💰</span> 收入侧测算</button>
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cost' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => setActiveTab("cost")}><span>💸</span> 支出侧测算</button>
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cashflow' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => setActiveTab("cashflow")}><span>📈</span> 10年现金流推演</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'basic' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("basic")}><span>📋</span> 项目概况与参数</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'revenue' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("revenue")}><span>💰</span> 收入侧测算</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cost' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cost")}><span>💸</span> 支出侧测算</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cashflow' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cashflow")}><span>📈</span> 10年现金流推演</button>
           </div>
-
           <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mt-6 pt-4 border-t border-border mb-1">一键生成全流程文档</h3>
           <div className="flex flex-col gap-1">
             {templates.length === 0 ? <span className="text-xs text-secondary-foreground px-4">未找到模板文件</span> : 
@@ -278,7 +309,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                 <button 
                   key={t}
                   className={`px-4 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors text-left truncate ${selectedTemplate === t && activeTab === 'generate' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`}
-                  onClick={() => { setActiveTab("generate"); setSelectedTemplate(t); }}
+                  onClick={() => handleTabSwitch("generate", t)}
                 >
                   {t.endsWith('.xlsx') ? '📊' : '📄'} {t.replace('.docx', '').replace('.xlsx', '')}
                 </button>
@@ -287,7 +318,6 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
           </div>
         </div>
         
-        {/* Main Content Area */}
         <div className="flex-1 p-6 overflow-y-auto bg-background flex flex-col">
           {activeTab === "basic" && (
             <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
@@ -309,7 +339,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className="flex flex-col gap-2 col-span-2">
                   <label className="text-sm font-bold text-secondary-foreground">项目背景</label>
-                  <textarea id="gen_project_background" rows={3} value={projectBackground} onChange={e => setProjectBackground(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" />
+                  <textarea rows={3} value={projectBackground} onChange={e => setProjectBackground(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" />
                 </div>
               </div>
               {cashflowModel === 'model_d' && (
@@ -318,19 +348,13 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                   <div className="grid grid-cols-[80px_repeat(10,_1fr)] gap-2 items-center text-center text-sm">
                     <div className="font-bold text-right pr-2 text-secondary-foreground">年份</div>
                     {[1,2,3,4,5,6,7,8,9,10].map(y => <div key={y} className="font-bold">{y}</div>)}
-                    
                     <div className="font-bold text-right pr-2 text-secondary-foreground">收入比例</div>
                     {distRev.map((v, i) => (
-                      <input key={`rev-${i}`} type="number" step="0.01" value={v} onChange={e => {
-                        const newArr = [...distRev]; newArr[i] = Number(e.target.value); setDistRev(newArr);
-                      }} className="bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
+                      <input key={`rev-${i}`} type="number" step="0.01" value={v} onChange={e => { const newArr = [...distRev]; newArr[i] = Number(e.target.value); setDistRev(newArr); }} className="bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
                     ))}
-
                     <div className="font-bold text-right pr-2 text-secondary-foreground">支出比例</div>
                     {distCost.map((v, i) => (
-                      <input key={`cost-${i}`} type="number" step="0.01" value={v} onChange={e => {
-                        const newArr = [...distCost]; newArr[i] = Number(e.target.value); setDistCost(newArr);
-                      }} className="bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
+                      <input key={`cost-${i}`} type="number" step="0.01" value={v} onChange={e => { const newArr = [...distCost]; newArr[i] = Number(e.target.value); setDistCost(newArr); }} className="bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
                     ))}
                   </div>
                 </div>
@@ -356,10 +380,13 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                     <label className="text-xs font-semibold text-primary">系统集成服务收入 (自动)</label>
                     <input type="number" disabled value={Math.max(0, (Number(quickRevTotal)||0) - (Number(quickRevProduct)||0))} className="bg-background/50 border border-primary/30 px-3 py-2 rounded-md outline-none text-sm font-bold text-primary" />
                   </div>
-                  <button onClick={handleApplyQuickRev} className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-md text-sm hover:bg-primary/90 transition-colors">⬇️ 一键填入</button>
+                  <button onClick={() => {
+                    const integration = Math.max(0, (Number(quickRevTotal)||0) - (Number(quickRevProduct)||0));
+                    updateTaxItem('revIt', 'integration', 'incl', integration);
+                    if (quickRevProduct) updateTaxItem('revCt', 'product', 'incl', Number(quickRevProduct));
+                  }} className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-md text-sm hover:bg-primary/90 transition-colors">⬇️ 一键填入</button>
                 </div>
               </div>
-
               <div className="mb-4 text-xs text-blue-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
                 💡 提示：在「CT收入」中填写的产品或专线含税收入，将会自动【1:1平过】填入对应的「CT投入」中。
               </div>
@@ -387,10 +414,13 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                     <label className="text-xs font-semibold text-primary">系统集成服务投入 (自动)</label>
                     <input type="number" disabled value={Math.max(0, (Number(quickCostTotal)||0) - (Number(quickCostProduct)||0))} className="bg-background/50 border border-primary/30 px-3 py-2 rounded-md outline-none text-sm font-bold text-primary" />
                   </div>
-                  <button onClick={handleApplyQuickCost} className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-md text-sm hover:bg-primary/90 transition-colors">⬇️ 一键填入</button>
+                  <button onClick={() => {
+                     const integration = Math.max(0, (Number(quickCostTotal)||0) - (Number(quickCostProduct)||0));
+                     updateTaxItem('costIt', 'integration', 'incl', integration);
+                     if (quickCostProduct) updateTaxItem('costIt', 'device', 'incl', Number(quickCostProduct));
+                  }} className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-md text-sm hover:bg-primary/90 transition-colors">⬇️ 一键填入</button>
                 </div>
               </div>
-
               {renderTaxGroup("IT/移动云投入", 'costIt', costIt, [{key: 'device', label: '主要设备/甲供材料'}, {key: 'construction', label: '施工'}, {key: 'survey', label: '勘察设计/预备费'}, {key: 'integration', label: '集成服务'}, {key: 'other', label: '其他投入'}, {key: 'maintenance', label: '维护费用'}, {key: 'running', label: '其他运行支出（电费等）'}, {key: 'bidding', label: '中标服务费'}, {key: 'design_eval', label: '设计院成本评估费'}, {key: 'audit', label: '第三方审计评估费'}])}
               {renderTaxGroup("CT投入", 'costCt', costCt, [{key: 'construction', label: '专线建设'}, {key: 'maintenance', label: '专线维护'}, {key: 'other', label: '其他产品成本'}, {key: 'bandwidth', label: '专线带宽成本'}, {key: 'renewal', label: '专线/其他产品续签成本'}])}
               {renderTaxGroup("非IT/CT投入 & 综合类成本", 'costMix', costMix, [{key: 'non_it_ct', label: '工程施工投入等'}, {key: 'marketing', label: '融合营销成本'}, {key: 'channel', label: '渠道酬金'}, {key: 'other', label: '其他管理费用等'}])}
@@ -427,6 +457,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
             <TemplateForms 
               selectedTemplate={selectedTemplate} 
               projectData={{ basic: {proj_name: projName, customer_name: customerName, project_years: projectYears}, cost: { it: costIt, ct: costCt, mix: costMix }, revenue: { it: revIt, ct: revCt, non_it_ct: revNonItCt } }} 
+              metrics={metrics}
               projectBackground={projectBackground} 
               setProjectBackground={setProjectBackground} 
               techItems={techItems}
@@ -436,7 +467,6 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
             />
           </div>
 
-          {/* Bottom Results Area */}
           <div className="mt-auto pt-6 border-t border-border mt-8">
             <h3 className="text-sm font-bold text-secondary-foreground mb-4">实时效益评估结果</h3>
             <div className="grid grid-cols-5 gap-4">
@@ -464,35 +494,29 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
           </div>
         </div>
         
-        {/* Right Sidebar */}
         {(activeTab === 'revenue' || activeTab === 'cost') && (
           <div className="w-[300px] bg-card border-l border-border p-6 flex flex-col shrink-0 overflow-y-auto animate-in slide-in-from-right duration-200">
-            
             <h3 className="font-bold text-foreground mb-4">智能反算</h3>
             <div className="bg-muted border border-border p-4 rounded-xl flex flex-col gap-4 mb-6">
               <div className="flex gap-2 bg-background p-1 border border-border rounded-lg">
                 <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revMode === 'cost' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => setRevMode('cost')}>反算投入</button>
                 <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revMode === 'revenue' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => setRevMode('revenue')}>反算收入</button>
               </div>
-
               <div className="flex gap-2 bg-background p-1 border border-border rounded-lg">
                 <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revTargetType === 'margin' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => setRevTargetType('margin')}>目标毛利润率</button>
                 <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revTargetType === 'npv_rate' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => setRevTargetType('npv_rate')}>目标净现值率</button>
               </div>
-
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-secondary-foreground">目标值 (如0.15代表15%)</label>
                 <input type="number" step="0.0001" className="bg-background border border-border px-3 py-2 rounded-md outline-none text-sm" value={revTargetValue} onChange={e => setRevTargetValue(e.target.value)} />
               </div>
               <button className="bg-primary text-primary-foreground font-bold py-2 rounded-lg shadow-sm w-full" onClick={performReverseCalculation}>⚡ 智能反算</button>
             </div>
-
-            {/* Selection Fee Calc Panel */}
             <h3 className="font-bold text-foreground mb-4">采购甄选费测算</h3>
             <div className="bg-muted border border-border p-4 rounded-xl flex flex-col gap-3">
               <div className="flex flex-col gap-1">
                  <label className="text-xs font-semibold text-secondary-foreground">供应商报价 (元)</label>
-                 <input type="number" placeholder="正向测算入口" value={selQuote} onChange={e => handleSelFeeChange('quote', e.target.value)} className="bg-background border border-border px-3 py-2 rounded-md text-sm outline-none" />
+                 <input type="number" value={selQuote} onChange={e => handleSelFeeChange('quote', e.target.value)} className="bg-background border border-border px-3 py-2 rounded-md text-sm outline-none" />
               </div>
               <div className="flex flex-col gap-1">
                  <label className="text-xs font-semibold text-secondary-foreground">代理服务费浮动 (+)</label>
@@ -501,19 +525,105 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
               <div className="flex flex-col gap-1">
                  <label className="text-xs font-semibold text-secondary-foreground">测算甄选费 / 实际测算成本</label>
                  <div className="flex gap-2">
-                   <input type="text" disabled placeholder="甄选费" value={selFee} className="bg-background/50 border border-border px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
-                   <input type="text" disabled placeholder="实际成本" value={selActualCost} className="bg-background/50 border border-border px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
+                   <input type="text" disabled value={selFee} className="bg-background/50 border border-border px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
+                   <input type="text" disabled value={selActualCost} className="bg-background/50 border border-border px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
                  </div>
               </div>
               <div className="flex flex-col gap-1 mt-2 border-t border-border pt-3">
                  <label className="text-xs font-semibold text-primary">甄选最高限价 (反向测算入口)</label>
                  <input type="number" value={selLimit} onChange={e => handleSelFeeChange('limit', e.target.value)} className="bg-primary/5 border border-primary px-3 py-2 rounded-md text-sm outline-none text-primary font-bold" />
               </div>
+              <button 
+                onClick={applySelectionLimit} 
+                disabled={!selLimit}
+                className="mt-2 bg-primary hover:bg-primary/95 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed font-bold py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all active:scale-[0.98] w-full text-xs flex items-center justify-center gap-1.5"
+              >
+                <span>⬇️</span> 填入集成服务
+              </button>
             </div>
-
           </div>
         )}
       </div>
+
+      {showReconciliationModal && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-card border border-red-500/30 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col">
+            <div className="bg-red-500/10 border-b border-red-500/20 px-6 py-4 flex items-center gap-3">
+              <span className="text-red-600 text-2xl">⚠️</span>
+              <div>
+                <h2 className="font-bold text-red-600 text-lg">0 容差财务核算拦截</h2>
+                <p className="text-xs text-red-600/80 mt-0.5">检测到税前/税后金额转换存在微小尾差，系统已拦截保存操作。</p>
+              </div>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[60vh] flex flex-col gap-4 bg-muted/30">
+              {reconciliationErrors.map((err, i) => (
+                <div key={i} className="bg-background border border-red-200 p-4 rounded-lg flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-sm bg-red-100 text-red-800 px-2 py-0.5 rounded">
+                      {err.side === 'income' ? '收入侧' : '支出侧'} - {err.taxRate}% 税率组
+                    </span>
+                    <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded">{err.key}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4 mt-2 text-sm">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-secondary-foreground text-xs">录入不含税</span>
+                      <span className="font-bold">{err.actualExcl} 元</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-secondary-foreground text-xs">预期绝对值</span>
+                      <span className="font-bold text-primary">{err.expectedExcl} 元</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-secondary-foreground text-xs">尾差</span>
+                      <span className="font-bold text-red-500">{err.difference} 元</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="border-t border-border p-4 bg-background flex justify-end gap-3">
+              {Math.abs(Number(currentTotalDifference)) <= 0.10 && (
+                <button 
+                  onClick={() => setShowConfirmIgnore(true)}
+                  className="px-6 py-2 border border-border hover:bg-muted text-secondary-foreground font-bold rounded-md shadow-sm transition-colors text-sm"
+                >
+                  忽略微小尾差，继续提交
+                </button>
+              )}
+              <button 
+                onClick={() => setShowReconciliationModal(false)}
+                className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-md shadow-sm transition-colors text-sm"
+              >
+                返回手工平账
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showConfirmIgnore && pendingTab && (
+        <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-border bg-yellow-500/10 flex items-center gap-2">
+              <span className="text-yellow-600 font-bold text-lg">⚠️</span>
+              <h2 className="font-bold text-yellow-700 text-base">确认忽略误差？</h2>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-secondary-foreground leading-relaxed">系统检测到存在微小尾差，强制提交可能需要在后续向财务提供纸质/邮件说明。是否确认忽略误差并继续？</p>
+            </div>
+            <div className="border-t border-border p-4 bg-background flex justify-end gap-3">
+              <button onClick={() => setShowConfirmIgnore(false)} className="px-4 py-2 border border-border hover:bg-muted font-bold rounded-md transition-colors text-sm">取消</button>
+              <button onClick={() => {
+                setShowConfirmIgnore(false);
+                setShowReconciliationModal(false);
+                handleTabSwitch(pendingTab.tab, pendingTab.template, true);
+              }} className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-md transition-colors text-sm">确认忽略并继续</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

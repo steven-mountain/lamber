@@ -10,6 +10,7 @@ interface Props {
   setTechItems: React.Dispatch<React.SetStateAction<any[]>>;
   inqVendors: any[];
   setInqVendors: React.Dispatch<React.SetStateAction<any[]>>;
+  metrics?: any;
 }
 
 export default function TemplateForms({ 
@@ -20,7 +21,8 @@ export default function TemplateForms({
   techItems,
   setTechItems,
   inqVendors,
-  setInqVendors
+  setInqVendors,
+  metrics
 }: Props) {
   const formRef = useRef<HTMLFormElement>(null)
 
@@ -52,7 +54,7 @@ export default function TemplateForms({
   const [ctContent, setCtContent] = useState("视频监控")
   const [midThreeCode, setMidThreeCode] = useState("A301000041")
   const [midThreeName, setMidThreeName] = useState("视频监控能力")
-  const [itBusMode, setItBusMode] = useState("服务模式")
+  const [itBusMode, setItBusMode] = useState("服务购销")
   const [itFundSrc, setItFundSrc] = useState("分公司成本开支")
   const [revCollection, setRevCollection] = useState("项目验收完成后30天内客户单位支付100%")
   const [expPayment, setExpPayment] = useState("项目验收完成后30天内客户单位支付100%")
@@ -99,8 +101,8 @@ export default function TemplateForms({
       setSubjectCtRev(`CT-${baseName}`)
     } else {
       if (ctContent === midThreeName.replace(/能力/g, "")) setCtContent("")
-      setSubjectCtCost("CT-专线及产品")
-      setSubjectCtRev("CT-专线及产品")
+      setSubjectCtCost("CT-专线")
+      setSubjectCtRev("CT-专线")
     }
   }, [hasMidThree, midThreeName])
 
@@ -304,6 +306,7 @@ export default function TemplateForms({
 
     const isZero = (n: number) => Math.abs(n) < 0.005;
     const fmtYuan = (n: number) => n.toFixed(2);
+    const fmtPct = (x: any) => isFinite(x) && x !== null && x !== "" && !isNaN(Number(x)) ? (Number(x) * 100).toFixed(2) + '%' : '--';
     const parts: string[] = [];
     const itParts: string[] = [];
     if (!isZero(itConstruction)) itParts.push(`建设投入${fmtYuan(itConstruction)}元（不含税）`);
@@ -332,6 +335,11 @@ export default function TemplateForms({
     const totalRevCt = Object.values(projectData.revenue?.ct || {}).reduce((acc: number, curr: any) => acc + (curr?.incl || 0), 0);
     const totalRevNonItCt = projectData.revenue?.non_it_ct?.incl || 0;
     const totalRevIncl = Number(totalRevIt) + Number(totalRevCt) + Number(totalRevNonItCt);
+
+    const totalRevItExcl = Object.values(projectData.revenue?.it || {}).reduce((acc: number, curr: any) => acc + (curr?.excl || 0), 0);
+    const totalRevCtExcl = Object.values(projectData.revenue?.ct || {}).reduce((acc: number, curr: any) => acc + (curr?.excl || 0), 0);
+    const totalRevNonItCtExcl = projectData.revenue?.non_it_ct?.excl || 0;
+    const totalRevExcl = Number(totalRevItExcl) + Number(totalRevCtExcl) + Number(totalRevNonItCtExcl);
 
     const branchNameFinal = get('gen_demand_branch_name') || get('gen_branch_name') || "XXX分公司";
     
@@ -381,11 +389,13 @@ export default function TemplateForms({
       'THREEIZATION_PLAN': get('gen_threeization'),
       'TECH_CONCLUSION': get('gen_tech_conclusion'),
       'STRATEGIC_VALUE': get('gen_strategic_value'),
-      'IT_BUSINESS_MODE': get('gen_demand_it_business_mode') || get('gen_it_bus_mode') || itBusMode || "服务模式",
+      'IT_BUSINESS_MODE': selectedTemplate.includes("需求导入表") ? (get('gen_demand_it_business_mode') || "服务模式") : (get('gen_it_bus_mode') || itBusMode || "服务购销"),
       'IT_FUNDING_SOURCE': get('gen_it_fund_src') || itFundSrc || "分公司成本开支",
       'IS_JOINT_BIDDING': get('gen_is_joint'),
       'REVENUE_COLLECTION_METHOD': get('gen_rev_collection') || revCollection,
       'EXPENDITURE_PAYMENT_METHOD': get('gen_exp_payment') || expPayment,
+      'REV_COLLECTION': get('gen_rev_collection') || revCollection,
+      'EXP_PAYMENT': get('gen_exp_payment') || expPayment,
       'PROJECT_REVIEW_ACCURACY': get('gen_review_acc'),
       'SINGLE_SOURCE_EXPLANATION': hasSingleSource ? get('gen_single_source') : "",
       'IS_SME': "是",
@@ -401,7 +411,17 @@ export default function TemplateForms({
       'RISK_OWNER': get('gen_risk_owner'),
 
       'IT_INQUIRY_PROCESS': itInquiryProcess,
-      'PROJECT_TOTAL_INVESTMENT': projTotalInvestStr,
+      'PROJECT_TOTAL_INVESTMENT_DETAIL': projTotalInvestStr,
+      'PROJECT_TOTAL_INVESTMENT': selectedTemplate.includes("会审") ? projTotalInvestStr : totalCost.toFixed(2),
+      'IT_INVESTMENT': itCost.toFixed(2),
+      'CT_INVESTMENT': ctCost.toFixed(2),
+      'PROJECT_TOTAL_REVENUE': totalRevExcl.toFixed(2),
+      'IT_REVENUE': totalRevItExcl.toFixed(2),
+      'CT_REVENUE': totalRevCtExcl.toFixed(2),
+      'DYNAMIC_PAYBACK_PERIOD': String(metrics?.dynamic_payback || "--"),
+      'IT_NET_PRESENT_VALUE_RATE': fmtPct(metrics?.it_npv_rate),
+      'NET_PRESENT_VALUE_RATE': fmtPct(metrics?.npv_rate),
+      'PROJECT_GROSS_PROFIT_MARGIN': fmtPct(metrics?.margin_rate),
 
       'TABLE_TECH_ITEMS': JSON.stringify(techRowsForDocx),
       'TABLE_INQ_VENDORS': JSON.stringify(vendorRowsForDocx),
@@ -510,8 +530,8 @@ export default function TemplateForms({
           </div>
         )}
         
-        {/* 会审纪要 / 投资效益分析表 通用字段 */}
-        {(selectedTemplate.includes('会审纪要') || selectedTemplate.includes('分析表')) && (
+        {/* 会审纪要 专属字段 (排除立项签批表、立项决策、Excel 效益分析表和需求导入表) */}
+        {selectedTemplate && selectedTemplate.includes('会审') && (
           <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
             <h4 className="font-bold text-primary mb-4">补充文档信息 (会审纪要等所需)</h4>
             <div className="grid grid-cols-2 gap-4">

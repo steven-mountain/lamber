@@ -54,6 +54,10 @@ pub struct IctInput {
     pub property_rights: String,
     pub discount_rate: String,
     
+    // Ignore Tail Difference Payload
+    pub ignore_tail_difference: Option<bool>,
+    pub tail_difference_value: Option<String>,
+
     // The revenue and cost distributions over 10 years (e.g., [1.0, 0.0, ..., 0.0])
     pub rev_distribution: Vec<f64>,
     pub cost_distribution: Vec<f64>,

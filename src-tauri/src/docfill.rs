@@ -226,8 +226,7 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
                         combined_xml.push_str("<w:p><w:pPr><w:jc w:val=\"left\"/></w:pPr>");
                     }
 
-                    // Render "报价截图" label
-                    combined_xml.push_str(r#"<w:r><w:t>报价截图 </w:t></w:r>"#);
+
 
                     // Render the drawing run inside the same paragraph
                     combined_xml.push_str(&format!(
