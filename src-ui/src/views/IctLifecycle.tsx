@@ -302,18 +302,25 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
             <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cost' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cost")}><span>💸</span> 支出侧测算</button>
             <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cashflow' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cashflow")}><span>📈</span> 10年现金流推演</button>
           </div>
-          <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mt-6 pt-4 border-t border-border mb-1">一键生成全流程文档</h3>
-          <div className="flex flex-col gap-1">
+          <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mt-6 pt-4 border-t border-border mb-2">一键生成全流程文档</h3>
+          <div className="flex flex-col gap-2">
             {templates.length === 0 ? <span className="text-xs text-secondary-foreground px-4">未找到模板文件</span> : 
-              templates.map(t => (
-                <button 
-                  key={t}
-                  className={`px-4 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors text-left truncate ${selectedTemplate === t && activeTab === 'generate' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`}
-                  onClick={() => handleTabSwitch("generate", t)}
-                >
-                  {t.endsWith('.xlsx') ? '📊' : '📄'} {t.replace('.docx', '').replace('.xlsx', '')}
-                </button>
-              ))
+              templates.map(t => {
+                const isActive = selectedTemplate === t && activeTab === 'generate';
+                return (
+                  <button 
+                    key={t}
+                    className={`relative overflow-hidden px-4 py-3 rounded-lg text-sm flex items-start gap-2.5 transition-all text-left border-b border-border/60 shadow-sm ${isActive ? 'bg-primary/20 text-primary font-bold border-transparent shadow' : 'text-secondary-foreground font-semibold hover:bg-primary/10 hover:text-primary'}`}
+                    onClick={() => handleTabSwitch("generate", t)}
+                  >
+                    {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
+                    <span className="mt-0.5 shrink-0 text-base">{t.endsWith('.xlsx') ? '📊' : '📄'}</span>
+                    <span className="whitespace-normal break-words leading-relaxed flex-1">
+                      {t.replace('.docx', '').replace('.xlsx', '')}
+                    </span>
+                  </button>
+                );
+              })
             }
           </div>
         </div>
