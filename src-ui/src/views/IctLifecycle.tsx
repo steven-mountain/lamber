@@ -364,27 +364,71 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
 
           {activeTab === "revenue" && (
             <div>
-              <div className="mb-6 border border-primary/30 bg-primary/5 p-4 rounded-xl">
-                <h3 className="font-bold text-primary mb-2">快捷收入拆分计算器</h3>
-                <p className="text-xs text-secondary-foreground mb-4">输入含税总收入与含税产品收入，计算“系统集成服务收入”并一键填入下方表单。</p>
+              <div className="mb-6 border border-primary/30 bg-primary/5 p-5 rounded-xl shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-bold text-primary text-base flex items-center gap-2">
+                    <span>⚡</span> 快捷收入拆分计算器 (融入自有产品测算)
+                  </h3>
+                  <span className="text-xs bg-primary/10 text-primary font-bold px-2.5 py-1 rounded-full border border-primary/20">
+                    自有产品占有率要求 1%
+                  </span>
+                </div>
+                <p className="text-xs text-secondary-foreground mb-4 leading-relaxed">
+                  按项目全生命周期要求，项目需融入自有产品，且自有产品占有率要求达到收入含税总金额的 1%。
+                  当您填写含税总收入（项目总金额）后，程序将默认自动计算出 1% 的自有产品含税金额。您也可按需手工调整。
+                </p>
                 <div className="flex gap-4 items-end">
-                  <div className="flex flex-col gap-1 flex-1">
-                    <label className="text-xs font-semibold">含税总收入</label>
-                    <input type="number" value={quickRevTotal} onChange={e => setQuickRevTotal(e.target.value)} className="bg-background border border-border px-3 py-2 rounded-md outline-none text-sm" />
+                  <div className="flex flex-col gap-1.5 flex-1">
+                    <label className="text-xs font-bold text-foreground">含税总收入 (项目总金额)</label>
+                    <input 
+                      type="number" 
+                      placeholder="输入总金额" 
+                      value={quickRevTotal} 
+                      onChange={e => {
+                        const val = e.target.value;
+                        setQuickRevTotal(val);
+                        if (val && !isNaN(Number(val))) {
+                          const productVal = (Number(val) * 0.01).toFixed(2);
+                          setQuickRevProduct(productVal);
+                        } else {
+                          setQuickRevProduct("");
+                        }
+                      }} 
+                      className="bg-background border border-border px-3 py-2 rounded-md outline-none focus:border-primary text-sm font-semibold shadow-sm" 
+                    />
                   </div>
-                  <div className="flex flex-col gap-1 flex-1">
-                    <label className="text-xs font-semibold">含税产品收入</label>
-                    <input type="number" value={quickRevProduct} onChange={e => setQuickRevProduct(e.target.value)} className="bg-background border border-border px-3 py-2 rounded-md outline-none text-sm" />
+                  <div className="flex flex-col gap-1.5 flex-1">
+                    <label className="text-xs font-bold text-foreground flex items-center justify-between">
+                      <span>含税产品收入 (自有产品)</span>
+                      <span className="text-[10px] text-primary font-mono font-medium">默认1%</span>
+                    </label>
+                    <input 
+                      type="number" 
+                      placeholder="产品金额" 
+                      value={quickRevProduct} 
+                      onChange={e => setQuickRevProduct(e.target.value)} 
+                      className="bg-background border border-border px-3 py-2 rounded-md outline-none focus:border-primary text-sm font-semibold shadow-sm" 
+                    />
                   </div>
-                  <div className="flex flex-col gap-1 flex-1">
-                    <label className="text-xs font-semibold text-primary">系统集成服务收入 (自动)</label>
-                    <input type="number" disabled value={Math.max(0, (Number(quickRevTotal)||0) - (Number(quickRevProduct)||0))} className="bg-background/50 border border-primary/30 px-3 py-2 rounded-md outline-none text-sm font-bold text-primary" />
+                  <div className="flex flex-col gap-1.5 flex-1">
+                    <label className="text-xs font-bold text-primary">系统集成服务收入 (自动扣减)</label>
+                    <input 
+                      type="number" 
+                      disabled 
+                      value={Math.max(0, (Number(quickRevTotal)||0) - (Number(quickRevProduct)||0)).toFixed(2)} 
+                      className="bg-background/50 border border-primary/30 px-3 py-2 rounded-md outline-none text-sm font-bold text-primary shadow-sm" 
+                    />
                   </div>
-                  <button onClick={() => {
-                    const integration = Math.max(0, (Number(quickRevTotal)||0) - (Number(quickRevProduct)||0));
-                    updateTaxItem('revIt', 'integration', 'incl', integration);
-                    if (quickRevProduct) updateTaxItem('revCt', 'product', 'incl', Number(quickRevProduct));
-                  }} className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-md text-sm hover:bg-primary/90 transition-colors">⬇️ 一键填入</button>
+                  <button 
+                    onClick={() => {
+                      const integration = Math.max(0, (Number(quickRevTotal)||0) - (Number(quickRevProduct)||0));
+                      updateTaxItem('revIt', 'integration', 'incl', Number(integration.toFixed(2)));
+                      if (quickRevProduct) updateTaxItem('revCt', 'product', 'incl', Number(Number(quickRevProduct).toFixed(2)));
+                    }} 
+                    className="bg-primary text-primary-foreground font-bold px-5 py-2 rounded-md text-sm hover:bg-primary/90 transition-all shadow-sm hover:shadow active:scale-[0.98]"
+                  >
+                    ⬇️ 一键填入表单
+                  </button>
                 </div>
               </div>
               <div className="mb-4 text-xs text-blue-600 bg-blue-50 p-3 rounded-lg border border-blue-200">

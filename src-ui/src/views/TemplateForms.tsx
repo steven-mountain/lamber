@@ -57,7 +57,7 @@ export default function TemplateForms({
   const [itBusMode, setItBusMode] = useState("服务购销")
   const [itFundSrc, setItFundSrc] = useState("分公司成本开支")
   const [revCollection, setRevCollection] = useState("项目验收完成后30天内客户单位支付100%")
-  const [expPayment, setExpPayment] = useState("项目验收完成后30天内客户单位支付100%")
+  const [expPayment, setExpPayment] = useState("项目验收完成且收到款项后30天内支付100%")
   
   const [subjectItCost, setSubjectItCost] = useState("IT集成")
   const [subjectCtCost, setSubjectCtCost] = useState("CT-视频监控")
