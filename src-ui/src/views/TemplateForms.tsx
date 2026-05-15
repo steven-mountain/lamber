@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react"
+import { TableProperties, X, Search } from "lucide-react"
 import { invoke } from "@tauri-apps/api/core"
+import { MID_THREE_CAPABILITIES } from "../lib/midThreeConstants"
 
 interface Props {
   selectedTemplate: string;
@@ -58,6 +60,9 @@ export default function TemplateForms({
   const [itFundSrc, setItFundSrc] = useState("分公司成本开支")
   const [revCollection, setRevCollection] = useState("项目验收完成后30天内客户单位支付100%")
   const [expPayment, setExpPayment] = useState("项目验收完成且收到款项后30天内支付100%")
+  
+  const [isMidThreeModalOpen, setIsMidThreeModalOpen] = useState(false)
+  const [midThreeSearch, setMidThreeSearch] = useState("")
   
   const [subjectItCost, setSubjectItCost] = useState("IT集成")
   const [subjectCtCost, setSubjectCtCost] = useState("CT-视频监控")
@@ -634,9 +639,48 @@ export default function TemplateForms({
                   涉及中台能力调用
                 </label>
                 {hasMidThree && (
-                  <div className="flex gap-2 mt-1">
-                    <input type="text" name="gen_mid_three_code" value={midThreeCode} onChange={e => setMidThreeCode(e.target.value)} placeholder="能力编号" className="flex-1 bg-muted border border-border px-3 py-2 rounded-md" />
-                    <input type="text" name="gen_mid_three_name" value={midThreeName} onChange={e => setMidThreeName(e.target.value)} placeholder="能力名称" className="flex-1 bg-muted border border-border px-3 py-2 rounded-md" />
+                  <div className="flex flex-col gap-2 mt-1">
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        name="gen_mid_three_code" 
+                        value={midThreeCode} 
+                        onChange={e => setMidThreeCode(e.target.value)} 
+                        placeholder="能力编号" 
+                        className="w-1/3 bg-muted border border-border px-3 py-2 rounded-md text-sm" 
+                      />
+                      <input 
+                        type="text" 
+                        list="mid-three-capabilities-list"
+                        name="gen_mid_three_name" 
+                        value={midThreeName} 
+                        onChange={e => {
+                          const val = e.target.value;
+                          setMidThreeName(val);
+                          const matched = MID_THREE_CAPABILITIES.find(c => c.label === val || c.value === val);
+                          if (matched) {
+                            setMidThreeCode(matched.code);
+                          }
+                        }} 
+                        placeholder="请选择或输入所需的中台能力" 
+                        className="flex-1 bg-muted border border-border px-3 py-2 rounded-md text-sm" 
+                      />
+                      <button 
+                        type="button" 
+                        onClick={() => setIsMidThreeModalOpen(true)} 
+                        className="px-3 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 flex items-center justify-center shrink-0 transition-colors"
+                        title="全局能力库"
+                      >
+                        <TableProperties className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <datalist id="mid-three-capabilities-list">
+                      {MID_THREE_CAPABILITIES.map((cap, idx) => (
+                        <option key={`${cap.code}-${idx}`} value={cap.value}>
+                          {cap.label} ({cap.code})
+                        </option>
+                      ))}
+                    </datalist>
                   </div>
                 )}
               </div>
@@ -1009,6 +1053,70 @@ export default function TemplateForms({
       <button className="bg-primary text-primary-foreground font-bold py-3 px-6 rounded-lg self-start shadow-sm hover:opacity-90 transition-opacity" onClick={handleGenerate}>
         🚀 立即生成此文件
       </button>
+
+      {isMidThreeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-background rounded-xl shadow-lg w-full max-w-3xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                <TableProperties className="w-5 h-5 text-primary" />
+                全局能力库
+              </h3>
+              <button onClick={() => setIsMidThreeModalOpen(false)} className="p-1.5 rounded-full hover:bg-muted text-muted-foreground transition-colors"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-4 border-b border-border bg-muted/30">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input 
+                  type="text" 
+                  value={midThreeSearch} 
+                  onChange={e => setMidThreeSearch(e.target.value)} 
+                  placeholder="搜索能力名称、编号或所属类别..." 
+                  className="w-full pl-9 pr-4 py-2.5 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-0">
+              <table className="w-full text-sm text-left">
+                <thead className="text-xs text-muted-foreground uppercase bg-muted/50 sticky top-0 z-10 shadow-sm">
+                  <tr>
+                    <th className="px-6 py-3.5 font-medium">能力名称</th>
+                    <th className="px-6 py-3.5 font-medium w-32">能力编号</th>
+                    <th className="px-6 py-3.5 font-medium w-36">所属类别</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {MID_THREE_CAPABILITIES.filter(c => c.label.includes(midThreeSearch) || c.value.includes(midThreeSearch) || c.code.includes(midThreeSearch) || c.type.includes(midThreeSearch)).map((cap, idx) => (
+                    <tr 
+                      key={`${cap.code}-${idx}`} 
+                      className="hover:bg-primary/5 cursor-pointer transition-colors group"
+                      onClick={() => {
+                        setMidThreeName(cap.value);
+                        setMidThreeCode(cap.code);
+                        setIsMidThreeModalOpen(false);
+                      }}
+                    >
+                      <td className="px-6 py-4 font-medium text-foreground group-hover:text-primary transition-colors">{cap.label}</td>
+                      <td className="px-6 py-4 text-muted-foreground font-mono text-xs">{cap.code}</td>
+                      <td className="px-6 py-4 text-muted-foreground">
+                        <span className="bg-secondary text-secondary-foreground px-2.5 py-1 rounded-full text-xs font-medium">
+                          {cap.type}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {MID_THREE_CAPABILITIES.filter(c => c.label.includes(midThreeSearch) || c.value.includes(midThreeSearch) || c.code.includes(midThreeSearch) || c.type.includes(midThreeSearch)).length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-12 text-center text-muted-foreground">没有找到匹配的中台能力数据</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
