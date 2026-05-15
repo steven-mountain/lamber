@@ -129,19 +129,20 @@ export default function TemplateForms({
   const removeInqVendor = (i: number) => setInqVendors(inqVendors.filter((_, idx) => idx !== i))
 
   const autoGenerateInquiry = () => {
-    let limit = projectData.cost?.it?.integration?.incl || 0
+    const it = projectData.cost?.it || {}
+    const limit = (it.device?.incl||0) + (it.construction?.incl||0) + (it.survey?.incl||0) + 
+                  (it.integration?.incl||0) + (it.other?.incl||0) + (it.maintenance?.incl||0) + 
+                  (it.running?.incl||0) + (it.bidding?.incl||0) + (it.design_eval?.incl||0) + (it.audit?.incl||0)
+    
     if (limit === 0) {
-      const it = projectData.cost?.it || {}
-      limit = (it.device?.incl||0) + (it.construction?.incl||0) + (it.survey?.incl||0) + 
-              (it.integration?.incl||0) + (it.other?.incl||0) + (it.maintenance?.incl||0) + 
-              (it.running?.incl||0) + (it.bidding?.incl||0) + (it.design_eval?.incl||0) + (it.audit?.incl||0)
-      if (limit === 0) limit = 167400
+      alert("请先完善 IT 投入明细（当前 IT 总成本为 0），三家报价的底价需硬性绑定成本。")
+      return
     }
     
     const quotes = [
-      Math.round(limit * (0.95 + Math.random() * 0.04)),
-      Math.round(limit * (0.85 + Math.random() * 0.05)),
-      Math.round(limit * (0.75 + Math.random() * 0.05))
+      limit, // 最低价直接等于 IT 投入含税总成本
+      Math.round(limit * (1.05 + Math.random() * 0.02)), // 基准价上浮约 5%-7%
+      Math.round(limit * (1.10 + Math.random() * 0.05))  // 最高价上浮约 10%-15%
     ].sort((a, b) => a - b)
 
     const shuffled = [0, 1, 2].sort(() => Math.random() - 0.5)

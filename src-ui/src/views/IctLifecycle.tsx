@@ -121,12 +121,20 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
   }
 
   const updateTaxItem = (groupId: string, key: string, field: "incl" | "tax" | "excl", val: number) => {
+    // 只要有任何金额或税率变动，立即重置尾差忽略状态，确保下一次切换标签时重新校验
+    if (ignoredDataHash !== null) {
+      setIgnoredDataHash(null);
+      setIgnoredTailValue(null);
+    }
+
     const processItem = (groupState: any, setGroupState: any, targetKey: string) => {
-       const item = { ...groupState[targetKey], [field]: val }
-       if (field === 'incl' || field === 'tax') {
-         item.excl = Number((item.incl / (1 + item.tax / 100)).toFixed(2))
-       }
-       setGroupState({ ...groupState, [targetKey]: item })
+      const item = { ...groupState[targetKey], [field]: isNaN(val) ? 0 : val }
+      if (field === 'incl' || field === 'tax') {
+        item.excl = item.incl === 0 ? 0 : Number((item.incl / (1 + item.tax / 100)).toFixed(2))
+      } else if (field === 'excl') {
+        item.incl = item.excl === 0 ? 0 : Number((item.excl * (1 + item.tax / 100)).toFixed(2))
+      }
+      setGroupState({ ...groupState, [targetKey]: item })
     }
 
     if (groupId === 'revIt') processItem(revIt, setRevIt, key)
@@ -136,9 +144,13 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
       if (key === 'line') processItem(costCt, setCostCt, 'bandwidth')
     }
     else if (groupId === 'revNonItCt') {
-       const item = { ...revNonItCt, [field]: val }
-       if (field === 'incl' || field === 'tax') item.excl = Number((item.incl / (1 + item.tax / 100)).toFixed(2))
-       setRevNonItCt(item)
+      const item = { ...revNonItCt, [field]: isNaN(val) ? 0 : val }
+      if (field === 'incl' || field === 'tax') {
+        item.excl = item.incl === 0 ? 0 : Number((item.incl / (1 + item.tax / 100)).toFixed(2))
+      } else if (field === 'excl') {
+        item.incl = item.excl === 0 ? 0 : Number((item.excl * (1 + item.tax / 100)).toFixed(2))
+      }
+      setRevNonItCt(item)
     }
     else if (groupId === 'costIt') processItem(costIt, setCostIt, key)
     else if (groupId === 'costCt') processItem(costCt, setCostCt, key)
@@ -273,7 +285,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
               <div className="flex gap-2">
                 <input type="number" placeholder="含税" className="w-full bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm" value={groupState[item.key].incl === 0 ? "" : groupState[item.key].incl} onChange={e => updateTaxItem(groupId, item.key, 'incl', Number(e.target.value))} />
                 <input type="number" placeholder="税率" className="w-20 bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm" value={groupState[item.key].tax} onChange={e => updateTaxItem(groupId, item.key, 'tax', Number(e.target.value))} />
-                <input type="number" placeholder="不含税" className={`w-full bg-background border px-3 py-2 rounded-md outline-none text-sm focus:border-primary ${itemErr ? 'border-red-500 ring-1 ring-red-500' : 'border-border'}`} value={groupState[item.key].excl} onChange={e => updateTaxItem(groupId, item.key, 'excl', Number(e.target.value))} />
+                <input type="number" placeholder="不含税" className={`w-full bg-background border px-3 py-2 rounded-md outline-none text-sm focus:border-primary ${itemErr ? 'border-red-500 ring-1 ring-red-500' : 'border-border'}`} value={groupState[item.key].excl === 0 ? "" : groupState[item.key].excl} onChange={e => updateTaxItem(groupId, item.key, 'excl', Number(e.target.value))} />
               </div>
               {itemErr && <span className="text-[10px] text-red-500 font-bold">校验失败：偏离 {itemErr.difference} 元，要求：{itemErr.expectedExcl} 元</span>}
             </div>
