@@ -77,10 +77,26 @@ export default function AiConsultantDrawer({ currentView }: AiConsultantDrawerPr
   };
 
   useEffect(() => {
+    if (!isAtBottom.current) return;
+    const frameId = requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+      stopParser();
+    };
+  }, [stopParser]);
+
+  useEffect(() => {
     if (isAtBottom.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
     }
-  }, [messages, normalText, thinkText]);
+  }, []);
 
   // Sync parser state to the last message
   useEffect(() => {
@@ -93,10 +109,15 @@ export default function AiConsultantDrawer({ currentView }: AiConsultantDrawerPr
         
         // Safety check: Only update if the last message is an assistant response
         if (lastMsg?.role === 'assistant') {
+          const nextContent = normalText || lastMsg.content;
+          const nextThink = thinkText || lastMsg.think;
+          if (lastMsg.content === nextContent && lastMsg.think === nextThink) {
+            return prev;
+          }
           newMessages[lastIdx] = { 
             ...lastMsg, 
-            content: normalText || lastMsg.content,
-            think: thinkText || lastMsg.think
+            content: nextContent,
+            think: nextThink
           };
           return newMessages;
         }
@@ -104,12 +125,6 @@ export default function AiConsultantDrawer({ currentView }: AiConsultantDrawerPr
       });
     }
   }, [normalText, thinkText, isTyping]);
-
-  useEffect(() => {
-    return () => {
-      if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
-    };
-  }, []);
 
   const handleSend = async (overrideInput?: string) => {
     const textToSend = overrideInput || input;

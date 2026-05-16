@@ -16,6 +16,7 @@ export function useStreamingParser() {
   const thinkBufferRef = useRef("");
   const internalRawBufferRef = useRef(""); 
   const stateRef = useRef<{ isInsideThink: boolean }>({ isInsideThink: false });
+  const isStreamingRef = useRef(false);
   
   // Render Scheduler (The "Gating")
   const renderTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -30,6 +31,7 @@ export function useStreamingParser() {
     setThinkText("");
     setIsInsideThink(false);
     setIsStreaming(false);
+    isStreamingRef.current = false;
     normalBufferRef.current = "";
     thinkBufferRef.current = "";
     internalRawBufferRef.current = "";
@@ -47,7 +49,10 @@ export function useStreamingParser() {
    */
   const parseChunk = useCallback((chunk: string) => {
     if (!chunk) return;
-    setIsStreaming(true);
+    if (!isStreamingRef.current) {
+      isStreamingRef.current = true;
+      setIsStreaming(true);
+    }
     
     // 1. Initialize Scheduler if not running (80ms = ~12FPS)
     if (!renderTimerRef.current) {
@@ -126,6 +131,7 @@ export function useStreamingParser() {
     
     // 4. Critical: Final state sync and status update
     flushToState();
+    isStreamingRef.current = false;
     setIsStreaming(false);
   }, [flushToState]);
 
@@ -138,6 +144,7 @@ export function useStreamingParser() {
       clearInterval(renderTimerRef.current);
       renderTimerRef.current = null;
     }
+    isStreamingRef.current = false;
     setIsStreaming(false);
   }, []);
 
