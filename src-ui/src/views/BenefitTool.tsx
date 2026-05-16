@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { invoke } from "@tauri-apps/api/core"
+import WorkspaceHeader from "../components/WorkspaceHeader"
 
 export default function BenefitTool({ onBack }: { onBack: () => void }) {
   const [subView, setSubView] = useState<"single" | "batch">("single")
@@ -44,8 +45,15 @@ export default function BenefitTool({ onBack }: { onBack: () => void }) {
       }) as string
       if (!selected) return
       
-      const outPath = await invoke('process_excel_batch', { filePath: selected })
-      alert("批量处理完成！输出：" + outPath)
+      const outPath: string = await invoke('process_excel_batch', { 
+        moduleId: 'benefit_tool',
+        filePath: selected 
+      })
+      
+      if (confirm("✅ 批量处理完成！文件已保存至工作空间 output 目录。\n是否立即打开输出目录？")) {
+        const modulePath: string = await invoke('get_module_path', { moduleId: 'benefit_tool' })
+        invoke('open_file', { path: `${modulePath}/output` })
+      }
     } catch (e: any) {
       alert("批量处理失败: " + e)
     }
@@ -56,12 +64,7 @@ export default function BenefitTool({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="flex flex-col flex-1 animate-in fade-in duration-300 h-full">
-      <div className="h-16 bg-card border-b border-border flex items-center px-6 gap-4 shrink-0">
-        <button onClick={onBack} className="text-secondary-foreground hover:text-primary hover:bg-secondary font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors">
-          <span>←</span> 返回集市
-        </button>
-        <h2 className="m-0 text-lg font-bold text-foreground border-l-2 border-border pl-4">项目效益分析</h2>
-      </div>
+      <WorkspaceHeader moduleId="benefit_tool" title="项目效益分析" onBack={onBack} />
       <div className="flex flex-1 overflow-hidden">
         <div className="w-[340px] bg-muted p-6 overflow-y-auto flex flex-col gap-4 border-r border-border shrink-0">
           <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mb-1">效益分析导航</h3>

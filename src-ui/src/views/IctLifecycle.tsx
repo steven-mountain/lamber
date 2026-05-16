@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core"
+import WorkspaceHeader from "../components/WorkspaceHeader"
 import TemplateForms from "./TemplateForms"
 import { validateFinancialData, ValidationReport } from "../lib/financeValidator"
 
@@ -159,9 +160,18 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
 
   useEffect(() => { performCalculation() }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectYears, discountRate, cashflowModel, distRev, distCost])
   
-  useEffect(() => {
-    invoke('get_available_templates').then((res: any) => setTemplates(res)).catch(e => console.error(e))
+  const loadTemplates = useCallback(async () => {
+    try {
+      const list: any = await invoke('get_available_templates', { moduleId: 'ict_lifecycle' })
+      setTemplates(list)
+    } catch (e) {
+      console.error("加载 ICT 模板失败:", e)
+    }
   }, [])
+
+  useEffect(() => {
+    loadTemplates()
+  }, [loadTemplates])
 
   const getInputDataPayload = () => ({
     project_name: projName,
@@ -300,10 +310,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="flex flex-col flex-1 animate-in fade-in duration-300 h-full overflow-hidden">
-      <div className="h-16 bg-card border-b border-border flex items-center px-6 gap-4 shrink-0">
-        <button onClick={onBack} className="text-secondary-foreground hover:text-primary hover:bg-secondary font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors"><span>←</span> 返回集市</button>
-        <h2 className="m-0 text-lg font-bold text-foreground border-l-2 border-border pl-4">ICT项目全生命周期</h2>
-      </div>
+      <WorkspaceHeader moduleId="ict_lifecycle" title="ICT项目全生命周期" onBack={onBack} onPathChange={() => loadTemplates()} />
       
       <div className="flex flex-1 overflow-hidden">
         <div className="w-[260px] bg-muted p-6 overflow-y-auto flex flex-col gap-4 border-r border-border shrink-0">

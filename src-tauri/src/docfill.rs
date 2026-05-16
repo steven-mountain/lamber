@@ -1,3 +1,4 @@
+use crate::config_manager;
 use std::collections::{HashSet, HashMap};
 use std::fs::File;
 use std::io::{Read, Write};
@@ -61,7 +62,7 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
     let out_file = File::create(output_path).map_err(|e| format!("Failed to create output: {}", e))?;
     let mut zip_writer = ZipWriter::new(out_file);
     
-    let options = SimpleFileOptions::default()
+    let options: SimpleFileOptions = SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Stored)
         .unix_permissions(0o755);
 
@@ -346,15 +347,11 @@ fn clean_xml_placeholders(xml: &str) -> String {
 }
 
 #[tauri::command]
-pub fn get_available_templates() -> Result<Vec<String>, String> {
+pub fn get_available_templates(state: tauri::State<'_, std::sync::Mutex<config_manager::AppConfig>>, module_id: String) -> Result<Vec<String>, String> {
     use std::fs;
-    let current_dir = std::env::current_dir().map_err(|e| format!("无法获取当前目录: {}", e))?;
-    let project_root = if current_dir.ends_with("src-tauri") {
-        current_dir.parent().unwrap().to_path_buf()
-    } else {
-        current_dir.clone()
-    };
-    let template_dir = project_root.join("项目全生命周期文件模版");
+    let config = state.lock().unwrap();
+    let module_path = config.module_paths.get(&module_id).ok_or("未设置工作目录")?;
+    let template_dir = std::path::Path::new(module_path).join("templates");
     
     if !template_dir.exists() {
         return Ok(vec![]);
@@ -380,24 +377,20 @@ pub fn get_available_templates() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub fn generate_lifecycle_docs(variables: HashMap<String, String>, selected_templates: Vec<String>) -> Result<String, String> {
+pub fn generate_lifecycle_docs(state: tauri::State<'_, std::sync::Mutex<config_manager::AppConfig>>, module_id: String, variables: HashMap<String, String>, selected_templates: Vec<String>) -> Result<String, String> {
     use std::fs;
     
-    let current_dir = std::env::current_dir().map_err(|e| format!("无法获取当前目录: {}", e))?;
+    let config = state.lock().unwrap();
+    let module_path = config.module_paths.get(&module_id).ok_or("未设置工作目录")?;
+    let base_path = std::path::Path::new(module_path);
     
-    let project_root = if current_dir.ends_with("src-tauri") {
-        current_dir.parent().unwrap().to_path_buf()
-    } else {
-        current_dir.clone()
-    };
-    
-    let template_dir = project_root.join("项目全生命周期文件模版");
+    let template_dir = base_path.join("templates");
     
     if !template_dir.exists() {
         return Err(format!("未找到模板目录: {}", template_dir.display()));
     }
     
-    let output_dir = project_root.join("一键生成全生命周期结果");
+    let output_dir = base_path.join("output");
     if !output_dir.exists() {
         fs::create_dir_all(&output_dir).map_err(|e| format!("创建输出目录失败: {}", e))?;
     }
@@ -471,7 +464,7 @@ pub fn generate_lifecycle_docs(variables: HashMap<String, String>, selected_temp
 }
 
 #[tauri::command]
-pub fn batch_generate_docx_from_excel(excel_path: String, template_path: String) -> Result<String, String> {
+pub fn batch_generate_docx_from_excel(state: tauri::State<'_, std::sync::Mutex<config_manager::AppConfig>>, module_id: String, excel_path: String, template_path: String) -> Result<String, String> {
     use calamine::{open_workbook, Reader, Xlsx};
     use chrono::Local;
 
@@ -480,10 +473,11 @@ pub fn batch_generate_docx_from_excel(excel_path: String, template_path: String)
     let sheet_name = sheet_names.first().ok_or("找不到工作表")?.clone();
     let range = workbook.worksheet_range(&sheet_name).map_err(|e| format!("读取工作表异常: {}", e))?;
 
-    // Create output directory
-    let excel_path_buf = std::path::Path::new(&excel_path);
-    let parent = excel_path_buf.parent().unwrap_or(std::path::Path::new("."));
-    let output_dir = parent.join("立项签批表生成结果");
+    // Create output directory from module config
+    let config = state.lock().unwrap();
+    let module_path = config.module_paths.get(&module_id).ok_or("未设置工作目录")?;
+    let output_dir = std::path::Path::new(module_path).join("output");
+    
     if !output_dir.exists() {
         std::fs::create_dir_all(&output_dir).map_err(|e| format!("创建输出目录失败: {}", e))?;
     }

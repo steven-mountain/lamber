@@ -684,6 +684,59 @@
       background: var(--surface_container_highest);
       color: var(--on_surface);
     }
+
+    /* Path Status Bar */
+    .path-status-bar {
+      background: var(--surface_container_low);
+      border: 1px solid var(--ghost-border);
+      border-left: 4px solid var(--primary);
+      border-radius: 8px;
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      transition: all 0.3s;
+    }
+
+    .path-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .path-label {
+      font-size: 0.7rem;
+      font-weight: 800;
+      color: var(--on_surface_variant);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .path-value {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--primary);
+      font-family: monospace;
+      word-break: break-all;
+    }
+
+    .path-btn {
+      padding: 6px 14px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--surface_container_lowest);
+      border: 1px solid var(--primary);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .path-btn:hover {
+      background: var(--primary_container);
+    }
   </style>
 </head>
 <body>
@@ -828,6 +881,13 @@
 
       <!-- Right Panel: Data Presentation & Batch -->
       <div class="main-panel">
+        <div class="path-status-bar" id="path-bar-benefit_tool">
+          <div class="path-info">
+            <div class="path-label">效益分析工作目录</div>
+            <div class="path-value" id="path-val-benefit_tool">未设置</div>
+          </div>
+          <button class="path-btn" onclick="changeModulePath('benefit_tool')">修改目录</button>
+        </div>
         <div id="subview-single-main" class="sub-view active">
           <div class="table-card">
             <h3 class="section-title">单项测算结果账单</h3>
@@ -922,18 +982,35 @@
     <div class="tool-layout">
       <!-- Left Sidebar: Controls -->
       <div class="sidebar">
-        <h3 class="section-title">1. 上传模板文件</h3>
-        <div class="upload-area" onclick="triggerSelectTemplate()" style="padding: 20px 10px;">
-          <div class="upload-icon">📄</div>
-          <div style="font-size:0.85rem">选择本地 Docx 模板</div>
+        <h3 class="section-title">1. 选择模板</h3>
+        <p style="font-size:0.75rem; color:var(--on_surface_variant); margin-bottom: 12px; line-height: 1.4;">
+          从当前工作目录的 <code>templates</code> 文件夹中选择模板，或手动上传。
+        </p>
+        
+        <div id="docfill_templates_container" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+           <div style="font-size: 0.8rem; color: var(--on_surface_variant); padding: 10px; background: var(--surface_container_lowest); border-radius: 6px; border: 1px dashed var(--ghost-border);">
+              正在加载模板列表...
+           </div>
         </div>
-        <div id="docfill_template_name" style="font-size:0.8rem; color:var(--primary); margin-top:8px; word-break: break-all;">未选择模板</div>
+
+        <div class="upload-area" onclick="triggerSelectTemplate()" style="padding: 12px 10px;">
+          <div class="upload-icon" style="font-size: 1.2rem; margin-bottom: 4px;">📂</div>
+          <div style="font-size:0.8rem">选择其它本地文件</div>
+        </div>
+        <div id="docfill_template_name" style="font-size:0.75rem; color:var(--primary); margin-top:12px; word-break: break-all; font-weight: 600;">未选择模板</div>
 
         <button class="primary-btn" style="margin-top:20px" onclick="triggerGenerateDoc()">执行生成</button>
       </div>
 
       <!-- Right Panel: Data Presentation -->
       <div class="main-panel">
+        <div class="path-status-bar" id="path-bar-docfill_tool">
+          <div class="path-info">
+            <div class="path-label">申报材料工作目录</div>
+            <div class="path-value" id="path-val-docfill_tool">未设置</div>
+          </div>
+          <button class="path-btn" onclick="changeModulePath('docfill_tool')">修改目录</button>
+        </div>
         <div class="table-card" style="flex:1;">
           <h3 class="section-title">2. 填写材料信息</h3>
           <p style="font-size:0.85rem; color:var(--on_surface_variant); margin-bottom: 24px;">
@@ -975,6 +1052,13 @@
 
       <!-- Center Form Area -->
       <div class="main-panel" style="flex: 1; padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto;">
+        <div class="path-status-bar" id="path-bar-ict_lifecycle">
+          <div class="path-info">
+            <div class="path-label">全生命周期工作目录</div>
+            <div class="path-value" id="path-val-ict_lifecycle">未设置</div>
+          </div>
+          <button class="path-btn" onclick="changeModulePath('ict_lifecycle')">修改目录</button>
+        </div>
         
         <!-- Tab: Basic Info -->
         <div id="ict-tab-basic" class="ict-tab-content" style="display: block;">
@@ -1674,6 +1758,40 @@
   <!-- SCRIPTS                         -->
   <!-- =============================== -->
   <script>
+    let currentModuleId = "";
+
+    async function refreshModulePath(moduleId) {
+      if (!window.__TAURI__) return;
+      try {
+        const path = await window.__TAURI__.core.invoke('get_module_path', { moduleId });
+        const valEl = document.getElementById('path-val-' + moduleId);
+        if (valEl) {
+          valEl.innerText = path || "未设置 (点击“修改目录”进行配置)";
+          valEl.style.color = path ? "var(--primary)" : "var(--error)";
+        }
+      } catch (e) {
+        console.error("刷新路径失败:", e);
+      }
+    }
+
+    async function changeModulePath(moduleId) {
+      if (!window.__TAURI__) return;
+      try {
+        const newPath = await window.__TAURI__.core.invoke('set_module_path', { moduleId });
+        if (newPath) {
+          await refreshModulePath(moduleId);
+          // If we are in ICT lifecycle, reload templates
+          if (moduleId === 'ict_lifecycle') {
+            loadAvailableTemplates();
+          }
+        }
+      } catch (e) {
+        if (e !== "用户取消了选择") {
+          alert("设置路径失败: " + e);
+        }
+      }
+    }
+
     // 监听输入并自动计算不含税金额 (双向绑定)
     function setupTaxCalculations() {
       const formGroups = document.querySelectorAll('.ict-tab-content .form-group');
@@ -1931,7 +2049,13 @@
 
     // == Navigation Manager ==
     function openTool(toolId) {
+      currentModuleId = toolId;
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      
+      if(toolId !== 'hub') {
+        refreshModulePath(toolId);
+      }
+
       if(toolId === 'hub') {
         document.getElementById('view-hub').classList.add('active');
         document.title = "云数中心工具集";
@@ -1943,6 +2067,7 @@
       } else if (toolId === 'docfill_tool') {
         document.getElementById('view-docfill-tool').classList.add('active');
         document.title = "申报材料制作";
+        loadDocfillTemplates();
       } else if (toolId === 'ict_lifecycle') {
         document.getElementById('view-ict-lifecycle').classList.add('active');
         document.title = "ICT项目全生命周期";
@@ -2360,7 +2485,7 @@
              await new Promise(r => setTimeout(r, 100));
              const filePath = typeof selected === 'object' && selected.path ? selected.path : selected;
              
-             const outPath = await invoke('process_excel_batch', { filePath: filePath });
+             const outPath = await invoke('process_excel_batch', { moduleId: 'benefit_tool', filePath: filePath });
              lastBatchOutput = outPath;
              resultMsgBox.style.color = 'var(--success)';
              resultMsgBox.innerText = `✅ 处理成功！\n文件生成至:\n${outPath}`;
@@ -2431,7 +2556,7 @@
             const resultMsgBox = document.getElementById('batch-result-msg');
             resultMsgBox.innerText = `⏳ 正在批量生成签批表...`;
             
-            const result = await invoke('batch_generate_docx_from_excel', { excelPath: excelPath, templatePath: templatePath });
+            const result = await invoke('batch_generate_docx_from_excel', { moduleId: 'benefit_tool', excelPath: excelPath, templatePath: templatePath });
             resultMsgBox.innerText = result;
           }
         }
@@ -2732,7 +2857,7 @@
       if (!window.__TAURI__) return;
       const invoke = window.__TAURI__.core.invoke;
       try {
-        const templates = await invoke('get_available_templates');
+        const templates = await invoke('get_available_templates', { moduleId: 'ict_lifecycle' });
         const container = document.getElementById('sidebar_templates_container');
         container.innerHTML = '';
         
@@ -3236,6 +3361,7 @@
         };
 
         const resultPath = await invoke('generate_lifecycle_docs', { 
+            moduleId: 'ict_lifecycle',
             variables: variables,
             selectedTemplates: [templateFilename]
         });
@@ -3500,6 +3626,61 @@
         } catch(e) { 
             alert("❌ 生成失败: " + e); 
         }
+    }
+
+    async function loadDocfillTemplates() {
+      if (!window.__TAURI__) return;
+      const invoke = window.__TAURI__.core.invoke;
+      try {
+        const templates = await invoke('get_available_templates', { moduleId: 'docfill_tool' });
+        const container = document.getElementById('docfill_templates_container');
+        container.innerHTML = '';
+        
+        if (templates.length === 0) {
+            container.innerHTML = '<span style="color:var(--on_surface_variant); font-size:0.75rem; padding: 8px;">未在 templates 文件夹中找到 .docx 模板</span>';
+            return;
+        }
+        
+        templates.forEach(t => {
+            const row = document.createElement('div');
+            row.style.padding = '8px 12px';
+            row.style.background = 'var(--surface_container_low)';
+            row.style.border = '1px solid var(--ghost-border)';
+            row.style.borderRadius = '6px';
+            row.style.cursor = 'pointer';
+            row.style.fontSize = '0.75rem';
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.gap = '8px';
+            row.style.transition = 'all 0.2s';
+            row.innerHTML = `<span style="font-size: 1rem;">📄</span> <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${t}</span>`;
+            
+            row.onmouseover = () => { row.style.borderColor = 'var(--primary)'; row.style.background = 'var(--primary_container)'; };
+            row.onmouseout = () => { row.style.borderColor = 'var(--ghost-border)'; row.style.background = 'var(--surface_container_low)'; };
+            
+            row.onclick = async () => {
+                try {
+                  const modulePath = await invoke('get_module_path', { moduleId: 'docfill_tool' });
+                  if (!modulePath) return alert("请先设置工作目录");
+                  
+                  // Construct full path (using simple backslash for windows, though Rust usually handles either)
+                  const fullPath = modulePath + "\\" + "templates" + "\\" + t;
+                  currentDocfillTemplate = fullPath;
+                  
+                  document.getElementById('docfill_template_name').innerText = "已从工作目录选择:\n" + t;
+                  
+                  // Extract variables from the resolved path
+                  docfillVariables = await invoke('extract_docx_variables', { path: fullPath });
+                  renderDocfillForm();
+                } catch(e) {
+                  alert("加载模板变量失败: " + e);
+                }
+            };
+            container.appendChild(row);
+        });
+      } catch(e) {
+          console.error("加载模板失败", e);
+      }
     }
   </script>
 </body>

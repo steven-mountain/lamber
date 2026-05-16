@@ -486,11 +486,17 @@ export default function TemplateForms({
     }
 
     try {
-      const resultPath = await invoke('generate_lifecycle_docs', { 
+      const resultPath: string = await invoke('generate_lifecycle_docs', { 
+          moduleId: "ict_lifecycle",
           variables: variables,
           selectedTemplates: [selectedTemplate]
       })
-      alert("✅ 生成成功！文件路径：" + resultPath)
+      if (confirm("✅ 生成成功！文件已保存至工作空间 output 目录。\n是否立即打开输出目录？")) {
+        // We know the output dir is parent of the file, but we can just open the file's dir or use open_file
+        // Actually, resolve_module_path 'output' is best.
+        const modulePath: string = await invoke('get_module_path', { moduleId: 'ict_lifecycle' })
+        invoke('open_file', { path: `${modulePath}/output` })
+      }
     } catch(e) {
       alert("生成失败：" + e)
     }

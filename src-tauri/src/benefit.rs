@@ -1,3 +1,4 @@
+use crate::config_manager;
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -461,12 +462,26 @@ pub fn calculate_benefit(input: CalcInput) -> Result<CalcResult, String> {
 }
 
 #[tauri::command]
-pub async fn process_excel_batch(file_path: String) -> Result<String, String> {
+pub async fn process_excel_batch(state: tauri::State<'_, std::sync::Mutex<config_manager::AppConfig>>, module_id: String, file_path: String) -> Result<String, String> {
     let path = Path::new(&file_path);
 
     if !path.exists() {
         return Err("文件不存在".to_string());
     }
+
+    // Get output directory from module config
+    let config = state.lock().unwrap();
+    let module_path = config.module_paths.get(&module_id).ok_or("未设置工作目录")?;
+    let output_dir = std::path::Path::new(module_path).join("output");
+    
+    if !output_dir.exists() {
+        std::fs::create_dir_all(&output_dir).map_err(|e| format!("创建输出目录失败: {}", e))?;
+    }
+
+    let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+    let out_name = file_name.replace(".xlsx", "_批处理结果.xlsx");
+    let out_path = output_dir.join(out_name);
+    let out_path_str = out_path.to_string_lossy().to_string();
 
     let mut workbook: Xlsx<_> = open_workbook(&file_path).map_err(|e| format!("打开Excel异常: {}", e))?;
     let sheet_names = workbook.sheet_names().to_owned();
@@ -675,10 +690,9 @@ pub async fn process_excel_batch(file_path: String) -> Result<String, String> {
         row_idx += 1;
     }
 
-    let out_name = file_path.replace(".xlsx", "_批处理结果.xlsx");
-    out_wb.save(&out_name).map_err(|e| format!("保存文件失败: {}", e))?;
+    out_wb.save(&out_path_str).map_err(|e| format!("保存文件失败: {}", e))?;
 
-    Ok(out_name)
+    Ok(out_path_str)
 }
 
 #[tauri::command]
