@@ -1,15 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { fetch } from '@tauri-apps/plugin-http';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Bot, X, Settings, Send, Loader2 } from 'lucide-react';
+import { Bot, X, Settings, Send, Loader2, Sparkles, MessageSquare, Trash2 } from 'lucide-react';
+import { SYSTEM_PROMPT_KNOWLEDGE } from '../lib/knowledgeBase';
+import { useAiContextStore } from '../store/useAiContextStore';
+import { AiRuntime } from '../ai/AiRuntime';
+import { PromptAST, ContextNode, PromptRule } from '../ai/types';
+import { useStreamingParser } from '../hooks/useStreamingParser';
+import MessageBubble from './MessageBubble';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  think?: string;
 }
 
-export default function AiConsultantDrawer() {
+interface AiConsultantDrawerProps {
+  currentView: string;
+}
+
+export default function AiConsultantDrawer({ currentView }: AiConsultantDrawerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [input, setInput] = useState('');
@@ -17,11 +31,28 @@ export default function AiConsultantDrawer() {
     { role: 'assistant', content: '您好！我是 Lamber 智能售前顾问。我可以帮您分析当前页面的项目效益、推荐内置产品。请问有什么可以帮您？' }
   ]);
   const [isTyping, setIsTyping] = useState(false);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   
   // Settings state with persistence
   const [endpoint, setEndpoint] = useState(() => localStorage.getItem('lamber_ai_endpoint') || 'http://localhost:11434/v1/chat/completions');
   const [model, setModel] = useState(() => localStorage.getItem('lamber_ai_model') || 'gemma:7b');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('lamber_ai_api_key') || '');
+
+  // AI Context Store
+  const businessData = useAiContextStore(state => state.businessData);
+  const activeModule = useAiContextStore(state => state.activeModule);
+  const lastUpdated = useAiContextStore(state => state.lastUpdated);
+
+  // Runtime Infrastructure
+  const runtime = useRef(new AiRuntime());
+  const [loadingStatus, setLoadingStatus] = useState("正在分析...");
+  const statusTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Streaming Parser
+  const { normalText, thinkText, parseChunk, finalize, reset: resetParser } = useStreamingParser();
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const isAtBottom = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     localStorage.setItem('lamber_ai_endpoint', endpoint);
@@ -37,121 +68,151 @@ export default function AiConsultantDrawer() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+  const handleScroll = () => {
+    if (!chatContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+    isAtBottom.current = scrollHeight - scrollTop - clientHeight < 100;
+  };
 
-  const handleSend = async () => {
-    if (!input.trim() || isTyping) return;
+  useEffect(() => {
+    if (isAtBottom.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isTyping, normalText, thinkText]);
+
+  // Sync parser state to the last message
+  useEffect(() => {
+    if (isTyping) {
+      setMessages(prev => {
+        if (!prev || prev.length === 0) return prev;
+        const newMessages = [...prev];
+        const lastIdx = newMessages.length - 1;
+        const lastMsg = newMessages[lastIdx];
+        
+        // Safety check: Only update if the last message is an assistant response
+        if (lastMsg?.role === 'assistant') {
+          newMessages[lastIdx] = { 
+            ...lastMsg, 
+            content: normalText || lastMsg.content,
+            think: thinkText || lastMsg.think
+          };
+          return newMessages;
+        }
+        return prev;
+      });
+    }
+  }, [normalText, thinkText, isTyping]);
+
+  useEffect(() => {
+    return () => {
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    };
+  }, []);
+
+  const handleSend = async (overrideInput?: string) => {
+    const textToSend = overrideInput || input;
+    if (!textToSend.trim() || isTyping) return;
     
-    const userMessage = input.trim();
-    setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    const userMessage = textToSend.trim();
+    if (!overrideInput) setInput('');
+    
+    const updatedMessages: Message[] = [...messages, { role: 'user', content: userMessage }];
+    setMessages(updatedMessages);
     setIsTyping(true);
     
-    // Create an empty assistant message to append stream to
     setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+    
+    // --- Enterprise LLM Infrastructure: AST Construction ---
+    const systemRules: PromptRule[] = [
+      { id: 'presales_role', content: 'You are a helpful presales AI consultant for Lamber system.', priority: 100 },
+      { id: 'knowledge_base', content: SYSTEM_PROMPT_KNOWLEDGE, priority: 90 },
+      { id: 'code_priority', content: '优先根据 [产品编号] (如 A302600342) 在知识库中匹配产品。只有当编号缺失时，才根据名称进行模糊匹配。', priority: 85 },
+      { id: 'data_awareness', content: 'ALWAYS check the BUSINESS CONTEXT before answering. If data is missing, state it clearly.', priority: 80 }
+    ];
+
+    // Layer 1: Core (ICT Main Table)
+    const layer1Core: ContextNode[] = businessData['ict'] ? [{
+      type: 'json',
+      title: '主测算核心指标',
+      content: businessData['ict'],
+      metadata: { module: 'ict', updatedAt: lastUpdated['ict'] }
+    }] : [];
+
+    // Layer 2: Active Workspace (Current template)
+    const layer2Active: ContextNode[] = (activeModule !== 'ict' && businessData[activeModule]) ? [{
+      type: 'json',
+      title: `当前工作空间: ${activeModule.replace('template_', '')}`,
+      content: businessData[activeModule],
+      metadata: { module: activeModule, updatedAt: lastUpdated[activeModule] }
+    }] : [];
+
+    // Layer 3: Context (Other documents)
+    const layer3Context: ContextNode[] = Object.keys(businessData)
+      .filter(m => m !== 'ict' && m !== activeModule)
+      .map(m => ({
+        type: 'json',
+        title: `关联文档: ${m.replace('template_', '')}`,
+        content: businessData[m],
+        metadata: { module: m, updatedAt: lastUpdated[m] }
+      }));
+
+    const ast: PromptAST = {
+      systemRules,
+      dynamicState: { layer1Core, layer2Active, layer3Context },
+      userIntent: { raw: userMessage }
+    };
+
+    // --- Progressive UX: Start Status Timer ---
+    setLoadingStatus("正在分析...");
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    statusTimerRef.current = setTimeout(() => {
+      setLoadingStatus("正在提取「项目关联文档」数据...");
+    }, 1500);
 
     try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            // Future: Inject context here via System Prompt
-            { role: 'system', content: 'You are a helpful presales AI consultant.' },
-            ...messages.map(m => ({ role: m.role, content: m.content })),
-            { role: 'user', content: userMessage }
-          ],
-          stream: true
-        })
-      });
+      resetParser();
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+      abortControllerRef.current = new AbortController();
 
-      if (!response.ok) {
-        throw new Error(`API returned ${response.status} ${response.statusText}`);
-      }
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder('utf-8');
-
-      if (!reader) throw new Error("No reader available");
-
-      let incompleteLine = '';
-      while (true) {
-        const { value, done } = await reader.read();
-        
-        const chunk = value ? decoder.decode(value, { stream: true }) : '';
-        const lines = (incompleteLine + chunk).split('\n');
-        incompleteLine = lines.pop() || '';
-        
-        for (const line of lines) {
-          processLine(line);
-        }
-
-        if (done) {
-          if (incompleteLine) processLine(incompleteLine);
-          break;
-        }
-      }
-
-      function processLine(line: string) {
-        const trimmedLine = line.trim();
-        if (!trimmedLine || trimmedLine === 'data: [DONE]') return;
-        
-        if (trimmedLine.startsWith('data: ')) {
-          const jsonStr = trimmedLine.slice(6).trim();
-          if (!jsonStr) return;
-          
-          try {
-            const data = JSON.parse(jsonStr);
-            const deltaContent = data.choices?.[0]?.delta?.content ?? 
-                                data.choices?.[0]?.text ?? 
-                                data.message?.content ?? 
-                                '';
-            
-            if (deltaContent) {
-              setMessages(prev => {
-                const newMessages = [...prev];
-                const lastIdx = newMessages.length - 1;
-                const lastMsg = { ...newMessages[lastIdx] };
-                const currentText = lastMsg.content;
-
-                // 寻找最大重叠部分 (Suffix-Prefix Overlap)
-                // 解决“你好！欢迎你好！欢迎来到”这种重复拼接问题
-                let overlap = 0;
-                const maxPossibleOverlap = Math.min(currentText.length, deltaContent.length);
-                for (let i = maxPossibleOverlap; i > 0; i--) {
-                  if (currentText.endsWith(deltaContent.substring(0, i))) {
-                    overlap = i;
-                    break;
-                  }
-                }
-
-                // 拼接非重叠部分
-                lastMsg.content = currentText + deltaContent.substring(overlap);
-                newMessages[lastIdx] = lastMsg;
-                return newMessages;
-              });
-            }
-          } catch (e) {
-            console.error("Error parsing JSON:", jsonStr, e);
-          }
-        }
-      }
+      await runtime.current.execute(
+        ast, 
+        (chunk) => parseChunk(chunk),
+        { endpoint, model, apiKey },
+        abortControllerRef.current.signal
+      );
+      finalize();
     } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        console.log("Stream aborted by user");
+        return;
+      }
       console.error("Chat error:", error);
       setMessages(prev => {
         const newMessages = [...prev];
-        newMessages[newMessages.length - 1].content = `**Error:** 连接 AI 服务失败 (${(error as Error).message})`;
+        const lastIdx = newMessages.length - 1;
+        newMessages[lastIdx] = { ...newMessages[lastIdx], content: `**Error:** 连接 AI 服务失败 (${(error as Error).message})` };
         return newMessages;
       });
     } finally {
       setIsTyping(false);
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
     }
+  };
+
+  const clearMessages = () => {
+    if (window.confirm('确定要清除所有聊天记录吗？')) {
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+      resetParser();
+      setMessages([
+        { role: 'assistant', content: '聊天记录已清除。请问还有什么可以帮您？' }
+      ]);
+    }
+  };
+
+  const copyToClipboard = (text: string, idx: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedIdx(idx);
+    setTimeout(() => setCopiedIdx(null), 2000);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -160,6 +221,12 @@ export default function AiConsultantDrawer() {
       handleSend();
     }
   };
+
+  const quickActions = [
+    { label: '分析当前项目效益', icon: <Sparkles size={14} />, view: 'ict' },
+    { label: '推荐合适产品', icon: <Bot size={14} /> },
+    { label: '生成立项摘要', icon: <MessageSquare size={14} />, view: 'docfill' }
+  ].filter(a => !a.view || a.view === currentView);
 
   return (
     <>
@@ -173,7 +240,10 @@ export default function AiConsultantDrawer() {
 
       {/* Drawer */}
       <div 
-        className={`fixed top-0 right-0 h-screen w-96 bg-background border-l border-border shadow-2xl z-[60] flex flex-col transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        className={cn(
+          "fixed top-0 right-0 h-screen w-[420px] bg-background border-l border-border shadow-2xl z-[60] flex flex-col transition-transform duration-300 ease-in-out",
+          isOpen ? 'translate-x-0' : 'translate-x-full'
+        )}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
@@ -181,37 +251,40 @@ export default function AiConsultantDrawer() {
             <Bot size={24} className="text-primary" />
             智能售前顾问
           </div>
-          <button onClick={() => setIsOpen(false)} className="text-muted-foreground hover:bg-muted p-1 rounded-md transition-colors">
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={clearMessages} 
+              title="清除聊天记录"
+              className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive p-1.5 rounded-md transition-colors"
+            >
+              <Trash2 size={18} />
+            </button>
+            <button onClick={() => setIsOpen(false)} className="text-muted-foreground hover:bg-muted p-1 rounded-md transition-colors">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
+        <div 
+          ref={chatContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto p-6 flex flex-col gap-6"
+        >
           {messages.map((msg, idx) => (
-            <div 
-              key={idx} 
-              className={`max-w-[85%] p-3 rounded-2xl ${msg.role === 'user' ? 'bg-primary text-primary-foreground self-end rounded-br-sm' : 'bg-muted text-foreground self-start rounded-bl-sm border border-border'}`}
-            >
-              {msg.role === 'user' ? (
-                <div className="whitespace-pre-wrap text-sm">{msg.content}</div>
-              ) : (
-                <div className="prose prose-sm dark:prose-invert prose-p:leading-relaxed prose-pre:p-0 max-w-none text-sm break-words ai-markdown">
-                  <ReactMarkdown 
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />
-                    }}
-                  >
-                    {msg.content}
-                  </ReactMarkdown>
-                </div>
-              )}
-            </div>
+            <MessageBubble 
+              key={idx}
+              msg={msg}
+              idx={idx}
+              isStreaming={isTyping && idx === messages.length - 1}
+              onCopy={copyToClipboard}
+              copiedIdx={copiedIdx}
+            />
           ))}
-          {isTyping && (
-            <div className="bg-muted text-foreground self-start rounded-2xl rounded-bl-sm border border-border p-3 flex items-center gap-1">
-               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          {messages.length > 0 && isTyping && !messages[messages.length - 1]?.content && !messages[messages.length - 1]?.think && (
+            <div className="bg-muted text-foreground self-start rounded-2xl rounded-bl-sm border border-border p-4 flex items-center gap-3 shadow-sm animate-in fade-in duration-300">
+               <Loader2 className="h-4 w-4 animate-spin text-primary" />
+               <span className="text-xs font-bold text-secondary-foreground animate-pulse">{loadingStatus}</span>
             </div>
           )}
           <div ref={messagesEndRef} />
@@ -219,14 +292,14 @@ export default function AiConsultantDrawer() {
 
         {/* Settings Panel */}
         {showSettings && (
-          <div className="p-4 bg-muted/50 border-t border-border flex flex-col gap-3 text-sm">
+          <div className="p-4 bg-muted/50 border-t border-border flex flex-col gap-3 text-sm animate-in slide-in-from-bottom-2 duration-200">
             <div className="flex flex-col gap-1">
               <label className="text-muted-foreground font-medium text-xs">API Endpoint</label>
               <input 
                 type="text" 
                 value={endpoint} 
                 onChange={e => setEndpoint(e.target.value)}
-                className="bg-background border border-border rounded px-2 py-1 outline-none focus:border-primary"
+                className="bg-background border border-border rounded px-2 py-1.5 outline-none focus:border-primary"
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -235,17 +308,17 @@ export default function AiConsultantDrawer() {
                 type="text" 
                 value={model} 
                 onChange={e => setModel(e.target.value)}
-                className="bg-background border border-border rounded px-2 py-1 outline-none focus:border-primary"
+                className="bg-background border border-border rounded px-2 py-1.5 outline-none focus:border-primary"
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-muted-foreground font-medium text-xs">API Key (Optional)</label>
+              <label className="text-muted-foreground font-medium text-xs">API Key (可选)</label>
               <input 
                 type="password" 
                 value={apiKey} 
                 onChange={e => setApiKey(e.target.value)}
                 placeholder="Bearer Token"
-                className="bg-background border border-border rounded px-2 py-1 outline-none focus:border-primary"
+                className="bg-background border border-border rounded px-2 py-1.5 outline-none focus:border-primary"
               />
             </div>
           </div>
@@ -253,28 +326,67 @@ export default function AiConsultantDrawer() {
 
         {/* Input Area */}
         <div className="p-4 border-t border-border bg-card">
-          <div 
-            className="flex items-center gap-1 text-xs text-muted-foreground font-medium cursor-pointer mb-2 hover:text-primary transition-colors w-max"
-            onClick={() => setShowSettings(!showSettings)}
-          >
-            <Settings size={14} /> 设置
+          {!isTyping && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {quickActions.map((action, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleSend(action.label)}
+                  className="flex items-center gap-1.5 bg-muted hover:bg-primary/10 hover:text-primary text-secondary-foreground text-[11px] font-semibold px-3 py-1.5 rounded-full border border-border transition-all"
+                >
+                  {action.icon}
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between mb-2">
+            <div 
+              className="flex items-center gap-1 text-[11px] text-muted-foreground font-bold cursor-pointer hover:text-primary transition-colors"
+              onClick={() => setShowSettings(!showSettings)}
+            >
+              <Settings size={14} /> 模型设置
+            </div>
+            {currentView !== 'hub' && (
+              <div className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-sm border border-emerald-100">
+                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                已连接实时业务状态
+              </div>
+            )}
           </div>
+          
           <div className="flex items-end gap-2">
             <textarea 
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="输入问题，按 Ctrl+Enter 发送..."
-              className="flex-1 bg-muted border border-border rounded-xl px-3 py-2 text-sm outline-none focus:border-primary resize-none min-h-[44px] max-h-32"
+              placeholder={isTyping ? "AI 正在思考中..." : "输入问题，按 Ctrl+Enter 发送..."}
+              disabled={isTyping}
+              className="flex-1 bg-muted border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary resize-none min-h-[44px] max-h-32 shadow-inner disabled:opacity-70"
               rows={1}
             />
-            <button 
-              onClick={handleSend}
-              disabled={!input.trim() || isTyping}
-              className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex flex-shrink-0 items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
-            >
-              <Send size={18} className={input.trim() ? 'ml-1' : ''} />
-            </button>
+            {isTyping ? (
+              <button 
+                onClick={() => {
+                  if (abortControllerRef.current) abortControllerRef.current.abort();
+                  setIsTyping(false);
+                  resetParser();
+                }}
+                className="w-10 h-10 rounded-xl bg-destructive text-destructive-foreground flex flex-shrink-0 items-center justify-center shadow-sm hover:shadow-md transition-all active:scale-95"
+                title="停止生成"
+              >
+                <div className="w-3 h-3 bg-current rounded-sm" />
+              </button>
+            ) : (
+              <button 
+                onClick={() => handleSend()}
+                disabled={!input.trim() || isTyping}
+                className="w-10 h-10 rounded-xl bg-primary text-primary-foreground flex flex-shrink-0 items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 shadow-sm hover:shadow-md"
+              >
+                <Send size={18} className={input.trim() ? 'ml-1' : ''} />
+              </button>
+            )}
           </div>
         </div>
       </div>

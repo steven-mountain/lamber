@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core"
 import WorkspaceHeader from "../components/WorkspaceHeader"
 import TemplateForms from "./TemplateForms"
 import { validateFinancialData, ValidationReport } from "../lib/financeValidator"
+import { useAiContextStore } from "../store/useAiContextStore"
+import { useRef } from "react"
 
 interface TaxItem { incl: number; tax: number; excl: number; }
 const defaultTaxItem = (tax = 6): TaxItem => ({ incl: 0, tax, excl: 0 })
@@ -118,8 +120,44 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     }
 
     setActiveTab(tab as any);
-    if (templateName) setSelectedTemplate(templateName);
+    if (templateName) {
+      setSelectedTemplate(templateName);
+      setActiveModule(`template_${templateName.replace(/\./g, '_')}`);
+    } else {
+      setActiveModule('ict');
+    }
   }
+
+  // --- AI Context Sync ---
+  const updateData = useAiContextStore(state => state.updateBusinessData);
+  const setActiveModule = useAiContextStore(state => state.setActiveModule);
+  const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    setActiveModule('ict');
+    return () => {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Debounced sync (500ms)
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    
+    syncTimerRef.current = setTimeout(() => {
+      const payload = {
+        ...getInputDataPayload(),
+        project_background: projectBackground, // Explicitly include text fields
+        metrics: metrics
+      };
+      updateData('ict', payload);
+      console.log("AI Context Synced: ICT");
+    }, 500);
+
+    return () => {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    };
+  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectBackground, metrics, projName, customerName, propertyRights, discountRate, projectYears, cashflowModel, distRev, distCost]);
 
   const updateTaxItem = (groupId: string, key: string, field: "incl" | "tax" | "excl", val: number) => {
     // 只要有任何金额或税率变动，立即重置尾差忽略状态，确保下一次切换标签时重新校验
@@ -175,8 +213,11 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
 
   const getInputDataPayload = () => ({
     project_name: projName,
+    customer_name: customerName,
     property_rights: propertyRights,
     discount_rate: String(discountRate),
+    project_years: projectYears,
+    cashflow_model: cashflowModel,
     rev_distribution: distRev,
     cost_distribution: distCost,
     ignore_tail_difference: ignoredTailValue !== null,
@@ -349,14 +390,14 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
             <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
               <h3 className="text-lg font-bold text-foreground mb-6">项目概况</h3>
               <div className="grid grid-cols-2 gap-6">
-                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">项目名称</label><input type="text" value={projName} onChange={e => setProjName(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
-                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">客户单位名称</label><input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
-                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">产权归属</label><input type="text" value={propertyRights} onChange={e => setPropertyRights(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
-                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">项目建设/服务周期 (年)</label><input type="number" min={1} max={10} value={projectYears} onChange={e => setProjectYears(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
-                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">折现率</label><input type="number" step={0.001} value={discountRate} onChange={e => setDiscountRate(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
+                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">项目名称</label><input id="ict-proj-name" type="text" value={projName} onChange={e => setProjName(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
+                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">客户单位名称</label><input id="ict-customer-name" type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
+                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">产权归属</label><input id="ict-property-rights" type="text" value={propertyRights} onChange={e => setPropertyRights(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
+                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">项目建设/服务周期 (年)</label><input id="ict-project-years" type="number" min={1} max={10} value={projectYears} onChange={e => setProjectYears(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
+                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">折现率</label><input id="ict-discount-rate" type="number" step={0.001} value={discountRate} onChange={e => setDiscountRate(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-bold text-secondary-foreground">资金收付模型</label>
-                  <select value={cashflowModel} onChange={e => setCashflowModel(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary">
+                  <select id="ict-cashflow-model" value={cashflowModel} onChange={e => setCashflowModel(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary">
                     <option value="model_a">模型 A: 100% 在第一年收付</option>
                     <option value="model_b">模型 B: 按周期等额收付 (每年 1/n)</option>
                     <option value="model_c">模型 C: 尾款质保金 (首年95%，末年5%)</option>
@@ -365,7 +406,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className="flex flex-col gap-2 col-span-2">
                   <label className="text-sm font-bold text-secondary-foreground">项目背景</label>
-                  <textarea rows={3} value={projectBackground} onChange={e => setProjectBackground(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" />
+                  <textarea id="ict-project-bg" rows={3} value={projectBackground} onChange={e => setProjectBackground(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" />
                 </div>
               </div>
               {cashflowModel === 'model_d' && (
@@ -542,23 +583,23 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
             <div className="grid grid-cols-5 gap-4">
               <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
                 <span className="text-xs font-semibold text-secondary-foreground">项目净现值 (NPV)</span>
-                <span className="text-lg font-bold">{formatCurrency(metrics.npv)}</span>
+                <span id="ict-metric-npv" className="text-lg font-bold">{formatCurrency(metrics.npv)}</span>
               </div>
               <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
                 <span className="text-xs font-semibold text-secondary-foreground">净现值率</span>
-                <span className="text-lg font-bold text-green-600">{formatPercent(metrics.npv_rate)}</span>
+                <span id="ict-metric-npv-rate" className="text-lg font-bold text-green-600">{formatPercent(metrics.npv_rate)}</span>
               </div>
               <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
                 <span className="text-xs font-semibold text-secondary-foreground">毛利润率</span>
-                <span className="text-lg font-bold text-green-600">{formatPercent(metrics.margin_rate)}</span>
+                <span id="ict-metric-margin" className="text-lg font-bold text-green-600">{formatPercent(metrics.margin_rate)}</span>
               </div>
               <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
                 <span className="text-xs font-semibold text-secondary-foreground">动态回收期 (年)</span>
-                <span className="text-lg font-bold">{metrics.dynamic_payback}</span>
+                <span id="ict-metric-payback" className="text-lg font-bold">{metrics.dynamic_payback}</span>
               </div>
               <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
                 <span className="text-xs font-semibold text-secondary-foreground">内部收益率 (IRR)</span>
-                <span className="text-lg font-bold">{metrics.irr}</span>
+                <span id="ict-metric-irr" className="text-lg font-bold">{metrics.irr}</span>
               </div>
             </div>
           </div>

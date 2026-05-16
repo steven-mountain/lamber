@@ -25,7 +25,7 @@ export default function App() {
       )}
       
       {/* Global AI Consultant */}
-      <AiConsultantDrawer />
+      <AiConsultantDrawer currentView={currentView} />
     </div>
   )
 }
