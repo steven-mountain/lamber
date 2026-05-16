@@ -1,10 +1,17 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import WorkspaceHeader from "../components/WorkspaceHeader"
 import TemplateForms from "./TemplateForms"
 import { validateFinancialData, ValidationReport } from "../lib/financeValidator"
 import { useAiContextStore } from "../store/useAiContextStore"
 import { useRef } from "react"
+import {
+  buildDistributionFromModel,
+  cashflowModelLabels,
+  formatDistribution,
+  normalizeDistribution,
+  type CashflowModel
+} from "../lib/cashflowDistribution"
 
 interface TaxItem { incl: number; tax: number; excl: number; }
 const defaultTaxItem = (tax = 6): TaxItem => ({ incl: 0, tax, excl: 0 })
@@ -18,7 +25,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
   const [propertyRights, setPropertyRights] = useState("客户")
   const [discountRate, setDiscountRate] = useState(0.055)
   const [projectYears, setProjectYears] = useState(1)
-  const [cashflowModel, setCashflowModel] = useState("model_a")
+  const [cashflowModel, setCashflowModel] = useState<CashflowModel>("model_a")
   const [distRev, setDistRev] = useState<number[]>([1, 0, 0, 0, 0, 0, 0, 0, 0, 0])
   const [distCost, setDistCost] = useState<number[]>([1, 0, 0, 0, 0, 0, 0, 0, 0, 0])
   const [projectBackground, setProjectBackground] = useState("在数字经济与制造业深度融合的国家战略推动下...")
@@ -75,6 +82,18 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
   const [revMode, setRevMode] = useState<"cost" | "revenue">("cost")
   const [revTargetType, setRevTargetType] = useState<"margin" | "npv_rate">("margin")
   const [revTargetValue, setRevTargetValue] = useState<string>("0.15")
+  const effectiveDistRev = useMemo(
+    () => cashflowModel === 'model_d'
+      ? normalizeDistribution(distRev, 10)
+      : buildDistributionFromModel(cashflowModel, projectYears),
+    [cashflowModel, distRev, projectYears]
+  )
+  const effectiveDistCost = useMemo(
+    () => cashflowModel === 'model_d'
+      ? normalizeDistribution(distCost, 10)
+      : buildDistributionFromModel(cashflowModel, projectYears),
+    [cashflowModel, distCost, projectYears]
+  )
 
   // --- Selection Fee Calc ---
   const [selQuote, setSelQuote] = useState<string>("")
@@ -141,6 +160,18 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
   }, []);
 
   useEffect(() => {
+    if (cashflowModel === 'model_d') {
+      setDistRev(prev => normalizeDistribution(prev, 10))
+      setDistCost(prev => normalizeDistribution(prev, 10))
+      return
+    }
+
+    const nextDist = buildDistributionFromModel(cashflowModel, projectYears)
+    setDistRev(nextDist)
+    setDistCost(nextDist)
+  }, [cashflowModel, projectYears])
+
+  useEffect(() => {
     // Debounced sync (500ms)
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     
@@ -148,7 +179,8 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
       const payload = {
         ...getInputDataPayload(),
         project_background: projectBackground, // Explicitly include text fields
-        metrics: metrics
+        metrics: metrics,
+        cashflow: cashflowTable
       };
       updateData('ict', payload);
       console.log("AI Context Synced: ICT");
@@ -157,7 +189,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectBackground, metrics, projName, customerName, propertyRights, discountRate, projectYears, cashflowModel, distRev, distCost]);
+  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectBackground, metrics, cashflowTable, projName, customerName, propertyRights, discountRate, projectYears, cashflowModel, distRev, distCost]);
 
   const updateTaxItem = (groupId: string, key: string, field: "incl" | "tax" | "excl", val: number) => {
     // 只要有任何金额或税率变动，立即重置尾差忽略状态，确保下一次切换标签时重新校验
@@ -218,8 +250,8 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     discount_rate: String(discountRate),
     project_years: projectYears,
     cashflow_model: cashflowModel,
-    rev_distribution: distRev,
-    cost_distribution: distCost,
+    rev_distribution: effectiveDistRev,
+    cost_distribution: effectiveDistCost,
     ignore_tail_difference: ignoredTailValue !== null,
     tail_difference_value: ignoredTailValue || "0",
     rev_it_integration: { incl_tax: String(revIt.integration.incl), tax_rate: String(revIt.integration.tax) },
@@ -303,13 +335,21 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     if (!revTargetValue) return alert("请输入目标值！")
     try {
       const apiName = revMode === 'revenue' ? 'reverse_calc_ict_revenue_target' : 'reverse_calc_ict_target'
+      const basePayload = getInputDataPayload()
       const valStr: string = await invoke(apiName, {
-        input: getInputDataPayload(),
+        input: basePayload,
         targetType: revTargetType,
         targetValue: String(revTargetValue)
       })
       
       const numVal = Number(valStr)
+      const nextPayload = {
+        ...basePayload,
+        ...(revMode === 'revenue'
+          ? { rev_it_integration: { ...basePayload.rev_it_integration, incl_tax: String(numVal) } }
+          : { cost_it_integration: { ...basePayload.cost_it_integration, incl_tax: String(numVal) } })
+      }
+
       if (revMode === 'revenue') {
         updateTaxItem('revIt', 'integration', 'incl', numVal)
         setActiveTab("revenue")
@@ -318,7 +358,28 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
         handleSelFeeChange('limit', String(numVal))
         setActiveTab("cost")
       }
-      setTimeout(() => performCalculation(), 100)
+
+      const refreshed: any = await invoke('calculate_ict_benefit', { input: nextPayload })
+      if (refreshed) {
+        setCashflowTable(refreshed.cashflow)
+        setMetrics(refreshed)
+      }
+
+      const distText = revMode === 'revenue'
+        ? formatDistribution(effectiveDistRev)
+        : formatDistribution(effectiveDistCost)
+      const targetName = revTargetType === 'margin' ? '毛利润率' : '净现值率'
+      const reverseFieldName = revMode === 'revenue' ? '系统集成服务收入' : '系统集成服务成本'
+
+      alert(
+        `反算完成：${formatCurrency(numVal)}\n` +
+        `目标：${targetName} ≥ ${formatPercent(Number(revTargetValue))}\n` +
+        `反算字段：${reverseFieldName}\n` +
+        `该结果为含税总额参数值，将按当前资金收付模型自动分摊。\n` +
+        `当前资金收付模型：${cashflowModelLabels[cashflowModel]}\n` +
+        `年度分布：${distText}\n` +
+        `已自动刷新 10 年现金流推演。`
+      )
     } catch (e) {
       alert("反推失败: " + e)
     }
@@ -348,6 +409,16 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
 
   const formatCurrency = (v: number) => new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(v)
   const formatPercent = (v: number) => (v * 100).toFixed(2) + "%"
+  const distributionPreview = (
+    <div className="mt-6 mb-4 border-t border-border pt-4 text-sm">
+      <div className="font-bold text-foreground mb-2">资金分布预览</div>
+      <div className="grid grid-cols-1 gap-1 text-secondary-foreground">
+        <div>当前资金收付模型：{cashflowModelLabels[cashflowModel]}</div>
+        <div>收入分布：{formatDistribution(effectiveDistRev)}</div>
+        <div>成本分布：{formatDistribution(effectiveDistCost)}</div>
+      </div>
+    </div>
+  )
 
   return (
     <div className="flex flex-col flex-1 animate-in fade-in duration-300 h-full overflow-hidden">
@@ -397,7 +468,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                 <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">折现率</label><input id="ict-discount-rate" type="number" step={0.001} value={discountRate} onChange={e => setDiscountRate(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-bold text-secondary-foreground">资金收付模型</label>
-                  <select id="ict-cashflow-model" value={cashflowModel} onChange={e => setCashflowModel(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary">
+                  <select id="ict-cashflow-model" value={cashflowModel} onChange={e => setCashflowModel(e.target.value as CashflowModel)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary">
                     <option value="model_a">模型 A: 100% 在第一年收付</option>
                     <option value="model_b">模型 B: 按周期等额收付 (每年 1/n)</option>
                     <option value="model_c">模型 C: 尾款质保金 (首年95%，末年5%)</option>
@@ -411,7 +482,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
               </div>
               {cashflowModel === 'model_d' && (
                 <div className="mt-6 pt-6 border-t border-border">
-                  <h4 className="text-sm font-bold text-secondary-foreground mb-4">高级自定义分配 (输入0~1的小数，总和需为1)</h4>
+                  <h4 className="text-sm font-bold text-secondary-foreground mb-4">高级自定义分配 (可输入任意非负比例，系统自动归一化)</h4>
                   <div className="grid grid-cols-[80px_repeat(10,_1fr)] gap-2 items-center text-center text-sm">
                     <div className="font-bold text-right pr-2 text-secondary-foreground">年份</div>
                     {[1,2,3,4,5,6,7,8,9,10].map(y => <div key={y} className="font-bold">{y}</div>)}
@@ -426,6 +497,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                   </div>
                 </div>
               )}
+              {distributionPreview}
             </div>
           )}
 
@@ -541,6 +613,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
           {activeTab === "cashflow" && (
             <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
               <h3 className="text-lg font-bold text-foreground mb-6">1-10年项目现金流推演</h3>
+              {distributionPreview}
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-right border-separate border-spacing-y-2">
                   <thead>
@@ -609,6 +682,9 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
           <div className="w-[300px] bg-card border-l border-border p-6 flex flex-col shrink-0 overflow-y-auto animate-in slide-in-from-right duration-200">
             <h3 className="font-bold text-foreground mb-4">智能反算</h3>
             <div className="bg-muted border border-border p-4 rounded-xl flex flex-col gap-4 mb-6">
+              <p className="text-xs leading-relaxed text-secondary-foreground">
+                反算结果为含税总额参数值，系统将根据当前资金收付模型自动分摊至各年度现金流。
+              </p>
               <div className="flex gap-2 bg-background p-1 border border-border rounded-lg">
                 <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revMode === 'cost' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => setRevMode('cost')}>反算投入</button>
                 <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revMode === 'revenue' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => setRevMode('revenue')}>反算收入</button>
