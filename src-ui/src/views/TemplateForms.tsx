@@ -486,7 +486,7 @@ export default function TemplateForms({
     }
 
     try {
-      const resultPath: string = await invoke('generate_lifecycle_docs', { 
+      await invoke('generate_lifecycle_docs', { 
           moduleId: "ict_lifecycle",
           variables: variables,
           selectedTemplates: [selectedTemplate]

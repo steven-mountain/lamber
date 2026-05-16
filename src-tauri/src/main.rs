@@ -62,6 +62,7 @@ async fn set_module_path(
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let manager = ConfigManager::new(app.handle());

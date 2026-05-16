@@ -2,6 +2,7 @@ import { useState } from "react"
 import BenefitTool from "./views/BenefitTool"
 import DocfillTool from "./views/DocfillTool"
 import IctLifecycle from "./views/IctLifecycle"
+import AiConsultantDrawer from "./components/AiConsultantDrawer"
 
 export default function App() {
   const [currentView, setCurrentView] = useState("hub")
@@ -22,6 +23,9 @@ export default function App() {
           <p>模块正在开发中...</p>
         </div>
       )}
+      
+      {/* Global AI Consultant */}
+      <AiConsultantDrawer />
     </div>
   )
 }
