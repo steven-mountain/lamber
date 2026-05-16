@@ -7,6 +7,10 @@ export const cashflowModelLabels: Record<CashflowModel, string> = {
   model_d: '模型 D：高级自定义分配',
 };
 
+export function normalizeProjectYears(projectYears: number, years = 10): number {
+  return Math.max(1, Math.min(Number.isFinite(projectYears) ? Math.trunc(projectYears) : 1, years));
+}
+
 export function normalizeDistribution(dist: number[], years = 10): number[] {
   const result = Array(years).fill(0);
 
@@ -30,7 +34,7 @@ export function buildDistributionFromModel(
   customDist?: number[]
 ): number[] {
   const years = 10;
-  const n = Math.max(1, Math.min(Number.isFinite(projectYears) ? Math.trunc(projectYears) : 1, years));
+  const n = normalizeProjectYears(projectYears, years);
   const dist = Array(years).fill(0);
 
   switch (model) {
@@ -54,7 +58,10 @@ export function buildDistributionFromModel(
       return normalizeDistribution(dist, years);
 
     case 'model_d':
-      return normalizeDistribution(customDist || dist, years);
+      for (let i = 0; i < n; i++) {
+        dist[i] = customDist?.[i] ?? 0;
+      }
+      return normalizeDistribution(dist, years);
 
     default:
       dist[0] = 1;

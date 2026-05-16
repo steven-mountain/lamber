@@ -9,7 +9,7 @@ import {
   buildDistributionFromModel,
   cashflowModelLabels,
   formatDistribution,
-  normalizeDistribution,
+  normalizeProjectYears,
   type CashflowModel
 } from "../lib/cashflowDistribution"
 
@@ -82,15 +82,16 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
   const [revMode, setRevMode] = useState<"cost" | "revenue">("cost")
   const [revTargetType, setRevTargetType] = useState<"margin" | "npv_rate">("margin")
   const [revTargetValue, setRevTargetValue] = useState<string>("0.15")
+  const activeDistributionYears = useMemo(() => normalizeProjectYears(projectYears), [projectYears])
   const effectiveDistRev = useMemo(
     () => cashflowModel === 'model_d'
-      ? normalizeDistribution(distRev, 10)
+      ? buildDistributionFromModel(cashflowModel, projectYears, distRev)
       : buildDistributionFromModel(cashflowModel, projectYears),
     [cashflowModel, distRev, projectYears]
   )
   const effectiveDistCost = useMemo(
     () => cashflowModel === 'model_d'
-      ? normalizeDistribution(distCost, 10)
+      ? buildDistributionFromModel(cashflowModel, projectYears, distCost)
       : buildDistributionFromModel(cashflowModel, projectYears),
     [cashflowModel, distCost, projectYears]
   )
@@ -161,8 +162,8 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     if (cashflowModel === 'model_d') {
-      setDistRev(prev => normalizeDistribution(prev, 10))
-      setDistCost(prev => normalizeDistribution(prev, 10))
+      setDistRev(prev => buildDistributionFromModel(cashflowModel, projectYears, prev))
+      setDistCost(prev => buildDistributionFromModel(cashflowModel, projectYears, prev))
       return
     }
 
@@ -419,6 +420,15 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
       </div>
     </div>
   )
+  const formatYearRange = (start: number, end: number) => start + 1 === end
+    ? `第 ${start + 1} 年`
+    : `第 ${start + 1}-${end} 年`
+  const distributionSegments = activeDistributionYears <= 5
+    ? [{ label: formatYearRange(0, activeDistributionYears), start: 0, end: activeDistributionYears }]
+    : [
+      { label: formatYearRange(0, 5), start: 0, end: 5 },
+      { label: formatYearRange(5, activeDistributionYears), start: 5, end: activeDistributionYears },
+    ]
 
   return (
     <div className="flex flex-col flex-1 animate-in fade-in duration-300 h-full overflow-hidden">
@@ -483,17 +493,36 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
               {cashflowModel === 'model_d' && (
                 <div className="mt-6 pt-6 border-t border-border">
                   <h4 className="text-sm font-bold text-secondary-foreground mb-4">高级自定义分配 (可输入任意非负比例，系统自动归一化)</h4>
-                  <div className="grid grid-cols-[80px_repeat(10,_1fr)] gap-2 items-center text-center text-sm">
-                    <div className="font-bold text-right pr-2 text-secondary-foreground">年份</div>
-                    {[1,2,3,4,5,6,7,8,9,10].map(y => <div key={y} className="font-bold">{y}</div>)}
-                    <div className="font-bold text-right pr-2 text-secondary-foreground">收入比例</div>
-                    {distRev.map((v, i) => (
-                      <input key={`rev-${i}`} type="number" step="0.01" value={v} onChange={e => { const newArr = [...distRev]; newArr[i] = Number(e.target.value); setDistRev(newArr); }} className="bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
-                    ))}
-                    <div className="font-bold text-right pr-2 text-secondary-foreground">支出比例</div>
-                    {distCost.map((v, i) => (
-                      <input key={`cost-${i}`} type="number" step="0.01" value={v} onChange={e => { const newArr = [...distCost]; newArr[i] = Number(e.target.value); setDistCost(newArr); }} className="bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
-                    ))}
+                  <p className="text-xs text-secondary-foreground mb-4">
+                    仅展示项目周期内的 {activeDistributionYears} 个年份；周期外年份按 0 处理，不参与现金流分摊。
+                  </p>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                    {distributionSegments.map(segment => {
+                      const segmentYears = Array.from({ length: segment.end - segment.start }, (_, idx) => segment.start + idx)
+
+                      return (
+                        <div key={segment.label} className="min-w-0 rounded-lg border border-border bg-muted/30 p-3">
+                          <div className="text-xs font-bold text-secondary-foreground mb-3">{segment.label}</div>
+                          <div
+                            className="grid gap-2 items-center text-center text-sm"
+                            style={{ gridTemplateColumns: `72px repeat(${segmentYears.length}, minmax(0, 1fr))` }}
+                          >
+                            <div className="font-bold text-right pr-2 text-secondary-foreground">年份</div>
+                            {segmentYears.map(i => (
+                              <div key={`year-${i}`} className="font-bold">{i + 1}</div>
+                            ))}
+                            <div className="font-bold text-right pr-2 text-secondary-foreground">收入比例</div>
+                            {segmentYears.map(i => (
+                              <input key={`rev-${i}`} type="number" step="0.01" value={distRev[i]} onChange={e => { const newArr = [...distRev]; newArr[i] = Number(e.target.value); setDistRev(newArr); }} className="min-w-0 w-full bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
+                            ))}
+                            <div className="font-bold text-right pr-2 text-secondary-foreground">支出比例</div>
+                            {segmentYears.map(i => (
+                              <input key={`cost-${i}`} type="number" step="0.01" value={distCost[i]} onChange={e => { const newArr = [...distCost]; newArr[i] = Number(e.target.value); setDistCost(newArr); }} className="min-w-0 w-full bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}
