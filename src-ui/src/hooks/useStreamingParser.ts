@@ -129,6 +129,18 @@ export function useStreamingParser() {
     setIsStreaming(false);
   }, [flushToState]);
 
+  /**
+   * Emergency Stop: Just kill the timer and status
+   * Used for errors/aborts where we don't want to flush residual data
+   */
+  const stop = useCallback(() => {
+    if (renderTimerRef.current) {
+      clearInterval(renderTimerRef.current);
+      renderTimerRef.current = null;
+    }
+    setIsStreaming(false);
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -143,6 +155,7 @@ export function useStreamingParser() {
     isStreaming,
     parseChunk,
     finalize,
-    reset
+    reset,
+    stop
   };
 }

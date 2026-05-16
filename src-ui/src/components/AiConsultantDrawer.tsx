@@ -6,12 +6,7 @@ import { AiRuntime } from '../ai/AiRuntime';
 import { PromptAST, ContextNode, PromptRule } from '../ai/types';
 import { useStreamingParser } from '../hooks/useStreamingParser';
 import MessageBubble from './MessageBubble';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+import { clsx } from 'clsx';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -49,7 +44,14 @@ export default function AiConsultantDrawer({ currentView }: AiConsultantDrawerPr
   const statusTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Streaming Parser
-  const { normalText, thinkText, parseChunk, finalize, reset: resetParser } = useStreamingParser();
+  const { 
+    normalText, 
+    thinkText, 
+    parseChunk, 
+    finalize, 
+    reset: resetParser,
+    stop: stopParser 
+  } = useStreamingParser();
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const isAtBottom = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -76,9 +78,9 @@ export default function AiConsultantDrawer({ currentView }: AiConsultantDrawerPr
 
   useEffect(() => {
     if (isAtBottom.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
     }
-  }, [messages, isTyping, normalText, thinkText]);
+  }, [messages, normalText, thinkText]);
 
   // Sync parser state to the last message
   useEffect(() => {
@@ -182,21 +184,37 @@ export default function AiConsultantDrawer({ currentView }: AiConsultantDrawerPr
       );
       finalize();
     } catch (error) {
+      stopParser();
       if ((error as Error).name === 'AbortError') {
         console.log("Stream aborted by user");
         return;
       }
+      
       console.error("Chat error:", error);
       setMessages(prev => {
+        if (!prev || prev.length === 0) return prev;
         const newMessages = [...prev];
         const lastIdx = newMessages.length - 1;
-        newMessages[lastIdx] = { ...newMessages[lastIdx], content: `**Error:** 连接 AI 服务失败 (${(error as Error).message})` };
+        if (newMessages[lastIdx]?.role === 'assistant') {
+          newMessages[lastIdx] = { 
+            ...newMessages[lastIdx], 
+            content: `**Error:** 连接 AI 服务失败 (${(error as Error).message})` 
+          };
+        }
         return newMessages;
       });
     } finally {
       setIsTyping(false);
       if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
     }
+  };
+
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    stopParser();
+    setIsTyping(false);
   };
 
   const clearMessages = () => {
@@ -240,7 +258,7 @@ export default function AiConsultantDrawer({ currentView }: AiConsultantDrawerPr
 
       {/* Drawer */}
       <div 
-        className={cn(
+        className={clsx(
           "fixed top-0 right-0 h-screen w-[420px] bg-background border-l border-border shadow-2xl z-[60] flex flex-col transition-transform duration-300 ease-in-out",
           isOpen ? 'translate-x-0' : 'translate-x-full'
         )}
@@ -276,7 +294,7 @@ export default function AiConsultantDrawer({ currentView }: AiConsultantDrawerPr
               key={idx}
               msg={msg}
               idx={idx}
-              isStreaming={isTyping && idx === messages.length - 1}
+              isStreaming={isTyping && idx === messages.length - 1 && msg.role === 'assistant'}
               onCopy={copyToClipboard}
               copiedIdx={copiedIdx}
             />
@@ -366,19 +384,16 @@ export default function AiConsultantDrawer({ currentView }: AiConsultantDrawerPr
               className="flex-1 bg-muted border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary resize-none min-h-[44px] max-h-32 shadow-inner disabled:opacity-70"
               rows={1}
             />
-            {isTyping ? (
-              <button 
-                onClick={() => {
-                  if (abortControllerRef.current) abortControllerRef.current.abort();
-                  setIsTyping(false);
-                  resetParser();
-                }}
-                className="w-10 h-10 rounded-xl bg-destructive text-destructive-foreground flex flex-shrink-0 items-center justify-center shadow-sm hover:shadow-md transition-all active:scale-95"
+            {isTyping && (
+              <button
+                onClick={handleStop}
+                className="p-2 text-muted-foreground hover:text-destructive transition-colors"
                 title="停止生成"
               >
-                <div className="w-3 h-3 bg-current rounded-sm" />
+                <X size={20} />
               </button>
-            ) : (
+            )}
+            {!isTyping && (
               <button 
                 onClick={() => handleSend()}
                 disabled={!input.trim() || isTyping}
