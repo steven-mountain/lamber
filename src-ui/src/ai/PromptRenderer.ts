@@ -112,9 +112,9 @@ export class PromptRenderer {
     let output = "";
     const title = node.title ? `**[${node.title}]** ` : "";
     
-    // 🔥 Check for recent updates (last 60 seconds)
+    // Check for recent updates (last 60 seconds)
     const isRecent = node.metadata?.updatedAt && (Date.now() - node.metadata.updatedAt < 60000);
-    const updateMarker = isRecent ? " (🔥最新修改)" : "";
+    const updateMarker = isRecent ? " (最新修改)" : "";
 
     switch (node.type) {
       case 'markdown':

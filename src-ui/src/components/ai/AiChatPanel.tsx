@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bot, Loader2, MessageSquare, Settings, Sparkles, Trash2 } from 'lucide-react';
 import { listen } from '@tauri-apps/api/event';
 import { SYSTEM_PROMPT_KNOWLEDGE } from '../../lib/knowledgeBase';
 import {
@@ -13,6 +12,7 @@ import { useStreamingParser } from '../../hooks/useStreamingParser';
 import MessageBubble from '../MessageBubble';
 import AiInputBox from './AiInputBox';
 import { AI_CONTEXT_KEY, getAiContextDisplayName, getAiContextScope, isAiContextKeyForView } from '../../utils/aiContextKeys';
+import AppIcon, { type AppIconName } from '../icons/AppIcon';
 
 interface AiChatPanelProps {
   currentView?: string;
@@ -338,11 +338,12 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
 
   const contextView = currentView && currentView !== 'hub' ? currentView : 'hub';
   const quickActionView = contextView;
-  const quickActions = [
-    { label: '分析当前项目效益', icon: <Sparkles size={14} />, view: 'ict' },
-    { label: '推荐合适产品', icon: <Bot size={14} /> },
-    { label: '生成立项摘要', icon: <MessageSquare size={14} />, view: 'docfill' },
-  ].filter(action => !action.view || action.view === quickActionView);
+  const quickActionItems = [
+    { label: '分析当前项目效益', icon: 'ai', view: 'ict' },
+    { label: '推荐合适产品', icon: 'aiThinking' },
+    { label: '生成立项摘要', icon: 'document', view: 'docfill' },
+  ] satisfies Array<{ label: string; icon: AppIconName; view?: string }>;
+  const quickActions = quickActionItems.filter(action => !action.view || action.view === quickActionView);
   const quickActionContextKey = quickActionView === 'hub' ? '' : getCoreContextKey(quickActionView);
   const activeContextData = activeModule && activeModule !== AI_CONTEXT_KEY.HUB
     ? businessData[activeModule]
@@ -390,7 +391,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
         ))}
         {messages.length > 0 && isTyping && !messages[messages.length - 1]?.content && !messages[messages.length - 1]?.think && (
           <div className="flex animate-in items-center gap-3 self-start rounded-2xl rounded-bl-sm border border-border bg-muted p-4 text-foreground shadow-sm fade-in duration-300">
-            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            <AppIcon name="loading" size={16} className="animate-spin text-primary" />
             <span className="animate-pulse text-xs font-bold text-secondary-foreground">{loadingStatus}</span>
           </div>
         )}
@@ -454,7 +455,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
                 onClick={() => handleSend(action.label)}
                 className="flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1.5 text-[11px] font-semibold text-secondary-foreground transition-all hover:bg-primary/10 hover:text-primary"
               >
-                {action.icon}
+                <AppIcon name={action.icon} size={14} />
                 {action.label}
               </button>
             ))}
@@ -467,7 +468,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
             className="flex items-center gap-1 text-[11px] font-bold text-muted-foreground transition-colors hover:text-primary"
             onClick={() => setShowSettings(!showSettings)}
           >
-            <Settings size={14} /> 模型设置
+            <AppIcon name="settings" size={14} /> 模型设置
           </button>
           <div className="flex items-center gap-2">
             <div
@@ -483,7 +484,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
               title="清除聊天记录"
               className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
             >
-              <Trash2 size={16} />
+              <AppIcon name="delete" size={16} />
             </button>
           </div>
         </div>

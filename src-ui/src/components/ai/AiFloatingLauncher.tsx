@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { Bot } from 'lucide-react';
 import { emit, emitTo } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { AI_CONTEXT_REFRESH_REQUEST_EVENT } from '../../store/useAiContextStore';
+import AppIcon from '../icons/AppIcon';
 
 const AI_ASSISTANT_LABEL = 'ai-assistant';
 const AI_LAUNCHER_POSITION_KEY = 'lamber_ai_launcher_position';
@@ -204,7 +204,7 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
       title="打开 AI 助手"
       aria-label="打开 AI 助手"
     >
-      <Bot size={28} />
+      <AppIcon name="ai" size={28} />
     </button>
   );
 }

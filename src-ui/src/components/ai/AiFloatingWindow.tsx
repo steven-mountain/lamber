@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, X } from 'lucide-react';
 import { getCurrentWindow, type Window as TauriWindow } from '@tauri-apps/api/window';
 import AiChatPanel from './AiChatPanel';
 import { useAiContextStore } from '../../store/useAiContextStore';
+import AppIcon from '../icons/AppIcon';
 
 const AI_WINDOW_POSITION_KEY = 'lamber_ai_window_position';
 const AI_CURRENT_VIEW_KEY = 'lamber_ai_current_view';
@@ -114,7 +114,7 @@ export default function AiFloatingWindow({ currentView }: AiFloatingWindowProps)
       <div className="flex h-full w-full flex-col overflow-hidden rounded-[18px] border border-border bg-background">
         <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border bg-card px-4 select-none">
           <div data-tauri-drag-region className="flex h-full flex-1 cursor-move items-center gap-2 text-sm font-semibold">
-            <Bot size={18} className="text-primary" />
+            <AppIcon name="aiMessage" size={18} className="text-primary" />
             Lamber AI 助手
           </div>
 
@@ -124,7 +124,7 @@ export default function AiFloatingWindow({ currentView }: AiFloatingWindowProps)
             className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             title="关闭"
           >
-            <X size={18} />
+            <AppIcon name="close" size={18} />
           </button>
         </div>
 

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react"
-import { TableProperties, X, Search } from "lucide-react"
 import { invoke } from "@tauri-apps/api/core"
+import AppIcon from "../components/icons/AppIcon"
 import { MID_THREE_CAPABILITIES } from "../lib/midThreeConstants"
 import { useAiContextStore } from "../store/useAiContextStore"
 import { buildAiContextKey } from "../utils/aiContextKeys"
@@ -529,7 +529,7 @@ export default function TemplateForms({
           variables: variables,
           selectedTemplates: [selectedTemplate]
       })
-      if (confirm("✅ 生成成功！文件已保存至工作空间 output 目录。\n是否立即打开输出目录？")) {
+      if (confirm("生成成功！文件已保存至工作空间 output 目录。\n是否立即打开输出目录？")) {
         // We know the output dir is parent of the file, but we can just open the file's dir or use open_file
         // Actually, resolve_module_path 'output' is best.
         const modulePath: string = await invoke('get_module_path', { moduleId: 'ict_lifecycle' })
@@ -548,7 +548,7 @@ export default function TemplateForms({
         {selectedTemplate.endsWith('.xlsx') && (
           <div className="bg-card border border-border rounded-xl p-6 shadow-sm flex flex-col gap-4">
             <h4 className="font-bold text-primary flex items-center gap-2">
-              <span>📊</span> 《项目经济效益评估表》Excel 测算模版配置
+              <AppIcon name="spreadsheet" size={18} /> 《项目经济效益评估表》Excel 测算模版配置
             </h4>
             <p className="text-sm text-secondary-foreground leading-relaxed">
               您选择的是 Excel 预算/评估模板。系统将根据您在 **收入侧测算** 和 **支出侧测算** 中填写的精细化数据，自动将 **29 项输入指标、项目背景、产权归属、项目周期等基础信息** 全自动回填到 Excel 的对应 sheet 单元格中。
@@ -655,7 +655,9 @@ export default function TemplateForms({
                       <input type="text" placeholder="服务说明" value={item.serviceDesc} onChange={e => updateTechItem(i, 'serviceDesc', e.target.value)} className="flex-1 bg-muted border border-border px-2 py-1.5 rounded-md text-sm" />
                       <input type="number" placeholder="数量" value={item.amount} onChange={e => updateTechItem(i, 'amount', Number(e.target.value))} className="w-16 bg-muted border border-border px-2 py-1.5 rounded-md text-sm" />
                       <input type="text" placeholder="单位" value={item.unit} onChange={e => updateTechItem(i, 'unit', e.target.value)} className="w-16 bg-muted border border-border px-2 py-1.5 rounded-md text-sm" />
-                      <button type="button" onClick={() => removeTechItem(i)} className="text-red-500 hover:bg-red-50 p-1.5 rounded">×</button>
+                      <button type="button" onClick={() => removeTechItem(i)} className="text-destructive hover:bg-destructive/10 p-1.5 rounded" title="删除">
+                        <AppIcon name="delete" size={14} />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -716,7 +718,7 @@ export default function TemplateForms({
                         className="px-3 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 flex items-center justify-center shrink-0 transition-colors"
                         title="全局能力库"
                       >
-                        <TableProperties className="w-4 h-4" />
+                        <AppIcon name="tableProperties" size={16} />
                       </button>
                     </div>
                     <datalist id="mid-three-capabilities-list">
@@ -759,7 +761,9 @@ export default function TemplateForms({
                 <div className="flex justify-between items-center mb-3">
                   <label className="text-sm font-bold">IT部分询价过程</label>
                   <div className="flex gap-2">
-                    <button type="button" onClick={autoGenerateInquiry} className="text-xs bg-amber-100 text-amber-700 px-3 py-1.5 rounded font-bold hover:bg-amber-200">⚡ 一键生成三家报价</button>
+                    <button type="button" onClick={autoGenerateInquiry} className="inline-flex items-center gap-1.5 text-xs bg-amber-100 text-amber-700 px-3 py-1.5 rounded font-bold hover:bg-amber-200">
+                      <AppIcon name="quickAction" size={14} /> 一键生成三家报价
+                    </button>
                     <button type="button" onClick={addInqVendor} className="text-xs bg-primary/10 text-primary px-3 py-1.5 rounded font-semibold hover:bg-primary/20">+ 新增厂商</button>
                   </div>
                 </div>
@@ -773,7 +777,9 @@ export default function TemplateForms({
                         <span className="text-xs text-secondary-foreground">%</span>
                       </div>
                       <input type="text" placeholder="备注" value={item.remark} onChange={e => updateInqVendor(i, 'remark', e.target.value)} className="w-20 bg-muted border border-border px-2 py-1.5 rounded-md text-sm" />
-                      <button type="button" onClick={() => removeInqVendor(i)} className="text-red-500 hover:bg-red-50 p-1.5 rounded">×</button>
+                      <button type="button" onClick={() => removeInqVendor(i)} className="text-destructive hover:bg-destructive/10 p-1.5 rounded" title="删除">
+                        <AppIcon name="delete" size={14} />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -834,9 +840,9 @@ export default function TemplateForms({
                               <button 
                                 type="button" 
                                 onClick={(e) => { e.stopPropagation(); document.getElementById(`vendor-file-input-${i}`)?.click(); }} 
-                                className="text-[11px] bg-primary text-primary-foreground px-2.5 py-1 rounded font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+                                className="inline-flex items-center gap-1.5 text-[11px] bg-primary text-primary-foreground px-2.5 py-1 rounded font-semibold hover:bg-primary/90 transition-colors shadow-sm"
                               >
-                                📂 选择本地图片
+                                <AppIcon name="imageUpload" size={14} /> 选择本地图片
                               </button>
                             </div>
                           </div>
@@ -851,9 +857,10 @@ export default function TemplateForms({
                                     onClick={() => {
                                       setVendorImages(vendorImages.filter((_: any, idx: number) => idx !== imgIdx));
                                     }} 
-                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm font-bold"
+                                    className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm"
+                                    title="移除图片"
                                   >
-                                    ×
+                                    <AppIcon name="close" size={12} strokeWidth={2} />
                                   </button>
                                 </div>
                               ))}
@@ -979,7 +986,9 @@ export default function TemplateForms({
                       <input type="text" placeholder="服务说明" value={item.serviceDesc} onChange={e => updateTechItem(i, 'serviceDesc', e.target.value)} className="flex-1 bg-muted border border-border px-2 py-1.5 rounded-md text-sm text-foreground" />
                       <input type="number" placeholder="数量" value={item.amount} onChange={e => updateTechItem(i, 'amount', Number(e.target.value))} className="w-16 bg-muted border border-border px-2 py-1.5 rounded-md text-sm text-foreground" />
                       <input type="text" placeholder="单位" value={item.unit} onChange={e => updateTechItem(i, 'unit', e.target.value)} className="w-16 bg-muted border border-border px-2 py-1.5 rounded-md text-sm text-foreground" />
-                      <button type="button" onClick={() => removeTechItem(i)} className="text-red-500 hover:bg-red-50 p-1.5 rounded">×</button>
+                      <button type="button" onClick={() => removeTechItem(i)} className="text-destructive hover:bg-destructive/10 p-1.5 rounded" title="删除">
+                        <AppIcon name="delete" size={14} />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -1037,9 +1046,9 @@ export default function TemplateForms({
                     <button 
                       type="button" 
                       onClick={(e) => { e.stopPropagation(); fileInput1Ref.current?.click(); }} 
-                      className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+                      className="inline-flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md font-semibold hover:bg-primary/90 transition-colors shadow-sm"
                     >
-                      📂 选择本地图片
+                      <AppIcon name="imageUpload" size={14} /> 选择本地图片
                     </button>
                   </div>
                 </div>
@@ -1047,7 +1056,9 @@ export default function TemplateForms({
                   {attach1Images.map((img, i) => (
                     <div key={i} className="relative w-24 h-24 border rounded overflow-hidden group">
                       <img src={img.data} className="w-full h-full object-cover" />
-                      <button type="button" onClick={() => removeImage(i, setAttach1Images)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs">×</button>
+                      <button type="button" onClick={() => removeImage(i, setAttach1Images)} className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm" title="移除图片">
+                        <AppIcon name="close" size={12} strokeWidth={2} />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -1073,9 +1084,9 @@ export default function TemplateForms({
                       <button 
                         type="button" 
                         onClick={(e) => { e.stopPropagation(); fileInput2Ref.current?.click(); }} 
-                        className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+                        className="inline-flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md font-semibold hover:bg-primary/90 transition-colors shadow-sm"
                       >
-                        📂 选择本地图片
+                        <AppIcon name="imageUpload" size={14} /> 选择本地图片
                       </button>
                     </div>
                   </div>
@@ -1083,7 +1094,9 @@ export default function TemplateForms({
                     {attach2Images.map((img, i) => (
                       <div key={i} className="relative w-24 h-24 border rounded overflow-hidden group">
                         <img src={img.data} className="w-full h-full object-cover" />
-                        <button type="button" onClick={() => removeImage(i, setAttach2Images)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs">×</button>
+                        <button type="button" onClick={() => removeImage(i, setAttach2Images)} className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm" title="移除图片">
+                          <AppIcon name="close" size={12} strokeWidth={2} />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1095,8 +1108,8 @@ export default function TemplateForms({
 
       </form>
       
-      <button className="bg-primary text-primary-foreground font-bold py-3 px-6 rounded-lg self-start shadow-sm hover:opacity-90 transition-opacity" onClick={handleGenerate}>
-        🚀 立即生成此文件
+      <button className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-bold py-3 px-6 rounded-lg self-start shadow-sm hover:opacity-90 transition-opacity" onClick={handleGenerate}>
+        <AppIcon name="generate" size={18} /> 立即生成此文件
       </button>
 
       {isMidThreeModalOpen && (
@@ -1104,14 +1117,16 @@ export default function TemplateForms({
           <div className="bg-background rounded-xl shadow-lg w-full max-w-3xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h3 className="font-bold text-lg flex items-center gap-2">
-                <TableProperties className="w-5 h-5 text-primary" />
+                <AppIcon name="tableProperties" size={20} className="text-primary" />
                 全局能力库
               </h3>
-              <button onClick={() => setIsMidThreeModalOpen(false)} className="p-1.5 rounded-full hover:bg-muted text-muted-foreground transition-colors"><X className="w-5 h-5" /></button>
+              <button onClick={() => setIsMidThreeModalOpen(false)} className="p-1.5 rounded-full hover:bg-muted text-muted-foreground transition-colors" title="关闭">
+                <AppIcon name="close" size={20} />
+              </button>
             </div>
             <div className="p-4 border-b border-border bg-muted/30">
               <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <AppIcon name="search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input 
                   type="text" 
                   value={midThreeSearch} 

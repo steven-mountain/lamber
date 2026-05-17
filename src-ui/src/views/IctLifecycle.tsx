@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import WorkspaceHeader from "../components/WorkspaceHeader"
+import AppIcon from "../components/icons/AppIcon"
 import TemplateForms from "./TemplateForms"
 import { validateFinancialData, ValidationReport } from "../lib/financeValidator"
 import { useAiContextStore } from "../store/useAiContextStore"
@@ -460,10 +461,10 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
         <div className="w-[260px] bg-muted p-6 overflow-y-auto flex flex-col gap-4 border-r border-border shrink-0">
           <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mb-1">测算流程</h3>
           <div className="flex flex-col gap-1">
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'basic' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("basic")}><span>📋</span> 项目概况与参数</button>
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'revenue' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("revenue")}><span>💰</span> 收入侧测算</button>
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cost' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cost")}><span>💸</span> 支出侧测算</button>
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cashflow' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cashflow")}><span>📈</span> 10年现金流推演</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'basic' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("basic")}><AppIcon name="project" size={18} /> 项目概况与参数</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'revenue' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("revenue")}><AppIcon name="revenue" size={18} /> 收入侧测算</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cost' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cost")}><AppIcon name="cost" size={18} /> 支出侧测算</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cashflow' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cashflow")}><AppIcon name="cashflow" size={18} /> 10年现金流推演</button>
           </div>
           <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mt-6 pt-4 border-t border-border mb-2">一键生成全流程文档</h3>
           <div className="flex flex-col gap-2">
@@ -477,7 +478,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                     onClick={() => handleTabSwitch("generate", t)}
                   >
                     {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
-                    <span className="mt-0.5 shrink-0 text-base">{t.endsWith('.xlsx') ? '📊' : '📄'}</span>
+                    <AppIcon name={t.endsWith('.xlsx') ? "spreadsheet" : "document"} size={18} className="mt-0.5" />
                     <span className="whitespace-normal break-words leading-relaxed flex-1">
                       {t.replace('.docx', '').replace('.xlsx', '')}
                     </span>
@@ -557,7 +558,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
               <div className="mb-6 border border-primary/30 bg-primary/5 p-5 rounded-xl shadow-sm">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-bold text-primary text-base flex items-center gap-2">
-                    <span>⚡</span> 快捷收入拆分计算器 (融入自有产品测算)
+                    <AppIcon name="quickAction" size={18} /> 快捷收入拆分计算器 (融入自有产品测算)
                   </h3>
                   <span className="text-xs bg-primary/10 text-primary font-bold px-2.5 py-1 rounded-full border border-primary/20">
                     自有产品占有率要求 1%
@@ -615,14 +616,14 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                       updateTaxItem('revIt', 'integration', 'incl', Number(integration.toFixed(2)));
                       if (quickRevProduct) updateTaxItem('revCt', 'product', 'incl', Number(Number(quickRevProduct).toFixed(2)));
                     }} 
-                    className="bg-primary text-primary-foreground font-bold px-5 py-2 rounded-md text-sm hover:bg-primary/90 transition-all shadow-sm hover:shadow active:scale-[0.98]"
+                    className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-bold px-5 py-2 rounded-md text-sm hover:bg-primary/90 transition-all shadow-sm hover:shadow active:scale-[0.98]"
                   >
-                    ⬇️ 一键填入表单
+                    <AppIcon name="download" size={16} /> 一键填入表单
                   </button>
                 </div>
               </div>
               <div className="mb-4 text-xs text-blue-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
-                💡 提示：在「CT收入」中填写的产品或专线含税收入，将会自动【1:1平过】填入对应的「CT投入」中。
+                <span className="inline-flex items-start gap-2"><AppIcon name="info" size={16} className="mt-0.5" /> <span>提示：在「CT收入」中填写的产品或专线含税收入，将会自动【1:1平过】填入对应的「CT投入」中。</span></span>
               </div>
               {renderTaxGroup("IT/移动云收入", 'revIt', revIt, [{key: 'integration', label: '系统集成服务收入'}, {key: 'maintenance', label: '维保收入'}, {key: 'device_sales', label: '设备销售收入'}, {key: 'device_lease', label: '设备租赁收入'}, {key: 'other', label: '其他收入'}, {key: 'cloud', label: '移动云-定制化收入'}])}
               {renderTaxGroup("CT收入", 'revCt', revCt, [{key: 'line', label: '专线收入'}, {key: 'product', label: '产品收入'}])}
@@ -652,7 +653,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                      const integration = Math.max(0, (Number(quickCostTotal)||0) - (Number(quickCostProduct)||0));
                      updateTaxItem('costIt', 'integration', 'incl', integration);
                      if (quickCostProduct) updateTaxItem('costIt', 'device', 'incl', Number(quickCostProduct));
-                  }} className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-md text-sm hover:bg-primary/90 transition-colors">⬇️ 一键填入</button>
+                  }} className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-bold px-4 py-2 rounded-md text-sm hover:bg-primary/90 transition-colors"><AppIcon name="download" size={16} /> 一键填入</button>
                 </div>
               </div>
               {renderTaxGroup("IT/移动云投入", 'costIt', costIt, [{key: 'device', label: '主要设备/甲供材料'}, {key: 'construction', label: '施工'}, {key: 'survey', label: '勘察设计/预备费'}, {key: 'integration', label: '集成服务'}, {key: 'other', label: '其他投入'}, {key: 'maintenance', label: '维护费用'}, {key: 'running', label: '其他运行支出（电费等）'}, {key: 'bidding', label: '中标服务费'}, {key: 'design_eval', label: '设计院成本评估费'}, {key: 'audit', label: '第三方审计评估费'}])}
@@ -748,7 +749,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                 <label className="text-xs font-semibold text-secondary-foreground">目标值 (如0.15代表15%)</label>
                 <input type="number" step="0.0001" className="bg-background border border-border px-3 py-2 rounded-md outline-none text-sm" value={revTargetValue} onChange={e => setRevTargetValue(e.target.value)} />
               </div>
-              <button className="bg-primary text-primary-foreground font-bold py-2 rounded-lg shadow-sm w-full" onClick={performReverseCalculation}>⚡ 智能反算</button>
+              <button className="flex w-full items-center justify-center gap-2 bg-primary text-primary-foreground font-bold py-2 rounded-lg shadow-sm" onClick={performReverseCalculation}><AppIcon name="reverse" size={16} /> 智能反算</button>
             </div>
             <h3 className="font-bold text-foreground mb-4">采购甄选费测算</h3>
             <div className="bg-muted border border-border p-4 rounded-xl flex flex-col gap-3">
@@ -776,7 +777,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                 disabled={!selLimit}
                 className="mt-2 bg-primary hover:bg-primary/95 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed font-bold py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all active:scale-[0.98] w-full text-xs flex items-center justify-center gap-1.5"
               >
-                <span>⬇️</span> 填入集成服务
+                <AppIcon name="download" size={14} /> 填入集成服务
               </button>
             </div>
           </div>
@@ -787,7 +788,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
         <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-card border border-red-500/30 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col">
             <div className="bg-red-500/10 border-b border-red-500/20 px-6 py-4 flex items-center gap-3">
-              <span className="text-red-600 text-2xl">⚠️</span>
+              <AppIcon name="warning" size={24} className="text-red-600" />
               <div>
                 <h2 className="font-bold text-red-600 text-lg">0 容差财务核算拦截</h2>
                 <p className="text-xs text-red-600/80 mt-0.5">检测到税前/税后金额转换存在微小尾差，系统已拦截保存操作。</p>
@@ -845,7 +846,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
         <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b border-border bg-yellow-500/10 flex items-center gap-2">
-              <span className="text-yellow-600 font-bold text-lg">⚠️</span>
+              <AppIcon name="warning" size={20} className="text-yellow-600" />
               <h2 className="font-bold text-yellow-700 text-base">确认忽略误差？</h2>
             </div>
             <div className="p-6">
