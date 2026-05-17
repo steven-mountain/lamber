@@ -23,6 +23,27 @@ export interface ContextNode {
   };
 }
 
+export interface AiImageAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  dataUrl: string;
+}
+
+export interface AiChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  think?: string;
+  images?: AiImageAttachment[];
+}
+
+export interface UserIntent {
+  raw: string;
+  intentType?: string; // Reserved for intent classification
+  images?: AiImageAttachment[];
+}
+
 // 3. Prompt Abstract Syntax Tree (AST)
 export interface PromptAST {
   systemRules: PromptRule[];
@@ -31,10 +52,7 @@ export interface PromptAST {
     layer2Active: ContextNode[]; // Current focus full data
     layer3Context: ContextNode[];// Background associated summaries
   };
-  userIntent: {
-    raw: string;
-    intentType?: string; // Reserved for intent classification
-  };
+  userIntent: UserIntent;
 }
 
 // 4. Runtime Telemetry & Events

@@ -3,15 +3,10 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Sparkles, Check, Copy, ChevronDown, ChevronUp, Bot } from 'lucide-react';
 import { clsx } from 'clsx';
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-  think?: string;
-}
+import type { AiChatMessage } from '../ai/types';
 
 interface MessageBubbleProps {
-  msg: Message;
+  msg: AiChatMessage;
   idx: number;
   isStreaming: boolean;
   onCopy: (text: string, idx: number) => void;
@@ -205,10 +200,31 @@ const MessageBubble = ({ msg, idx, isStreaming, onCopy, copiedIdx }: MessageBubb
           </div>
         )}
 
+        {msg.images && msg.images.length > 0 && (
+          <div className={clsx('mb-3 grid gap-2', msg.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>
+            {msg.images.map((image) => (
+              <a
+                key={image.id}
+                href={image.dataUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="block overflow-hidden rounded-lg border border-primary-foreground/30 bg-black/10"
+                title={image.name}
+              >
+                <img src={image.dataUrl} alt={image.name} className="max-h-44 w-full object-cover" />
+              </a>
+            ))}
+          </div>
+        )}
+
         {msg.content && (
           <div className="relative">
             {isStreaming ? (
               <div className="whitespace-pre-wrap break-words overflow-hidden text-sm leading-7">
+                {String(msg.content)}
+              </div>
+            ) : msg.role === 'user' ? (
+              <div className="whitespace-pre-wrap break-words text-sm leading-7 text-primary-foreground">
                 {String(msg.content)}
               </div>
             ) : (
@@ -219,7 +235,7 @@ const MessageBubble = ({ msg, idx, isStreaming, onCopy, copiedIdx }: MessageBubb
               </div>
             )}
 
-            {!isStreaming && (
+            {!isStreaming && msg.content.trim() && (
               <button
                 onClick={() => onCopy(msg.content, idx)}
                 className="absolute -bottom-2 -right-2 rounded-md border border-border bg-background p-1.5 opacity-0 shadow-sm transition-opacity hover:bg-muted group-hover:opacity-100"

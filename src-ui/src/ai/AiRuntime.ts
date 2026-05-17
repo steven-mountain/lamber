@@ -1,6 +1,13 @@
 import { PromptAST, RuntimeEvent, RuntimeEventType } from './types';
 import { PromptRenderer } from './PromptRenderer';
 
+type UserMessageContent =
+  | string
+  | Array<
+      | { type: 'text'; text: string }
+      | { type: 'image_url'; image_url: { url: string } }
+    >;
+
 /**
  * Enterprise AI Agent Runtime
  * Manages the execution lifecycle, telemetry, and fault tolerance of LLM interactions.
@@ -45,6 +52,7 @@ export class AiRuntime {
 
       // 2. Fetch from LLM
       this.addTrace('StreamStarted');
+      const userContent = this.buildUserContent(ast);
       
       const response = await fetch(config.endpoint, {
         method: 'POST',
@@ -57,7 +65,7 @@ export class AiRuntime {
           model: config.model,
           messages: [
             { role: 'system', content: compiledPrompt },
-            { role: 'user', content: ast.userIntent.raw }
+            { role: 'user', content: userContent }
           ],
           stream: true
         })
@@ -98,6 +106,26 @@ export class AiRuntime {
       console.error("AI Runtime Execution Error:", error);
       throw error;
     }
+  }
+
+  private buildUserContent(ast: PromptAST): UserMessageContent {
+    const images = ast.userIntent.images || [];
+    if (images.length === 0) {
+      return ast.userIntent.raw;
+    }
+
+    return [
+      {
+        type: 'text',
+        text: ast.userIntent.raw?.trim() || '请分析图片内容。',
+      },
+      ...images.map((image) => ({
+        type: 'image_url' as const,
+        image_url: {
+          url: image.dataUrl,
+        },
+      })),
+    ];
   }
 
   private processLine(line: string): string | null {
