@@ -1,6 +1,8 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import WorkspaceHeader from "../components/WorkspaceHeader"
+import { useAiContextStore } from "../store/useAiContextStore"
+import { AI_CONTEXT_KEY } from "../utils/aiContextKeys"
 
 export default function BenefitTool({ onBack }: { onBack: () => void }) {
   const [subView, setSubView] = useState<"single" | "batch">("single")
@@ -15,6 +17,23 @@ export default function BenefitTool({ onBack }: { onBack: () => void }) {
   
   const [result, setResult] = useState<any>(null)
   const [warning, setWarning] = useState("")
+  const setActiveModule = useAiContextStore(state => state.setActiveModule)
+  const updateBusinessData = useAiContextStore(state => state.updateBusinessData)
+
+  useEffect(() => {
+    setActiveModule(AI_CONTEXT_KEY.BENEFIT_CORE)
+  }, [setActiveModule])
+
+  useEffect(() => {
+    updateBusinessData(AI_CONTEXT_KEY.BENEFIT_CORE, {
+      monetary_unit: '元',
+      currency: 'CNY',
+      view: subView,
+      input,
+      result,
+      warning,
+    })
+  }, [input, result, subView, updateBusinessData, warning])
 
   const handleCalc = async () => {
     try {

@@ -7,6 +7,7 @@ import type { AiChatMessage, AiImageAttachment, ContextNode, PromptAST, PromptRu
 import { useStreamingParser } from '../../hooks/useStreamingParser';
 import MessageBubble from '../MessageBubble';
 import AiInputBox from './AiInputBox';
+import { AI_CONTEXT_KEY, getAiContextDisplayName, isAiContextKeyForView } from '../../utils/aiContextKeys';
 
 interface AiChatPanelProps {
   currentView?: string;
@@ -128,6 +129,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
     if ((!textToSend.trim() && imagesToSend.length === 0) || isTyping) return;
 
     const userMessage = textToSend.trim();
+    const conversationHistory = messages.filter(message => message.content.trim());
     const promptText = userMessage || '请分析图片内容。';
 
     if (!overrideInput) {
@@ -149,6 +151,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
       { id: 'presales_role', content: 'You are a helpful presales AI consultant for Lamber system.', priority: 100 },
       { id: 'knowledge_base', content: SYSTEM_PROMPT_KNOWLEDGE, priority: 90 },
       { id: 'code_priority', content: '优先根据 [产品编号] (如 A302600342) 在知识库中匹配产品。只有当编号缺失时，才根据名称进行模糊匹配。', priority: 85 },
+      { id: 'currency_unit_policy', content: 'Currency unit policy: all financial amount fields from BUSINESS CONTEXT are CNY yuan (元) unless the context explicitly says otherwise. Never label those raw values as ten-thousand yuan / 万元. If the user explicitly asks for 万元, divide the yuan value by 10,000 and state that conversion.', priority: 84 },
       { id: 'data_awareness', content: 'ALWAYS check the BUSINESS CONTEXT before answering. If data is missing, state it clearly.', priority: 80 },
     ];
 
@@ -160,44 +163,44 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
     } = useAiContextStore.getState();
 
     const contextView = currentView || 'hub';
-    const isIctContext = contextView === 'ict';
-    const isDocfillContext = contextView === 'docfill' || contextView.startsWith('template_');
-    const activeContextModule = latestActiveModule && latestActiveModule !== 'hub' ? latestActiveModule : '';
-    const shouldUseActiveTemplate = (isIctContext || isDocfillContext)
+    const coreContextKey = contextView === 'ict'
+      ? AI_CONTEXT_KEY.ICT_CORE
+      : contextView === 'benefit'
+        ? AI_CONTEXT_KEY.BENEFIT_CORE
+        : '';
+    const activeContextModule = latestActiveModule
+      && latestActiveModule !== AI_CONTEXT_KEY.HUB
+      && isAiContextKeyForView(latestActiveModule, contextView)
+      ? latestActiveModule
+      : '';
+    const shouldUseActiveContext = activeContextModule
       && activeContextModule
-      && activeContextModule !== 'ict'
+      && activeContextModule !== coreContextKey
       && Boolean(latestBusinessData[activeContextModule]);
 
     // Layer 1: Core (ICT Main Table). Never inject stale ICT data while the main window is on the hub.
-    const layer1Core: ContextNode[] = isIctContext && latestBusinessData['ict'] ? [{
+    const layer1Core: ContextNode[] = coreContextKey && latestBusinessData[coreContextKey] ? [{
       type: 'json',
-      title: '主测算核心指标',
-      content: latestBusinessData['ict'],
-      metadata: { module: 'ict', updatedAt: latestLastUpdated['ict'] },
+      title: getAiContextDisplayName(coreContextKey),
+      content: latestBusinessData[coreContextKey],
+      metadata: { module: coreContextKey, updatedAt: latestLastUpdated[coreContextKey] },
     }] : [];
 
     // Layer 2: Active Workspace (Current template)
-    const layer2Active: ContextNode[] = shouldUseActiveTemplate ? [{
+    const layer2Active: ContextNode[] = shouldUseActiveContext ? [{
       type: 'json',
-      title: `当前工作空间: ${activeContextModule.replace('template_', '')}`,
+      title: getAiContextDisplayName(activeContextModule),
       content: latestBusinessData[activeContextModule],
       metadata: { module: activeContextModule, updatedAt: latestLastUpdated[activeContextModule] },
     }] : [];
 
     // Layer 3: Context (Other documents)
     const layer3Context: ContextNode[] = Object.keys(latestBusinessData)
-      .filter((moduleKey) => {
-        if (isIctContext) {
-          return moduleKey !== 'ict' && moduleKey !== activeContextModule;
-        }
-        if (isDocfillContext) {
-          return moduleKey.startsWith('template_') && moduleKey !== activeContextModule;
-        }
-        return false;
-      })
+      .filter(moduleKey => isAiContextKeyForView(moduleKey, contextView))
+      .filter(moduleKey => moduleKey !== coreContextKey && moduleKey !== activeContextModule)
       .map(m => ({
         type: 'json',
-        title: `关联文档: ${m.replace('template_', '')}`,
+        title: getAiContextDisplayName(m),
         content: latestBusinessData[m],
         metadata: { module: m, updatedAt: latestLastUpdated[m] },
       }));
@@ -227,6 +230,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
         ast,
         (chunk) => parseChunk(chunk),
         { endpoint, model, apiKey },
+        conversationHistory,
         abortControllerRef.current.signal
       );
       finalize();
@@ -281,7 +285,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
   };
 
   const contextView = currentView && currentView !== 'hub' ? currentView : 'hub';
-  const quickActionView = contextView.startsWith('template_') ? 'docfill' : contextView;
+  const quickActionView = contextView;
   const quickActions = [
     { label: '分析当前项目效益', icon: <Sparkles size={14} />, view: 'ict' },
     { label: '推荐合适产品', icon: <Bot size={14} /> },

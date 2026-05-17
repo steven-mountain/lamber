@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import WorkspaceHeader from "../components/WorkspaceHeader"
 import { useAiContextStore } from "../store/useAiContextStore"
 import { useRef } from "react"
+import { buildAiContextKey } from "../utils/aiContextKeys"
 
 export default function DocfillTool({ onBack }: { onBack: () => void }) {
   const [templateName, setTemplateName] = useState("未选择模板")
@@ -49,15 +50,20 @@ export default function DocfillTool({ onBack }: { onBack: () => void }) {
   const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    setActiveModule(`template_${templateName.replace(/\./g, '_')}`);
-  }, [templateName]);
+    const nextModule = templatePath
+      ? buildAiContextKey('docfill', 'template', templateName)
+      : 'docfill';
+    setActiveModule(nextModule);
+  }, [templateName, templatePath, setActiveModule]);
 
   useEffect(() => {
     // Debounced sync (500ms)
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     
     syncTimerRef.current = setTimeout(() => {
-      const templateId = `template_${templateName.replace(/\./g, '_')}`;
+      if (!templatePath) return;
+
+      const templateId = buildAiContextKey('docfill', 'template', templateName);
       updateData(templateId, formData);
       console.log(`AI Context Synced: ${templateId}`);
     }, 500);
@@ -65,7 +71,7 @@ export default function DocfillTool({ onBack }: { onBack: () => void }) {
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [templateName, formData]);
+  }, [templateName, templatePath, formData, updateData]);
 
   const handleGenerate = async () => {
     if (!templatePath) return alert("请先选择模板")

@@ -5,6 +5,7 @@ import TemplateForms from "./TemplateForms"
 import { validateFinancialData, ValidationReport } from "../lib/financeValidator"
 import { useAiContextStore } from "../store/useAiContextStore"
 import { useRef } from "react"
+import { AI_CONTEXT_KEY, buildAiContextKey } from "../utils/aiContextKeys"
 import {
   buildDistributionFromModel,
   cashflowModelLabels,
@@ -142,9 +143,9 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     setActiveTab(tab as any);
     if (templateName) {
       setSelectedTemplate(templateName);
-      setActiveModule(`template_${templateName.replace(/\./g, '_')}`);
+      setActiveModule(buildAiContextKey('ict', 'template', templateName));
     } else {
-      setActiveModule('ict');
+      setActiveModule(AI_CONTEXT_KEY.ICT_CORE);
     }
   }
 
@@ -154,11 +155,11 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
   const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    setActiveModule('ict');
+    setActiveModule(AI_CONTEXT_KEY.ICT_CORE);
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, []);
+  }, [setActiveModule]);
 
   useEffect(() => {
     if (cashflowModel === 'model_d') {
@@ -178,19 +179,21 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     
     syncTimerRef.current = setTimeout(() => {
       const payload = {
+        monetary_unit: '元',
+        currency: 'CNY',
         ...getInputDataPayload(),
         project_background: projectBackground, // Explicitly include text fields
         metrics: metrics,
         cashflow: cashflowTable
       };
-      updateData('ict', payload);
+      updateData(AI_CONTEXT_KEY.ICT_CORE, payload);
       console.log("AI Context Synced: ICT");
     }, 500);
 
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectBackground, metrics, cashflowTable, projName, customerName, propertyRights, discountRate, projectYears, cashflowModel, distRev, distCost]);
+  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectBackground, metrics, cashflowTable, projName, customerName, propertyRights, discountRate, projectYears, cashflowModel, distRev, distCost, updateData]);
 
   const updateTaxItem = (groupId: string, key: string, field: "incl" | "tax" | "excl", val: number) => {
     // 只要有任何金额或税率变动，立即重置尾差忽略状态，确保下一次切换标签时重新校验

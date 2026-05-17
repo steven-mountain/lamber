@@ -3,6 +3,7 @@ import { TableProperties, X, Search } from "lucide-react"
 import { invoke } from "@tauri-apps/api/core"
 import { MID_THREE_CAPABILITIES } from "../lib/midThreeConstants"
 import { useAiContextStore } from "../store/useAiContextStore"
+import { buildAiContextKey } from "../utils/aiContextKeys"
 
 interface Props {
   selectedTemplate: string;
@@ -102,7 +103,7 @@ export default function TemplateForms({
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     
     syncTimerRef.current = setTimeout(() => {
-      const templateId = `template_${selectedTemplate.replace(/\./g, '_')}`;
+      const templateId = buildAiContextKey('ict', 'template', selectedTemplate);
       
       // Use FormData to capture ALL inputs (including default values)
       const form = formRef.current;

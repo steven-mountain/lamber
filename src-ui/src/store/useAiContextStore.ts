@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { migrateLegacyAiContextKey, normalizeAiActiveModule } from '../utils/aiContextKeys';
 
 const AI_CONTEXT_STORAGE_KEY = 'lamber_ai_context_state';
 
@@ -30,10 +31,28 @@ function readPersistedSnapshot(): AiContextSnapshot {
     if (!raw) return defaultSnapshot;
 
     const parsed = JSON.parse(raw) as Partial<AiContextSnapshot>;
+    const parsedBusinessData = parsed.businessData && typeof parsed.businessData === 'object'
+      ? parsed.businessData
+      : defaultSnapshot.businessData;
+    const parsedLastUpdated = parsed.lastUpdated && typeof parsed.lastUpdated === 'object'
+      ? parsed.lastUpdated
+      : defaultSnapshot.lastUpdated;
+    const businessData: Record<string, any> = {};
+    const lastUpdated: Record<string, number> = {};
+
+    Object.entries(parsedBusinessData).forEach(([key, value]) => {
+      const nextKey = migrateLegacyAiContextKey(key);
+      if (!nextKey) return;
+      businessData[nextKey] = value;
+      if (typeof parsedLastUpdated[key] === 'number') {
+        lastUpdated[nextKey] = parsedLastUpdated[key];
+      }
+    });
+
     return {
-      activeModule: typeof parsed.activeModule === 'string' ? parsed.activeModule : defaultSnapshot.activeModule,
-      businessData: parsed.businessData && typeof parsed.businessData === 'object' ? parsed.businessData : defaultSnapshot.businessData,
-      lastUpdated: parsed.lastUpdated && typeof parsed.lastUpdated === 'object' ? parsed.lastUpdated : defaultSnapshot.lastUpdated,
+      activeModule: normalizeAiActiveModule(parsed.activeModule),
+      businessData,
+      lastUpdated,
     };
   } catch (error) {
     console.warn('Failed to read AI context snapshot:', error);

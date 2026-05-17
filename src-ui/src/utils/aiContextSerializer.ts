@@ -10,7 +10,7 @@ export function serializeAiContext(module: string, data: any): string {
 
   if (module === 'ict') {
     markdown += serializeIctModule(data);
-  } else if (module.startsWith('template_')) {
+  } else if (module.startsWith('docfill.template.') || module.startsWith('ict.template.')) {
     markdown += serializeTemplateData(data);
   } else {
     // Generic fallback for other modules in Phase 1

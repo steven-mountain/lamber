@@ -1,4 +1,4 @@
-import { PromptAST, RuntimeEvent, RuntimeEventType } from './types';
+import type { AiChatMessage, PromptAST, RuntimeEvent, RuntimeEventType } from './types';
 import { PromptRenderer } from './PromptRenderer';
 
 type UserMessageContent =
@@ -7,6 +7,14 @@ type UserMessageContent =
       | { type: 'text'; text: string }
       | { type: 'image_url'; image_url: { url: string } }
     >;
+
+type ChatCompletionMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content: UserMessageContent;
+};
+
+const MAX_HISTORY_MESSAGES = 10;
+const MAX_HISTORY_CHARS_PER_MESSAGE = 4000;
 
 /**
  * Enterprise AI Agent Runtime
@@ -43,6 +51,7 @@ export class AiRuntime {
     ast: PromptAST, 
     onChunk: (chunk: string) => void,
     config: { endpoint: string; model: string; apiKey?: string },
+    history: AiChatMessage[] = [],
     signal?: AbortSignal
   ): Promise<void> {
     try {
@@ -53,6 +62,7 @@ export class AiRuntime {
       // 2. Fetch from LLM
       this.addTrace('StreamStarted');
       const userContent = this.buildUserContent(ast);
+      const historyMessages = this.buildHistoryMessages(history);
       
       const response = await fetch(config.endpoint, {
         method: 'POST',
@@ -65,6 +75,7 @@ export class AiRuntime {
           model: config.model,
           messages: [
             { role: 'system', content: compiledPrompt },
+            ...historyMessages,
             { role: 'user', content: userContent }
           ],
           stream: true
@@ -106,6 +117,21 @@ export class AiRuntime {
       console.error("AI Runtime Execution Error:", error);
       throw error;
     }
+  }
+
+  private buildHistoryMessages(history: AiChatMessage[]): ChatCompletionMessage[] {
+    return history
+      .filter(message => message.content.trim())
+      .slice(-MAX_HISTORY_MESSAGES)
+      .map(message => ({
+        role: message.role,
+        content: this.truncateHistoryContent(message.content),
+      }));
+  }
+
+  private truncateHistoryContent(content: string): string {
+    if (content.length <= MAX_HISTORY_CHARS_PER_MESSAGE) return content;
+    return `${content.slice(0, MAX_HISTORY_CHARS_PER_MESSAGE)}\n[conversation history truncated]`;
   }
 
   private buildUserContent(ast: PromptAST): UserMessageContent {
