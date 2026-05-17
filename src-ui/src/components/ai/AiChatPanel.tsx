@@ -28,11 +28,6 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('lamber_ai_api_key') || '');
   const [visionEnabled, setVisionEnabled] = useState(() => localStorage.getItem('lamber_ai_vision_enabled') === 'true');
 
-  // AI Context Store
-  const businessData = useAiContextStore(state => state.businessData);
-  const activeModule = useAiContextStore(state => state.activeModule);
-  const lastUpdated = useAiContextStore(state => state.lastUpdated);
-
   // Runtime Infrastructure
   const runtime = useRef(new AiRuntime());
   const [loadingStatus, setLoadingStatus] = useState('正在分析...');
@@ -157,33 +152,40 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
       { id: 'data_awareness', content: 'ALWAYS check the BUSINESS CONTEXT before answering. If data is missing, state it clearly.', priority: 80 },
     ];
 
+    useAiContextStore.getState().hydrateFromStorage();
+    const {
+      businessData: latestBusinessData,
+      activeModule: latestActiveModule,
+      lastUpdated: latestLastUpdated,
+    } = useAiContextStore.getState();
+
     const contextView = currentView || 'hub';
     const isIctContext = contextView === 'ict';
     const isDocfillContext = contextView === 'docfill' || contextView.startsWith('template_');
-    const activeContextModule = activeModule && activeModule !== 'hub' ? activeModule : '';
+    const activeContextModule = latestActiveModule && latestActiveModule !== 'hub' ? latestActiveModule : '';
     const shouldUseActiveTemplate = (isIctContext || isDocfillContext)
       && activeContextModule
       && activeContextModule !== 'ict'
-      && Boolean(businessData[activeContextModule]);
+      && Boolean(latestBusinessData[activeContextModule]);
 
     // Layer 1: Core (ICT Main Table). Never inject stale ICT data while the main window is on the hub.
-    const layer1Core: ContextNode[] = isIctContext && businessData['ict'] ? [{
+    const layer1Core: ContextNode[] = isIctContext && latestBusinessData['ict'] ? [{
       type: 'json',
       title: '主测算核心指标',
-      content: businessData['ict'],
-      metadata: { module: 'ict', updatedAt: lastUpdated['ict'] },
+      content: latestBusinessData['ict'],
+      metadata: { module: 'ict', updatedAt: latestLastUpdated['ict'] },
     }] : [];
 
     // Layer 2: Active Workspace (Current template)
     const layer2Active: ContextNode[] = shouldUseActiveTemplate ? [{
       type: 'json',
       title: `当前工作空间: ${activeContextModule.replace('template_', '')}`,
-      content: businessData[activeContextModule],
-      metadata: { module: activeContextModule, updatedAt: lastUpdated[activeContextModule] },
+      content: latestBusinessData[activeContextModule],
+      metadata: { module: activeContextModule, updatedAt: latestLastUpdated[activeContextModule] },
     }] : [];
 
     // Layer 3: Context (Other documents)
-    const layer3Context: ContextNode[] = Object.keys(businessData)
+    const layer3Context: ContextNode[] = Object.keys(latestBusinessData)
       .filter((moduleKey) => {
         if (isIctContext) {
           return moduleKey !== 'ict' && moduleKey !== activeContextModule;
@@ -196,8 +198,8 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
       .map(m => ({
         type: 'json',
         title: `关联文档: ${m.replace('template_', '')}`,
-        content: businessData[m],
-        metadata: { module: m, updatedAt: lastUpdated[m] },
+        content: latestBusinessData[m],
+        metadata: { module: m, updatedAt: latestLastUpdated[m] },
       }));
 
     const ast: PromptAST = {

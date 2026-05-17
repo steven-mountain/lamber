@@ -5,6 +5,14 @@ import IctLifecycle from "./views/IctLifecycle"
 import AiFloatingLauncher from "./components/ai/AiFloatingLauncher"
 import AiFloatingWindow from "./components/ai/AiFloatingWindow"
 import { useAiContextStore } from "./store/useAiContextStore"
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow"
+
+const AI_ASSISTANT_LABEL = "ai-assistant"
+const AI_CURRENT_VIEW_KEY = "lamber_ai_current_view"
+
+function isTauriRuntime() {
+  return typeof window !== "undefined" && Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
+}
 
 function getAiAssistantView() {
   const hash = window.location.hash
@@ -12,7 +20,7 @@ function getAiAssistantView() {
 
   const query = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : ""
   const view = new URLSearchParams(query).get("view")
-  return view || localStorage.getItem("lamber_ai_current_view") || "hub"
+  return view || "hub"
 }
 
 export default function App() {
@@ -21,9 +29,15 @@ export default function App() {
   const aiAssistantView = getAiAssistantView()
 
   useEffect(() => {
-    localStorage.setItem("lamber_ai_current_view", currentView)
+    localStorage.setItem(AI_CURRENT_VIEW_KEY, currentView)
     if (currentView === "hub") {
       setActiveModule("hub")
+    }
+
+    if (isTauriRuntime()) {
+      WebviewWindow.getByLabel(AI_ASSISTANT_LABEL)
+        .then((aiWindow) => aiWindow?.emit("lamber-ai-view-changed", { view: currentView }))
+        .catch((error) => console.warn("Failed to sync AI assistant view:", error))
     }
   }, [currentView, setActiveModule])
 

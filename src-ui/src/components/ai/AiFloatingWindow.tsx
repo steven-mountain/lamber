@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bot, X } from 'lucide-react';
 import { getCurrentWindow, type Window as TauriWindow } from '@tauri-apps/api/window';
 import AiChatPanel from './AiChatPanel';
+import { useAiContextStore } from '../../store/useAiContextStore';
 
 const AI_WINDOW_POSITION_KEY = 'lamber_ai_window_position';
 const AI_CURRENT_VIEW_KEY = 'lamber_ai_current_view';
@@ -70,6 +71,7 @@ export default function AiFloatingWindow({ currentView }: AiFloatingWindowProps)
     const handleStorage = (event: StorageEvent) => {
       if (event.key === AI_CURRENT_VIEW_KEY && event.newValue) {
         setAssistantView(event.newValue);
+        useAiContextStore.getState().hydrateFromStorage();
       }
     };
 
@@ -84,6 +86,7 @@ export default function AiFloatingWindow({ currentView }: AiFloatingWindowProps)
     appWindow.listen<{ view?: string }>('lamber-ai-view-changed', (event) => {
       if (event.payload?.view) {
         setAssistantView(event.payload.view);
+        useAiContextStore.getState().hydrateFromStorage();
       }
     }).then((handler) => {
       unlisten = handler;
