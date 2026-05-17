@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Sparkles, Check, Copy, ChevronDown, ChevronUp, Bot } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { AiChatMessage } from '../ai/types';
+import AppIcon from './icons/AppIcon';
 
 interface MessageBubbleProps {
   msg: AiChatMessage;
@@ -21,7 +21,7 @@ const renderInlineBadges = (children: React.ReactNode) => {
       if (segment === '[系统内置]') {
         return (
           <span className="mx-1 inline-flex items-center gap-1 rounded-md border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-xs font-bold text-primary">
-            <Check size={12} strokeWidth={3} /> 系统内置
+            <AppIcon name="check" size={12} strokeWidth={3} /> 系统内置
           </span>
         );
       }
@@ -181,15 +181,15 @@ const MessageBubble = ({ msg, idx, isStreaming, onCopy, copiedIdx }: MessageBubb
             >
               <div className="flex items-center gap-2">
                 {isStreaming && !msg.content ? (
-                  <Sparkles className="h-3 w-3 animate-pulse text-primary" />
+                  <AppIcon name="ai" size={12} className="animate-pulse text-primary" />
                 ) : (
-                  <Bot className="h-3 w-3 text-muted-foreground" />
+                  <AppIcon name="aiThinking" size={12} className="text-muted-foreground" />
                 )}
                 <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                   {isStreaming ? '思考中...' : '思考已完成'}
                 </span>
               </div>
-              {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              {isExpanded ? <AppIcon name="chevronUp" size={14} /> : <AppIcon name="chevronDown" size={14} />}
             </button>
 
             {isExpanded && (
@@ -241,7 +241,7 @@ const MessageBubble = ({ msg, idx, isStreaming, onCopy, copiedIdx }: MessageBubb
                 className="absolute -bottom-2 -right-2 rounded-md border border-border bg-background p-1.5 opacity-0 shadow-sm transition-opacity hover:bg-muted group-hover:opacity-100"
                 title="复制内容"
               >
-                {copiedIdx === idx ? <Check size={12} className="text-green-500" /> : <Copy size={12} className="text-muted-foreground" />}
+                {copiedIdx === idx ? <AppIcon name="check" size={12} className="text-green-500" /> : <AppIcon name="copy" size={12} className="text-muted-foreground" />}
               </button>
             )}
           </div>

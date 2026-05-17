@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import WorkspaceHeader from "../components/WorkspaceHeader"
+import AppIcon from "../components/icons/AppIcon"
 import { useAiContextStore } from "../store/useAiContextStore"
 import { useRef } from "react"
 import { AI_CONTEXT_KEY, buildAiContextKey } from "../utils/aiContextKeys"
@@ -127,7 +128,10 @@ export default function DocfillTool({ onBack }: { onBack: () => void }) {
                   onClick={() => handleSelectTemplate(t)}
                   className={`text-left px-4 py-3 rounded-lg text-sm font-semibold transition-all border ${templateName === t ? 'bg-primary/20 border-primary text-primary shadow-sm' : 'bg-card border-border hover:bg-secondary text-foreground'}`}
                 >
-                  📄 {t}
+                  <span className="inline-flex items-center gap-2">
+                    <AppIcon name="document" size={16} />
+                    {t}
+                  </span>
                 </button>
               ))
             )}
@@ -139,9 +143,9 @@ export default function DocfillTool({ onBack }: { onBack: () => void }) {
                <div className="text-xs text-primary font-bold break-all bg-primary/5 p-2 rounded border border-primary/20">{templateName}</div>
                <button 
                 onClick={handleGenerate}
-                className="bg-gradient-to-b from-primary to-primary/90 text-primary-foreground font-semibold py-3 px-6 rounded-md shadow-sm hover:shadow-md hover:-translate-y-[1px] transition-all w-full"
+                className="flex w-full items-center justify-center gap-2 bg-gradient-to-b from-primary to-primary/90 text-primary-foreground font-semibold py-3 px-6 rounded-md shadow-sm hover:shadow-md hover:-translate-y-[1px] transition-all"
               >
-                🚀 执行生成
+                <AppIcon name="generate" size={18} /> 执行生成
               </button>
             </div>
           )}

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ImagePlus, Send, X } from 'lucide-react';
 import type { AiImageAttachment } from '../../ai/types';
 import ImageAttachmentPreview from './ImageAttachmentPreview';
+import AppIcon from '../icons/AppIcon';
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 const MAX_IMAGE_COUNT = 4;
@@ -157,7 +157,7 @@ export default function AiInputBox({
               className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-border bg-muted text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
               title="添加图片"
             >
-              <ImagePlus size={18} />
+              <AppIcon name="imageUpload" size={18} />
             </button>
           </>
         )}
@@ -184,7 +184,7 @@ export default function AiInputBox({
             className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
             title="停止生成"
           >
-            <X size={20} />
+            <AppIcon name="close" size={20} />
           </button>
         ) : (
           <button
@@ -194,7 +194,7 @@ export default function AiInputBox({
             className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm transition-all hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
             title="发送"
           >
-            <Send size={18} className={canSend ? 'ml-0.5' : ''} />
+            <AppIcon name="send" size={18} className={canSend ? 'ml-0.5' : ''} />
           </button>
         )}
       </div>

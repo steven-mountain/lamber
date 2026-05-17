@@ -1,4 +1,5 @@
 import { useModulePath } from "../hooks/useModulePath";
+import AppIcon from "./icons/AppIcon";
 
 interface WorkspaceHeaderProps {
   moduleId: string;
@@ -35,7 +36,7 @@ export default function WorkspaceHeader({ moduleId, title, onBack, onPathChange 
             当前模块工作空间
           </div>
           <div className={`text-sm font-mono flex items-center gap-2 ${path ? 'text-primary' : 'text-destructive font-bold'}`}>
-            <span className="text-base">{path ? '📁' : '⚠️'}</span>
+            <AppIcon name={path ? "folder" : "warning"} size={16} />
             {isLoading ? '加载中...' : path || '未设置工作目录 (点击右侧按钮进行配置)'}
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import WorkspaceHeader from "../components/WorkspaceHeader"
+import AppIcon from "../components/icons/AppIcon"
 import { useAiContextStore } from "../store/useAiContextStore"
 import { AI_CONTEXT_KEY } from "../utils/aiContextKeys"
 
@@ -69,7 +70,7 @@ export default function BenefitTool({ onBack }: { onBack: () => void }) {
         filePath: selected 
       })
       
-      if (confirm("✅ 批量处理完成！文件已保存至工作空间 output 目录。\n是否立即打开输出目录？")) {
+      if (confirm("批量处理完成！文件已保存至工作空间 output 目录。\n是否立即打开输出目录？")) {
         const modulePath: string = await invoke('get_module_path', { moduleId: 'benefit_tool' })
         invoke('open_file', { path: `${modulePath}/output` })
       }
@@ -92,13 +93,13 @@ export default function BenefitTool({ onBack }: { onBack: () => void }) {
               className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${subView === 'single' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`}
               onClick={() => setSubView("single")}
             >
-              <span>📊</span> 单项效益测算
+              <AppIcon name="calculator" size={18} /> 单项效益测算
             </button>
             <button 
               className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${subView === 'batch' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`}
               onClick={() => setSubView("batch")}
             >
-              <span>📁</span> 批量效益处理
+              <AppIcon name="batch" size={18} /> 批量效益处理
             </button>
           </div>
 
@@ -148,7 +149,7 @@ export default function BenefitTool({ onBack }: { onBack: () => void }) {
               </button>
               {warning && (
                 <div className="bg-destructive/20 text-destructive-foreground px-4 py-3 rounded-md mt-2 text-sm font-semibold">
-                  ⚠️ {warning}
+                  <span className="inline-flex items-center gap-2"><AppIcon name="warning" size={16} /> {warning}</span>
                 </div>
               )}
             </div>
@@ -226,7 +227,7 @@ export default function BenefitTool({ onBack }: { onBack: () => void }) {
                 className="border-2 border-dashed border-border bg-muted/50 hover:bg-muted hover:border-primary transition-all rounded-xl p-12 text-center cursor-pointer flex flex-col items-center gap-4"
                 onClick={handleBatch}
               >
-                <div className="text-5xl">📁</div>
+                <AppIcon name="importExcel" size={44} className="text-primary" />
                 <div className="font-semibold text-lg">点击选择本地 Excel (.xlsx)</div>
                 <div className="text-sm text-secondary-foreground max-w-md">支持一键处理多项目清单，系统将自动识别运算模式并生成批处理结果。</div>
               </div>

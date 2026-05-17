@@ -4,6 +4,7 @@ import DocfillTool from "./views/DocfillTool"
 import IctLifecycle from "./views/IctLifecycle"
 import AiFloatingLauncher from "./components/ai/AiFloatingLauncher"
 import AiFloatingWindow from "./components/ai/AiFloatingWindow"
+import AppIcon from "./components/icons/AppIcon"
 import { useAiContextStore } from "./store/useAiContextStore"
 import { emitTo } from "@tauri-apps/api/event"
 
@@ -83,8 +84,8 @@ function HubView({ onOpenTool }: { onOpenTool: (view: string) => void }) {
           className="flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-border bg-card p-6 text-center shadow-sm transition-all hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg"
           onClick={() => onOpenTool("benefit")}
         >
-          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary text-3xl text-primary transition-colors">
-            📊
+          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary text-primary transition-colors">
+            <AppIcon name="calculator" size={30} />
           </div>
           <div className="font-bold text-lg mb-1">项目效益分析</div>
           <div className="text-sm text-secondary-foreground">测算项目经济效益</div>
@@ -93,8 +94,8 @@ function HubView({ onOpenTool }: { onOpenTool: (view: string) => void }) {
           className="flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-border bg-card p-6 text-center shadow-sm transition-all hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg"
           onClick={() => onOpenTool("docfill")}
         >
-          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-green-50 text-3xl text-green-600 transition-colors">
-            📄
+          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary text-primary transition-colors">
+            <AppIcon name="document" size={30} />
           </div>
           <div className="font-bold text-lg mb-1">申报材料制作</div>
         </div>
@@ -102,8 +103,8 @@ function HubView({ onOpenTool }: { onOpenTool: (view: string) => void }) {
           className="flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-border bg-card p-6 text-center shadow-sm transition-all hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg"
           onClick={() => onOpenTool("ict")}
         >
-          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 text-3xl text-amber-600 transition-colors">
-            🔄
+          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary text-primary transition-colors">
+            <AppIcon name="cashflow" size={30} />
           </div>
           <div className="font-bold text-lg mb-1">ICT项目全生命周期</div>
           <div className="text-sm text-secondary-foreground mt-1">经济效益与过程评估</div>

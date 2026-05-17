@@ -1,5 +1,5 @@
-import { X } from 'lucide-react';
 import type { AiImageAttachment } from '../../ai/types';
+import AppIcon from '../icons/AppIcon';
 
 interface ImageAttachmentPreviewProps {
   images: AiImageAttachment[];
@@ -20,7 +20,7 @@ export default function ImageAttachmentPreview({ images, onRemove }: ImageAttach
             className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/65 text-white transition-colors hover:bg-black/80"
             title="移除图片"
           >
-            <X size={12} />
+            <AppIcon name="close" size={12} />
           </button>
         </div>
       ))}
