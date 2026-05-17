@@ -1,8 +1,17 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import WorkspaceHeader from "../components/WorkspaceHeader"
 import TemplateForms from "./TemplateForms"
 import { validateFinancialData, ValidationReport } from "../lib/financeValidator"
+import { useAiContextStore } from "../store/useAiContextStore"
+import { useRef } from "react"
+import {
+  buildDistributionFromModel,
+  cashflowModelLabels,
+  formatDistribution,
+  normalizeProjectYears,
+  type CashflowModel
+} from "../lib/cashflowDistribution"
 
 interface TaxItem { incl: number; tax: number; excl: number; }
 const defaultTaxItem = (tax = 6): TaxItem => ({ incl: 0, tax, excl: 0 })
@@ -16,7 +25,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
   const [propertyRights, setPropertyRights] = useState("客户")
   const [discountRate, setDiscountRate] = useState(0.055)
   const [projectYears, setProjectYears] = useState(1)
-  const [cashflowModel, setCashflowModel] = useState("model_a")
+  const [cashflowModel, setCashflowModel] = useState<CashflowModel>("model_a")
   const [distRev, setDistRev] = useState<number[]>([1, 0, 0, 0, 0, 0, 0, 0, 0, 0])
   const [distCost, setDistCost] = useState<number[]>([1, 0, 0, 0, 0, 0, 0, 0, 0, 0])
   const [projectBackground, setProjectBackground] = useState("在数字经济与制造业深度融合的国家战略推动下...")
@@ -73,6 +82,19 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
   const [revMode, setRevMode] = useState<"cost" | "revenue">("cost")
   const [revTargetType, setRevTargetType] = useState<"margin" | "npv_rate">("margin")
   const [revTargetValue, setRevTargetValue] = useState<string>("0.15")
+  const activeDistributionYears = useMemo(() => normalizeProjectYears(projectYears), [projectYears])
+  const effectiveDistRev = useMemo(
+    () => cashflowModel === 'model_d'
+      ? buildDistributionFromModel(cashflowModel, projectYears, distRev)
+      : buildDistributionFromModel(cashflowModel, projectYears),
+    [cashflowModel, distRev, projectYears]
+  )
+  const effectiveDistCost = useMemo(
+    () => cashflowModel === 'model_d'
+      ? buildDistributionFromModel(cashflowModel, projectYears, distCost)
+      : buildDistributionFromModel(cashflowModel, projectYears),
+    [cashflowModel, distCost, projectYears]
+  )
 
   // --- Selection Fee Calc ---
   const [selQuote, setSelQuote] = useState<string>("")
@@ -118,8 +140,57 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     }
 
     setActiveTab(tab as any);
-    if (templateName) setSelectedTemplate(templateName);
+    if (templateName) {
+      setSelectedTemplate(templateName);
+      setActiveModule(`template_${templateName.replace(/\./g, '_')}`);
+    } else {
+      setActiveModule('ict');
+    }
   }
+
+  // --- AI Context Sync ---
+  const updateData = useAiContextStore(state => state.updateBusinessData);
+  const setActiveModule = useAiContextStore(state => state.setActiveModule);
+  const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    setActiveModule('ict');
+    return () => {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (cashflowModel === 'model_d') {
+      setDistRev(prev => buildDistributionFromModel(cashflowModel, projectYears, prev))
+      setDistCost(prev => buildDistributionFromModel(cashflowModel, projectYears, prev))
+      return
+    }
+
+    const nextDist = buildDistributionFromModel(cashflowModel, projectYears)
+    setDistRev(nextDist)
+    setDistCost(nextDist)
+  }, [cashflowModel, projectYears])
+
+  useEffect(() => {
+    // Debounced sync (500ms)
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    
+    syncTimerRef.current = setTimeout(() => {
+      const payload = {
+        ...getInputDataPayload(),
+        project_background: projectBackground, // Explicitly include text fields
+        metrics: metrics,
+        cashflow: cashflowTable
+      };
+      updateData('ict', payload);
+      console.log("AI Context Synced: ICT");
+    }, 500);
+
+    return () => {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    };
+  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectBackground, metrics, cashflowTable, projName, customerName, propertyRights, discountRate, projectYears, cashflowModel, distRev, distCost]);
 
   const updateTaxItem = (groupId: string, key: string, field: "incl" | "tax" | "excl", val: number) => {
     // 只要有任何金额或税率变动，立即重置尾差忽略状态，确保下一次切换标签时重新校验
@@ -175,10 +246,13 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
 
   const getInputDataPayload = () => ({
     project_name: projName,
+    customer_name: customerName,
     property_rights: propertyRights,
     discount_rate: String(discountRate),
-    rev_distribution: distRev,
-    cost_distribution: distCost,
+    project_years: projectYears,
+    cashflow_model: cashflowModel,
+    rev_distribution: effectiveDistRev,
+    cost_distribution: effectiveDistCost,
     ignore_tail_difference: ignoredTailValue !== null,
     tail_difference_value: ignoredTailValue || "0",
     rev_it_integration: { incl_tax: String(revIt.integration.incl), tax_rate: String(revIt.integration.tax) },
@@ -262,13 +336,21 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     if (!revTargetValue) return alert("请输入目标值！")
     try {
       const apiName = revMode === 'revenue' ? 'reverse_calc_ict_revenue_target' : 'reverse_calc_ict_target'
+      const basePayload = getInputDataPayload()
       const valStr: string = await invoke(apiName, {
-        input: getInputDataPayload(),
+        input: basePayload,
         targetType: revTargetType,
         targetValue: String(revTargetValue)
       })
       
       const numVal = Number(valStr)
+      const nextPayload = {
+        ...basePayload,
+        ...(revMode === 'revenue'
+          ? { rev_it_integration: { ...basePayload.rev_it_integration, incl_tax: String(numVal) } }
+          : { cost_it_integration: { ...basePayload.cost_it_integration, incl_tax: String(numVal) } })
+      }
+
       if (revMode === 'revenue') {
         updateTaxItem('revIt', 'integration', 'incl', numVal)
         setActiveTab("revenue")
@@ -277,7 +359,28 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
         handleSelFeeChange('limit', String(numVal))
         setActiveTab("cost")
       }
-      setTimeout(() => performCalculation(), 100)
+
+      const refreshed: any = await invoke('calculate_ict_benefit', { input: nextPayload })
+      if (refreshed) {
+        setCashflowTable(refreshed.cashflow)
+        setMetrics(refreshed)
+      }
+
+      const distText = revMode === 'revenue'
+        ? formatDistribution(effectiveDistRev)
+        : formatDistribution(effectiveDistCost)
+      const targetName = revTargetType === 'margin' ? '毛利润率' : '净现值率'
+      const reverseFieldName = revMode === 'revenue' ? '系统集成服务收入' : '系统集成服务成本'
+
+      alert(
+        `反算完成：${formatCurrency(numVal)}\n` +
+        `目标：${targetName} ≥ ${formatPercent(Number(revTargetValue))}\n` +
+        `反算字段：${reverseFieldName}\n` +
+        `该结果为含税总额参数值，将按当前资金收付模型自动分摊。\n` +
+        `当前资金收付模型：${cashflowModelLabels[cashflowModel]}\n` +
+        `年度分布：${distText}\n` +
+        `已自动刷新 10 年现金流推演。`
+      )
     } catch (e) {
       alert("反推失败: " + e)
     }
@@ -307,6 +410,25 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
 
   const formatCurrency = (v: number) => new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(v)
   const formatPercent = (v: number) => (v * 100).toFixed(2) + "%"
+  const distributionPreview = (
+    <div className="mt-6 mb-4 border-t border-border pt-4 text-sm">
+      <div className="font-bold text-foreground mb-2">资金分布预览</div>
+      <div className="grid grid-cols-1 gap-1 text-secondary-foreground">
+        <div>当前资金收付模型：{cashflowModelLabels[cashflowModel]}</div>
+        <div>收入分布：{formatDistribution(effectiveDistRev)}</div>
+        <div>成本分布：{formatDistribution(effectiveDistCost)}</div>
+      </div>
+    </div>
+  )
+  const formatYearRange = (start: number, end: number) => start + 1 === end
+    ? `第 ${start + 1} 年`
+    : `第 ${start + 1}-${end} 年`
+  const distributionSegments = activeDistributionYears <= 5
+    ? [{ label: formatYearRange(0, activeDistributionYears), start: 0, end: activeDistributionYears }]
+    : [
+      { label: formatYearRange(0, 5), start: 0, end: 5 },
+      { label: formatYearRange(5, activeDistributionYears), start: 5, end: activeDistributionYears },
+    ]
 
   return (
     <div className="flex flex-col flex-1 animate-in fade-in duration-300 h-full overflow-hidden">
@@ -349,14 +471,14 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
             <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
               <h3 className="text-lg font-bold text-foreground mb-6">项目概况</h3>
               <div className="grid grid-cols-2 gap-6">
-                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">项目名称</label><input type="text" value={projName} onChange={e => setProjName(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
-                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">客户单位名称</label><input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
-                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">产权归属</label><input type="text" value={propertyRights} onChange={e => setPropertyRights(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
-                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">项目建设/服务周期 (年)</label><input type="number" min={1} max={10} value={projectYears} onChange={e => setProjectYears(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
-                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">折现率</label><input type="number" step={0.001} value={discountRate} onChange={e => setDiscountRate(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
+                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">项目名称</label><input id="ict-proj-name" type="text" value={projName} onChange={e => setProjName(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
+                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">客户单位名称</label><input id="ict-customer-name" type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
+                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">产权归属</label><input id="ict-property-rights" type="text" value={propertyRights} onChange={e => setPropertyRights(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
+                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">项目建设/服务周期 (年)</label><input id="ict-project-years" type="number" min={1} max={10} value={projectYears} onChange={e => setProjectYears(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
+                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">折现率</label><input id="ict-discount-rate" type="number" step={0.001} value={discountRate} onChange={e => setDiscountRate(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-bold text-secondary-foreground">资金收付模型</label>
-                  <select value={cashflowModel} onChange={e => setCashflowModel(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary">
+                  <select id="ict-cashflow-model" value={cashflowModel} onChange={e => setCashflowModel(e.target.value as CashflowModel)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary">
                     <option value="model_a">模型 A: 100% 在第一年收付</option>
                     <option value="model_b">模型 B: 按周期等额收付 (每年 1/n)</option>
                     <option value="model_c">模型 C: 尾款质保金 (首年95%，末年5%)</option>
@@ -365,26 +487,46 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className="flex flex-col gap-2 col-span-2">
                   <label className="text-sm font-bold text-secondary-foreground">项目背景</label>
-                  <textarea rows={3} value={projectBackground} onChange={e => setProjectBackground(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" />
+                  <textarea id="ict-project-bg" rows={3} value={projectBackground} onChange={e => setProjectBackground(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" />
                 </div>
               </div>
               {cashflowModel === 'model_d' && (
                 <div className="mt-6 pt-6 border-t border-border">
-                  <h4 className="text-sm font-bold text-secondary-foreground mb-4">高级自定义分配 (输入0~1的小数，总和需为1)</h4>
-                  <div className="grid grid-cols-[80px_repeat(10,_1fr)] gap-2 items-center text-center text-sm">
-                    <div className="font-bold text-right pr-2 text-secondary-foreground">年份</div>
-                    {[1,2,3,4,5,6,7,8,9,10].map(y => <div key={y} className="font-bold">{y}</div>)}
-                    <div className="font-bold text-right pr-2 text-secondary-foreground">收入比例</div>
-                    {distRev.map((v, i) => (
-                      <input key={`rev-${i}`} type="number" step="0.01" value={v} onChange={e => { const newArr = [...distRev]; newArr[i] = Number(e.target.value); setDistRev(newArr); }} className="bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
-                    ))}
-                    <div className="font-bold text-right pr-2 text-secondary-foreground">支出比例</div>
-                    {distCost.map((v, i) => (
-                      <input key={`cost-${i}`} type="number" step="0.01" value={v} onChange={e => { const newArr = [...distCost]; newArr[i] = Number(e.target.value); setDistCost(newArr); }} className="bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
-                    ))}
+                  <h4 className="text-sm font-bold text-secondary-foreground mb-4">高级自定义分配 (可输入任意非负比例，系统自动归一化)</h4>
+                  <p className="text-xs text-secondary-foreground mb-4">
+                    仅展示项目周期内的 {activeDistributionYears} 个年份；周期外年份按 0 处理，不参与现金流分摊。
+                  </p>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                    {distributionSegments.map(segment => {
+                      const segmentYears = Array.from({ length: segment.end - segment.start }, (_, idx) => segment.start + idx)
+
+                      return (
+                        <div key={segment.label} className="min-w-0 rounded-lg border border-border bg-muted/30 p-3">
+                          <div className="text-xs font-bold text-secondary-foreground mb-3">{segment.label}</div>
+                          <div
+                            className="grid gap-2 items-center text-center text-sm"
+                            style={{ gridTemplateColumns: `72px repeat(${segmentYears.length}, minmax(0, 1fr))` }}
+                          >
+                            <div className="font-bold text-right pr-2 text-secondary-foreground">年份</div>
+                            {segmentYears.map(i => (
+                              <div key={`year-${i}`} className="font-bold">{i + 1}</div>
+                            ))}
+                            <div className="font-bold text-right pr-2 text-secondary-foreground">收入比例</div>
+                            {segmentYears.map(i => (
+                              <input key={`rev-${i}`} type="number" step="0.01" value={distRev[i]} onChange={e => { const newArr = [...distRev]; newArr[i] = Number(e.target.value); setDistRev(newArr); }} className="min-w-0 w-full bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
+                            ))}
+                            <div className="font-bold text-right pr-2 text-secondary-foreground">支出比例</div>
+                            {segmentYears.map(i => (
+                              <input key={`cost-${i}`} type="number" step="0.01" value={distCost[i]} onChange={e => { const newArr = [...distCost]; newArr[i] = Number(e.target.value); setDistCost(newArr); }} className="min-w-0 w-full bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}
+              {distributionPreview}
             </div>
           )}
 
@@ -500,6 +642,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
           {activeTab === "cashflow" && (
             <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
               <h3 className="text-lg font-bold text-foreground mb-6">1-10年项目现金流推演</h3>
+              {distributionPreview}
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-right border-separate border-spacing-y-2">
                   <thead>
@@ -542,23 +685,23 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
             <div className="grid grid-cols-5 gap-4">
               <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
                 <span className="text-xs font-semibold text-secondary-foreground">项目净现值 (NPV)</span>
-                <span className="text-lg font-bold">{formatCurrency(metrics.npv)}</span>
+                <span id="ict-metric-npv" className="text-lg font-bold">{formatCurrency(metrics.npv)}</span>
               </div>
               <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
                 <span className="text-xs font-semibold text-secondary-foreground">净现值率</span>
-                <span className="text-lg font-bold text-green-600">{formatPercent(metrics.npv_rate)}</span>
+                <span id="ict-metric-npv-rate" className="text-lg font-bold text-green-600">{formatPercent(metrics.npv_rate)}</span>
               </div>
               <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
                 <span className="text-xs font-semibold text-secondary-foreground">毛利润率</span>
-                <span className="text-lg font-bold text-green-600">{formatPercent(metrics.margin_rate)}</span>
+                <span id="ict-metric-margin" className="text-lg font-bold text-green-600">{formatPercent(metrics.margin_rate)}</span>
               </div>
               <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
                 <span className="text-xs font-semibold text-secondary-foreground">动态回收期 (年)</span>
-                <span className="text-lg font-bold">{metrics.dynamic_payback}</span>
+                <span id="ict-metric-payback" className="text-lg font-bold">{metrics.dynamic_payback}</span>
               </div>
               <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
                 <span className="text-xs font-semibold text-secondary-foreground">内部收益率 (IRR)</span>
-                <span className="text-lg font-bold">{metrics.irr}</span>
+                <span id="ict-metric-irr" className="text-lg font-bold">{metrics.irr}</span>
               </div>
             </div>
           </div>
@@ -568,6 +711,9 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
           <div className="w-[300px] bg-card border-l border-border p-6 flex flex-col shrink-0 overflow-y-auto animate-in slide-in-from-right duration-200">
             <h3 className="font-bold text-foreground mb-4">智能反算</h3>
             <div className="bg-muted border border-border p-4 rounded-xl flex flex-col gap-4 mb-6">
+              <p className="text-xs leading-relaxed text-secondary-foreground">
+                反算结果为含税总额参数值，系统将根据当前资金收付模型自动分摊至各年度现金流。
+              </p>
               <div className="flex gap-2 bg-background p-1 border border-border rounded-lg">
                 <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revMode === 'cost' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => setRevMode('cost')}>反算投入</button>
                 <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revMode === 'revenue' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => setRevMode('revenue')}>反算收入</button>

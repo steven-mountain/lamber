@@ -45,7 +45,7 @@ export default function BenefitTool({ onBack }: { onBack: () => void }) {
       }) as string
       if (!selected) return
       
-      const outPath: string = await invoke('process_excel_batch', { 
+      await invoke('process_excel_batch', { 
         moduleId: 'benefit_tool',
         filePath: selected 
       })

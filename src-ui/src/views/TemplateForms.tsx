@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react"
 import { TableProperties, X, Search } from "lucide-react"
 import { invoke } from "@tauri-apps/api/core"
 import { MID_THREE_CAPABILITIES } from "../lib/midThreeConstants"
+import { useAiContextStore } from "../store/useAiContextStore"
 
 interface Props {
   selectedTemplate: string;
@@ -54,12 +55,13 @@ export default function TemplateForms({
   // Linkage States
   const [itContent, setItContent] = useState("")
   const [ctContent, setCtContent] = useState("视频监控")
-  const [midThreeCode, setMidThreeCode] = useState("A301000041")
+  const [midThreeCode, setMidThreeCode] = useState("A302600342")
   const [midThreeName, setMidThreeName] = useState("视频监控能力")
   const [itBusMode, setItBusMode] = useState("服务购销")
   const [itFundSrc, setItFundSrc] = useState("分公司成本开支")
   const [revCollection, setRevCollection] = useState("项目验收完成后30天内客户单位支付100%")
   const [expPayment, setExpPayment] = useState("项目验收完成且收到款项后30天内支付100%")
+  const [syncTrigger, setSyncTrigger] = useState(0) // Added to trigger AI sync on ref changes
   
   const [isMidThreeModalOpen, setIsMidThreeModalOpen] = useState(false)
   const [midThreeSearch, setMidThreeSearch] = useState("")
@@ -76,6 +78,7 @@ export default function TemplateForms({
     const target = e.target;
     if (target && target.name && target.name.startsWith('gen_')) {
       formDataRef.current[target.name] = target.value;
+      setSyncTrigger(prev => prev + 1); // Trigger the debounced sync effect
     }
   };
 
@@ -89,6 +92,40 @@ export default function TemplateForms({
       });
     }
   }, [selectedTemplate]);
+
+  // --- AI Context Sync for Templates ---
+  const updateData = useAiContextStore(state => state.updateBusinessData);
+  const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    // Debounced sync (500ms)
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    
+    syncTimerRef.current = setTimeout(() => {
+      const templateId = `template_${selectedTemplate.replace(/\./g, '_')}`;
+      
+      // Use FormData to capture ALL inputs (including default values)
+      const form = formRef.current;
+      const formEntries = form ? Object.fromEntries(new FormData(form).entries()) : {};
+
+      const payload = {
+        ...formEntries,
+        ...formDataRef.current, // Priority to manually captured data if any overlap
+        itContent,
+        ctContent,
+        midThreeName,
+        midThreeCode,
+        techItems,
+        inqVendors: inqVendors.map(v => ({ vendorName: v.vendorName, amount: v.amount }))
+      };
+      updateData(templateId, payload);
+      console.log(`AI Context Synced: ${templateId}`, payload);
+    }, 500);
+
+    return () => {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    };
+  }, [selectedTemplate, itContent, ctContent, midThreeName, midThreeCode, techItems, inqVendors, syncTrigger, itBusMode, itFundSrc, revCollection, expPayment]);
 
   // -- Linkage Logic --
   useEffect(() => {
@@ -486,7 +523,7 @@ export default function TemplateForms({
     }
 
     try {
-      const resultPath: string = await invoke('generate_lifecycle_docs', { 
+      await invoke('generate_lifecycle_docs', { 
           moduleId: "ict_lifecycle",
           variables: variables,
           selectedTemplates: [selectedTemplate]

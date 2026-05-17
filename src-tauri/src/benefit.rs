@@ -133,6 +133,44 @@ fn get_excl(item: &IctItem) -> Decimal {
     (incl / (Decimal::ONE + rate)).round_dp(2)
 }
 
+fn normalize_distribution(input: &[f64]) -> Vec<Decimal> {
+    let default = vec![
+        Decimal::ONE,
+        Decimal::ZERO,
+        Decimal::ZERO,
+        Decimal::ZERO,
+        Decimal::ZERO,
+        Decimal::ZERO,
+        Decimal::ZERO,
+        Decimal::ZERO,
+        Decimal::ZERO,
+        Decimal::ZERO,
+    ];
+
+    if input.len() != 10 {
+        return default;
+    }
+
+    let mut dist: Vec<Decimal> = input
+        .iter()
+        .map(|v| Decimal::from_f64_retain(*v).unwrap_or(Decimal::ZERO))
+        .collect();
+
+    for item in dist.iter_mut() {
+        if *item < Decimal::ZERO {
+            *item = Decimal::ZERO;
+        }
+    }
+
+    let sum: Decimal = dist.iter().copied().sum();
+
+    if sum <= Decimal::ZERO {
+        return default;
+    }
+
+    dist.iter().map(|v| (*v / sum).round_dp(8)).collect()
+}
+
 #[tauri::command]
 pub fn calculate_ict_benefit(input: IctInput) -> Result<IctResult, String> {
     let discount_rate = Decimal::from_str(&input.discount_rate).unwrap_or(Decimal::new(55, 3)); // 0.055
@@ -198,14 +236,12 @@ pub fn calculate_ict_benefit(input: IctInput) -> Result<IctResult, String> {
     let mut dynamic_payback_year = 0;
     let mut payback_found = false;
 
-    // Use provided distributions or fallback to 100% Year 1 if not provided/empty
-    let default_dist = vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-    let rev_dist = if input.rev_distribution.len() == 10 { &input.rev_distribution } else { &default_dist };
-    let cost_dist = if input.cost_distribution.len() == 10 { &input.cost_distribution } else { &default_dist };
+    let rev_dist = normalize_distribution(&input.rev_distribution);
+    let cost_dist = normalize_distribution(&input.cost_distribution);
 
     for year in 1..=10 {
-        let rev_ratio = Decimal::from_f64_retain(rev_dist[year - 1]).unwrap_or(Decimal::ZERO);
-        let cost_ratio = Decimal::from_f64_retain(cost_dist[year - 1]).unwrap_or(Decimal::ZERO);
+        let rev_ratio = rev_dist[year - 1];
+        let cost_ratio = cost_dist[year - 1];
 
         let cash_in = (total_rev * rev_ratio).round_dp(2);
         let cash_out = (total_cost * cost_ratio).round_dp(2);
@@ -219,7 +255,7 @@ pub fn calculate_ict_benefit(input: IctInput) -> Result<IctResult, String> {
         // In standard NPV formulas, Year 1 cash flow is discounted by (1+r)^1, Year 2 by (1+r)^2, etc.
         let mut pv_factor = Decimal::ONE;
         for _ in 0..year {
-            pv_factor *= (Decimal::ONE + discount_rate);
+            pv_factor *= Decimal::ONE + discount_rate;
         }
 
         let pv_in = (cash_in / pv_factor).round_dp(2);
@@ -804,4 +840,166 @@ pub fn reverse_calculate_selection_fee(limit: String, markup: String) -> Result<
         final_limit: format!("{:.2}", limit_val),
         quote: format!("{:.2}", quote),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(incl_tax: &str) -> IctItem {
+        IctItem {
+            incl_tax: incl_tax.to_string(),
+            tax_rate: "0".to_string(),
+        }
+    }
+
+    fn dist(values: &[f64]) -> Vec<f64> {
+        let mut result = vec![0.0; 10];
+        for (idx, value) in values.iter().enumerate().take(10) {
+            result[idx] = *value;
+        }
+        result
+    }
+
+    fn decimal(value: &str) -> Decimal {
+        Decimal::from_str(value).unwrap()
+    }
+
+    fn input_with(
+        revenue: &str,
+        cost: &str,
+        rev_distribution: Vec<f64>,
+        cost_distribution: Vec<f64>,
+    ) -> IctInput {
+        let zero = item("0");
+
+        IctInput {
+            project_name: "test".to_string(),
+            property_rights: "customer".to_string(),
+            discount_rate: "0.055".to_string(),
+            ignore_tail_difference: None,
+            tail_difference_value: None,
+            rev_distribution,
+            cost_distribution,
+            rev_it_integration: item(revenue),
+            rev_it_maintenance: zero.clone(),
+            rev_it_device_sales: zero.clone(),
+            rev_it_device_lease: zero.clone(),
+            rev_it_other: zero.clone(),
+            rev_it_cloud: zero.clone(),
+            rev_ct_line: zero.clone(),
+            rev_ct_product: zero.clone(),
+            rev_non_it_ct: zero.clone(),
+            cost_it_device: zero.clone(),
+            cost_it_construction: zero.clone(),
+            cost_it_survey: zero.clone(),
+            cost_it_integration: item(cost),
+            cost_it_other: zero.clone(),
+            cost_it_maintenance: zero.clone(),
+            cost_it_running: zero.clone(),
+            cost_it_bidding: zero.clone(),
+            cost_it_design_eval: zero.clone(),
+            cost_it_audit: zero.clone(),
+            cost_ct_construction: zero.clone(),
+            cost_ct_maintenance: zero.clone(),
+            cost_ct_other: zero.clone(),
+            cost_ct_bandwidth: zero.clone(),
+            cost_ct_renewal: zero.clone(),
+            cost_non_it_ct: zero.clone(),
+            cost_mix_marketing: zero.clone(),
+            cost_mix_channel: zero.clone(),
+            cost_mix_other: zero,
+        }
+    }
+
+    #[test]
+    fn normalizes_invalid_distribution_to_year_one() {
+        let normalized = normalize_distribution(&vec![0.0; 10]);
+
+        assert_eq!(normalized[0], Decimal::ONE);
+        assert!(normalized.iter().skip(1).all(|value| *value == Decimal::ZERO));
+    }
+
+    #[test]
+    fn normalizes_custom_distribution_and_clamps_negative_values() {
+        let normalized = normalize_distribution(&dist(&[2.0, 1.0, -1.0]));
+
+        assert_eq!(normalized[0], Decimal::from_str("0.66666667").unwrap());
+        assert_eq!(normalized[1], Decimal::from_str("0.33333333").unwrap());
+        assert_eq!(normalized[2], Decimal::ZERO);
+    }
+
+    #[test]
+    fn model_a_cashflow_stays_in_first_year() {
+        let result = calculate_ict_benefit(input_with(
+            "1000000",
+            "600000",
+            dist(&[1.0]),
+            dist(&[1.0]),
+        )).unwrap();
+
+        assert_eq!(decimal(&result.cashflow[0].cash_in), Decimal::from_str("1000000.00").unwrap());
+        assert_eq!(decimal(&result.cashflow[0].cash_out), Decimal::from_str("600000.00").unwrap());
+        assert!(result.cashflow.iter().skip(1).all(|row| {
+            decimal(&row.cash_in) == Decimal::ZERO && decimal(&row.cash_out) == Decimal::ZERO
+        }));
+        assert_eq!(decimal(&result.npv), Decimal::from_str("379146.92").unwrap());
+    }
+
+    #[test]
+    fn model_b_even_distribution_changes_cashflow_and_lowers_npv() {
+        let model_a = calculate_ict_benefit(input_with(
+            "1000000",
+            "600000",
+            dist(&[1.0]),
+            dist(&[1.0]),
+        )).unwrap();
+        let model_b = calculate_ict_benefit(input_with(
+            "1000000",
+            "600000",
+            dist(&[1.0, 1.0, 1.0]),
+            dist(&[1.0, 1.0, 1.0]),
+        )).unwrap();
+
+        for row in model_b.cashflow.iter().take(3) {
+            assert_eq!(decimal(&row.cash_in), Decimal::from_str("333333.33").unwrap());
+            assert_eq!(decimal(&row.cash_out), Decimal::from_str("200000.00").unwrap());
+        }
+        assert!(model_b.cashflow.iter().skip(3).all(|row| {
+            decimal(&row.cash_in) == Decimal::ZERO && decimal(&row.cash_out) == Decimal::ZERO
+        }));
+        assert!(decimal(&model_b.npv) < decimal(&model_a.npv));
+    }
+
+    #[test]
+    fn model_c_splits_first_year_and_final_year() {
+        let result = calculate_ict_benefit(input_with(
+            "1000000",
+            "600000",
+            dist(&[0.95, 0.0, 0.05]),
+            dist(&[0.95, 0.0, 0.05]),
+        )).unwrap();
+
+        assert_eq!(decimal(&result.cashflow[0].cash_in), Decimal::from_str("950000.00").unwrap());
+        assert_eq!(decimal(&result.cashflow[0].cash_out), Decimal::from_str("570000.00").unwrap());
+        assert_eq!(decimal(&result.cashflow[1].cash_in), Decimal::ZERO);
+        assert_eq!(decimal(&result.cashflow[2].cash_in), Decimal::from_str("50000.00").unwrap());
+        assert_eq!(decimal(&result.cashflow[2].cash_out), Decimal::from_str("30000.00").unwrap());
+    }
+
+    #[test]
+    fn reverse_revenue_uses_distribution_cashflow_for_npv_rate() {
+        let year_one_revenue = reverse_calc_ict_revenue_target(
+            input_with("0", "600000", dist(&[1.0]), dist(&[1.0])),
+            "npv_rate".to_string(),
+            "0.15".to_string(),
+        ).unwrap();
+        let delayed_revenue = reverse_calc_ict_revenue_target(
+            input_with("0", "600000", dist(&[1.0, 1.0, 1.0]), dist(&[1.0])),
+            "npv_rate".to_string(),
+            "0.15".to_string(),
+        ).unwrap();
+
+        assert!(decimal(&delayed_revenue) > decimal(&year_one_revenue));
+    }
 }
