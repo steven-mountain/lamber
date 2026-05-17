@@ -153,13 +153,26 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
   const updateData = useAiContextStore(state => state.updateBusinessData);
   const setActiveModule = useAiContextStore(state => state.setActiveModule);
   const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const buildAiContextPayload = (includeCalculated = false, overrides?: { metrics?: any; cashflow?: any[]; extra?: Record<string, any> }) => ({
+    monetary_unit: '元',
+    currency: 'CNY',
+    ...getInputDataPayload(),
+    project_background: projectBackground,
+    metrics: includeCalculated ? (overrides?.metrics ?? metrics) : null,
+    cashflow: includeCalculated ? (overrides?.cashflow ?? cashflowTable) : [],
+    ...(overrides?.extra ?? {}),
+  });
 
   useEffect(() => {
-    setActiveModule(AI_CONTEXT_KEY.ICT_CORE);
+    setActiveModule('ict');
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
   }, [setActiveModule]);
+
+  useEffect(() => {
+    updateData(AI_CONTEXT_KEY.ICT_CORE, buildAiContextPayload(false));
+  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectBackground, projName, customerName, propertyRights, discountRate, projectYears, cashflowModel, distRev, distCost, ignoredTailValue, updateData]);
 
   useEffect(() => {
     if (cashflowModel === 'model_d') {
@@ -178,14 +191,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     
     syncTimerRef.current = setTimeout(() => {
-      const payload = {
-        monetary_unit: '元',
-        currency: 'CNY',
-        ...getInputDataPayload(),
-        project_background: projectBackground, // Explicitly include text fields
-        metrics: metrics,
-        cashflow: cashflowTable
-      };
+      const payload = buildAiContextPayload(true);
       updateData(AI_CONTEXT_KEY.ICT_CORE, payload);
       console.log("AI Context Synced: ICT");
     }, 500);
@@ -193,7 +199,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectBackground, metrics, cashflowTable, projName, customerName, propertyRights, discountRate, projectYears, cashflowModel, distRev, distCost, updateData]);
+  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectBackground, metrics, cashflowTable, projName, customerName, propertyRights, discountRate, projectYears, cashflowModel, distRev, distCost, ignoredTailValue, updateData]);
 
   const updateTaxItem = (groupId: string, key: string, field: "incl" | "tax" | "excl", val: number) => {
     // 只要有任何金额或税率变动，立即重置尾差忽略状态，确保下一次切换标签时重新校验
@@ -367,6 +373,19 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
       if (refreshed) {
         setCashflowTable(refreshed.cashflow)
         setMetrics(refreshed)
+        updateData(AI_CONTEXT_KEY.ICT_CORE, buildAiContextPayload(true, {
+          metrics: refreshed,
+          cashflow: refreshed.cashflow,
+          extra: {
+            ...nextPayload,
+            reverse_calculation: {
+              mode: revMode,
+              target_type: revTargetType,
+              target_value: revTargetValue,
+              result: numVal,
+            },
+          },
+        }))
       }
 
       const distText = revMode === 'revenue'

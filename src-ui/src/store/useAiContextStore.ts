@@ -1,7 +1,10 @@
 import { create } from 'zustand';
+import { emit } from '@tauri-apps/api/event';
 import { migrateLegacyAiContextKey, normalizeAiActiveModule } from '../utils/aiContextKeys';
 
-const AI_CONTEXT_STORAGE_KEY = 'lamber_ai_context_state';
+export const AI_CONTEXT_STORAGE_KEY = 'lamber_ai_context_state';
+export const AI_CONTEXT_UPDATED_EVENT = 'lamber-ai-context-updated';
+export const AI_CONTEXT_REFRESH_REQUEST_EVENT = 'lamber-ai-context-refresh-request';
 
 interface AiContextState {
   activeModule: string;
@@ -15,15 +18,28 @@ interface AiContextState {
   hydrateFromStorage: () => void;
 }
 
-type AiContextSnapshot = Pick<AiContextState, 'activeModule' | 'businessData' | 'lastUpdated'>;
+export type AiContextSnapshot = Pick<AiContextState, 'activeModule' | 'businessData' | 'lastUpdated'>;
 
-const defaultSnapshot: AiContextSnapshot = {
+const createDefaultSnapshot = (): AiContextSnapshot => ({
   activeModule: 'hub',
   businessData: {},
   lastUpdated: {},
-};
+});
 
-function readPersistedSnapshot(): AiContextSnapshot {
+function isTauriRuntime() {
+  return typeof window !== 'undefined' && Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeModuleKey(module: string) {
+  return migrateLegacyAiContextKey(module) ?? normalizeAiActiveModule(module);
+}
+
+export function readAiContextSnapshot(): AiContextSnapshot {
+  const defaultSnapshot = createDefaultSnapshot();
   if (typeof window === 'undefined') return defaultSnapshot;
 
   try {
@@ -31,10 +47,10 @@ function readPersistedSnapshot(): AiContextSnapshot {
     if (!raw) return defaultSnapshot;
 
     const parsed = JSON.parse(raw) as Partial<AiContextSnapshot>;
-    const parsedBusinessData = parsed.businessData && typeof parsed.businessData === 'object'
+    const parsedBusinessData = isRecord(parsed.businessData)
       ? parsed.businessData
       : defaultSnapshot.businessData;
-    const parsedLastUpdated = parsed.lastUpdated && typeof parsed.lastUpdated === 'object'
+    const parsedLastUpdated = isRecord(parsed.lastUpdated)
       ? parsed.lastUpdated
       : defaultSnapshot.lastUpdated;
     const businessData: Record<string, any> = {};
@@ -60,7 +76,7 @@ function readPersistedSnapshot(): AiContextSnapshot {
   }
 }
 
-function persistSnapshot(snapshot: AiContextSnapshot) {
+export function persistAiContextSnapshot(snapshot: AiContextSnapshot) {
   if (typeof window === 'undefined') return;
 
   try {
@@ -70,43 +86,73 @@ function persistSnapshot(snapshot: AiContextSnapshot) {
   }
 }
 
-const initialSnapshot = readPersistedSnapshot();
+export function publishAiContextSnapshot(snapshot: AiContextSnapshot) {
+  persistAiContextSnapshot(snapshot);
+
+  if (!isTauriRuntime()) return;
+
+  emit(AI_CONTEXT_UPDATED_EVENT, snapshot).catch((error) => {
+    console.warn('Failed to emit AI context update:', error);
+  });
+}
+
+const initialSnapshot = readAiContextSnapshot();
 
 export const useAiContextStore = create<AiContextState>((set, get) => ({
   ...initialSnapshot,
 
-  setActiveModule: (module) => set((state) => {
-    persistSnapshot({
-      activeModule: module,
-      businessData: state.businessData,
-      lastUpdated: state.lastUpdated,
+  setActiveModule: (module) => {
+    const nextModule = normalizeModuleKey(module);
+    let nextSnapshot: AiContextSnapshot | null = null;
+
+    set((state) => {
+      nextSnapshot = {
+        activeModule: nextModule,
+        businessData: state.businessData,
+        lastUpdated: state.lastUpdated,
+      };
+
+      return { activeModule: nextModule };
     });
-    return { activeModule: module };
-  }),
 
-  updateBusinessData: (module, data) => set((state) => {
-    console.log('AI Store Updated:', module, data);
-    const nextSnapshot = {
-      activeModule: state.activeModule,
-      businessData: {
-        ...state.businessData,
-        [module]: data,
-      },
-      lastUpdated: {
-        ...state.lastUpdated,
-        [module]: Date.now(),
-      },
-    };
+    if (nextSnapshot) {
+      publishAiContextSnapshot(nextSnapshot);
+    }
+  },
 
-    persistSnapshot(nextSnapshot);
-    return {
-      businessData: nextSnapshot.businessData,
-      lastUpdated: nextSnapshot.lastUpdated,
-    };
-  }),
+  updateBusinessData: (module, data) => {
+    const nextModule = normalizeModuleKey(module);
+    let nextSnapshot: AiContextSnapshot | null = null;
+
+    set((state) => {
+      console.log('AI Store Updated:', nextModule, data);
+      const existingModuleData = state.businessData[nextModule];
+      const nextModuleData = isRecord(existingModuleData) && isRecord(data)
+        ? { ...existingModuleData, ...data }
+        : data;
+
+      nextSnapshot = {
+        activeModule: nextModule,
+        businessData: {
+          ...state.businessData,
+          [nextModule]: nextModuleData,
+        },
+        lastUpdated: {
+          ...state.lastUpdated,
+          [nextModule]: Date.now(),
+        },
+      };
+
+      return nextSnapshot;
+    });
+
+    if (nextSnapshot) {
+      publishAiContextSnapshot(nextSnapshot);
+    }
+  },
 
   hydrateFromStorage: () => {
-    const snapshot = readPersistedSnapshot();
+    const snapshot = readAiContextSnapshot();
     const current = get();
     if (
       snapshot.activeModule === current.activeModule &&

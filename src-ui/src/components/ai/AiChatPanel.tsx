@@ -1,16 +1,37 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bot, Loader2, MessageSquare, Settings, Sparkles, Trash2 } from 'lucide-react';
+import { listen } from '@tauri-apps/api/event';
 import { SYSTEM_PROMPT_KNOWLEDGE } from '../../lib/knowledgeBase';
-import { useAiContextStore } from '../../store/useAiContextStore';
+import {
+  AI_CONTEXT_REFRESH_REQUEST_EVENT,
+  AI_CONTEXT_UPDATED_EVENT,
+  useAiContextStore,
+} from '../../store/useAiContextStore';
 import { AiRuntime } from '../../ai/AiRuntime';
 import type { AiChatMessage, AiImageAttachment, ContextNode, PromptAST, PromptRule } from '../../ai/types';
 import { useStreamingParser } from '../../hooks/useStreamingParser';
 import MessageBubble from '../MessageBubble';
 import AiInputBox from './AiInputBox';
-import { AI_CONTEXT_KEY, getAiContextDisplayName, isAiContextKeyForView } from '../../utils/aiContextKeys';
+import { AI_CONTEXT_KEY, getAiContextDisplayName, getAiContextScope, isAiContextKeyForView } from '../../utils/aiContextKeys';
 
 interface AiChatPanelProps {
   currentView?: string;
+}
+
+function isTauriRuntime() {
+  return typeof window !== 'undefined' && Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
+}
+
+function getCoreContextKey(view: string) {
+  if (view === 'ict') return AI_CONTEXT_KEY.ICT_CORE;
+  if (view === 'benefit') return AI_CONTEXT_KEY.BENEFIT_CORE;
+  if (view === 'docfill') return AI_CONTEXT_KEY.DOCFILL_CORE;
+  return view;
+}
+
+function formatLastUpdated(timestamp?: number) {
+  if (!timestamp) return '--';
+  return new Date(timestamp).toLocaleString();
 }
 
 export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
@@ -47,6 +68,40 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
   const isAtBottom = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const activeModule = useAiContextStore(state => state.activeModule);
+  const businessData = useAiContextStore(state => state.businessData);
+  const lastUpdated = useAiContextStore(state => state.lastUpdated);
+
+  useEffect(() => {
+    const hydrateAiContext = () => {
+      useAiContextStore.getState().hydrateFromStorage();
+    };
+
+    hydrateAiContext();
+
+    if (!isTauriRuntime()) return;
+
+    let disposed = false;
+    const unlistenFns: Array<() => void> = [];
+
+    Promise.all([
+      listen(AI_CONTEXT_UPDATED_EVENT, hydrateAiContext),
+      listen(AI_CONTEXT_REFRESH_REQUEST_EVENT, hydrateAiContext),
+    ]).then((handlers) => {
+      if (disposed) {
+        handlers.forEach(handler => handler());
+        return;
+      }
+      unlistenFns.push(...handlers);
+    }).catch((error) => {
+      console.warn('Failed to listen for AI context events:', error);
+    });
+
+    return () => {
+      disposed = true;
+      unlistenFns.forEach(handler => handler());
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('lamber_ai_endpoint', endpoint);
@@ -156,18 +211,15 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
     ];
 
     useAiContextStore.getState().hydrateFromStorage();
+    const latestState = useAiContextStore.getState();
     const {
       businessData: latestBusinessData,
       activeModule: latestActiveModule,
       lastUpdated: latestLastUpdated,
-    } = useAiContextStore.getState();
+    } = latestState;
 
     const contextView = currentView || 'hub';
-    const coreContextKey = contextView === 'ict'
-      ? AI_CONTEXT_KEY.ICT_CORE
-      : contextView === 'benefit'
-        ? AI_CONTEXT_KEY.BENEFIT_CORE
-        : '';
+    const coreContextKey = contextView === 'hub' ? '' : getCoreContextKey(contextView);
     const activeContextModule = latestActiveModule
       && latestActiveModule !== AI_CONTEXT_KEY.HUB
       && isAiContextKeyForView(latestActiveModule, contextView)
@@ -291,6 +343,33 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
     { label: '推荐合适产品', icon: <Bot size={14} /> },
     { label: '生成立项摘要', icon: <MessageSquare size={14} />, view: 'docfill' },
   ].filter(action => !action.view || action.view === quickActionView);
+  const quickActionContextKey = quickActionView === 'hub' ? '' : getCoreContextKey(quickActionView);
+  const activeContextData = activeModule && activeModule !== AI_CONTEXT_KEY.HUB
+    ? businessData[activeModule]
+    : undefined;
+  const quickActionContextData = quickActionContextKey
+    ? businessData[quickActionContextKey] ?? businessData[quickActionView]
+    : undefined;
+  const connectedContextModule = activeContextData
+    ? activeModule
+    : quickActionContextData
+      ? (businessData[quickActionContextKey] ? quickActionContextKey : quickActionView)
+      : '';
+  const connectedScope = connectedContextModule
+    ? getAiContextScope(connectedContextModule) ?? connectedContextModule
+    : '';
+  const statusLastUpdated = connectedContextModule
+    ? lastUpdated[connectedContextModule] ?? lastUpdated[quickActionView]
+    : lastUpdated[activeModule];
+  const connectionStatusText = connectedContextModule
+    ? `已连接：${connectedScope}`
+    : '未检测到业务状态';
+  const connectionStatusClassName = connectedContextModule
+    ? 'border-emerald-100 bg-emerald-50 text-emerald-600'
+    : 'border-border bg-muted text-muted-foreground';
+  const connectionDotClassName = connectedContextModule
+    ? 'bg-emerald-500'
+    : 'bg-muted-foreground/50';
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -391,12 +470,13 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
             <Settings size={14} /> 模型设置
           </button>
           <div className="flex items-center gap-2">
-            {quickActionView !== 'hub' && (
-              <div className="flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600 shadow-sm">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-                已连接实时业务状态
-              </div>
-            )}
+            <div
+              className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold shadow-sm ${connectionStatusClassName}`}
+              title={`activeModule: ${activeModule || '--'} · lastUpdated: ${formatLastUpdated(statusLastUpdated)}`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${connectedContextModule ? 'animate-pulse' : ''} ${connectionDotClassName}`} />
+              <span>{connectionStatusText}</span>
+            </div>
             <button
               type="button"
               onClick={clearMessages}

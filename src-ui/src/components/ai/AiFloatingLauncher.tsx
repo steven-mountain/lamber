@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { Bot } from 'lucide-react';
+import { emit, emitTo } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { AI_CONTEXT_REFRESH_REQUEST_EVENT } from '../../store/useAiContextStore';
 
 const AI_ASSISTANT_LABEL = 'ai-assistant';
 const AI_LAUNCHER_POSITION_KEY = 'lamber_ai_launcher_position';
@@ -99,7 +101,8 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
     if (existing) {
       await existing.show();
       await existing.setFocus();
-      await existing.emit('lamber-ai-view-changed', { view: currentView });
+      await emitTo(AI_ASSISTANT_LABEL, 'lamber-ai-view-changed', { view: currentView });
+      await emit(AI_CONTEXT_REFRESH_REQUEST_EVENT, { view: currentView });
       return;
     }
 
@@ -125,6 +128,9 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
 
     aiWindow.once('tauri://created', () => {
       console.log('AI assistant window created');
+      emit(AI_CONTEXT_REFRESH_REQUEST_EVENT, { view: currentView }).catch((error) => {
+        console.warn('Failed to request AI context refresh:', error);
+      });
     });
 
     aiWindow.once('tauri://error', (event) => {

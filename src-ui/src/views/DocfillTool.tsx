@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import WorkspaceHeader from "../components/WorkspaceHeader"
 import { useAiContextStore } from "../store/useAiContextStore"
 import { useRef } from "react"
-import { buildAiContextKey } from "../utils/aiContextKeys"
+import { AI_CONTEXT_KEY, buildAiContextKey } from "../utils/aiContextKeys"
 
 export default function DocfillTool({ onBack }: { onBack: () => void }) {
   const [templateName, setTemplateName] = useState("未选择模板")
@@ -48,30 +48,44 @@ export default function DocfillTool({ onBack }: { onBack: () => void }) {
   const updateData = useAiContextStore(state => state.updateBusinessData);
   const setActiveModule = useAiContextStore(state => state.setActiveModule);
   const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const buildDocfillPayload = () => ({
+    module: 'docfill',
+    template_name: templateName,
+    template_path: templatePath,
+    available_templates: availableTemplates,
+    variables,
+    form_data: formData,
+    has_template_selected: Boolean(templatePath),
+  });
 
   useEffect(() => {
     const nextModule = templatePath
       ? buildAiContextKey('docfill', 'template', templateName)
-      : 'docfill';
+      : AI_CONTEXT_KEY.DOCFILL_CORE;
     setActiveModule(nextModule);
   }, [templateName, templatePath, setActiveModule]);
+
+  useEffect(() => {
+    updateData(AI_CONTEXT_KEY.DOCFILL_CORE, buildDocfillPayload());
+  }, [availableTemplates, formData, templateName, templatePath, updateData, variables]);
 
   useEffect(() => {
     // Debounced sync (500ms)
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     
     syncTimerRef.current = setTimeout(() => {
+      const payload = buildDocfillPayload();
+      updateData(AI_CONTEXT_KEY.DOCFILL_CORE, payload);
       if (!templatePath) return;
-
       const templateId = buildAiContextKey('docfill', 'template', templateName);
-      updateData(templateId, formData);
+      updateData(templateId, payload);
       console.log(`AI Context Synced: ${templateId}`);
     }, 500);
 
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [templateName, templatePath, formData, updateData]);
+  }, [availableTemplates, templateName, templatePath, variables, formData, updateData]);
 
   const handleGenerate = async () => {
     if (!templatePath) return alert("请先选择模板")
