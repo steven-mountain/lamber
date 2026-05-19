@@ -19,7 +19,7 @@ import {
 interface TaxItem { incl: number; tax: number; excl: number; }
 const defaultTaxItem = (tax = 6): TaxItem => ({ incl: 0, tax, excl: 0 })
 type SegmentValueMode = "ratio" | "amount"
-type SegmentFlowMode = "upfront" | "equal"
+type SegmentFlowMode = "upfront" | "equal" | "custom"
 
 interface CashflowSegment {
   id: string;
@@ -29,6 +29,8 @@ interface CashflowSegment {
   serviceYears: number;
   revenueMode: SegmentFlowMode;
   costMode: SegmentFlowMode;
+  revenueAnnualValues: number[];
+  costAnnualValues: number[];
 }
 
 const clampCashflowYear = (value: number) => Math.max(1, Math.min(Number.isFinite(value) ? Math.trunc(value) : 1, 10))
@@ -41,14 +43,17 @@ const createCashflowSegment = (index: number): CashflowSegment => ({
   serviceYears: 1,
   revenueMode: "upfront",
   costMode: "upfront",
+  revenueAnnualValues: [],
+  costAnnualValues: [],
 })
 
 const segmentFlowModeLabels: Record<SegmentFlowMode, string> = {
   upfront: "第一年一次性",
   equal: "按年/月等额",
+  custom: "自定义年度计划",
 }
 
-const buildSegmentFlowDistribution = (segment: CashflowSegment, mode: SegmentFlowMode) => {
+const buildSegmentFlowDistribution = (segment: CashflowSegment, mode: SegmentFlowMode, annualValues: number[] = []) => {
   const years = 10
   const dist = Array(years).fill(0)
   const startIndex = clampCashflowYear(segment.startYear) - 1
@@ -57,6 +62,21 @@ const buildSegmentFlowDistribution = (segment: CashflowSegment, mode: SegmentFlo
   if (mode === "upfront") {
     dist[startIndex] = 1
     return dist
+  }
+
+  if (mode === "custom") {
+    const values = Array.from({ length: duration }, (_, idx) => {
+      const value = Number(annualValues[idx] || 0)
+      return Number.isFinite(value) && value > 0 ? value : 0
+    })
+    const sum = values.reduce((acc, value) => acc + value, 0)
+
+    if (sum > 0) {
+      values.forEach((value, idx) => {
+        dist[startIndex + idx] = value / sum
+      })
+      return dist
+    }
   }
 
   for (let i = startIndex; i < startIndex + duration; i++) {
@@ -75,7 +95,8 @@ const buildSegmentDistribution = (segments: CashflowSegment[], side: "revenue" |
 
   validSegments.forEach(segment => {
     const flowMode = side === "revenue" ? segment.revenueMode : segment.costMode
-    const segmentDist = buildSegmentFlowDistribution(segment, flowMode)
+    const annualValues = side === "revenue" ? segment.revenueAnnualValues : segment.costAnnualValues
+    const segmentDist = buildSegmentFlowDistribution(segment, flowMode, annualValues)
     const weight = Number(segment.value) / totalWeight
     segmentDist.forEach((ratio, index) => {
       weighted[index] += ratio * weight
@@ -107,6 +128,8 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
       serviceYears: 3,
       revenueMode: "upfront",
       costMode: "upfront",
+      revenueAnnualValues: [],
+      costAnnualValues: [],
     },
     {
       id: "segment-2",
@@ -116,6 +139,8 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
       serviceYears: 2,
       revenueMode: "equal",
       costMode: "equal",
+      revenueAnnualValues: [],
+      costAnnualValues: [],
     },
   ])
   const [projectBackground, setProjectBackground] = useState("在数字经济与制造业深度融合的国家战略推动下...")
@@ -518,6 +543,30 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     }))
   }
 
+  const updateCashflowSegmentAnnualValue = (id: string, side: "revenue" | "cost", index: number, value: number) => {
+    setCashflowSegments(prev => prev.map(segment => {
+      if (segment.id !== id) return segment
+      const field = side === "revenue" ? "revenueAnnualValues" : "costAnnualValues"
+      const nextValues = [...(segment[field] || [])]
+      nextValues[index] = Number.isFinite(value) && value > 0 ? value : 0
+      return { ...segment, [field]: nextValues }
+    }))
+  }
+
+  const getSegmentEffectiveDuration = (segment: CashflowSegment) => {
+    const startIndex = clampCashflowYear(segment.startYear) - 1
+    return Math.max(1, Math.min(clampCashflowYear(segment.serviceYears), 10 - startIndex))
+  }
+
+  const getSegmentAnnualValues = (segment: CashflowSegment, side: "revenue" | "cost") => {
+    const values = side === "revenue" ? segment.revenueAnnualValues : segment.costAnnualValues
+    return Array.from({ length: getSegmentEffectiveDuration(segment) }, (_, idx) => Number(values?.[idx] || 0))
+  }
+
+  const getSegmentAnnualValueSum = (segment: CashflowSegment, side: "revenue" | "cost") => {
+    return getSegmentAnnualValues(segment, side).reduce((sum, value) => sum + value, 0)
+  }
+
   const removeCashflowSegment = (id: string) => {
     setCashflowSegments(prev => prev.length <= 1 ? prev : prev.filter(segment => segment.id !== id))
   }
@@ -669,7 +718,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
 	                    <div>
 	                      <h4 className="text-sm font-bold text-secondary-foreground">分板块资金计划</h4>
 	                      <p className="text-xs text-secondary-foreground mt-1">
-	                        系统会按板块权重汇总 10 年收入和成本分布；按月等额会折算为年度 1/n 分摊。
+		                        系统会按板块权重汇总 10 年收入和成本分布；支持一次性、等额和自定义年度计划。
 	                      </p>
 	                    </div>
 	                    <div className="flex rounded-lg border border-border bg-muted p-1">
@@ -701,67 +750,120 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
 	                        <div />
 	                      </div>
 	                      <div className="flex flex-col gap-2">
-	                        {cashflowSegments.map(segment => (
-	                          <div key={segment.id} className="grid grid-cols-[1.2fr_1fr_0.8fr_0.9fr_1.1fr_1.1fr_48px] gap-2 items-center rounded-lg border border-border bg-muted/25 p-2">
-	                            <input
-	                              type="text"
-	                              value={segment.name}
-	                              onChange={e => updateCashflowSegment(segment.id, "name", e.target.value)}
-	                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
-	                            />
-	                            <input
-	                              type="number"
-	                              min={0}
-	                              step={segmentValueMode === "ratio" ? 1 : 0.01}
-	                              value={segment.value === 0 ? "" : segment.value}
-	                              onChange={e => updateCashflowSegment(segment.id, "value", Number(e.target.value))}
-	                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
-	                            />
-	                            <input
-	                              type="number"
-	                              min={1}
-	                              max={10}
-	                              value={segment.startYear}
-	                              onChange={e => updateCashflowSegment(segment.id, "startYear", clampCashflowYear(Number(e.target.value)))}
-	                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
-	                            />
-	                            <input
-	                              type="number"
-	                              min={1}
-	                              max={10}
-	                              value={segment.serviceYears}
-	                              onChange={e => updateCashflowSegment(segment.id, "serviceYears", clampCashflowYear(Number(e.target.value)))}
-	                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
-	                            />
-	                            <select
-	                              value={segment.revenueMode}
-	                              onChange={e => updateCashflowSegment(segment.id, "revenueMode", e.target.value as SegmentFlowMode)}
-	                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
-	                            >
-	                              {Object.entries(segmentFlowModeLabels).map(([value, label]) => (
-	                                <option key={value} value={value}>{label}</option>
-	                              ))}
-	                            </select>
-	                            <select
-	                              value={segment.costMode}
-	                              onChange={e => updateCashflowSegment(segment.id, "costMode", e.target.value as SegmentFlowMode)}
-	                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
-	                            >
-	                              {Object.entries(segmentFlowModeLabels).map(([value, label]) => (
-	                                <option key={value} value={value}>{label}</option>
-	                              ))}
-	                            </select>
-	                            <button
-	                              type="button"
-	                              onClick={() => removeCashflowSegment(segment.id)}
-	                              disabled={cashflowSegments.length <= 1}
-	                              className="flex h-10 w-10 items-center justify-center rounded-md text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-40"
-	                              title="删除板块"
-	                            >
-	                              <AppIcon name="delete" size={16} />
-	                            </button>
-	                          </div>
-	                        ))}
+	                        {cashflowSegments.map(segment => {
+	                          const customSides = [
+	                            ...(segment.revenueMode === "custom" ? [{ side: "revenue" as const, label: "收款年度计划" }] : []),
+	                            ...(segment.costMode === "custom" ? [{ side: "cost" as const, label: "付款年度计划" }] : []),
+	                          ]
+
+	                          return (
+	                            <div key={segment.id} className="rounded-lg border border-border bg-muted/25 p-2">
+	                              <div className="grid grid-cols-[1.2fr_1fr_0.8fr_0.9fr_1.1fr_1.1fr_48px] gap-2 items-center">
+	                                <input
+	                                  type="text"
+	                                  value={segment.name}
+	                                  onChange={e => updateCashflowSegment(segment.id, "name", e.target.value)}
+	                                  className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+	                                />
+	                                <input
+	                                  type="number"
+	                                  min={0}
+	                                  step={segmentValueMode === "ratio" ? 1 : 0.01}
+	                                  value={segment.value === 0 ? "" : segment.value}
+	                                  onChange={e => updateCashflowSegment(segment.id, "value", Number(e.target.value))}
+	                                  className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+	                                />
+	                                <input
+	                                  type="number"
+	                                  min={1}
+	                                  max={10}
+	                                  value={segment.startYear}
+	                                  onChange={e => updateCashflowSegment(segment.id, "startYear", clampCashflowYear(Number(e.target.value)))}
+	                                  className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+	                                />
+	                                <input
+	                                  type="number"
+	                                  min={1}
+	                                  max={10}
+	                                  value={segment.serviceYears}
+	                                  onChange={e => updateCashflowSegment(segment.id, "serviceYears", clampCashflowYear(Number(e.target.value)))}
+	                                  className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+	                                />
+	                                <select
+	                                  value={segment.revenueMode}
+	                                  onChange={e => updateCashflowSegment(segment.id, "revenueMode", e.target.value as SegmentFlowMode)}
+	                                  className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+	                                >
+	                                  {Object.entries(segmentFlowModeLabels).map(([value, label]) => (
+	                                    <option key={value} value={value}>{label}</option>
+	                                  ))}
+	                                </select>
+	                                <select
+	                                  value={segment.costMode}
+	                                  onChange={e => updateCashflowSegment(segment.id, "costMode", e.target.value as SegmentFlowMode)}
+	                                  className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+	                                >
+	                                  {Object.entries(segmentFlowModeLabels).map(([value, label]) => (
+	                                    <option key={value} value={value}>{label}</option>
+	                                  ))}
+	                                </select>
+	                                <button
+	                                  type="button"
+	                                  onClick={() => removeCashflowSegment(segment.id)}
+	                                  disabled={cashflowSegments.length <= 1}
+	                                  className="flex h-10 w-10 items-center justify-center rounded-md text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-40"
+	                                  title="删除板块"
+	                                >
+	                                  <AppIcon name="delete" size={16} />
+	                                </button>
+	                              </div>
+
+	                              {customSides.length > 0 && (
+	                                <div className="mt-3 grid grid-cols-1 gap-3 border-t border-border pt-3">
+	                                  {customSides.map(({ side, label }) => {
+	                                    const annualValues = getSegmentAnnualValues(segment, side)
+	                                    const annualSum = getSegmentAnnualValueSum(segment, side)
+	                                    const hasMismatch = segmentValueMode === "amount" && segment.value > 0 && annualSum > 0 && Math.abs(annualSum - segment.value) > 0.01
+
+	                                    return (
+	                                      <div key={`${segment.id}-${side}`} className="rounded-md bg-background p-3">
+	                                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+	                                          <span className="text-xs font-bold text-secondary-foreground">{label}</span>
+	                                          <span className={`text-[11px] font-semibold ${hasMismatch ? 'text-amber-700' : 'text-secondary-foreground'}`}>
+	                                            合计：{annualSum.toFixed(segmentValueMode === "amount" ? 2 : 0)}{segmentValueMode === "amount" ? " 元" : ""}
+	                                          </span>
+	                                        </div>
+	                                        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${annualValues.length}, minmax(96px, 1fr))` }}>
+	                                          {annualValues.map((value, idx) => (
+	                                            <div key={`${segment.id}-${side}-${idx}`} className="flex flex-col gap-1">
+	                                              <label className="text-[11px] font-semibold text-secondary-foreground">
+	                                                第 {clampCashflowYear(segment.startYear) + idx} 年
+	                                              </label>
+	                                              <input
+	                                                type="number"
+	                                                min={0}
+	                                                step={segmentValueMode === "amount" ? 0.01 : 1}
+	                                                value={value === 0 ? "" : value}
+	                                                placeholder={segmentValueMode === "amount" ? "金额" : "比例"}
+	                                                onChange={e => updateCashflowSegmentAnnualValue(segment.id, side, idx, Number(e.target.value))}
+	                                                className="min-w-0 bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+	                                              />
+	                                            </div>
+	                                          ))}
+	                                        </div>
+	                                        {hasMismatch && (
+	                                          <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
+	                                            年度计划合计与板块金额不一致，系统将按年度金额占比归一化计算。
+	                                          </div>
+	                                        )}
+	                                      </div>
+	                                    )
+	                                  })}
+	                                </div>
+	                              )}
+	                            </div>
+	                          )
+	                        })}
 	                      </div>
 	                    </div>
 	                  </div>
