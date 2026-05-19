@@ -1,10 +1,11 @@
-export type CashflowModel = 'model_a' | 'model_b' | 'model_c' | 'model_d';
+export type CashflowModel = 'model_a' | 'model_b' | 'model_c' | 'model_d' | 'model_e';
 
 export const cashflowModelLabels: Record<CashflowModel, string> = {
   model_a: '模型 A：100% 第一年度收付',
   model_b: '模型 B：按周期等额收付',
   model_c: '模型 C：首年 95%，末年 5%',
   model_d: '模型 D：高级自定义分配',
+  model_e: '模型 E：分板块资金计划',
 };
 
 export function normalizeProjectYears(projectYears: number, years = 10): number {
@@ -62,6 +63,9 @@ export function buildDistributionFromModel(
         dist[i] = customDist?.[i] ?? 0;
       }
       return normalizeDistribution(dist, years);
+
+    case 'model_e':
+      return normalizeDistribution(customDist ?? dist, years);
 
     default:
       dist[0] = 1;

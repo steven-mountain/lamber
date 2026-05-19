@@ -11,12 +11,79 @@ import {
   buildDistributionFromModel,
   cashflowModelLabels,
   formatDistribution,
+  normalizeDistribution,
   normalizeProjectYears,
   type CashflowModel
 } from "../lib/cashflowDistribution"
 
 interface TaxItem { incl: number; tax: number; excl: number; }
 const defaultTaxItem = (tax = 6): TaxItem => ({ incl: 0, tax, excl: 0 })
+type SegmentValueMode = "ratio" | "amount"
+type SegmentFlowMode = "upfront" | "equal"
+
+interface CashflowSegment {
+  id: string;
+  name: string;
+  value: number;
+  startYear: number;
+  serviceYears: number;
+  revenueMode: SegmentFlowMode;
+  costMode: SegmentFlowMode;
+}
+
+const clampCashflowYear = (value: number) => Math.max(1, Math.min(Number.isFinite(value) ? Math.trunc(value) : 1, 10))
+
+const createCashflowSegment = (index: number): CashflowSegment => ({
+  id: `${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`,
+  name: `板块${index}`,
+  value: 0,
+  startYear: 1,
+  serviceYears: 1,
+  revenueMode: "upfront",
+  costMode: "upfront",
+})
+
+const segmentFlowModeLabels: Record<SegmentFlowMode, string> = {
+  upfront: "第一年一次性",
+  equal: "按年/月等额",
+}
+
+const buildSegmentFlowDistribution = (segment: CashflowSegment, mode: SegmentFlowMode) => {
+  const years = 10
+  const dist = Array(years).fill(0)
+  const startIndex = clampCashflowYear(segment.startYear) - 1
+  const duration = Math.max(1, Math.min(clampCashflowYear(segment.serviceYears), years - startIndex))
+
+  if (mode === "upfront") {
+    dist[startIndex] = 1
+    return dist
+  }
+
+  for (let i = startIndex; i < startIndex + duration; i++) {
+    dist[i] = 1 / duration
+  }
+
+  return dist
+}
+
+const buildSegmentDistribution = (segments: CashflowSegment[], side: "revenue" | "cost") => {
+  const weighted = Array(10).fill(0)
+  const validSegments = segments.filter(segment => Number(segment.value) > 0)
+  const totalWeight = validSegments.reduce((sum, segment) => sum + Number(segment.value), 0)
+
+  if (totalWeight <= 0) return buildDistributionFromModel("model_a", 1)
+
+  validSegments.forEach(segment => {
+    const flowMode = side === "revenue" ? segment.revenueMode : segment.costMode
+    const segmentDist = buildSegmentFlowDistribution(segment, flowMode)
+    const weight = Number(segment.value) / totalWeight
+    segmentDist.forEach((ratio, index) => {
+      weighted[index] += ratio * weight
+    })
+  })
+
+  return normalizeDistribution(weighted, 10)
+}
 
 export default function IctLifecycle({ onBack }: { onBack: () => void }) {
   const [activeTab, setActiveTab] = useState<"basic" | "revenue" | "cost" | "cashflow" | "generate">("basic")
@@ -30,6 +97,27 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
   const [cashflowModel, setCashflowModel] = useState<CashflowModel>("model_a")
   const [distRev, setDistRev] = useState<number[]>([1, 0, 0, 0, 0, 0, 0, 0, 0, 0])
   const [distCost, setDistCost] = useState<number[]>([1, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+  const [segmentValueMode, setSegmentValueMode] = useState<SegmentValueMode>("ratio")
+  const [cashflowSegments, setCashflowSegments] = useState<CashflowSegment[]>(() => [
+    {
+      id: "segment-1",
+      name: "板块一",
+      value: 50,
+      startYear: 1,
+      serviceYears: 3,
+      revenueMode: "upfront",
+      costMode: "upfront",
+    },
+    {
+      id: "segment-2",
+      name: "板块二",
+      value: 50,
+      startYear: 1,
+      serviceYears: 2,
+      revenueMode: "equal",
+      costMode: "equal",
+    },
+  ])
   const [projectBackground, setProjectBackground] = useState("在数字经济与制造业深度融合的国家战略推动下...")
   const [techItems, setTechItems] = useState<any[]>([
     { serviceName: '集成服务', serviceDesc: '集成实施', amount: 1, unit: '项' },
@@ -86,16 +174,20 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
   const [revTargetValue, setRevTargetValue] = useState<string>("0.15")
   const activeDistributionYears = useMemo(() => normalizeProjectYears(projectYears), [projectYears])
   const effectiveDistRev = useMemo(
-    () => cashflowModel === 'model_d'
-      ? buildDistributionFromModel(cashflowModel, projectYears, distRev)
-      : buildDistributionFromModel(cashflowModel, projectYears),
-    [cashflowModel, distRev, projectYears]
+    () => {
+      if (cashflowModel === 'model_e') return buildSegmentDistribution(cashflowSegments, "revenue")
+      if (cashflowModel === 'model_d') return buildDistributionFromModel(cashflowModel, projectYears, distRev)
+      return buildDistributionFromModel(cashflowModel, projectYears)
+    },
+    [cashflowModel, cashflowSegments, distRev, projectYears]
   )
   const effectiveDistCost = useMemo(
-    () => cashflowModel === 'model_d'
-      ? buildDistributionFromModel(cashflowModel, projectYears, distCost)
-      : buildDistributionFromModel(cashflowModel, projectYears),
-    [cashflowModel, distCost, projectYears]
+    () => {
+      if (cashflowModel === 'model_e') return buildSegmentDistribution(cashflowSegments, "cost")
+      if (cashflowModel === 'model_d') return buildDistributionFromModel(cashflowModel, projectYears, distCost)
+      return buildDistributionFromModel(cashflowModel, projectYears)
+    },
+    [cashflowModel, cashflowSegments, distCost, projectYears]
   )
 
   // --- Selection Fee Calc ---
@@ -173,7 +265,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     updateData(AI_CONTEXT_KEY.ICT_CORE, buildAiContextPayload(false));
-  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectBackground, projName, customerName, propertyRights, discountRate, projectYears, cashflowModel, distRev, distCost, ignoredTailValue, updateData]);
+  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectBackground, projName, customerName, propertyRights, discountRate, projectYears, cashflowModel, distRev, distCost, segmentValueMode, cashflowSegments, ignoredTailValue, updateData]);
 
   useEffect(() => {
     if (cashflowModel === 'model_d') {
@@ -181,6 +273,8 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
       setDistCost(prev => buildDistributionFromModel(cashflowModel, projectYears, prev))
       return
     }
+
+    if (cashflowModel === 'model_e') return
 
     const nextDist = buildDistributionFromModel(cashflowModel, projectYears)
     setDistRev(nextDist)
@@ -200,7 +294,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectBackground, metrics, cashflowTable, projName, customerName, propertyRights, discountRate, projectYears, cashflowModel, distRev, distCost, ignoredTailValue, updateData]);
+  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectBackground, metrics, cashflowTable, projName, customerName, propertyRights, discountRate, projectYears, cashflowModel, distRev, distCost, segmentValueMode, cashflowSegments, ignoredTailValue, updateData]);
 
   const updateTaxItem = (groupId: string, key: string, field: "incl" | "tax" | "excl", val: number) => {
     // 只要有任何金额或税率变动，立即重置尾差忽略状态，确保下一次切换标签时重新校验
@@ -239,7 +333,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     else if (groupId === 'costMix') processItem(costMix, setCostMix, key)
   }
 
-  useEffect(() => { performCalculation() }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectYears, discountRate, cashflowModel, distRev, distCost])
+  useEffect(() => { performCalculation() }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectYears, discountRate, cashflowModel, distRev, distCost, cashflowSegments])
   
   const loadTemplates = useCallback(async () => {
     try {
@@ -254,17 +348,19 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     loadTemplates()
   }, [loadTemplates])
 
-  const getInputDataPayload = () => ({
-    project_name: projName,
-    customer_name: customerName,
-    property_rights: propertyRights,
-    discount_rate: String(discountRate),
-    project_years: projectYears,
-    cashflow_model: cashflowModel,
-    rev_distribution: effectiveDistRev,
-    cost_distribution: effectiveDistCost,
-    ignore_tail_difference: ignoredTailValue !== null,
-    tail_difference_value: ignoredTailValue || "0",
+	  const getInputDataPayload = () => ({
+	    project_name: projName,
+	    customer_name: customerName,
+	    property_rights: propertyRights,
+	    discount_rate: String(discountRate),
+	    project_years: projectYears,
+	    cashflow_model: cashflowModel,
+	    rev_distribution: effectiveDistRev,
+	    cost_distribution: effectiveDistCost,
+	    cashflow_segment_value_mode: segmentValueMode,
+	    cashflow_segments: cashflowModel === 'model_e' ? cashflowSegments : [],
+	    ignore_tail_difference: ignoredTailValue !== null,
+	    tail_difference_value: ignoredTailValue || "0",
     rev_it_integration: { incl_tax: String(revIt.integration.incl), tax_rate: String(revIt.integration.tax) },
     rev_it_maintenance: { incl_tax: String(revIt.maintenance.incl), tax_rate: String(revIt.maintenance.tax) },
     rev_it_device_sales: { incl_tax: String(revIt.device_sales.incl), tax_rate: String(revIt.device_sales.tax) },
@@ -409,6 +505,23 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     }
   }
 
+  const addCashflowSegment = () => {
+    setCashflowSegments(prev => [...prev, createCashflowSegment(prev.length + 1)])
+  }
+
+  const updateCashflowSegment = (id: string, key: keyof CashflowSegment, value: string | number) => {
+    setCashflowSegments(prev => prev.map(segment => {
+      if (segment.id !== id) return segment
+      const numericFields: Array<keyof CashflowSegment> = ["value", "startYear", "serviceYears"]
+      const nextValue = numericFields.includes(key) ? Number(value) : value
+      return { ...segment, [key]: nextValue }
+    }))
+  }
+
+  const removeCashflowSegment = (id: string) => {
+    setCashflowSegments(prev => prev.length <= 1 ? prev : prev.filter(segment => segment.id !== id))
+  }
+
   const renderTaxGroup = (title: string, groupId: string, groupState: any, items: {key: string, label: string}[]) => (
     <div className="table-card bg-card border border-border rounded-xl p-6 shadow-sm mb-6">
       <h3 className="font-bold text-lg mb-4">{title}</h3>
@@ -498,16 +611,17 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                 <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">客户单位名称</label><input id="ict-customer-name" type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
                 <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">产权归属</label><input id="ict-property-rights" type="text" value={propertyRights} onChange={e => setPropertyRights(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
                 <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">项目建设/服务周期 (年)</label><input id="ict-project-years" type="number" min={1} max={10} value={projectYears} onChange={e => setProjectYears(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
-                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">折现率</label><input id="ict-discount-rate" type="number" step={0.001} value={discountRate} onChange={e => setDiscountRate(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-bold text-secondary-foreground">资金收付模型</label>
-                  <select id="ict-cashflow-model" value={cashflowModel} onChange={e => setCashflowModel(e.target.value as CashflowModel)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary">
-                    <option value="model_a">模型 A: 100% 在第一年收付</option>
-                    <option value="model_b">模型 B: 按周期等额收付 (每年 1/n)</option>
-                    <option value="model_c">模型 C: 尾款质保金 (首年95%，末年5%)</option>
-                    <option value="model_d">模型 D: 高级自定义分配</option>
-                  </select>
-                </div>
+	                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">折现率</label><input id="ict-discount-rate" type="number" step={0.001} value={discountRate} onChange={e => setDiscountRate(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
+	                <div className="flex flex-col gap-2">
+	                  <label className="text-sm font-bold text-secondary-foreground">资金收付模型</label>
+	                  <select id="ict-cashflow-model" value={cashflowModel} onChange={e => setCashflowModel(e.target.value as CashflowModel)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary">
+	                    <option value="model_a">模型 A: 100% 在第一年收付</option>
+	                    <option value="model_b">模型 B: 按周期等额收付 (每年 1/n)</option>
+	                    <option value="model_c">模型 C: 尾款质保金 (首年95%，末年5%)</option>
+	                    <option value="model_d">模型 D: 高级自定义分配</option>
+	                    <option value="model_e">模型 E: 分板块资金计划</option>
+	                  </select>
+	                </div>
                 <div className="flex flex-col gap-2 col-span-2">
                   <label className="text-sm font-bold text-secondary-foreground">项目背景</label>
                   <textarea id="ict-project-bg" rows={3} value={projectBackground} onChange={e => setProjectBackground(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" />
@@ -546,11 +660,130 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                         </div>
                       )
                     })}
-                  </div>
-                </div>
-              )}
-              {distributionPreview}
-            </div>
+	                  </div>
+	                </div>
+	              )}
+	              {cashflowModel === 'model_e' && (
+	                <div className="mt-6 pt-6 border-t border-border">
+	                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+	                    <div>
+	                      <h4 className="text-sm font-bold text-secondary-foreground">分板块资金计划</h4>
+	                      <p className="text-xs text-secondary-foreground mt-1">
+	                        系统会按板块权重汇总 10 年收入和成本分布；按月等额会折算为年度 1/n 分摊。
+	                      </p>
+	                    </div>
+	                    <div className="flex rounded-lg border border-border bg-muted p-1">
+	                      {([
+	                        { key: "ratio", label: "填比例" },
+	                        { key: "amount", label: "填金额" },
+	                      ] as Array<{ key: SegmentValueMode; label: string }>).map(option => (
+	                        <button
+	                          key={option.key}
+	                          type="button"
+	                          onClick={() => setSegmentValueMode(option.key)}
+	                          className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors ${segmentValueMode === option.key ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground hover:bg-background'}`}
+	                        >
+	                          {option.label}
+	                        </button>
+	                      ))}
+	                    </div>
+	                  </div>
+
+	                  <div className="overflow-x-auto">
+	                    <div className="min-w-[920px]">
+	                      <div className="grid grid-cols-[1.2fr_1fr_0.8fr_0.9fr_1.1fr_1.1fr_48px] gap-2 px-2 pb-2 text-xs font-bold text-secondary-foreground">
+	                        <div>板块名称</div>
+	                        <div>{segmentValueMode === "ratio" ? "板块占比(%)" : "板块金额(元)"}</div>
+	                        <div>开始年份</div>
+	                        <div>服务周期</div>
+	                        <div>收款方式</div>
+	                        <div>付款方式</div>
+	                        <div />
+	                      </div>
+	                      <div className="flex flex-col gap-2">
+	                        {cashflowSegments.map(segment => (
+	                          <div key={segment.id} className="grid grid-cols-[1.2fr_1fr_0.8fr_0.9fr_1.1fr_1.1fr_48px] gap-2 items-center rounded-lg border border-border bg-muted/25 p-2">
+	                            <input
+	                              type="text"
+	                              value={segment.name}
+	                              onChange={e => updateCashflowSegment(segment.id, "name", e.target.value)}
+	                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+	                            />
+	                            <input
+	                              type="number"
+	                              min={0}
+	                              step={segmentValueMode === "ratio" ? 1 : 0.01}
+	                              value={segment.value === 0 ? "" : segment.value}
+	                              onChange={e => updateCashflowSegment(segment.id, "value", Number(e.target.value))}
+	                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+	                            />
+	                            <input
+	                              type="number"
+	                              min={1}
+	                              max={10}
+	                              value={segment.startYear}
+	                              onChange={e => updateCashflowSegment(segment.id, "startYear", clampCashflowYear(Number(e.target.value)))}
+	                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+	                            />
+	                            <input
+	                              type="number"
+	                              min={1}
+	                              max={10}
+	                              value={segment.serviceYears}
+	                              onChange={e => updateCashflowSegment(segment.id, "serviceYears", clampCashflowYear(Number(e.target.value)))}
+	                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+	                            />
+	                            <select
+	                              value={segment.revenueMode}
+	                              onChange={e => updateCashflowSegment(segment.id, "revenueMode", e.target.value as SegmentFlowMode)}
+	                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+	                            >
+	                              {Object.entries(segmentFlowModeLabels).map(([value, label]) => (
+	                                <option key={value} value={value}>{label}</option>
+	                              ))}
+	                            </select>
+	                            <select
+	                              value={segment.costMode}
+	                              onChange={e => updateCashflowSegment(segment.id, "costMode", e.target.value as SegmentFlowMode)}
+	                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+	                            >
+	                              {Object.entries(segmentFlowModeLabels).map(([value, label]) => (
+	                                <option key={value} value={value}>{label}</option>
+	                              ))}
+	                            </select>
+	                            <button
+	                              type="button"
+	                              onClick={() => removeCashflowSegment(segment.id)}
+	                              disabled={cashflowSegments.length <= 1}
+	                              className="flex h-10 w-10 items-center justify-center rounded-md text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-40"
+	                              title="删除板块"
+	                            >
+	                              <AppIcon name="delete" size={16} />
+	                            </button>
+	                          </div>
+	                        ))}
+	                      </div>
+	                    </div>
+	                  </div>
+
+	                  <div className="mt-3 flex items-center justify-between gap-3">
+	                    <p className="text-xs text-secondary-foreground">
+	                      {segmentValueMode === "ratio"
+	                        ? "比例合计不要求刚好等于 100%，系统会自动按合计归一化。"
+	                        : "金额用于计算板块权重，不会反写收入/成本金额明细。"}
+	                    </p>
+	                    <button
+	                      type="button"
+	                      onClick={addCashflowSegment}
+	                      className="inline-flex items-center gap-2 rounded-md bg-primary/10 px-3 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/20"
+	                    >
+	                      + 新增板块
+	                    </button>
+	                  </div>
+	                </div>
+	              )}
+	              {distributionPreview}
+	            </div>
           )}
 
           {activeTab === "revenue" && (

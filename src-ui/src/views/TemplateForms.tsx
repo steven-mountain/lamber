@@ -18,10 +18,62 @@ interface Props {
 }
 
 type ProjectScale = "large" | "small"
+type SelfThreeRequirement = "integration" | "maintenance"
+
+const SELF_THREE_OPTIONS: Array<{
+  value: string;
+  reminder?: string;
+  requirements: SelfThreeRequirement[];
+}> = [
+  {
+    value: "自主集成，项目自主等级L1。",
+    requirements: [],
+  },
+  {
+    value: "自主集成，自主研发，自主运维，项目自主等级L3。",
+    reminder: "需要包含集成和维保费以及自主-研发服务费",
+    requirements: ["integration", "maintenance"],
+  },
+  {
+    value: "自主集成，自主研发，自主运维，自主交付，项目自主等级L3。",
+    reminder: "需要包含集成和维保费以及自主-研发服务费",
+    requirements: ["integration", "maintenance"],
+  },
+  {
+    value: "自主集成，自主研发，自主交付，项目自主等级L3。",
+    reminder: "需要包含集成费以及自主-研发服务费",
+    requirements: ["integration"],
+  },
+  {
+    value: "自主集成，自主运维，项目自主等级L2。",
+    reminder: "需要包含维保费",
+    requirements: ["maintenance"],
+  },
+  {
+    value: "自主集成，自主运维，自主交付，项目自主等级L2。",
+    reminder: "需要包含集成和维保费",
+    requirements: ["integration", "maintenance"],
+  },
+  {
+    value: "自主集成，自主交付，项目自主等级L2。",
+    reminder: "需要包含集成费",
+    requirements: ["integration"],
+  },
+]
 
 const normalizeProjectScale = (value?: FormDataEntryValue | string | null): ProjectScale => {
   return value === "small" ? "small" : "large"
 }
+
+const getTaxItemAmount = (item: any) => Number(item?.incl || 0) + Number(item?.excl || 0)
+
+const getSelfThreeOption = (value: string) => SELF_THREE_OPTIONS.find(option => option.value === value) || SELF_THREE_OPTIONS[0]
+
+const getSelfThreeMissingFees = (requirements: SelfThreeRequirement[], hasItIntegrationFee: boolean, hasItMaintenanceFee: boolean) => requirements.flatMap(requirement => {
+  if (requirement === "integration" && !hasItIntegrationFee) return ["投资效益分析中未检测到 IT 集成服务费"]
+  if (requirement === "maintenance" && !hasItMaintenanceFee) return ["投资效益分析中未检测到 IT 维保费（不包含 CT 专线维保）"]
+  return []
+})
 
 export default function TemplateForms({ 
   selectedTemplate, 
@@ -68,6 +120,7 @@ export default function TemplateForms({
   const [itFundSrc, setItFundSrc] = useState("分公司成本开支")
   const [revCollection, setRevCollection] = useState("项目验收完成后30天内客户单位支付100%")
   const [expPayment, setExpPayment] = useState("项目验收完成且收到款项后30天内支付100%")
+  const [selfThreeValue, setSelfThreeValue] = useState(SELF_THREE_OPTIONS[0].value)
   const [syncTrigger, setSyncTrigger] = useState(0) // Added to trigger AI sync on ref changes
   
   const [isMidThreeModalOpen, setIsMidThreeModalOpen] = useState(false)
@@ -77,6 +130,11 @@ export default function TemplateForms({
   const [subjectCtCost, setSubjectCtCost] = useState("CT-视频监控")
   const [subjectItRev, setSubjectItRev] = useState("小微ICT业务-IoT-集成")
   const [subjectCtRev, setSubjectCtRev] = useState("CT-视频监控")
+
+  const selectedSelfThree = getSelfThreeOption(selfThreeValue)
+  const hasItIntegrationFee = getTaxItemAmount(projectData.cost?.it?.integration) > 0
+  const hasItMaintenanceFee = getTaxItemAmount(projectData.cost?.it?.maintenance) > 0
+  const selfThreeMissingFees = getSelfThreeMissingFees(selectedSelfThree.requirements, hasItIntegrationFee, hasItMaintenanceFee)
 
 
 
@@ -96,11 +154,14 @@ export default function TemplateForms({
     if (formDataRef.current.gen_project_scale) {
       setProjectScale(normalizeProjectScale(formDataRef.current.gen_project_scale));
     }
+    if (formDataRef.current.gen_self_three) {
+      setSelfThreeValue(formDataRef.current.gen_self_three);
+    }
 
     if (formRef.current) {
       Object.entries(formDataRef.current).forEach(([name, value]) => {
-        if (name === 'gen_project_scale') return;
-        const el = formRef.current?.querySelector(`[name="${name}"]`) as HTMLInputElement | HTMLTextAreaElement;
+        if (name === 'gen_project_scale' || name === 'gen_self_three') return;
+        const el = formRef.current?.querySelector(`[name="${name}"]`) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
         if (el && el.value !== value) {
           el.value = value;
         }
@@ -112,36 +173,64 @@ export default function TemplateForms({
   const updateData = useAiContextStore(state => state.updateBusinessData);
   const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const buildTemplateContextPayload = (overrides: Record<string, string> = {}) => {
+    const form = formRef.current;
+    const formEntries = form ? Object.fromEntries(new FormData(form).entries()) : {};
+    const nextSelfThreeValue = overrides.gen_self_three || selfThreeValue;
+    const nextSelfThree = getSelfThreeOption(nextSelfThreeValue);
+    const nextMissingFees = getSelfThreeMissingFees(nextSelfThree.requirements, hasItIntegrationFee, hasItMaintenanceFee);
+
+    return {
+      ...formEntries,
+      ...formDataRef.current,
+      ...overrides,
+      itContent,
+      ctContent,
+      midThreeName,
+      midThreeCode,
+      techItems,
+      inqVendors: inqVendors.map(v => ({ vendorName: v.vendorName, amount: v.amount })),
+      gen_project_scale: overrides.gen_project_scale || projectScale,
+      gen_self_three: nextSelfThreeValue,
+      self_three_selected: nextSelfThreeValue,
+      self_three_reminder: nextSelfThree.reminder || "",
+      self_three_missing_fees: nextMissingFees,
+    };
+  }
+
+  const syncTemplateContextNow = (overrides: Record<string, string> = {}) => {
+    const templateId = buildAiContextKey('ict', 'template', selectedTemplate);
+    const payload = buildTemplateContextPayload(overrides);
+    updateData(templateId, payload);
+    console.log(`AI Context Synced: ${templateId}`, payload);
+  }
+
+  const handleProjectScaleChange = (value: ProjectScale) => {
+    setProjectScale(value);
+    formDataRef.current.gen_project_scale = value;
+    setSyncTrigger(prev => prev + 1);
+    syncTemplateContextNow({ gen_project_scale: value });
+  }
+
+  const handleSelfThreeChange = (value: string) => {
+    setSelfThreeValue(value);
+    formDataRef.current.gen_self_three = value;
+    setSyncTrigger(prev => prev + 1);
+    syncTemplateContextNow({ gen_self_three: value });
+  }
+
   useEffect(() => {
     // Debounced sync (500ms)
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     
     syncTimerRef.current = setTimeout(() => {
-      const templateId = buildAiContextKey('ict', 'template', selectedTemplate);
-      
-      // Use FormData to capture ALL inputs (including default values)
-      const form = formRef.current;
-      const formEntries = form ? Object.fromEntries(new FormData(form).entries()) : {};
-
-      const payload = {
-        ...formEntries,
-        ...formDataRef.current, // Priority to manually captured data if any overlap
-        itContent,
-        ctContent,
-        midThreeName,
-        midThreeCode,
-        techItems,
-        inqVendors: inqVendors.map(v => ({ vendorName: v.vendorName, amount: v.amount })),
-        gen_project_scale: projectScale,
-      };
-      updateData(templateId, payload);
-      console.log(`AI Context Synced: ${templateId}`, payload);
+      syncTemplateContextNow();
     }, 500);
 
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [selectedTemplate, itContent, ctContent, midThreeName, midThreeCode, techItems, inqVendors, syncTrigger, itBusMode, itFundSrc, revCollection, expPayment, projectScale]);
+  }, [selectedTemplate, itContent, ctContent, midThreeName, midThreeCode, techItems, inqVendors, syncTrigger, itBusMode, itFundSrc, revCollection, expPayment, projectScale, selfThreeValue, hasItIntegrationFee, hasItMaintenanceFee]);
 
   // -- Linkage Logic --
   useEffect(() => {
@@ -618,7 +707,12 @@ export default function TemplateForms({
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">项目规模</label>
-                <select name="gen_project_scale" value={projectScale} onChange={e => setProjectScale(normalizeProjectScale(e.target.value))} className="bg-muted border border-border px-3 py-2 rounded-md">
+                <select
+                  name="gen_project_scale"
+                  value={projectScale}
+                  onChange={e => handleProjectScaleChange(normalizeProjectScale(e.target.value))}
+                  className="bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm"
+                >
                   <option value="large">大项目 (市/省)</option>
                   <option value="small">小项目 (分公司)</option>
                 </select>
@@ -679,9 +773,32 @@ export default function TemplateForms({
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">自主三问</label>
-                <input type="text" name="gen_self_three" defaultValue="自主集成，项目自主等级L1。" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <select
+                  name="gen_self_three"
+                  value={selfThreeValue}
+                  onChange={e => handleSelfThreeChange(e.target.value)}
+                  className="bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm"
+                >
+                  {SELF_THREE_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>{option.value}</option>
+                  ))}
+                </select>
+                {(selectedSelfThree.reminder || selfThreeMissingFees.length > 0) && (
+                  <div className="mt-1 space-y-1 text-xs leading-5">
+                    {selectedSelfThree.reminder && (
+                      <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-primary">
+                        {selectedSelfThree.reminder}
+                      </div>
+                    )}
+                    {selfThreeMissingFees.length > 0 && (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
+                        {selfThreeMissingFees.join("；")}。
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">三化方案</label>

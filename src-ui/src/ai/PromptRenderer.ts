@@ -150,12 +150,21 @@ export class PromptRenderer {
         'Mid Three Name': '产品名称',
         'Customer Confirm': '客户确认',
         'Proj Name': '项目名称',
-        'Project Name': '项目名称'
+        'Project Name': '项目名称',
+        'Self Three': '自主三问',
+        'Self Three Selected': '自主三问',
+        'Self Three Reminder': '自主三问提醒',
+        'Self Three Missing Fees': '自主三问缺失费用提醒',
+        'Cashflow Model': '资金收付模型',
+        'Cashflow Segment Value Mode': '分板块金额录入方式',
+        'Cashflow Segments': '分板块资金计划',
       };
 
       if (labelMap[label]) label = labelMap[label];
 
-      if (typeof value === 'object') {
+      if (Array.isArray(value)) {
+        lines.push(`- ${label}: ${JSON.stringify(value)}`);
+      } else if (typeof value === 'object') {
         // Simple one-level deep stringify for objects
         lines.push(`- ${label}: ${JSON.stringify(value)}`);
       } else {
