@@ -17,6 +17,12 @@ interface Props {
   metrics?: any;
 }
 
+type ProjectScale = "large" | "small"
+
+const normalizeProjectScale = (value?: FormDataEntryValue | string | null): ProjectScale => {
+  return value === "small" ? "small" : "large"
+}
+
 export default function TemplateForms({ 
   selectedTemplate, 
   projectData, 
@@ -31,7 +37,7 @@ export default function TemplateForms({
   const formRef = useRef<HTMLFormElement>(null)
 
   // Specific state for dynamic toggles
-  const [projectScale, setProjectScale] = useState("large")
+  const [projectScale, setProjectScale] = useState<ProjectScale>("large")
   const [hasMidThree, setHasMidThree] = useState(true)
   const [hasSingleSource, setHasSingleSource] = useState(false)
   const [procurementMethod, setProcurementMethod] = useState("短名单甄选")
@@ -75,17 +81,25 @@ export default function TemplateForms({
 
 
   const formDataRef = useRef<Record<string, string>>({});
-  const handleFormInput = (e: any) => {
+  const handleFormChange = (e: any) => {
     const target = e.target;
     if (target && target.name && target.name.startsWith('gen_')) {
       formDataRef.current[target.name] = target.value;
+      if (target.name === 'gen_project_scale') {
+        setProjectScale(normalizeProjectScale(target.value));
+      }
       setSyncTrigger(prev => prev + 1); // Trigger the debounced sync effect
     }
   };
 
   useEffect(() => {
+    if (formDataRef.current.gen_project_scale) {
+      setProjectScale(normalizeProjectScale(formDataRef.current.gen_project_scale));
+    }
+
     if (formRef.current) {
       Object.entries(formDataRef.current).forEach(([name, value]) => {
+        if (name === 'gen_project_scale') return;
         const el = formRef.current?.querySelector(`[name="${name}"]`) as HTMLInputElement | HTMLTextAreaElement;
         if (el && el.value !== value) {
           el.value = value;
@@ -117,7 +131,8 @@ export default function TemplateForms({
         midThreeName,
         midThreeCode,
         techItems,
-        inqVendors: inqVendors.map(v => ({ vendorName: v.vendorName, amount: v.amount }))
+        inqVendors: inqVendors.map(v => ({ vendorName: v.vendorName, amount: v.amount })),
+        gen_project_scale: projectScale,
       };
       updateData(templateId, payload);
       console.log(`AI Context Synced: ${templateId}`, payload);
@@ -126,7 +141,7 @@ export default function TemplateForms({
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [selectedTemplate, itContent, ctContent, midThreeName, midThreeCode, techItems, inqVendors, syncTrigger, itBusMode, itFundSrc, revCollection, expPayment]);
+  }, [selectedTemplate, itContent, ctContent, midThreeName, midThreeCode, techItems, inqVendors, syncTrigger, itBusMode, itFundSrc, revCollection, expPayment, projectScale]);
 
   // -- Linkage Logic --
   useEffect(() => {
@@ -262,7 +277,8 @@ export default function TemplateForms({
 
     // Attendees logic
     let attendees = ""
-    if (projectScale === 'large') {
+    const selectedProjectScale = normalizeProjectScale(get('gen_project_scale') || projectScale)
+    if (selectedProjectScale === 'large') {
       attendees += `市公司政企部（解决方案、交付支撑、计划部）：\n        ${get('gen_city_attendees')}\n`
     }
     const branchName = get('gen_branch_name') || "XXXX"
@@ -542,7 +558,7 @@ export default function TemplateForms({
 
   return (
     <div className="flex flex-col gap-6">
-      <form ref={formRef} className="flex flex-col gap-6" onSubmit={(e) => e.preventDefault()} onInput={handleFormInput}>
+      <form ref={formRef} className="flex flex-col gap-6" onSubmit={(e) => e.preventDefault()} onChange={handleFormChange}>
         
         {/* Excel 预算表/评估表专属配置 */}
         {selectedTemplate.endsWith('.xlsx') && (
@@ -602,7 +618,7 @@ export default function TemplateForms({
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">项目规模</label>
-                <select name="gen_project_scale" value={projectScale} onChange={e => setProjectScale(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md">
+                <select name="gen_project_scale" value={projectScale} onChange={e => setProjectScale(normalizeProjectScale(e.target.value))} className="bg-muted border border-border px-3 py-2 rounded-md">
                   <option value="large">大项目 (市/省)</option>
                   <option value="small">小项目 (分公司)</option>
                 </select>
