@@ -17,6 +17,7 @@ lerna-debug.log*
 # Editor directories and files
 .vscode/
 .idea/
+.antigravitycli/
 *.suo
 *.ntvs*
 *.njsproj
@@ -81,4 +82,3 @@ ESOP附件/
 项目文件/
 产品表格.xlsx
 相关材料/
-

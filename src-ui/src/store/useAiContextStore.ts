@@ -98,73 +98,108 @@ export function publishAiContextSnapshot(snapshot: AiContextSnapshot) {
 
 const initialSnapshot = readAiContextSnapshot();
 
-export const useAiContextStore = create<AiContextState>((set, get) => ({
-  ...initialSnapshot,
+// Simple debounce helper
+function debounce<T extends (...args: any[]) => void>(func: T, wait: number): T {
+  let timeout: any;
+  return function(this: any, ...args: any[]) {
+    const context = this;
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(context, args), wait);
+  } as any;
+}
 
-  setActiveModule: (module) => {
-    const nextModule = normalizeModuleKey(module);
-    let nextSnapshot: AiContextSnapshot | null = null;
+// Simple shallow equality check for records
+function isShallowEqual(a: any, b: any): boolean {
+  if (a === b) return true;
+  if (!isRecord(a) || !isRecord(b)) return false;
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  for (const key of keysA) {
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
+}
 
-    set((state) => {
-      nextSnapshot = {
-        activeModule: nextModule,
-        businessData: state.businessData,
-        lastUpdated: state.lastUpdated,
-      };
+export const useAiContextStore = create<AiContextState>((set, get) => {
+  // Debounced publisher to write to localStorage and emit Tauri events after typing stops
+  const debouncedPublish = debounce(() => {
+    const state = get();
+    const snapshot: AiContextSnapshot = {
+      activeModule: state.activeModule,
+      businessData: state.businessData,
+      lastUpdated: state.lastUpdated,
+    };
+    publishAiContextSnapshot(snapshot);
+  }, 300);
 
-      return { activeModule: nextModule };
-    });
+  return {
+    ...initialSnapshot,
 
-    if (nextSnapshot) {
-      publishAiContextSnapshot(nextSnapshot);
-    }
-  },
+    setActiveModule: (module) => {
+      const nextModule = normalizeModuleKey(module);
+      set((state) => {
+        if (state.activeModule === nextModule) return {};
 
-  updateBusinessData: (module, data) => {
-    const nextModule = normalizeModuleKey(module);
-    let nextSnapshot: AiContextSnapshot | null = null;
+        const nextSnapshot = {
+          activeModule: nextModule,
+          businessData: state.businessData,
+          lastUpdated: state.lastUpdated,
+        };
 
-    set((state) => {
-      console.log('AI Store Updated:', nextModule, data);
-      const existingModuleData = state.businessData[nextModule];
-      const nextModuleData = isRecord(existingModuleData) && isRecord(data)
-        ? { ...existingModuleData, ...data }
-        : data;
+        // Tab changes should publish immediately
+        publishAiContextSnapshot(nextSnapshot);
+        return { activeModule: nextModule };
+      });
+    },
 
-      nextSnapshot = {
-        activeModule: nextModule,
-        businessData: {
-          ...state.businessData,
-          [nextModule]: nextModuleData,
-        },
-        lastUpdated: {
-          ...state.lastUpdated,
-          [nextModule]: Date.now(),
-        },
-      };
+    updateBusinessData: (module, data) => {
+      const nextModule = normalizeModuleKey(module);
 
-      return nextSnapshot;
-    });
+      set((state) => {
+        const existingModuleData = state.businessData[nextModule];
 
-    if (nextSnapshot) {
-      publishAiContextSnapshot(nextSnapshot);
-    }
-  },
+        // If data is identical to existing, skip update to prevent redraw cascades
+        if (existingModuleData && isShallowEqual(existingModuleData, data)) {
+          return {};
+        }
 
-  hydrateFromStorage: () => {
-    const snapshot = readAiContextSnapshot();
-    const current = get();
-    if (
-      snapshot.activeModule === current.activeModule &&
-      snapshot.businessData === current.businessData &&
-      snapshot.lastUpdated === current.lastUpdated
-    ) {
-      return;
-    }
+        const nextModuleData = isRecord(existingModuleData) && isRecord(data)
+          ? { ...existingModuleData, ...data }
+          : data;
 
-    set(snapshot);
-  },
-}));
+        console.log('AI Store Updated (in-memory):', nextModule);
+
+        return {
+          businessData: {
+            ...state.businessData,
+            [nextModule]: nextModuleData,
+          },
+          lastUpdated: {
+            ...state.lastUpdated,
+            [nextModule]: Date.now(),
+          },
+        };
+      });
+
+      // Schedule persistence and event emission in background
+      debouncedPublish();
+    },
+
+    hydrateFromStorage: () => {
+      const snapshot = readAiContextSnapshot();
+      const current = get();
+      if (
+        snapshot.activeModule === current.activeModule &&
+        JSON.stringify(snapshot.businessData) === JSON.stringify(current.businessData)
+      ) {
+        return;
+      }
+
+      set(snapshot);
+    },
+  };
+});
 
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {

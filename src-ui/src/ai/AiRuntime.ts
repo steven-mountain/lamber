@@ -13,8 +13,22 @@ type ChatCompletionMessage = {
   content: UserMessageContent;
 };
 
-const MAX_HISTORY_MESSAGES = 10;
-const MAX_HISTORY_CHARS_PER_MESSAGE = 4000;
+const MAX_HISTORY_TOKENS = 4000;
+
+function estimateTokens(text: string): number {
+  let englishChars = 0;
+  let cjkChars = 0;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code >= 0x4e00 && code <= 0x9fff) {
+      cjkChars++;
+    } else {
+      englishChars++;
+    }
+  }
+  // English: ~4 chars per token. CJK: ~1.2 chars per token.
+  return Math.ceil(englishChars / 4) + Math.ceil(cjkChars / 1.2);
+}
 
 /**
  * Enterprise AI Agent Runtime
@@ -120,18 +134,38 @@ export class AiRuntime {
   }
 
   private buildHistoryMessages(history: AiChatMessage[]): ChatCompletionMessage[] {
-    return history
-      .filter(message => message.content.trim())
-      .slice(-MAX_HISTORY_MESSAGES)
-      .map(message => ({
-        role: message.role,
-        content: this.truncateHistoryContent(message.content),
-      }));
-  }
+    const validMessages = history.filter(message => message.content.trim());
+    const result: ChatCompletionMessage[] = [];
+    let totalTokens = 0;
 
-  private truncateHistoryContent(content: string): string {
-    if (content.length <= MAX_HISTORY_CHARS_PER_MESSAGE) return content;
-    return `${content.slice(0, MAX_HISTORY_CHARS_PER_MESSAGE)}\n[conversation history truncated]`;
+    // Traverse from latest to oldest
+    for (let i = validMessages.length - 1; i >= 0; i--) {
+      const message = validMessages[i];
+      let content = message.content;
+      let estTokens = estimateTokens(content);
+
+      // If a single message is excessively large (exceeding half the budget),
+      // we truncate it to prevent it from hogging the entire history context
+      const singleMessageLimit = Math.floor(MAX_HISTORY_TOKENS / 2);
+      if (estTokens > singleMessageLimit) {
+        const truncateRatio = singleMessageLimit / estTokens;
+        const targetLen = Math.floor(content.length * truncateRatio);
+        content = `${content.slice(0, targetLen)}\n[conversation history truncated]`;
+        estTokens = estimateTokens(content);
+      }
+
+      if (totalTokens + estTokens > MAX_HISTORY_TOKENS) {
+        break; // Stop loading older messages once budget is exceeded
+      }
+
+      totalTokens += estTokens;
+      result.unshift({
+        role: message.role,
+        content,
+      });
+    }
+
+    return result;
   }
 
   private buildUserContent(ast: PromptAST): UserMessageContent {

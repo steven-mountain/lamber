@@ -1,0 +1,908 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lamber 高楼消防汇报页</title>
+  <style>
+    :root {
+      --ink: #17202a;
+      --muted: #5d6978;
+      --line: #d9e0e7;
+      --paper: #f5f7fa;
+      --panel: #ffffff;
+      --red: #d64035;
+      --orange: #f28c28;
+      --teal: #168b86;
+      --blue: #2f6fbb;
+      --green: #2c9b60;
+      --gray: #738091;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #dfe5ec;
+      color: var(--ink);
+      font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+    }
+
+    .slide {
+      width: min(1280px, 100vw);
+      aspect-ratio: 16 / 9;
+      background: var(--paper);
+      position: relative;
+      overflow: hidden;
+      padding: 34px 42px 30px;
+      box-shadow: 0 24px 70px rgba(19, 32, 48, .22);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 28px;
+      margin-bottom: 16px;
+      flex: 0 0 auto;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.18;
+      letter-spacing: 0;
+      color: #101923;
+    }
+
+    .subtitle {
+      margin-top: 9px;
+      font-size: 16px;
+      color: var(--muted);
+      line-height: 1.5;
+      max-width: 830px;
+    }
+
+    .badge {
+      flex: 0 0 auto;
+      border: 1px solid rgba(214, 64, 53, .35);
+      color: #a52c24;
+      background: #fff7f5;
+      padding: 9px 14px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 700;
+      margin-top: 2px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: .9fr 1.1fr;
+      gap: 22px;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .section-inner {
+      display: grid;
+      gap: 8px;
+      height: 100%;
+      align-content: start;
+    }
+
+    .compact-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .section h2 {
+      margin: 0 0 9px;
+      font-size: 17px;
+      letter-spacing: 0;
+      color: #162332;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mark {
+      width: 8px;
+      height: 20px;
+      border-radius: 3px;
+      background: var(--red);
+      display: inline-block;
+    }
+
+    .pain-list {
+      display: grid;
+      gap: 9px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .pain-list li {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 10px;
+      align-items: start;
+      font-size: 13px;
+      line-height: 1.35;
+      color: #293746;
+    }
+
+    .dot {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #f1f4f8;
+      color: var(--red);
+      font-weight: 800;
+      font-size: 13px;
+      border: 1px solid #e1e6ed;
+    }
+
+    .hero {
+      height: 108px;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-top: 0;
+      position: relative;
+      background: linear-gradient(145deg, #1a2532 0%, #2d3d4e 54%, #b8452d 100%);
+      border: 1px solid #cfd7df;
+    }
+
+    .materials {
+      margin-top: 0;
+      border-top: 1px solid #e3e9ef;
+      padding-top: 13px;
+    }
+
+    .materials-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #243445;
+      margin-bottom: 9px;
+    }
+
+    .chips {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .chip {
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: #f7f9fb;
+      border: 1px solid #dfe7ef;
+      font-size: 13px;
+      font-weight: 700;
+      color: #334457;
+      line-height: 1.3;
+    }
+
+    .hero svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .cap {
+      position: absolute;
+      left: 14px;
+      bottom: 12px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+    }
+
+    .ai-panel {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+    }
+
+    .ai-panel.tight {
+      margin-bottom: 0;
+    }
+
+    .ai-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 9px;
+    }
+
+    .ai-title strong {
+      font-size: 20px;
+      color: #111b26;
+    }
+
+    .readonly {
+      font-size: 12px;
+      color: #855f19;
+      background: #fff4d9;
+      border: 1px solid #f1d088;
+      padding: 5px 8px;
+      border-radius: 5px;
+      white-space: nowrap;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin: 8px 0 0;
+    }
+
+    .step {
+      border: 1px solid #dce5ed;
+      border-radius: 6px;
+      padding: 8px 8px;
+      min-height: 52px;
+      background: #f8fafc;
+    }
+
+    .step b {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 4px;
+      color: #1e3147;
+    }
+
+    .step span {
+      display: block;
+      font-size: 11px;
+      line-height: 1.25;
+      color: var(--muted);
+    }
+
+    .notes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .notes.single {
+      grid-template-columns: 1fr;
+    }
+
+    .note {
+      padding: 7px 9px;
+      background: #f7f9fb;
+      border-left: 4px solid var(--teal);
+      border-radius: 5px;
+      font-size: 12px;
+      line-height: 1.28;
+      color: #283747;
+    }
+
+    .future {
+      border-left-color: var(--orange);
+    }
+
+    .loop {
+      margin-top: 0;
+      border-top: 1px solid #e3e9ef;
+      padding-top: 10px;
+    }
+
+    .loop-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #243445;
+      margin-bottom: 8px;
+    }
+
+    .loop-steps {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+    }
+
+    .loop-step {
+      min-height: 38px;
+      border-radius: 6px;
+      background: #f7f9fb;
+      border: 1px solid #dfe7ef;
+      padding: 6px 5px;
+      text-align: center;
+      color: #334457;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.15;
+      display: grid;
+      place-items: center;
+    }
+
+    .loop-step.active {
+      color: #ffffff;
+      background: #168b86;
+      border-color: #168b86;
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .visual-kpi {
+      display: grid;
+      grid-template-columns: 1fr 1.02fr;
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .visual-kpi .hero {
+      height: 100%;
+      min-height: 132px;
+    }
+
+    .kpi {
+      background: #f8fafc;
+      border: 1px solid #dde5ed;
+      border-radius: 7px;
+      padding: 10px;
+      min-height: 62px;
+    }
+
+    .kpi .num {
+      display: block;
+      font-size: 27px;
+      line-height: 1;
+      font-weight: 800;
+      color: #142131;
+      margin-bottom: 7px;
+    }
+
+    .kpi .label {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .chart-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin: 2px 0 7px;
+      font-size: 14px;
+      color: #243445;
+      font-weight: 700;
+    }
+
+    .chart-title span {
+      font-size: 12px;
+      color: var(--gray);
+      font-weight: 400;
+    }
+
+    .bars {
+      display: grid;
+      gap: 6px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 58px 1fr 38px;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #354457;
+    }
+
+    .track {
+      height: 12px;
+      background: #e8edf3;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .fill {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--blue);
+    }
+
+    .fill.green { background: var(--green); }
+    .fill.orange { background: var(--orange); }
+    .fill.teal { background: var(--teal); }
+
+    .donut-wrap {
+      display: grid;
+      grid-template-columns: 84px 1fr;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #e5ebf1;
+    }
+
+    .donut {
+      width: 84px;
+      height: 84px;
+      border-radius: 50%;
+      background: conic-gradient(var(--green) 0 74%, #e7edf3 74% 100%);
+      display: grid;
+      place-items: center;
+      position: relative;
+    }
+
+    .donut::after {
+      content: "";
+      width: 54px;
+      height: 54px;
+      background: #fff;
+      border-radius: 50%;
+      position: absolute;
+    }
+
+    .donut b {
+      position: relative;
+      z-index: 1;
+      font-size: 19px;
+      color: #143124;
+    }
+
+    .legend {
+      font-size: 12px;
+      line-height: 1.38;
+      color: #39495a;
+    }
+
+    .mini-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .mini-stat {
+      border: 1px solid #dfe7ef;
+      border-radius: 6px;
+      background: #f8fafc;
+      padding: 7px 9px;
+    }
+
+    .mini-stat b {
+      display: block;
+      font-size: 17px;
+      line-height: 1;
+      color: #142131;
+      margin-bottom: 5px;
+    }
+
+    .mini-stat span {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .charts-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 2px;
+    }
+
+    .chart-box {
+      border-top: 1px solid #e5ebf1;
+      padding-top: 6px;
+      min-width: 0;
+    }
+
+    .small-row {
+      display: grid;
+      grid-template-columns: 52px 1fr 28px;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
+      color: #354457;
+      margin-bottom: 4px;
+    }
+
+    .small-track {
+      height: 9px;
+      background: #e8edf3;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .small-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--blue);
+    }
+
+    .small-fill.green { background: var(--green); }
+    .small-fill.orange { background: var(--orange); }
+    .small-fill.teal { background: var(--teal); }
+
+    .left-block {
+      border: 1px solid #dfe7ef;
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 12px;
+    }
+
+    .left-block h3 {
+      margin: 0 0 9px;
+      font-size: 16px;
+      color: #162332;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .feature-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 7px;
+    }
+
+    .feature-list li {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 8px;
+      align-items: start;
+      font-size: 12px;
+      line-height: 1.32;
+      color: #2d3d4e;
+    }
+
+    .num-dot {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #f1f4f8;
+      color: var(--red);
+      border: 1px solid #dfe7ef;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .function-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .function-card {
+      border-left: 4px solid var(--teal);
+      background: #f7f9fb;
+      border-radius: 6px;
+      padding: 8px 9px;
+      font-size: 12px;
+      line-height: 1.28;
+      color: #2d3d4e;
+    }
+
+    .function-card b {
+      display: block;
+      font-size: 13px;
+      color: #1e3147;
+      margin-bottom: 3px;
+    }
+
+    .function-card.accent {
+      border-left-color: var(--orange);
+    }
+
+    .effect-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .effect {
+      background: #f8fafc;
+      border: 1px solid #dfe7ef;
+      border-radius: 6px;
+      padding: 7px 8px;
+      min-height: 46px;
+    }
+
+    .effect b {
+      display: block;
+      font-size: 18px;
+      line-height: 1;
+      color: #142131;
+      margin-bottom: 5px;
+    }
+
+    .effect span {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .screenshot {
+      border-radius: 8px;
+      border: 1px solid #d7e0e9;
+      overflow: hidden;
+      background: #eef3f7;
+      min-height: 118px;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.75);
+    }
+
+    .shot-bar {
+      height: 22px;
+      background: #172332;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0 10px;
+    }
+
+    .shot-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #d64035;
+    }
+
+    .shot-dot:nth-child(2) { background: #f28c28; }
+    .shot-dot:nth-child(3) { background: #2c9b60; }
+
+    .shot-body {
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      min-height: 96px;
+    }
+
+    .shot-nav {
+      background: #243445;
+      padding: 10px;
+      display: grid;
+      gap: 7px;
+      align-content: start;
+    }
+
+    .nav-pill {
+      height: 14px;
+      border-radius: 4px;
+      background: rgba(255,255,255,.22);
+    }
+
+    .shot-main {
+      padding: 10px;
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 9px;
+      background: #f8fafc;
+    }
+
+    .shot-panel {
+      border: 1px solid #dfe7ef;
+      border-radius: 6px;
+      background: #fff;
+      padding: 8px;
+    }
+
+    .shot-line {
+      height: 9px;
+      border-radius: 999px;
+      background: #dfe7ef;
+      margin-bottom: 7px;
+    }
+
+    .shot-line.short { width: 64%; }
+    .shot-line.med { width: 82%; }
+
+    .summary {
+      flex: 0 0 auto;
+      margin-top: 12px;
+      border-top: 2px solid #cfd8e2;
+      padding-top: 10px;
+      font-size: 15px;
+      line-height: 1.38;
+      color: #1f2d3b;
+      background: var(--paper);
+    }
+
+    .summary b { color: var(--red); }
+  </style>
+</head>
+<body>
+  <main class="slide">
+    <header class="topbar">
+      <div>
+        <h1>Lamber 支撑售前材料制作，接入 AI 打造高楼消防流程提效样板</h1>
+        <div class="subtitle">面向业务流程服务，以“售前材料制作 + AI 智能辅助 + 高楼消防数据治理”提升售前响应效率和项目协同能力。</div>
+      </div>
+      <div class="badge">项目使用覆盖达 80%</div>
+    </header>
+
+    <section class="grid">
+      <div class="section">
+        <div class="section-inner">
+          <div class="left-block">
+            <h3><span class="mark"></span>1. 业务痛点</h3>
+            <ul class="feature-list">
+              <li><span class="num-dot">1</span><span>高楼消防项目数量多、楼栋多、设备类型多，基础数据分散。</span></li>
+              <li><span class="num-dot">2</span><span>消防队申报材料多，接入申报表、设备登记表等反复填报。</span></li>
+              <li><span class="num-dot">3</span><span>公司内部流程文件多，效益分析、会审纪要、立项决策等材料编制耗时。</span></li>
+              <li><span class="num-dot">4</span><span>缺乏以项目为核心的统一入口，材料、数据、流程状态难以集中管理。</span></li>
+            </ul>
+          </div>
+
+          <div class="left-block">
+            <h3><span class="mark"></span>2. 自研功能与成效</h3>
+            <div class="function-grid">
+              <div class="function-card"><b>内部流程材料制作</b>辅助生成效益分析表、会审纪要、立项决策等售前关键材料。</div>
+              <div class="function-card"><b>消防申报材料整理</b>围绕高楼消防申报材料，集中维护项目数据和材料清单。</div>
+              <div class="function-card"><b>项目统一入口</b>以项目为核心管理材料、数据、安装、申报、接入、签约等状态。</div>
+              <div class="function-card accent"><b>AI 项目洞察参考</b>结合项目背景，辅助分析项目效益、已融入产品及可拓展产品方向。</div>
+            </div>
+            <div class="effect-strip">
+              <div class="effect"><b>80%</b><span>项目使用覆盖</span></div>
+              <div class="effect"><b>4类</b><span>关键材料集中制作</span></div>
+              <div class="effect"><b>1个</b><span>项目统一入口</span></div>
+            </div>
+          </div>
+
+          <div class="left-block">
+            <h3><span class="mark"></span>3. 软件截图</h3>
+            <div class="screenshot" aria-label="Lamber 软件界面示意">
+              <div class="shot-bar"><span class="shot-dot"></span><span class="shot-dot"></span><span class="shot-dot"></span></div>
+              <div class="shot-body">
+                <div class="shot-nav">
+                  <div class="nav-pill"></div>
+                  <div class="nav-pill"></div>
+                  <div class="nav-pill"></div>
+                  <div class="nav-pill"></div>
+                </div>
+                <div class="shot-main">
+                  <div class="shot-panel">
+                    <div class="shot-line med"></div>
+                    <div class="shot-line"></div>
+                    <div class="shot-line short"></div>
+                    <div class="shot-line med"></div>
+                  </div>
+                  <div class="shot-panel">
+                    <div class="shot-line"></div>
+                    <div class="shot-line med"></div>
+                    <div class="shot-line short"></div>
+                    <div class="shot-line"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-inner">
+          <h2><span class="mark"></span>高楼消防应用成效分析</h2>
+          <div class="visual-kpi">
+          <div class="hero" aria-label="高楼消防数字化场景图">
+          <svg viewBox="0 0 420 190" role="img">
+            <defs>
+              <linearGradient id="sky" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0" stop-color="#263648"/>
+                <stop offset=".68" stop-color="#34495d"/>
+                <stop offset="1" stop-color="#d9643a"/>
+              </linearGradient>
+            </defs>
+            <rect width="420" height="190" fill="url(#sky)"/>
+            <circle cx="356" cy="46" r="33" fill="#ffb15c" opacity=".72"/>
+            <g opacity=".28" stroke="#fff" stroke-width="1">
+              <path d="M0 138 C92 118 140 150 218 128 S344 110 420 134" fill="none"/>
+              <path d="M0 160 C95 138 145 170 230 146 S335 132 420 156" fill="none"/>
+            </g>
+            <g fill="#182534">
+              <rect x="38" y="58" width="58" height="112"/>
+              <rect x="115" y="34" width="72" height="136"/>
+              <rect x="208" y="70" width="54" height="100"/>
+              <rect x="284" y="50" width="82" height="120"/>
+            </g>
+            <g fill="#f4d283" opacity=".92">
+              <rect x="51" y="74" width="9" height="10"/><rect x="72" y="74" width="9" height="10"/>
+              <rect x="51" y="96" width="9" height="10"/><rect x="72" y="96" width="9" height="10"/>
+              <rect x="130" y="53" width="10" height="11"/><rect x="155" y="53" width="10" height="11"/>
+              <rect x="130" y="80" width="10" height="11"/><rect x="155" y="80" width="10" height="11"/>
+              <rect x="224" y="88" width="9" height="10"/><rect x="244" y="88" width="9" height="10"/>
+              <rect x="304" y="69" width="10" height="11"/><rect x="334" y="69" width="10" height="11"/>
+              <rect x="304" y="97" width="10" height="11"/><rect x="334" y="97" width="10" height="11"/>
+            </g>
+            <g fill="none" stroke="#47d0c9" stroke-width="3" stroke-linecap="round">
+              <path d="M70 38 C132 15 224 20 311 38"/>
+              <path d="M94 127 C146 105 222 105 286 128"/>
+              <path d="M187 96 L267 67 L333 112"/>
+            </g>
+            <g fill="#47d0c9">
+              <circle cx="70" cy="38" r="5"/><circle cx="311" cy="38" r="5"/>
+              <circle cx="94" cy="127" r="5"/><circle cx="286" cy="128" r="5"/>
+              <circle cx="187" cy="96" r="5"/><circle cx="267" cy="67" r="5"/><circle cx="333" cy="112" r="5"/>
+            </g>
+          </svg>
+          <div class="cap">高楼消防数据治理与流程协同</div>
+          </div>
+
+          <div class="kpis">
+            <div class="kpi"><span class="num">124</span><span class="label">覆盖项目/小区</span></div>
+            <div class="kpi"><span class="num">652</span><span class="label">覆盖楼栋</span></div>
+            <div class="kpi"><span class="num">115</span><span class="label">申报通过项目</span></div>
+            <div class="kpi"><span class="num">92</span><span class="label">完成接入项目</span></div>
+          </div>
+          </div>
+
+          <div class="mini-stats">
+            <div class="mini-stat"><b>156.45万</b><span>项目金额规模</span></div>
+            <div class="mini-stat"><b>21个</b><span>覆盖业务单位</span></div>
+            <div class="mini-stat"><b>5.3栋</b><span>单项目平均楼栋</span></div>
+          </div>
+
+          <div class="chart-title">项目流程转化 <span>按 124 个项目统计</span></div>
+          <div class="bars">
+            <div class="bar-row"><span>申报通过</span><div class="track"><div class="fill green" style="width: 92.7%"></div></div><b>115</b></div>
+            <div class="bar-row"><span>已接入</span><div class="track"><div class="fill teal" style="width: 74.2%"></div></div><b>92</b></div>
+            <div class="bar-row"><span>已安装</span><div class="track"><div class="fill blue" style="width: 58.1%"></div></div><b>72</b></div>
+            <div class="bar-row"><span>已签约</span><div class="track"><div class="fill orange" style="width: 42.7%"></div></div><b>53</b></div>
+          </div>
+
+          <div class="charts-2">
+            <div class="chart-box">
+              <div class="chart-title">设备结构分析 <span>Top 5</span></div>
+              <div class="small-row"><span>压力</span><div class="small-track"><div class="small-fill green" style="width:100%"></div></div><b>867</b></div>
+              <div class="small-row"><span>液位</span><div class="small-track"><div class="small-fill teal" style="width:21.6%"></div></div><b>187</b></div>
+              <div class="small-row"><span>网络</span><div class="small-track"><div class="small-fill" style="width:11.4%"></div></div><b>99</b></div>
+              <div class="small-row"><span>用传</span><div class="small-track"><div class="small-fill orange" style="width:9.1%"></div></div><b>79</b></div>
+              <div class="small-row"><span>占道</span><div class="small-track"><div class="small-fill" style="width:8.7%"></div></div><b>75</b></div>
+            </div>
+            <div class="chart-box">
+              <div class="chart-title">部门项目分布 <span>按项目数量分层</span></div>
+              <div class="small-row"><span>1-4个</span><div class="small-track"><div class="small-fill" style="width:100%"></div></div><b>11</b></div>
+              <div class="small-row"><span>5-9个</span><div class="small-track"><div class="small-fill teal" style="width:54.5%"></div></div><b>6</b></div>
+              <div class="small-row"><span>10-19</span><div class="small-track"><div class="small-fill orange" style="width:18.2%"></div></div><b>2</b></div>
+              <div class="small-row"><span>20+</span><div class="small-track"><div class="small-fill green" style="width:18.2%"></div></div><b>2</b></div>
+              <div class="small-row"><span>平均</span><div class="small-track"><div class="small-fill" style="width:53.6%"></div></div><b>5.9</b></div>
+            </div>
+          </div>
+
+          <div class="donut-wrap">
+            <div class="donut"><b>74%</b></div>
+            <div class="legend">
+              <b>接入完成率</b><br>
+              92 个项目已接入，项目金额规模约 156.45 万元。数据覆盖项目、楼栋、设备、安装、申报、接入、合同、验收等关键字段。
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="summary">
+      <b>价值总结：</b>Lamber 负责售前流程材料制作与数据治理，AI 围绕项目效益、产品融入和拓展方向提供参考，并以高楼消防为样板形成可复制的数字化办公能力。
+    </div>
+  </main>
+</body>
+</html>

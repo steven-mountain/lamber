@@ -15,6 +15,7 @@ interface Props {
   inqVendors: any[];
   setInqVendors: React.Dispatch<React.SetStateAction<any[]>>;
   metrics?: any;
+  outputDir?: string;
 }
 
 type ProjectScale = "large" | "small"
@@ -75,16 +76,17 @@ const getSelfThreeMissingFees = (requirements: SelfThreeRequirement[], hasItInte
   return []
 })
 
-export default function TemplateForms({ 
-  selectedTemplate, 
-  projectData, 
-  projectBackground, 
+export default function TemplateForms({
+  selectedTemplate,
+  projectData,
+  projectBackground,
   setProjectBackground,
   techItems,
   setTechItems,
   inqVendors,
   setInqVendors,
-  metrics
+  metrics,
+  outputDir
 }: Props) {
   const formRef = useRef<HTMLFormElement>(null)
 
@@ -122,10 +124,10 @@ export default function TemplateForms({
   const [expPayment, setExpPayment] = useState("项目验收完成且收到款项后30天内支付100%")
   const [selfThreeValue, setSelfThreeValue] = useState(SELF_THREE_OPTIONS[0].value)
   const [syncTrigger, setSyncTrigger] = useState(0) // Added to trigger AI sync on ref changes
-  
+
   const [isMidThreeModalOpen, setIsMidThreeModalOpen] = useState(false)
   const [midThreeSearch, setMidThreeSearch] = useState("")
-  
+
   const [subjectItCost, setSubjectItCost] = useState("IT集成")
   const [subjectCtCost, setSubjectCtCost] = useState("CT-视频监控")
   const [subjectItRev, setSubjectItRev] = useState("小微ICT业务-IoT-集成")
@@ -222,7 +224,7 @@ export default function TemplateForms({
   useEffect(() => {
     // Debounced sync (500ms)
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    
+
     syncTimerRef.current = setTimeout(() => {
       syncTemplateContextNow();
     }, 500);
@@ -272,15 +274,15 @@ export default function TemplateForms({
 
   const autoGenerateInquiry = () => {
     const it = projectData.cost?.it || {}
-    const limit = (it.device?.incl||0) + (it.construction?.incl||0) + (it.survey?.incl||0) + 
-                  (it.integration?.incl||0) + (it.other?.incl||0) + (it.maintenance?.incl||0) + 
+    const limit = (it.device?.incl||0) + (it.construction?.incl||0) + (it.survey?.incl||0) +
+                  (it.integration?.incl||0) + (it.other?.incl||0) + (it.maintenance?.incl||0) +
                   (it.running?.incl||0) + (it.bidding?.incl||0) + (it.design_eval?.incl||0) + (it.audit?.incl||0)
-    
+
     if (limit === 0) {
       alert("请先完善 IT 投入明细（当前 IT 总成本为 0），三家报价的底价需硬性绑定成本。")
       return
     }
-    
+
     const quotes = [
       limit, // 最低价直接等于 IT 投入含税总成本
       Math.round(limit * (1.05 + Math.random() * 0.02)), // 基准价上浮约 5%-7%
@@ -324,7 +326,7 @@ export default function TemplateForms({
     const newImages: any[] = []
     let processed = 0
     const imageFiles = filesList.filter((file: any) => file.type && file.type.indexOf('image/') === 0);
-    
+
     if (imageFiles.length === 0) return;
 
     imageFiles.forEach((file: any) => {
@@ -374,7 +376,7 @@ export default function TemplateForms({
     attendees += `${branchName}分公司（建设、维护、网络/信息安全员）：\n        ${get('gen_branch_attendees')}`
 
     const ctContentStr = hasMidThree ? (ctContent ? ctContent.replace(/能力/g, '') : "详见清单") : "无"
-    
+
     const itCostInclForContent = (projectData.cost?.it?.integration?.incl || 0) + (projectData.cost?.it?.device?.incl || 0) + (projectData.cost?.it?.maintenance?.incl || 0)
     const itContentStr = itCostInclForContent > 0 ? (itContent || "集成服务") : "无"
 
@@ -403,7 +405,7 @@ export default function TemplateForms({
       }
     });
 
-    const vendorScreenshotList = hasAnyScreenshot 
+    const vendorScreenshotList = hasAnyScreenshot
       ? JSON.stringify(screenshotListArray)
       : textScreenshotList.join('\n\n');
 
@@ -491,7 +493,7 @@ export default function TemplateForms({
     const totalRevExcl = Number(totalRevItExcl) + Number(totalRevCtExcl) + Number(totalRevNonItCtExcl);
 
     const branchNameFinal = get('gen_demand_branch_name') || get('gen_branch_name') || "XXX分公司";
-    
+
     let demandServiceContent = get('gen_demand_service_content');
     if (!demandServiceContent) {
       const parts = [itContentStr, ctContentStr].filter(x => x && x !== "无");
@@ -501,10 +503,10 @@ export default function TemplateForms({
     const demandCustomerConfirm = get('gen_demand_customer_confirm') || "微信截图";
     const demandDeviceList = get('gen_demand_device_list') || "不涉及";
     const demandEnvRequire = get('gen_demand_env_require') || "客户提供部署环境，不包含在本次项目范围内";
-    
+
     const demandUrlStr = get('gen_demand_public_url') || "";
     const demandPublicUrlLine = hasPublicUrl ? `\n7、项目有效的公示网址及招标文件：${demandUrlStr}` : "";
-    
+
     const securityIdx = hasPublicUrl ? 8 : 7;
     const securityDetailStr = get('gen_demand_security_detail');
     const demandSecurityLine = `\n${securityIdx}、信息安全、密评：${hasSecurity ? (securityDetailStr || "有") : "无"}`;
@@ -515,14 +517,14 @@ export default function TemplateForms({
 
     const now = new Date();
     const currDate = `${now.getFullYear()}年${String(now.getMonth()+1).padStart(2, '0')}月${String(now.getDate()).padStart(2, '0')}日`;
-    
+
     const leaderLine = totalRevIncl >= 3000000 ? "分管领导（签字）：________________" : "";
 
     const variables: any = {
       'PROJECT_NAME': projectData.basic?.proj_name || "",
       'CUSTOMER_NAME': projectData.basic?.customer_name || "",
       'PROJECT_YEARS': String(projectData.basic?.project_years || 1),
-      
+
       'MEETING_START_DATE': formatDateStr(get('gen_meet_start')),
       'MEETING_END_DATE': formatDateStr(get('gen_meet_end')),
       'MEETING_MODE': get('gen_meet_mode'),
@@ -549,7 +551,7 @@ export default function TemplateForms({
       'SINGLE_SOURCE_EXPLANATION': hasSingleSource ? get('gen_single_source') : "",
       'IS_SME': "是",
       'IS_ADVANCE_PAYMENT': get('gen_is_advance') === "on" ? "是" : "否",
-      
+
       'SUBJECT_IT_COST': get('gen_subject_it_cost') || subjectItCost,
       'SUBJECT_CT_COST': get('gen_subject_ct_cost') || subjectCtCost,
       'SUBJECT_IT_REV': get('gen_subject_it_rev') || subjectItRev,
@@ -629,16 +631,14 @@ export default function TemplateForms({
     }
 
     try {
-      await invoke('generate_lifecycle_docs', { 
+      const generatedOutputDir = await invoke<string>('generate_lifecycle_docs', {
           moduleId: "ict_lifecycle",
           variables: variables,
-          selectedTemplates: [selectedTemplate]
+          selectedTemplates: [selectedTemplate],
+          outputDir
       })
-      if (confirm("生成成功！文件已保存至工作空间 output 目录。\n是否立即打开输出目录？")) {
-        // We know the output dir is parent of the file, but we can just open the file's dir or use open_file
-        // Actually, resolve_module_path 'output' is best.
-        const modulePath: string = await invoke('get_module_path', { moduleId: 'ict_lifecycle' })
-        invoke('open_file', { path: `${modulePath}/output` })
+      if (confirm(`生成成功！文件已保存至：\n${generatedOutputDir}\n是否立即打开输出目录？`)) {
+        invoke('open_file', { path: generatedOutputDir })
       }
     } catch(e) {
       alert("生成失败：" + e)
@@ -648,7 +648,7 @@ export default function TemplateForms({
   return (
     <div className="flex flex-col gap-6">
       <form ref={formRef} className="flex flex-col gap-6" onSubmit={(e) => e.preventDefault()} onChange={handleFormChange}>
-        
+
         {/* Excel 预算表/评估表专属配置 */}
         {selectedTemplate.endsWith('.xlsx') && (
           <div className="bg-card border border-border rounded-xl p-6 shadow-sm flex flex-col gap-4">
@@ -684,7 +684,7 @@ export default function TemplateForms({
             </div>
           </div>
         )}
-        
+
         {/* 会审纪要 专属字段 (排除立项签批表、立项决策、Excel 效益分析表和需求导入表) */}
         {selectedTemplate && selectedTemplate.includes('会审') && (
           <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
@@ -821,19 +821,19 @@ export default function TemplateForms({
                 {hasMidThree && (
                   <div className="flex flex-col gap-2 mt-1">
                     <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        name="gen_mid_three_code" 
-                        value={midThreeCode} 
-                        onChange={e => setMidThreeCode(e.target.value)} 
-                        placeholder="能力编号" 
-                        className="w-1/3 bg-muted border border-border px-3 py-2 rounded-md text-sm" 
+                      <input
+                        type="text"
+                        name="gen_mid_three_code"
+                        value={midThreeCode}
+                        onChange={e => setMidThreeCode(e.target.value)}
+                        placeholder="能力编号"
+                        className="w-1/3 bg-muted border border-border px-3 py-2 rounded-md text-sm"
                       />
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         list="mid-three-capabilities-list"
-                        name="gen_mid_three_name" 
-                        value={midThreeName} 
+                        name="gen_mid_three_name"
+                        value={midThreeName}
                         onChange={e => {
                           const val = e.target.value;
                           setMidThreeName(val);
@@ -841,13 +841,13 @@ export default function TemplateForms({
                           if (matched) {
                             setMidThreeCode(matched.code);
                           }
-                        }} 
-                        placeholder="请选择或输入所需的中台能力" 
-                        className="flex-1 bg-muted border border-border px-3 py-2 rounded-md text-sm" 
+                        }}
+                        placeholder="请选择或输入所需的中台能力"
+                        className="flex-1 bg-muted border border-border px-3 py-2 rounded-md text-sm"
                       />
-                      <button 
-                        type="button" 
-                        onClick={() => setIsMidThreeModalOpen(true)} 
+                      <button
+                        type="button"
+                        onClick={() => setIsMidThreeModalOpen(true)}
                         className="px-3 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 flex items-center justify-center shrink-0 transition-colors"
                         title="全局能力库"
                       >
@@ -873,7 +873,7 @@ export default function TemplateForms({
                 <label className="text-sm font-semibold">支出侧付款方式</label>
                 <input type="text" name="gen_exp_payment" value={expPayment} onChange={e => setExpPayment(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md" />
               </div>
-              
+
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">IT部分商务模式</label>
                 <select name="gen_it_bus_mode" value={itBusMode} onChange={e => setItBusMode(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md">
@@ -948,16 +948,16 @@ export default function TemplateForms({
                             )}
                           </div>
 
-                          <input 
-                            type="file" 
-                            multiple 
-                            accept="image/*" 
-                            className="hidden" 
-                            id={`vendor-file-input-${i}`} 
-                            onChange={(e) => handleImageUpload(e, setVendorImages)} 
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            className="hidden"
+                            id={`vendor-file-input-${i}`}
+                            onChange={(e) => handleImageUpload(e, setVendorImages)}
                           />
 
-                          <div 
+                          <div
                             className="border border-dashed border-border rounded-lg p-5 text-center cursor-pointer hover:bg-muted/50 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all flex flex-col items-center justify-center gap-2 bg-muted/20"
                             onClick={(e) => e.currentTarget.focus()}
                             onDragOver={e => e.preventDefault()}
@@ -970,9 +970,9 @@ export default function TemplateForms({
                             </p>
                             <div className="flex items-center gap-2">
                               <span className="text-xs text-secondary-foreground">或拖拽图片到此，或者</span>
-                              <button 
-                                type="button" 
-                                onClick={(e) => { e.stopPropagation(); document.getElementById(`vendor-file-input-${i}`)?.click(); }} 
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); document.getElementById(`vendor-file-input-${i}`)?.click(); }}
                                 className="inline-flex items-center gap-1.5 text-[11px] bg-primary text-primary-foreground px-2.5 py-1 rounded font-semibold hover:bg-primary/90 transition-colors shadow-sm"
                               >
                                 <AppIcon name="imageUpload" size={14} /> 选择本地图片
@@ -985,11 +985,11 @@ export default function TemplateForms({
                               {vendorImages.map((img: any, imgIdx: number) => (
                                 <div key={imgIdx} className="relative w-20 h-20 border rounded-lg overflow-hidden group">
                                   <img src={img.data} className="w-full h-full object-cover" />
-                                  <button 
-                                    type="button" 
+                                  <button
+                                    type="button"
                                     onClick={() => {
                                       setVendorImages(vendorImages.filter((_: any, idx: number) => idx !== imgIdx));
-                                    }} 
+                                    }}
                                     className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm"
                                     title="移除图片"
                                   >
@@ -1028,7 +1028,7 @@ export default function TemplateForms({
                   <textarea name="gen_single_source" rows={3} defaultValue="单一来源决策依据：符合单一来源场景..." className="bg-muted border border-border px-3 py-2 rounded-md" />
                 )}
               </div>
-              
+
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-bold text-foreground">采购方式</label>
                 <select value={procurementMethod} onChange={e => setProcurementMethod(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md">
@@ -1134,7 +1134,7 @@ export default function TemplateForms({
                 <label className="text-sm font-semibold">部署环境要求</label>
                 <input type="text" name="gen_demand_env_require" defaultValue="客户提供部署环境，不包含在本次项目范围内" className="bg-muted border border-border px-3 py-2 rounded-md" />
               </div>
-              
+
               <div className="flex flex-col gap-1 col-span-2 mt-2">
                 <label className="text-sm font-bold text-foreground flex items-center gap-2">
                   <input type="checkbox" checked={hasPublicUrl} onChange={e => {
@@ -1163,7 +1163,7 @@ export default function TemplateForms({
               <div className="flex flex-col gap-1 col-span-2 mt-2">
                 <label className="text-sm font-bold text-foreground">附件1截图（客户确认材料）</label>
                 <input type="file" multiple accept="image/*" className="hidden" ref={fileInput1Ref} onChange={(e) => handleImageUpload(e, setAttach1Images)} />
-                <div 
+                <div
                   className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:bg-muted/50 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all flex flex-col items-center justify-center gap-3 bg-muted/20"
                   onClick={(e) => e.currentTarget.focus()}
                   onDragOver={e => e.preventDefault()}
@@ -1176,9 +1176,9 @@ export default function TemplateForms({
                   </p>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-secondary-foreground">或拖拽图片到此，或者</span>
-                    <button 
-                      type="button" 
-                      onClick={(e) => { e.stopPropagation(); fileInput1Ref.current?.click(); }} 
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); fileInput1Ref.current?.click(); }}
                       className="inline-flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md font-semibold hover:bg-primary/90 transition-colors shadow-sm"
                     >
                       <AppIcon name="imageUpload" size={14} /> 选择本地图片
@@ -1201,7 +1201,7 @@ export default function TemplateForms({
                 <div className="flex flex-col gap-1 col-span-2 mt-2">
                   <label className="text-sm font-bold text-foreground">附件2截图（招标文件/挂网截图）</label>
                   <input type="file" multiple accept="image/*" className="hidden" ref={fileInput2Ref} onChange={(e) => handleImageUpload(e, setAttach2Images)} />
-                  <div 
+                  <div
                     className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:bg-muted/50 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all flex flex-col items-center justify-center gap-3 bg-muted/20"
                     onClick={(e) => e.currentTarget.focus()}
                     onDragOver={e => e.preventDefault()}
@@ -1214,9 +1214,9 @@ export default function TemplateForms({
                     </p>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-secondary-foreground">或拖拽图片到此，或者</span>
-                      <button 
-                        type="button" 
-                        onClick={(e) => { e.stopPropagation(); fileInput2Ref.current?.click(); }} 
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); fileInput2Ref.current?.click(); }}
                         className="inline-flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md font-semibold hover:bg-primary/90 transition-colors shadow-sm"
                       >
                         <AppIcon name="imageUpload" size={14} /> 选择本地图片
@@ -1240,7 +1240,7 @@ export default function TemplateForms({
         )}
 
       </form>
-      
+
       <button className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-bold py-3 px-6 rounded-lg self-start shadow-sm hover:opacity-90 transition-opacity" onClick={handleGenerate}>
         <AppIcon name="generate" size={18} /> 立即生成此文件
       </button>
@@ -1260,11 +1260,11 @@ export default function TemplateForms({
             <div className="p-4 border-b border-border bg-muted/30">
               <div className="relative">
                 <AppIcon name="search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input 
-                  type="text" 
-                  value={midThreeSearch} 
-                  onChange={e => setMidThreeSearch(e.target.value)} 
-                  placeholder="搜索能力名称、编号或所属类别..." 
+                <input
+                  type="text"
+                  value={midThreeSearch}
+                  onChange={e => setMidThreeSearch(e.target.value)}
+                  placeholder="搜索能力名称、编号或所属类别..."
                   className="w-full pl-9 pr-4 py-2.5 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
                   autoFocus
                 />
@@ -1281,8 +1281,8 @@ export default function TemplateForms({
                 </thead>
                 <tbody className="divide-y divide-border">
                   {MID_THREE_CAPABILITIES.filter(c => c.label.includes(midThreeSearch) || c.value.includes(midThreeSearch) || c.code.includes(midThreeSearch) || c.type.includes(midThreeSearch)).map((cap, idx) => (
-                    <tr 
-                      key={`${cap.code}-${idx}`} 
+                    <tr
+                      key={`${cap.code}-${idx}`}
                       className="hover:bg-primary/5 cursor-pointer transition-colors group"
                       onClick={() => {
                         setMidThreeName(cap.value);

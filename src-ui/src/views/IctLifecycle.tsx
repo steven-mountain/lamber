@@ -1,238 +1,318 @@
-import { useState, useEffect, useCallback, useMemo } from "react"
-import { invoke } from "@tauri-apps/api/core"
-import WorkspaceHeader from "../components/WorkspaceHeader"
-import AppIcon from "../components/icons/AppIcon"
-import TemplateForms from "./TemplateForms"
-import { validateFinancialData, ValidationReport } from "../lib/financeValidator"
-import { useAiContextStore } from "../store/useAiContextStore"
-import { useRef } from "react"
-import { AI_CONTEXT_KEY, buildAiContextKey } from "../utils/aiContextKeys"
+import { useEffect, useState, useCallback } from "react";
+import WorkspaceHeader from "../components/WorkspaceHeader";
+import AppIcon from "../components/icons/AppIcon";
+import TemplateForms from "./TemplateForms";
+import { useNavigationStore } from "../store/useNavigationStore";
+import { validateFinancialData, type ValidationReport } from "../lib/financeValidator";
+import { useAiContextStore } from "../store/useAiContextStore";
+import { AI_CONTEXT_KEY, buildAiContextKey } from "../utils/aiContextKeys";
+import { useIctState } from "../hooks/useIctState";
+import { useIctCalculations } from "../hooks/useIctCalculations";
+import { IctBasicInfo } from "../components/IctBasicInfo";
+import { IctCashflowTable } from "../components/IctCashflowTable";
+import { IctMetricsDashboard } from "../components/IctMetricsDashboard";
 import {
-  buildDistributionFromModel,
-  cashflowModelLabels,
-  formatDistribution,
-  normalizeDistribution,
-  normalizeProjectYears,
-  type CashflowModel
-} from "../lib/cashflowDistribution"
+  projectService,
+  type Project,
+  type BenefitAnalysisScheme,
+  type BenefitAnalysisSnapshot
+} from "../utils/projectService";
 
-interface TaxItem { incl: number; tax: number; excl: number; }
-const defaultTaxItem = (tax = 6): TaxItem => ({ incl: 0, tax, excl: 0 })
-type SegmentValueMode = "ratio" | "amount"
-type SegmentFlowMode = "upfront" | "equal" | "custom"
+export default function IctLifecycle() {
+  const { activeProjectId, activeSchemeId, entrySource, navigateTo } = useNavigationStore();
+  const state = useIctState();
+  const calculations = useIctCalculations(state);
 
-interface CashflowSegment {
-  id: string;
-  name: string;
-  value: number;
-  startYear: number;
-  serviceYears: number;
-  revenueMode: SegmentFlowMode;
-  costMode: SegmentFlowMode;
-  revenueAnnualValues: number[];
-  costAnnualValues: number[];
-}
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [activeProject, setActiveProject] = useState<Project | null>(null);
+  const [activeScheme, setActiveScheme] = useState<BenefitAnalysisScheme | null>(null);
+  const [activeSnapshot, setActiveSnapshot] = useState<BenefitAnalysisSnapshot | null>(null);
+  const [pendingNewSchemeName, setPendingNewSchemeName] = useState<string | null>(null);
 
-const clampCashflowYear = (value: number) => Math.max(1, Math.min(Number.isFinite(value) ? Math.trunc(value) : 1, 10))
+  const [showSaveAsModal, setShowSaveAsModal] = useState(false);
+  const [saveAsSchemeName, setSaveAsSchemeName] = useState("");
 
-const createCashflowSegment = (index: number): CashflowSegment => ({
-  id: `${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`,
-  name: `板块${index}`,
-  value: 0,
-  startYear: 1,
-  serviceYears: 1,
-  revenueMode: "upfront",
-  costMode: "upfront",
-  revenueAnnualValues: [],
-  costAnnualValues: [],
-})
+  useEffect(() => {
+    projectService.getProjects().then(setProjects).catch(console.error);
+  }, [activeProjectId]);
 
-const segmentFlowModeLabels: Record<SegmentFlowMode, string> = {
-  upfront: "第一年一次性",
-  equal: "按年/月等额",
-  custom: "自定义年度计划",
-}
 
-const buildSegmentFlowDistribution = (segment: CashflowSegment, mode: SegmentFlowMode, annualValues: number[] = []) => {
-  const years = 10
-  const dist = Array(years).fill(0)
-  const startIndex = clampCashflowYear(segment.startYear) - 1
-  const duration = Math.max(1, Math.min(clampCashflowYear(segment.serviceYears), years - startIndex))
+  const fillCalculatorState = useCallback((params: any) => {
+    if (!params) return;
 
-  if (mode === "upfront") {
-    dist[startIndex] = 1
-    return dist
-  }
+    const restoreItem = (item: any, defaultTax = 6) => ({
+      incl: item ? Number(item.incl_tax) : 0,
+      tax: item ? Number(item.tax_rate) : defaultTax,
+      excl: item ? Number((Number(item.incl_tax) / (1 + Number(item.tax_rate) / 100)).toFixed(2)) : 0
+    });
 
-  if (mode === "custom") {
-    const values = Array.from({ length: duration }, (_, idx) => {
-      const value = Number(annualValues[idx] || 0)
-      return Number.isFinite(value) && value > 0 ? value : 0
-    })
-    const sum = values.reduce((acc, value) => acc + value, 0)
+    if (params.project_name) state.setProjName(params.project_name);
+    if (params.customer_name) state.setCustomerName(params.customer_name);
+    if (params.property_rights) state.setPropertyRights(params.property_rights);
+    if (params.discount_rate) state.setDiscountRate(Number(params.discount_rate));
+    if (params.project_years) state.setProjectYears(params.project_years);
+    if (params.cashflow_model) state.setCashflowModel(params.cashflow_model as any);
+    if (params.rev_distribution) state.setDistRev(params.rev_distribution);
+    if (params.cost_distribution) state.setDistCost(params.cost_distribution);
+    if (params.cashflow_segment_value_mode) state.setSegmentValueMode(params.cashflow_segment_value_mode);
+    if (params.cashflow_segments) state.setCashflowSegments(params.cashflow_segments);
 
-    if (sum > 0) {
-      values.forEach((value, idx) => {
-        dist[startIndex + idx] = value / sum
-      })
-      return dist
+    const revItRestored = {
+      integration: restoreItem(params.rev_it_integration, 6),
+      maintenance: restoreItem(params.rev_it_maintenance, 6),
+      device_sales: restoreItem(params.rev_it_device_sales, 13),
+      device_lease: restoreItem(params.rev_it_device_lease, 13),
+      other: restoreItem(params.rev_it_other, 6),
+      cloud: restoreItem(params.rev_it_cloud, 6),
+    };
+    const revCtRestored = {
+      line: restoreItem(params.rev_ct_line, 9),
+      product: restoreItem(params.rev_ct_product, 6),
+    };
+    const revNonItCtRestored = restoreItem(params.rev_non_it_ct, 9);
+
+    const costItRestored = {
+      device: restoreItem(params.cost_it_device, 13),
+      construction: restoreItem(params.cost_it_construction, 9),
+      survey: restoreItem(params.cost_it_survey, 6),
+      integration: restoreItem(params.cost_it_integration, 6),
+      other: restoreItem(params.cost_it_other, 6),
+      maintenance: restoreItem(params.cost_it_maintenance, 6),
+      running: restoreItem(params.cost_it_running, 13),
+      bidding: restoreItem(params.cost_it_bidding, 6),
+      design_eval: restoreItem(params.cost_it_design_eval, 6),
+      audit: restoreItem(params.cost_it_audit, 6),
+    };
+    const costCtRestored = {
+      construction: restoreItem(params.cost_ct_construction, 9),
+      maintenance: restoreItem(params.cost_ct_maintenance, 9),
+      other: restoreItem(params.cost_ct_other, 6),
+      bandwidth: restoreItem(params.cost_ct_bandwidth, 9),
+      renewal: restoreItem(params.cost_ct_renewal, 9),
+    };
+    const costMixRestored = {
+      non_it_ct: restoreItem(params.cost_non_it_ct, 9),
+      marketing: restoreItem(params.cost_mix_marketing, 6),
+      channel: restoreItem(params.cost_mix_channel, 6),
+      other: restoreItem(params.cost_mix_other, 6),
+    };
+
+    state.setRevIt(revItRestored);
+    state.setRevCt(revCtRestored);
+    state.setRevNonItCt(revNonItCtRestored);
+    state.setCostIt(costItRestored);
+    state.setCostCt(costCtRestored);
+    state.setCostMix(costMixRestored);
+
+    if (params.ignore_tail_difference) {
+      state.setIgnoredTailValue(params.tail_difference_value || "0");
+      state.setIgnoredDataHash(JSON.stringify({
+        revIt: revItRestored,
+        revCt: revCtRestored,
+        revNonItCt: revNonItCtRestored,
+        costIt: costItRestored,
+        costCt: costCtRestored,
+        costMix: costMixRestored
+      }));
+    } else {
+      state.setIgnoredTailValue(null);
+      state.setIgnoredDataHash(null);
     }
-  }
+  }, [state]);
 
-  for (let i = startIndex; i < startIndex + duration; i++) {
-    dist[i] = 1 / duration
-  }
+  const loadProjectContext = useCallback(async (pId: string | null, sId?: string | null) => {
+    const targetProjectId = pId || null;
+    const targetSchemeId = sId || null;
 
-  return dist
-}
+    if (!targetProjectId) {
+      localStorage.removeItem("lamber_active_project_id");
+      localStorage.removeItem("lamber_active_scheme_id");
+      setActiveProject(null);
+      setActiveScheme(null);
+      setActiveSnapshot(null);
+      setPendingNewSchemeName(null);
+      return;
+    }
 
-const buildSegmentDistribution = (segments: CashflowSegment[], side: "revenue" | "cost") => {
-  const weighted = Array(10).fill(0)
-  const validSegments = segments.filter(segment => Number(segment.value) > 0)
-  const totalWeight = validSegments.reduce((sum, segment) => sum + Number(segment.value), 0)
+    try {
+      const project = await projectService.getProject(targetProjectId);
+      if (!project) {
+        localStorage.removeItem("lamber_active_project_id");
+        localStorage.removeItem("lamber_active_scheme_id");
+        setActiveProject(null);
+        setActiveScheme(null);
+        setActiveSnapshot(null);
+        setPendingNewSchemeName(null);
+        return;
+      }
 
-  if (totalWeight <= 0) return buildDistributionFromModel("model_a", 1)
+      localStorage.setItem("lamber_active_project_id", project.id);
+      setActiveProject(project);
 
-  validSegments.forEach(segment => {
-    const flowMode = side === "revenue" ? segment.revenueMode : segment.costMode
-    const annualValues = side === "revenue" ? segment.revenueAnnualValues : segment.costAnnualValues
-    const segmentDist = buildSegmentFlowDistribution(segment, flowMode, annualValues)
-    const weight = Number(segment.value) / totalWeight
-    segmentDist.forEach((ratio, index) => {
-      weighted[index] += ratio * weight
-    })
-  })
+      const newSchemeNameLocal = localStorage.getItem("lamber_new_scheme_name");
+      if (newSchemeNameLocal) {
+        setPendingNewSchemeName(newSchemeNameLocal);
+        localStorage.removeItem("lamber_new_scheme_name");
+        setActiveScheme(null);
+        setActiveSnapshot(null);
 
-  return normalizeDistribution(weighted, 10)
-}
+        state.setProjName(project.name);
+        state.setCustomerName(project.customer_name);
+        if (project.discount_rate > 0) state.setDiscountRate(project.discount_rate);
+        if (project.project_years > 0) state.setProjectYears(project.project_years);
+        if (project.cashflow_model) state.setCashflowModel(project.cashflow_model as any);
+        return;
+      }
 
-export default function IctLifecycle({ onBack }: { onBack: () => void }) {
-  const [activeTab, setActiveTab] = useState<"basic" | "revenue" | "cost" | "cashflow" | "generate">("basic")
+      setPendingNewSchemeName(null);
 
-  // --- Basic State ---
-  const [projName, setProjName] = useState("X项目")
-  const [customerName, setCustomerName] = useState("X客户")
-  const [propertyRights, setPropertyRights] = useState("客户")
-  const [discountRate, setDiscountRate] = useState(0.055)
-  const [projectYears, setProjectYears] = useState(1)
-  const [cashflowModel, setCashflowModel] = useState<CashflowModel>("model_a")
-  const [distRev, setDistRev] = useState<number[]>([1, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-  const [distCost, setDistCost] = useState<number[]>([1, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-  const [segmentValueMode, setSegmentValueMode] = useState<SegmentValueMode>("ratio")
-  const [cashflowSegments, setCashflowSegments] = useState<CashflowSegment[]>(() => [
-    {
-      id: "segment-1",
-      name: "板块一",
-      value: 50,
-      startYear: 1,
-      serviceYears: 3,
-      revenueMode: "upfront",
-      costMode: "upfront",
-      revenueAnnualValues: [],
-      costAnnualValues: [],
-    },
-    {
-      id: "segment-2",
-      name: "板块二",
-      value: 50,
-      startYear: 1,
-      serviceYears: 2,
-      revenueMode: "equal",
-      costMode: "equal",
-      revenueAnnualValues: [],
-      costAnnualValues: [],
-    },
-  ])
-  const [projectBackground, setProjectBackground] = useState("在数字经济与制造业深度融合的国家战略推动下...")
-  const [techItems, setTechItems] = useState<any[]>([
-    { serviceName: '集成服务', serviceDesc: '集成实施', amount: 1, unit: '项' },
-    { serviceName: '维保服务', serviceDesc: '硬件维保', amount: 1, unit: '项' }
-  ])
-  const [inqVendors, setInqVendors] = useState<any[]>([
-    { vendorName: '厂商A', amount: 0, taxRate: 6, remark: '最低' },
-    { vendorName: '厂商B', amount: 0, taxRate: 6, remark: '' },
-    { vendorName: '厂商C', amount: 0, taxRate: 6, remark: '' }
-  ])
+      const projectSchemes = await projectService.getSchemes(project.id);
+      let schemeToSelect: BenefitAnalysisScheme | null = null;
+      if (targetSchemeId) {
+        schemeToSelect = projectSchemes.find(s => s.id === targetSchemeId) || null;
+      }
+      if (!schemeToSelect) {
+        schemeToSelect = projectSchemes.find(s => s.id === project.default_scheme_id) || projectSchemes[0] || null;
+      }
 
-  // --- Quick Calc State ---
-  const [quickRevTotal, setQuickRevTotal] = useState<string>("")
-  const [quickRevProduct, setQuickRevProduct] = useState<string>("")
-  const [quickCostTotal, setQuickCostTotal] = useState<string>("")
-  const [quickCostProduct, setQuickCostProduct] = useState<string>("")
+      if (schemeToSelect) {
+        setActiveScheme(schemeToSelect);
+        localStorage.setItem("lamber_active_scheme_id", schemeToSelect.id);
 
-  // --- Revenue State ---
-  const [revIt, setRevIt] = useState({
-    integration: defaultTaxItem(6), maintenance: defaultTaxItem(6),
-    device_sales: defaultTaxItem(13), device_lease: defaultTaxItem(13),
-    other: defaultTaxItem(6), cloud: defaultTaxItem(6),
-  })
-  const [revCt, setRevCt] = useState({ line: defaultTaxItem(9), product: defaultTaxItem(6) })
-  const [revNonItCt, setRevNonItCt] = useState(defaultTaxItem(9))
+        const snapshots = await projectService.getSnapshots(schemeToSelect.id);
+        if (snapshots.length > 0) {
+          const latestSnap = snapshots.reduce((latest, current) => current.version > latest.version ? current : latest, snapshots[0]);
+          setActiveSnapshot(latestSnap);
+          fillCalculatorState(latestSnap.input_params);
+        } else {
+          setActiveSnapshot(null);
+          state.setProjName(project.name);
+          state.setCustomerName(project.customer_name);
+          if (project.discount_rate > 0) state.setDiscountRate(project.discount_rate);
+          if (project.project_years > 0) state.setProjectYears(project.project_years);
+          if (project.cashflow_model) state.setCashflowModel(project.cashflow_model as any);
+        }
+      } else {
+        setActiveScheme(null);
+        setActiveSnapshot(null);
+        state.setProjName(project.name);
+        state.setCustomerName(project.customer_name);
+        if (project.discount_rate > 0) state.setDiscountRate(project.discount_rate);
+        if (project.project_years > 0) state.setProjectYears(project.project_years);
+        if (project.cashflow_model) state.setCashflowModel(project.cashflow_model as any);
+      }
+    } catch (err) {
+      console.error("Failed to load project context:", err);
+    }
+  }, [state, fillCalculatorState]);
 
-  // --- Cost State ---
-  const [costIt, setCostIt] = useState({
-    device: defaultTaxItem(13), construction: defaultTaxItem(9),
-    survey: defaultTaxItem(6), integration: defaultTaxItem(6),
-    other: defaultTaxItem(6), maintenance: defaultTaxItem(6),
-    running: defaultTaxItem(13), bidding: defaultTaxItem(6),
-    design_eval: defaultTaxItem(6), audit: defaultTaxItem(6),
-  })
-  const [costCt, setCostCt] = useState({
-    construction: defaultTaxItem(9), maintenance: defaultTaxItem(9),
-    other: defaultTaxItem(6), bandwidth: defaultTaxItem(9), renewal: defaultTaxItem(9),
-  })
-  const [costMix, setCostMix] = useState({
-    non_it_ct: defaultTaxItem(9), marketing: defaultTaxItem(6),
-    channel: defaultTaxItem(6), other: defaultTaxItem(6),
-  })
+  useEffect(() => {
+    loadProjectContext(activeProjectId, activeSchemeId);
+  }, [activeProjectId, activeSchemeId]);
 
-  // --- Calculation Results ---
-  const [cashflowTable, setCashflowTable] = useState<any[]>([])
-  const [metrics, setMetrics] = useState<any>({
-    npv: 0, npv_rate: 0, margin_rate: 0, dynamic_payback: "--", irr: "--",
-    it_npv: 0, it_npv_rate: 0, it_margin_rate: 0
-  })
+  const handleSaveToCurrent = async () => {
+    if (!activeProject) return;
+    const schemeId = pendingNewSchemeName ? null : (activeScheme?.id || activeProject.default_scheme_id || null);
+    const schemeName = pendingNewSchemeName || activeScheme?.name || activeProject.name || "默认测算方案";
 
-  // --- Smart Reverse ---
-  const [revMode, setRevMode] = useState<"cost" | "revenue">("cost")
-  const [revTargetType, setRevTargetType] = useState<"margin" | "npv_rate">("margin")
-  const [revTargetValue, setRevTargetValue] = useState<string>("0.15")
-  const activeDistributionYears = useMemo(() => normalizeProjectYears(projectYears), [projectYears])
-  const effectiveDistRev = useMemo(
-    () => {
-      if (cashflowModel === 'model_e') return buildSegmentDistribution(cashflowSegments, "revenue")
-      if (cashflowModel === 'model_d') return buildDistributionFromModel(cashflowModel, projectYears, distRev)
-      return buildDistributionFromModel(cashflowModel, projectYears)
-    },
-    [cashflowModel, cashflowSegments, distRev, projectYears]
-  )
-  const effectiveDistCost = useMemo(
-    () => {
-      if (cashflowModel === 'model_e') return buildSegmentDistribution(cashflowSegments, "cost")
-      if (cashflowModel === 'model_d') return buildDistributionFromModel(cashflowModel, projectYears, distCost)
-      return buildDistributionFromModel(cashflowModel, projectYears)
-    },
-    [cashflowModel, cashflowSegments, distCost, projectYears]
-  )
+    try {
+      const payload = calculations.buildInputDataPayload();
 
-  // --- Selection Fee Calc ---
-  const [selQuote, setSelQuote] = useState<string>("")
-  const [selMarkup, setSelMarkup] = useState<string>("50")
-  const [selActualCost, setSelActualCost] = useState<string>("")
-  const [selFee, setSelFee] = useState<string>("")
-  const [selLimit, setSelLimit] = useState<string>("")
+      const updatedProj = await projectService.saveBenefitScheme(
+        activeProject.id,
+        schemeId,
+        schemeName,
+        payload,
+        metrics,
+        pendingNewSchemeName ? true : false
+      );
 
-  // --- Generate Docs State ---
-  const [templates, setTemplates] = useState<string[]>([])
-  const [selectedTemplate, setSelectedTemplate] = useState<string>("")
+      setPendingNewSchemeName(null);
+      const newSchemeId = updatedProj.default_scheme_id || null;
+      await loadProjectContext(activeProject.id, newSchemeId);
+      alert("保存测算成功！已更新项目指标并生成历史记录。");
+    } catch (error) {
+      console.error("保存失败:", error);
+      alert("保存失败: " + error);
+    }
+  };
 
-  const [reconciliationErrors, setReconciliationErrors] = useState<ValidationReport[]>([])
-  const [showReconciliationModal, setShowReconciliationModal] = useState(false)
-  const [currentTotalDifference, setCurrentTotalDifference] = useState("0")
-  const [pendingTab, setPendingTab] = useState<{tab: string, template?: string} | null>(null)
-  const [showConfirmIgnore, setShowConfirmIgnore] = useState(false)
-  const [ignoredTailValue, setIgnoredTailValue] = useState<string | null>(null)
-  const [ignoredDataHash, setIgnoredDataHash] = useState<string | null>(null)
+  const handleSaveAsNew = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeProject || !saveAsSchemeName.trim()) return;
+
+    try {
+      const payload = calculations.buildInputDataPayload();
+      const updatedProj = await projectService.saveBenefitScheme(
+        activeProject.id,
+        null,
+        saveAsSchemeName.trim(),
+        payload,
+        metrics,
+        true
+      );
+
+      setShowSaveAsModal(false);
+      setSaveAsSchemeName("");
+      setPendingNewSchemeName(null);
+
+      const newSchemeId = updatedProj.default_scheme_id || null;
+      await loadProjectContext(activeProject.id, newSchemeId);
+      alert("另存为新方案成功！");
+    } catch (error) {
+      console.error("另存为失败:", error);
+      alert("另存为失败: " + error);
+    }
+  };
+
+  const {
+    activeTab, setActiveTab,
+    projName,
+    customerName,
+    projectYears,
+    quickRevTotal, setQuickRevTotal,
+    quickRevProduct, setQuickRevProduct,
+    quickCostTotal, setQuickCostTotal,
+    quickCostProduct, setQuickCostProduct,
+    revIt,
+    revCt,
+    revNonItCt,
+    costIt,
+    costCt,
+    costMix,
+    templates,
+    selectedTemplate, setSelectedTemplate,
+    reconciliationErrors, setReconciliationErrors,
+    showReconciliationModal, setShowReconciliationModal,
+    currentTotalDifference, setCurrentTotalDifference,
+    pendingTab, setPendingTab,
+    showConfirmIgnore, setShowConfirmIgnore,
+    ignoredDataHash, setIgnoredDataHash,
+    setIgnoredTailValue,
+    loadTemplates,
+    updateTaxItem,
+  } = state;
+
+  const {
+    metrics,
+    selQuote,
+    selMarkup,
+    selActualCost,
+    selFee,
+    selLimit,
+    revMode, setRevMode,
+    revTargetType, setRevTargetType,
+    revTargetValue, setRevTargetValue,
+    performReverseCalculation,
+    applySelectionLimit,
+    handleSelFeeChange,
+  } = calculations;
+
+  const setActiveModule = useAiContextStore(storeState => storeState.setActiveModule);
+
+  useEffect(() => {
+    setActiveModule('ict');
+  }, [setActiveModule]);
 
   const handleTabSwitch = (tab: string, templateName?: string, forceIgnore = false) => {
     const currentHash = JSON.stringify({ revIt, revCt, revNonItCt, costIt, costCt, costMix });
@@ -248,11 +328,11 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
           setCurrentTotalDifference(totalDifference);
           setPendingTab({ tab, template: templateName });
           setShowReconciliationModal(true);
-          return; 
+          return;
         }
       }
     }
-    
+
     if (forceIgnore) {
       setIgnoredTailValue(currentTotalDifference);
       setIgnoredDataHash(currentHash);
@@ -265,311 +345,7 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
     } else {
       setActiveModule(AI_CONTEXT_KEY.ICT_CORE);
     }
-  }
-
-  // --- AI Context Sync ---
-  const updateData = useAiContextStore(state => state.updateBusinessData);
-  const setActiveModule = useAiContextStore(state => state.setActiveModule);
-  const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const buildAiContextPayload = (includeCalculated = false, overrides?: { metrics?: any; cashflow?: any[]; extra?: Record<string, any> }) => ({
-    monetary_unit: '元',
-    currency: 'CNY',
-    ...getInputDataPayload(),
-    project_background: projectBackground,
-    metrics: includeCalculated ? (overrides?.metrics ?? metrics) : null,
-    cashflow: includeCalculated ? (overrides?.cashflow ?? cashflowTable) : [],
-    ...(overrides?.extra ?? {}),
-  });
-
-  useEffect(() => {
-    setActiveModule('ict');
-    return () => {
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    };
-  }, [setActiveModule]);
-
-  useEffect(() => {
-    updateData(AI_CONTEXT_KEY.ICT_CORE, buildAiContextPayload(false));
-  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectBackground, projName, customerName, propertyRights, discountRate, projectYears, cashflowModel, distRev, distCost, segmentValueMode, cashflowSegments, ignoredTailValue, updateData]);
-
-  useEffect(() => {
-    if (cashflowModel === 'model_d') {
-      setDistRev(prev => buildDistributionFromModel(cashflowModel, projectYears, prev))
-      setDistCost(prev => buildDistributionFromModel(cashflowModel, projectYears, prev))
-      return
-    }
-
-    if (cashflowModel === 'model_e') return
-
-    const nextDist = buildDistributionFromModel(cashflowModel, projectYears)
-    setDistRev(nextDist)
-    setDistCost(nextDist)
-  }, [cashflowModel, projectYears])
-
-  useEffect(() => {
-    // Debounced sync (500ms)
-    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    
-    syncTimerRef.current = setTimeout(() => {
-      const payload = buildAiContextPayload(true);
-      updateData(AI_CONTEXT_KEY.ICT_CORE, payload);
-      console.log("AI Context Synced: ICT");
-    }, 500);
-
-    return () => {
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    };
-  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectBackground, metrics, cashflowTable, projName, customerName, propertyRights, discountRate, projectYears, cashflowModel, distRev, distCost, segmentValueMode, cashflowSegments, ignoredTailValue, updateData]);
-
-  const updateTaxItem = (groupId: string, key: string, field: "incl" | "tax" | "excl", val: number) => {
-    // 只要有任何金额或税率变动，立即重置尾差忽略状态，确保下一次切换标签时重新校验
-    if (ignoredDataHash !== null) {
-      setIgnoredDataHash(null);
-      setIgnoredTailValue(null);
-    }
-
-    const processItem = (groupState: any, setGroupState: any, targetKey: string) => {
-      const item = { ...groupState[targetKey], [field]: isNaN(val) ? 0 : val }
-      if (field === 'incl' || field === 'tax') {
-        item.excl = item.incl === 0 ? 0 : Number((item.incl / (1 + item.tax / 100)).toFixed(2))
-      } else if (field === 'excl') {
-        item.incl = item.excl === 0 ? 0 : Number((item.excl * (1 + item.tax / 100)).toFixed(2))
-      }
-      setGroupState({ ...groupState, [targetKey]: item })
-    }
-
-    if (groupId === 'revIt') processItem(revIt, setRevIt, key)
-    else if (groupId === 'revCt') {
-      processItem(revCt, setRevCt, key)
-      if (key === 'product') processItem(costCt, setCostCt, 'other')
-      if (key === 'line') processItem(costCt, setCostCt, 'bandwidth')
-    }
-    else if (groupId === 'revNonItCt') {
-      const item = { ...revNonItCt, [field]: isNaN(val) ? 0 : val }
-      if (field === 'incl' || field === 'tax') {
-        item.excl = item.incl === 0 ? 0 : Number((item.incl / (1 + item.tax / 100)).toFixed(2))
-      } else if (field === 'excl') {
-        item.incl = item.excl === 0 ? 0 : Number((item.excl * (1 + item.tax / 100)).toFixed(2))
-      }
-      setRevNonItCt(item)
-    }
-    else if (groupId === 'costIt') processItem(costIt, setCostIt, key)
-    else if (groupId === 'costCt') processItem(costCt, setCostCt, key)
-    else if (groupId === 'costMix') processItem(costMix, setCostMix, key)
-  }
-
-  useEffect(() => { performCalculation() }, [revIt, revCt, revNonItCt, costIt, costCt, costMix, projectYears, discountRate, cashflowModel, distRev, distCost, cashflowSegments])
-  
-  const loadTemplates = useCallback(async () => {
-    try {
-      const list: any = await invoke('get_available_templates', { moduleId: 'ict_lifecycle' })
-      setTemplates(list)
-    } catch (e) {
-      console.error("加载 ICT 模板失败:", e)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadTemplates()
-  }, [loadTemplates])
-
-	  const getInputDataPayload = () => ({
-	    project_name: projName,
-	    customer_name: customerName,
-	    property_rights: propertyRights,
-	    discount_rate: String(discountRate),
-	    project_years: projectYears,
-	    cashflow_model: cashflowModel,
-	    rev_distribution: effectiveDistRev,
-	    cost_distribution: effectiveDistCost,
-	    cashflow_segment_value_mode: segmentValueMode,
-	    cashflow_segments: cashflowModel === 'model_e' ? cashflowSegments : [],
-	    ignore_tail_difference: ignoredTailValue !== null,
-	    tail_difference_value: ignoredTailValue || "0",
-    rev_it_integration: { incl_tax: String(revIt.integration.incl), tax_rate: String(revIt.integration.tax) },
-    rev_it_maintenance: { incl_tax: String(revIt.maintenance.incl), tax_rate: String(revIt.maintenance.tax) },
-    rev_it_device_sales: { incl_tax: String(revIt.device_sales.incl), tax_rate: String(revIt.device_sales.tax) },
-    rev_it_device_lease: { incl_tax: String(revIt.device_lease.incl), tax_rate: String(revIt.device_lease.tax) },
-    rev_it_other: { incl_tax: String(revIt.other.incl), tax_rate: String(revIt.other.tax) },
-    rev_it_cloud: { incl_tax: String(revIt.cloud.incl), tax_rate: String(revIt.cloud.tax) },
-    rev_ct_line: { incl_tax: String(revCt.line.incl), tax_rate: String(revCt.line.tax) },
-    rev_ct_product: { incl_tax: String(revCt.product.incl), tax_rate: String(revCt.product.tax) },
-    rev_non_it_ct: { incl_tax: String(revNonItCt.incl), tax_rate: String(revNonItCt.tax) },
-    cost_it_device: { incl_tax: String(costIt.device.incl), tax_rate: String(costIt.device.tax) },
-    cost_it_construction: { incl_tax: String(costIt.construction.incl), tax_rate: String(costIt.construction.tax) },
-    cost_it_survey: { incl_tax: String(costIt.survey.incl), tax_rate: String(costIt.survey.tax) },
-    cost_it_integration: { incl_tax: String(costIt.integration.incl), tax_rate: String(costIt.integration.tax) },
-    cost_it_other: { incl_tax: String(costIt.other.incl), tax_rate: String(costIt.other.tax) },
-    cost_it_maintenance: { incl_tax: String(costIt.maintenance.incl), tax_rate: String(costIt.maintenance.tax) },
-    cost_it_running: { incl_tax: String(costIt.running.incl), tax_rate: String(costIt.running.tax) },
-    cost_it_bidding: { incl_tax: String(costIt.bidding.incl), tax_rate: String(costIt.bidding.tax) },
-    cost_it_design_eval: { incl_tax: String(costIt.design_eval.incl), tax_rate: String(costIt.design_eval.tax) },
-    cost_it_audit: { incl_tax: String(costIt.audit.incl), tax_rate: String(costIt.audit.tax) },
-    cost_ct_construction: { incl_tax: String(costCt.construction.incl), tax_rate: String(costCt.construction.tax) },
-    cost_ct_maintenance: { incl_tax: String(costCt.maintenance.incl), tax_rate: String(costCt.maintenance.tax) },
-    cost_ct_other: { incl_tax: String(costCt.other.incl), tax_rate: String(costCt.other.tax) },
-    cost_ct_bandwidth: { incl_tax: String(costCt.bandwidth.incl), tax_rate: String(costCt.bandwidth.tax) },
-    cost_ct_renewal: { incl_tax: String(costCt.renewal.incl), tax_rate: String(costCt.renewal.tax) },
-    cost_non_it_ct: { incl_tax: String(costMix.non_it_ct.incl), tax_rate: String(costMix.non_it_ct.tax) },
-    cost_mix_marketing: { incl_tax: String(costMix.marketing.incl), tax_rate: String(costMix.marketing.tax) },
-    cost_mix_channel: { incl_tax: String(costMix.channel.incl), tax_rate: String(costMix.channel.tax) },
-    cost_mix_other: { incl_tax: String(costMix.other.incl), tax_rate: String(costMix.other.tax) },
-  })
-
-  const performCalculation = async () => {
-    try {
-      const res: any = await invoke('calculate_ict_benefit', { input: getInputDataPayload() })
-      if (res) {
-        setCashflowTable(res.cashflow)
-        setMetrics(res)
-      }
-    } catch (e) {
-      console.error(e)
-    }
-  }
-
-  const handleSelFeeChange = async (type: 'quote' | 'markup' | 'limit', val: string) => {
-    if (type === 'quote') setSelQuote(val)
-    if (type === 'markup') setSelMarkup(val)
-    if (type === 'limit') setSelLimit(val)
-
-    const currentQuote = type === 'quote' ? val : selQuote
-    const currentMarkup = type === 'markup' ? val : selMarkup
-    const currentLimit = type === 'limit' ? val : selLimit
-
-    try {
-      if (type === 'quote' || type === 'markup') {
-        const res: any = await invoke('calculate_selection_fee', { quote: currentQuote || "0", markup: currentMarkup || "0" })
-        setSelLimit(res.final_limit)
-        setSelActualCost(res.actual_cost)
-        setSelFee(res.selection_fee)
-      } else if (type === 'limit') {
-        const res: any = await invoke('reverse_calculate_selection_fee', { limit: currentLimit || "0", markup: currentMarkup || "0" })
-        setSelQuote(res.quote)
-        setSelActualCost(res.actual_cost)
-        setSelFee(res.selection_fee)
-      }
-    } catch(e) {
-      console.error("甄选限价计算失败:", e)
-    }
-  }
-
-  const applySelectionLimit = () => {
-    if (selLimit) {
-      updateTaxItem('costIt', 'integration', 'incl', Number(selLimit))
-      if (selFee) {
-        updateTaxItem('costIt', 'bidding', 'incl', Number(selFee))
-      }
-    }
-  }
-
-  const performReverseCalculation = async () => {
-    if (!revTargetValue) return alert("请输入目标值！")
-    try {
-      const apiName = revMode === 'revenue' ? 'reverse_calc_ict_revenue_target' : 'reverse_calc_ict_target'
-      const basePayload = getInputDataPayload()
-      const valStr: string = await invoke(apiName, {
-        input: basePayload,
-        targetType: revTargetType,
-        targetValue: String(revTargetValue)
-      })
-      
-      const numVal = Number(valStr)
-      const nextPayload = {
-        ...basePayload,
-        ...(revMode === 'revenue'
-          ? { rev_it_integration: { ...basePayload.rev_it_integration, incl_tax: String(numVal) } }
-          : { cost_it_integration: { ...basePayload.cost_it_integration, incl_tax: String(numVal) } })
-      }
-
-      if (revMode === 'revenue') {
-        updateTaxItem('revIt', 'integration', 'incl', numVal)
-        setActiveTab("revenue")
-      } else {
-        updateTaxItem('costIt', 'integration', 'incl', numVal)
-        handleSelFeeChange('limit', String(numVal))
-        setActiveTab("cost")
-      }
-
-      const refreshed: any = await invoke('calculate_ict_benefit', { input: nextPayload })
-      if (refreshed) {
-        setCashflowTable(refreshed.cashflow)
-        setMetrics(refreshed)
-        updateData(AI_CONTEXT_KEY.ICT_CORE, buildAiContextPayload(true, {
-          metrics: refreshed,
-          cashflow: refreshed.cashflow,
-          extra: {
-            ...nextPayload,
-            reverse_calculation: {
-              mode: revMode,
-              target_type: revTargetType,
-              target_value: revTargetValue,
-              result: numVal,
-            },
-          },
-        }))
-      }
-
-      const distText = revMode === 'revenue'
-        ? formatDistribution(effectiveDistRev)
-        : formatDistribution(effectiveDistCost)
-      const targetName = revTargetType === 'margin' ? '毛利润率' : '净现值率'
-      const reverseFieldName = revMode === 'revenue' ? '系统集成服务收入' : '系统集成服务成本'
-
-      alert(
-        `反算完成：${formatCurrency(numVal)}\n` +
-        `目标：${targetName} ≥ ${formatPercent(Number(revTargetValue))}\n` +
-        `反算字段：${reverseFieldName}\n` +
-        `该结果为含税总额参数值，将按当前资金收付模型自动分摊。\n` +
-        `当前资金收付模型：${cashflowModelLabels[cashflowModel]}\n` +
-        `年度分布：${distText}\n` +
-        `已自动刷新 10 年现金流推演。`
-      )
-    } catch (e) {
-      alert("反推失败: " + e)
-    }
-  }
-
-  const addCashflowSegment = () => {
-    setCashflowSegments(prev => [...prev, createCashflowSegment(prev.length + 1)])
-  }
-
-  const updateCashflowSegment = (id: string, key: keyof CashflowSegment, value: string | number) => {
-    setCashflowSegments(prev => prev.map(segment => {
-      if (segment.id !== id) return segment
-      const numericFields: Array<keyof CashflowSegment> = ["value", "startYear", "serviceYears"]
-      const nextValue = numericFields.includes(key) ? Number(value) : value
-      return { ...segment, [key]: nextValue }
-    }))
-  }
-
-  const updateCashflowSegmentAnnualValue = (id: string, side: "revenue" | "cost", index: number, value: number) => {
-    setCashflowSegments(prev => prev.map(segment => {
-      if (segment.id !== id) return segment
-      const field = side === "revenue" ? "revenueAnnualValues" : "costAnnualValues"
-      const nextValues = [...(segment[field] || [])]
-      nextValues[index] = Number.isFinite(value) && value > 0 ? value : 0
-      return { ...segment, [field]: nextValues }
-    }))
-  }
-
-  const getSegmentEffectiveDuration = (segment: CashflowSegment) => {
-    const startIndex = clampCashflowYear(segment.startYear) - 1
-    return Math.max(1, Math.min(clampCashflowYear(segment.serviceYears), 10 - startIndex))
-  }
-
-  const getSegmentAnnualValues = (segment: CashflowSegment, side: "revenue" | "cost") => {
-    const values = side === "revenue" ? segment.revenueAnnualValues : segment.costAnnualValues
-    return Array.from({ length: getSegmentEffectiveDuration(segment) }, (_, idx) => Number(values?.[idx] || 0))
-  }
-
-  const getSegmentAnnualValueSum = (segment: CashflowSegment, side: "revenue" | "cost") => {
-    return getSegmentAnnualValues(segment, side).reduce((sum, value) => sum + value, 0)
-  }
-
-  const removeCashflowSegment = (id: string) => {
-    setCashflowSegments(prev => prev.length <= 1 ? prev : prev.filter(segment => segment.id !== id))
-  }
+  };
 
   const renderTaxGroup = (title: string, groupId: string, groupState: any, items: {key: string, label: string}[]) => (
     <div className="table-card bg-card border border-border rounded-xl p-6 shadow-sm mb-6">
@@ -587,38 +363,27 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
               </div>
               {itemErr && <span className="text-[10px] text-red-500 font-bold">校验失败：偏离 {itemErr.difference} 元，要求：{itemErr.expectedExcl} 元</span>}
             </div>
-          )
+          );
         })}
       </div>
     </div>
-  )
-
-  const formatCurrency = (v: number) => new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(v)
-  const formatPercent = (v: number) => (v * 100).toFixed(2) + "%"
-  const distributionPreview = (
-    <div className="mt-6 mb-4 border-t border-border pt-4 text-sm">
-      <div className="font-bold text-foreground mb-2">资金分布预览</div>
-      <div className="grid grid-cols-1 gap-1 text-secondary-foreground">
-        <div>当前资金收付模型：{cashflowModelLabels[cashflowModel]}</div>
-        <div>收入分布：{formatDistribution(effectiveDistRev)}</div>
-        <div>成本分布：{formatDistribution(effectiveDistCost)}</div>
-      </div>
-    </div>
-  )
-  const formatYearRange = (start: number, end: number) => start + 1 === end
-    ? `第 ${start + 1} 年`
-    : `第 ${start + 1}-${end} 年`
-  const distributionSegments = activeDistributionYears <= 5
-    ? [{ label: formatYearRange(0, activeDistributionYears), start: 0, end: activeDistributionYears }]
-    : [
-      { label: formatYearRange(0, 5), start: 0, end: 5 },
-      { label: formatYearRange(5, activeDistributionYears), start: 5, end: activeDistributionYears },
-    ]
+  );
 
   return (
     <div className="flex flex-col flex-1 animate-in fade-in duration-300 h-full overflow-hidden">
-      <WorkspaceHeader moduleId="ict_lifecycle" title="ICT项目全生命周期" onBack={onBack} onPathChange={() => loadTemplates()} />
-      
+      <WorkspaceHeader
+        moduleId="ict_lifecycle"
+        title="ICT项目全生命周期"
+        onBack={() => {
+          if (entrySource === "project_board") {
+            navigateTo("project_board", activeProjectId, activeSchemeId);
+          } else {
+            navigateTo("hub");
+          }
+        }}
+        onPathChange={() => loadTemplates()}
+      />
+
       <div className="flex flex-1 overflow-hidden">
         <div className="w-[260px] bg-muted p-6 overflow-y-auto flex flex-col gap-4 border-r border-border shrink-0">
           <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mb-1">测算流程</h3>
@@ -630,11 +395,11 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
           </div>
           <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mt-6 pt-4 border-t border-border mb-2">一键生成全流程文档</h3>
           <div className="flex flex-col gap-2">
-            {templates.length === 0 ? <span className="text-xs text-secondary-foreground px-4">未找到模板文件</span> : 
+            {templates.length === 0 ? <span className="text-xs text-secondary-foreground px-4">未找到模板文件</span> :
               templates.map(t => {
                 const isActive = selectedTemplate === t && activeTab === 'generate';
                 return (
-                  <button 
+                  <button
                     key={t}
                     className={`relative overflow-hidden px-4 py-3 rounded-lg text-sm flex items-start gap-2.5 transition-all text-left border-b border-border/60 shadow-sm ${isActive ? 'bg-primary/20 text-primary font-bold border-transparent shadow' : 'text-secondary-foreground font-semibold hover:bg-primary/10 hover:text-primary'}`}
                     onClick={() => handleTabSwitch("generate", t)}
@@ -650,242 +415,111 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
             }
           </div>
         </div>
-        
+
         <div className="flex-1 p-6 overflow-y-auto bg-background flex flex-col">
-          {activeTab === "basic" && (
-            <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
-              <h3 className="text-lg font-bold text-foreground mb-6">项目概况</h3>
-              <div className="grid grid-cols-2 gap-6">
-                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">项目名称</label><input id="ict-proj-name" type="text" value={projName} onChange={e => setProjName(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
-                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">客户单位名称</label><input id="ict-customer-name" type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
-                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">产权归属</label><input id="ict-property-rights" type="text" value={propertyRights} onChange={e => setPropertyRights(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
-                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">项目建设/服务周期 (年)</label><input id="ict-project-years" type="number" min={1} max={10} value={projectYears} onChange={e => setProjectYears(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
-	                <div className="flex flex-col gap-2"><label className="text-sm font-bold text-secondary-foreground">折现率</label><input id="ict-discount-rate" type="number" step={0.001} value={discountRate} onChange={e => setDiscountRate(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" /></div>
-	                <div className="flex flex-col gap-2">
-	                  <label className="text-sm font-bold text-secondary-foreground">资金收付模型</label>
-	                  <select id="ict-cashflow-model" value={cashflowModel} onChange={e => setCashflowModel(e.target.value as CashflowModel)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary">
-	                    <option value="model_a">模型 A: 100% 在第一年收付</option>
-	                    <option value="model_b">模型 B: 按周期等额收付 (每年 1/n)</option>
-	                    <option value="model_c">模型 C: 尾款质保金 (首年95%，末年5%)</option>
-	                    <option value="model_d">模型 D: 高级自定义分配</option>
-	                    <option value="model_e">模型 E: 分板块资金计划</option>
-	                  </select>
-	                </div>
-                <div className="flex flex-col gap-2 col-span-2">
-                  <label className="text-sm font-bold text-secondary-foreground">项目背景</label>
-                  <textarea id="ict-project-bg" rows={3} value={projectBackground} onChange={e => setProjectBackground(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" />
+          {activeProject ? (
+            <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 mb-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-sm animate-in slide-in-from-top duration-300">
+              <div className="flex items-center gap-3">
+                <div className="bg-primary/10 p-2.5 rounded-lg text-primary shrink-0">
+                  <AppIcon name="project" size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-extrabold text-foreground text-sm">{activeProject.name}</span>
+                    <span className="text-xs text-secondary-foreground">({activeProject.customer_name})</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                      activeProject.benefit_status === 'normal'
+                        ? 'bg-green-100 text-green-700 border border-green-200'
+                        : activeProject.benefit_status === 'outdated'
+                        ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                        : 'bg-gray-100 text-gray-700 border border-gray-200'
+                    }`}>
+                      效益状态: {activeProject.benefit_status === 'normal' ? '最新' : activeProject.benefit_status === 'outdated' ? '已失效' : '未测算'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-secondary-foreground mt-0.5">
+                    {pendingNewSchemeName ? (
+                      <span>拟新建方案: <span className="font-semibold text-primary">{pendingNewSchemeName}</span> (未保存)</span>
+                    ) : (
+                      <span>当前方案: <span className="font-semibold text-primary">{activeScheme?.name || "默认方案"}</span> {activeSnapshot ? `(v${activeSnapshot.version})` : ''}</span>
+                    )}
+                  </div>
                 </div>
               </div>
-              {cashflowModel === 'model_d' && (
-                <div className="mt-6 pt-6 border-t border-border">
-                  <h4 className="text-sm font-bold text-secondary-foreground mb-4">高级自定义分配 (可输入任意非负比例，系统自动归一化)</h4>
-                  <p className="text-xs text-secondary-foreground mb-4">
-                    仅展示项目周期内的 {activeDistributionYears} 个年份；周期外年份按 0 处理，不参与现金流分摊。
-                  </p>
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                    {distributionSegments.map(segment => {
-                      const segmentYears = Array.from({ length: segment.end - segment.start }, (_, idx) => segment.start + idx)
+              <div className="flex flex-wrap items-center gap-2.5 self-end lg:self-auto shrink-0">
+                <select
+                  onChange={(e) => {
+                    const pid = e.target.value;
+                    if (pid === "free") {
+                      navigateTo("ict_lifecycle", null, null);
+                    } else {
+                      navigateTo("ict_lifecycle", pid, null);
+                    }
+                  }}
+                  value={activeProject.id}
+                  className="bg-background border border-border px-3 py-1.5 rounded-lg text-xs outline-none focus:border-primary font-semibold text-foreground cursor-pointer min-w-[160px] mr-1"
+                >
+                  <option value="free">断开关联 (进入自由测算)</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.customer_name})</option>
+                  ))}
+                </select>
 
-                      return (
-                        <div key={segment.label} className="min-w-0 rounded-lg border border-border bg-muted/30 p-3">
-                          <div className="text-xs font-bold text-secondary-foreground mb-3">{segment.label}</div>
-                          <div
-                            className="grid gap-2 items-center text-center text-sm"
-                            style={{ gridTemplateColumns: `72px repeat(${segmentYears.length}, minmax(0, 1fr))` }}
-                          >
-                            <div className="font-bold text-right pr-2 text-secondary-foreground">年份</div>
-                            {segmentYears.map(i => (
-                              <div key={`year-${i}`} className="font-bold">{i + 1}</div>
-                            ))}
-                            <div className="font-bold text-right pr-2 text-secondary-foreground">收入比例</div>
-                            {segmentYears.map(i => (
-                              <input key={`rev-${i}`} type="number" step="0.01" value={distRev[i]} onChange={e => { const newArr = [...distRev]; newArr[i] = Number(e.target.value); setDistRev(newArr); }} className="min-w-0 w-full bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
-                            ))}
-                            <div className="font-bold text-right pr-2 text-secondary-foreground">支出比例</div>
-                            {segmentYears.map(i => (
-                              <input key={`cost-${i}`} type="number" step="0.01" value={distCost[i]} onChange={e => { const newArr = [...distCost]; newArr[i] = Number(e.target.value); setDistCost(newArr); }} className="min-w-0 w-full bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
-                            ))}
-                          </div>
-                        </div>
-                      )
-                    })}
-	                  </div>
-	                </div>
-	              )}
-	              {cashflowModel === 'model_e' && (
-	                <div className="mt-6 pt-6 border-t border-border">
-	                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-	                    <div>
-	                      <h4 className="text-sm font-bold text-secondary-foreground">分板块资金计划</h4>
-	                      <p className="text-xs text-secondary-foreground mt-1">
-		                        系统会按板块权重汇总 10 年收入和成本分布；支持一次性、等额和自定义年度计划。
-	                      </p>
-	                    </div>
-	                    <div className="flex rounded-lg border border-border bg-muted p-1">
-	                      {([
-	                        { key: "ratio", label: "填比例" },
-	                        { key: "amount", label: "填金额" },
-	                      ] as Array<{ key: SegmentValueMode; label: string }>).map(option => (
-	                        <button
-	                          key={option.key}
-	                          type="button"
-	                          onClick={() => setSegmentValueMode(option.key)}
-	                          className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors ${segmentValueMode === option.key ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground hover:bg-background'}`}
-	                        >
-	                          {option.label}
-	                        </button>
-	                      ))}
-	                    </div>
-	                  </div>
+                <button
+                  id="save_benefit_btn"
+                  onClick={handleSaveToCurrent}
+                  className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-lg text-xs hover:bg-primary/90 transition-all shadow-sm flex items-center gap-1.5 active:scale-[0.98]"
+                >
+                  <AppIcon name="save" size={14} /> 保存到当前项目
+                </button>
+                <button
+                  id="save_as_new_benefit_btn"
+                  onClick={() => {
+                    setSaveAsSchemeName(activeScheme?.name ? `${activeScheme.name}_复本` : "新方案");
+                    setShowSaveAsModal(true);
+                  }}
+                  className="bg-card border border-border text-foreground hover:bg-secondary font-bold px-4 py-2 rounded-lg text-xs transition-all shadow-sm flex items-center gap-1.5 active:scale-[0.98]"
+                >
+                  <AppIcon name="copy" size={14} /> 另存为新方案
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-card border border-border rounded-xl p-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="bg-secondary p-2.5 rounded-lg text-primary shrink-0">
+                  <AppIcon name="project" size={20} />
+                </div>
+                <div>
+                  <div className="font-extrabold text-foreground text-sm flex items-center gap-2">
+                    <span>自由测算模式</span>
+                    <span className="text-[10px] bg-secondary text-secondary-foreground font-bold px-2 py-0.5 rounded-full">未绑定项目</span>
+                  </div>
+                  <div className="text-xs text-secondary-foreground mt-0.5">你可以输入参数进行效益测算。如需保存，请在右侧选择关联一个项目：</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                <select
+                  onChange={(e) => {
+                    const pid = e.target.value;
+                    if (pid) {
+                      navigateTo("ict_lifecycle", pid, null);
+                    }
+                  }}
+                  value=""
+                  className="bg-background border border-border px-3 py-1.5 rounded-lg text-xs outline-none focus:border-primary font-semibold text-foreground cursor-pointer min-w-[200px]"
+                >
+                  <option value="" disabled>-- 关联已有项目 --</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.customer_name})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
-	                  <div className="overflow-x-auto">
-	                    <div className="min-w-[920px]">
-	                      <div className="grid grid-cols-[1.2fr_1fr_0.8fr_0.9fr_1.1fr_1.1fr_48px] gap-2 px-2 pb-2 text-xs font-bold text-secondary-foreground">
-	                        <div>板块名称</div>
-	                        <div>{segmentValueMode === "ratio" ? "板块占比(%)" : "板块金额(元)"}</div>
-	                        <div>开始年份</div>
-	                        <div>服务周期</div>
-	                        <div>收款方式</div>
-	                        <div>付款方式</div>
-	                        <div />
-	                      </div>
-	                      <div className="flex flex-col gap-2">
-	                        {cashflowSegments.map(segment => {
-	                          const customSides = [
-	                            ...(segment.revenueMode === "custom" ? [{ side: "revenue" as const, label: "收款年度计划" }] : []),
-	                            ...(segment.costMode === "custom" ? [{ side: "cost" as const, label: "付款年度计划" }] : []),
-	                          ]
-
-	                          return (
-	                            <div key={segment.id} className="rounded-lg border border-border bg-muted/25 p-2">
-	                              <div className="grid grid-cols-[1.2fr_1fr_0.8fr_0.9fr_1.1fr_1.1fr_48px] gap-2 items-center">
-	                                <input
-	                                  type="text"
-	                                  value={segment.name}
-	                                  onChange={e => updateCashflowSegment(segment.id, "name", e.target.value)}
-	                                  className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
-	                                />
-	                                <input
-	                                  type="number"
-	                                  min={0}
-	                                  step={segmentValueMode === "ratio" ? 1 : 0.01}
-	                                  value={segment.value === 0 ? "" : segment.value}
-	                                  onChange={e => updateCashflowSegment(segment.id, "value", Number(e.target.value))}
-	                                  className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
-	                                />
-	                                <input
-	                                  type="number"
-	                                  min={1}
-	                                  max={10}
-	                                  value={segment.startYear}
-	                                  onChange={e => updateCashflowSegment(segment.id, "startYear", clampCashflowYear(Number(e.target.value)))}
-	                                  className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
-	                                />
-	                                <input
-	                                  type="number"
-	                                  min={1}
-	                                  max={10}
-	                                  value={segment.serviceYears}
-	                                  onChange={e => updateCashflowSegment(segment.id, "serviceYears", clampCashflowYear(Number(e.target.value)))}
-	                                  className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
-	                                />
-	                                <select
-	                                  value={segment.revenueMode}
-	                                  onChange={e => updateCashflowSegment(segment.id, "revenueMode", e.target.value as SegmentFlowMode)}
-	                                  className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
-	                                >
-	                                  {Object.entries(segmentFlowModeLabels).map(([value, label]) => (
-	                                    <option key={value} value={value}>{label}</option>
-	                                  ))}
-	                                </select>
-	                                <select
-	                                  value={segment.costMode}
-	                                  onChange={e => updateCashflowSegment(segment.id, "costMode", e.target.value as SegmentFlowMode)}
-	                                  className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
-	                                >
-	                                  {Object.entries(segmentFlowModeLabels).map(([value, label]) => (
-	                                    <option key={value} value={value}>{label}</option>
-	                                  ))}
-	                                </select>
-	                                <button
-	                                  type="button"
-	                                  onClick={() => removeCashflowSegment(segment.id)}
-	                                  disabled={cashflowSegments.length <= 1}
-	                                  className="flex h-10 w-10 items-center justify-center rounded-md text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-40"
-	                                  title="删除板块"
-	                                >
-	                                  <AppIcon name="delete" size={16} />
-	                                </button>
-	                              </div>
-
-	                              {customSides.length > 0 && (
-	                                <div className="mt-3 grid grid-cols-1 gap-3 border-t border-border pt-3">
-	                                  {customSides.map(({ side, label }) => {
-	                                    const annualValues = getSegmentAnnualValues(segment, side)
-	                                    const annualSum = getSegmentAnnualValueSum(segment, side)
-	                                    const hasMismatch = segmentValueMode === "amount" && segment.value > 0 && annualSum > 0 && Math.abs(annualSum - segment.value) > 0.01
-
-	                                    return (
-	                                      <div key={`${segment.id}-${side}`} className="rounded-md bg-background p-3">
-	                                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-	                                          <span className="text-xs font-bold text-secondary-foreground">{label}</span>
-	                                          <span className={`text-[11px] font-semibold ${hasMismatch ? 'text-amber-700' : 'text-secondary-foreground'}`}>
-	                                            合计：{annualSum.toFixed(segmentValueMode === "amount" ? 2 : 0)}{segmentValueMode === "amount" ? " 元" : ""}
-	                                          </span>
-	                                        </div>
-	                                        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${annualValues.length}, minmax(96px, 1fr))` }}>
-	                                          {annualValues.map((value, idx) => (
-	                                            <div key={`${segment.id}-${side}-${idx}`} className="flex flex-col gap-1">
-	                                              <label className="text-[11px] font-semibold text-secondary-foreground">
-	                                                第 {clampCashflowYear(segment.startYear) + idx} 年
-	                                              </label>
-	                                              <input
-	                                                type="number"
-	                                                min={0}
-	                                                step={segmentValueMode === "amount" ? 0.01 : 1}
-	                                                value={value === 0 ? "" : value}
-	                                                placeholder={segmentValueMode === "amount" ? "金额" : "比例"}
-	                                                onChange={e => updateCashflowSegmentAnnualValue(segment.id, side, idx, Number(e.target.value))}
-	                                                className="min-w-0 bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
-	                                              />
-	                                            </div>
-	                                          ))}
-	                                        </div>
-	                                        {hasMismatch && (
-	                                          <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
-	                                            年度计划合计与板块金额不一致，系统将按年度金额占比归一化计算。
-	                                          </div>
-	                                        )}
-	                                      </div>
-	                                    )
-	                                  })}
-	                                </div>
-	                              )}
-	                            </div>
-	                          )
-	                        })}
-	                      </div>
-	                    </div>
-	                  </div>
-
-	                  <div className="mt-3 flex items-center justify-between gap-3">
-	                    <p className="text-xs text-secondary-foreground">
-	                      {segmentValueMode === "ratio"
-	                        ? "比例合计不要求刚好等于 100%，系统会自动按合计归一化。"
-	                        : "金额用于计算板块权重，不会反写收入/成本金额明细。"}
-	                    </p>
-	                    <button
-	                      type="button"
-	                      onClick={addCashflowSegment}
-	                      className="inline-flex items-center gap-2 rounded-md bg-primary/10 px-3 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/20"
-	                    >
-	                      + 新增板块
-	                    </button>
-	                  </div>
-	                </div>
-	              )}
-	              {distributionPreview}
-	            </div>
+          {activeTab === "basic" && (
+            <IctBasicInfo state={state} calculations={calculations} />
           )}
 
           {activeTab === "revenue" && (
@@ -906,10 +540,10 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                 <div className="flex gap-4 items-end">
                   <div className="flex flex-col gap-1.5 flex-1">
                     <label className="text-xs font-bold text-foreground">含税总收入 (项目总金额)</label>
-                    <input 
-                      type="number" 
-                      placeholder="输入总金额" 
-                      value={quickRevTotal} 
+                    <input
+                      type="number"
+                      placeholder="输入总金额"
+                      value={quickRevTotal}
                       onChange={e => {
                         const val = e.target.value;
                         setQuickRevTotal(val);
@@ -919,8 +553,8 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                         } else {
                           setQuickRevProduct("");
                         }
-                      }} 
-                      className="bg-background border border-border px-3 py-2 rounded-md outline-none focus:border-primary text-sm font-semibold shadow-sm" 
+                      }}
+                      className="bg-background border border-border px-3 py-2 rounded-md outline-none focus:border-primary text-sm font-semibold shadow-sm"
                     />
                   </div>
                   <div className="flex flex-col gap-1.5 flex-1">
@@ -928,29 +562,29 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                       <span>含税产品收入 (自有产品)</span>
                       <span className="text-[10px] text-primary font-mono font-medium">默认1%</span>
                     </label>
-                    <input 
-                      type="number" 
-                      placeholder="产品金额" 
-                      value={quickRevProduct} 
-                      onChange={e => setQuickRevProduct(e.target.value)} 
-                      className="bg-background border border-border px-3 py-2 rounded-md outline-none focus:border-primary text-sm font-semibold shadow-sm" 
+                    <input
+                      type="number"
+                      placeholder="产品金额"
+                      value={quickRevProduct}
+                      onChange={e => setQuickRevProduct(e.target.value)}
+                      className="bg-background border border-border px-3 py-2 rounded-md outline-none focus:border-primary text-sm font-semibold shadow-sm"
                     />
                   </div>
                   <div className="flex flex-col gap-1.5 flex-1">
                     <label className="text-xs font-bold text-primary">系统集成服务收入 (自动扣减)</label>
-                    <input 
-                      type="number" 
-                      disabled 
-                      value={Math.max(0, (Number(quickRevTotal)||0) - (Number(quickRevProduct)||0)).toFixed(2)} 
-                      className="bg-background/50 border border-primary/30 px-3 py-2 rounded-md outline-none text-sm font-bold text-primary shadow-sm" 
+                    <input
+                      type="number"
+                      disabled
+                      value={Math.max(0, (Number(quickRevTotal)||0) - (Number(quickRevProduct)||0)).toFixed(2)}
+                      className="bg-background/50 border border-primary/30 px-3 py-2 rounded-md outline-none text-sm font-bold text-primary shadow-sm"
                     />
                   </div>
-                  <button 
+                  <button
                     onClick={() => {
                       const integration = Math.max(0, (Number(quickRevTotal)||0) - (Number(quickRevProduct)||0));
                       updateTaxItem('revIt', 'integration', 'incl', Number(integration.toFixed(2)));
                       if (quickRevProduct) updateTaxItem('revCt', 'product', 'incl', Number(Number(quickRevProduct).toFixed(2)));
-                    }} 
+                    }}
                     className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-bold px-5 py-2 rounded-md text-sm hover:bg-primary/90 transition-all shadow-sm hover:shadow active:scale-[0.98]"
                   >
                     <AppIcon name="download" size={16} /> 一键填入表单
@@ -998,73 +632,28 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
           )}
 
           {activeTab === "cashflow" && (
-            <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
-              <h3 className="text-lg font-bold text-foreground mb-6">1-10年项目现金流推演</h3>
-              {distributionPreview}
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-right border-separate border-spacing-y-2">
-                  <thead>
-                    <tr className="text-secondary-foreground font-bold text-xs uppercase">
-                      <th className="text-left pb-2">年份</th><th className="pb-2">现金流入</th><th className="pb-2">现金流出</th><th className="pb-2">净流量</th><th className="pb-2">累计净流量</th><th className="pb-2">净流量现值</th><th className="pb-2">累计现值</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cashflowTable.map((row: any, i: number) => (
-                      <tr key={i} className="bg-muted">
-                        <td className="text-left p-3 rounded-l-md font-semibold">第{row.year}年</td>
-                        <td className="p-3">{formatCurrency(row.cash_in)}</td><td className="p-3">{formatCurrency(row.cash_out)}</td>
-                        <td className="p-3 font-bold text-primary">{formatCurrency(row.net_cash)}</td><td className="p-3">{formatCurrency(row.cum_net_cash)}</td>
-                        <td className="p-3">{formatCurrency(row.pv)}</td><td className="p-3 rounded-r-md">{formatCurrency(row.cum_pv)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <IctCashflowTable state={state} calculations={calculations} />
           )}
 
           <div className={`bg-card border border-border rounded-xl p-8 shadow-sm flex-col gap-6 ${activeTab === "generate" ? "flex" : "hidden"}`}>
             <h3 className="text-lg font-bold text-foreground">即将生成：{selectedTemplate}</h3>
-            <TemplateForms 
-              selectedTemplate={selectedTemplate} 
-              projectData={{ basic: {proj_name: projName, customer_name: customerName, project_years: projectYears}, cost: { it: costIt, ct: costCt, mix: costMix }, revenue: { it: revIt, ct: revCt, non_it_ct: revNonItCt } }} 
+            <TemplateForms
+              selectedTemplate={selectedTemplate}
+              projectData={{ basic: {proj_name: projName, customer_name: customerName, project_years: projectYears}, cost: { it: costIt, ct: costCt, mix: costMix }, revenue: { it: revIt, ct: revCt, non_it_ct: revNonItCt } }}
               metrics={metrics}
-              projectBackground={projectBackground} 
-              setProjectBackground={setProjectBackground} 
-              techItems={techItems}
-              setTechItems={setTechItems}
-              inqVendors={inqVendors}
-              setInqVendors={setInqVendors}
+              projectBackground={state.projectBackground}
+              setProjectBackground={state.setProjectBackground}
+              techItems={state.techItems}
+              setTechItems={state.setTechItems}
+              inqVendors={state.inqVendors}
+              setInqVendors={state.setInqVendors}
+              outputDir={activeProject?.folder_path ? `${activeProject.folder_path}/output` : undefined}
             />
           </div>
 
-          <div className="mt-auto pt-6 border-t border-border mt-8">
-            <h3 className="text-sm font-bold text-secondary-foreground mb-4">实时效益评估结果</h3>
-            <div className="grid grid-cols-5 gap-4">
-              <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
-                <span className="text-xs font-semibold text-secondary-foreground">项目净现值 (NPV)</span>
-                <span id="ict-metric-npv" className="text-lg font-bold">{formatCurrency(metrics.npv)}</span>
-              </div>
-              <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
-                <span className="text-xs font-semibold text-secondary-foreground">净现值率</span>
-                <span id="ict-metric-npv-rate" className="text-lg font-bold text-green-600">{formatPercent(metrics.npv_rate)}</span>
-              </div>
-              <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
-                <span className="text-xs font-semibold text-secondary-foreground">毛利润率</span>
-                <span id="ict-metric-margin" className="text-lg font-bold text-green-600">{formatPercent(metrics.margin_rate)}</span>
-              </div>
-              <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
-                <span className="text-xs font-semibold text-secondary-foreground">动态回收期 (年)</span>
-                <span id="ict-metric-payback" className="text-lg font-bold">{metrics.dynamic_payback}</span>
-              </div>
-              <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
-                <span className="text-xs font-semibold text-secondary-foreground">内部收益率 (IRR)</span>
-                <span id="ict-metric-irr" className="text-lg font-bold">{metrics.irr}</span>
-              </div>
-            </div>
-          </div>
+          <IctMetricsDashboard metrics={metrics} />
         </div>
-        
+
         {(activeTab === 'revenue' || activeTab === 'cost') && (
           <div className="w-[300px] bg-card border-l border-border p-6 flex flex-col shrink-0 overflow-y-auto animate-in slide-in-from-right duration-200">
             <h3 className="font-bold text-foreground mb-4">智能反算</h3>
@@ -1107,8 +696,8 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                  <label className="text-xs font-semibold text-primary">甄选最高限价 (反向测算入口)</label>
                  <input type="number" value={selLimit} onChange={e => handleSelFeeChange('limit', e.target.value)} className="bg-primary/5 border border-primary px-3 py-2 rounded-md text-sm outline-none text-primary font-bold" />
               </div>
-              <button 
-                onClick={applySelectionLimit} 
+              <button
+                onClick={applySelectionLimit}
                 disabled={!selLimit}
                 className="mt-2 bg-primary hover:bg-primary/95 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed font-bold py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all active:scale-[0.98] w-full text-xs flex items-center justify-center gap-1.5"
               >
@@ -1129,9 +718,9 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
                 <p className="text-xs text-red-600/80 mt-0.5">检测到税前/税后金额转换存在微小尾差，系统已拦截保存操作。</p>
               </div>
             </div>
-            
+
             <div className="p-6 overflow-y-auto max-h-[60vh] flex flex-col gap-4 bg-muted/30">
-              {reconciliationErrors.map((err, i) => (
+              {reconciliationErrors.map((err: ValidationReport, i: number) => (
                 <div key={i} className="bg-background border border-red-200 p-4 rounded-lg flex flex-col gap-2">
                   <div className="flex justify-between items-center">
                     <span className="font-bold text-sm bg-red-100 text-red-800 px-2 py-0.5 rounded">
@@ -1159,14 +748,14 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
 
             <div className="border-t border-border p-4 bg-background flex justify-end gap-3">
               {Math.abs(Number(currentTotalDifference)) <= 0.10 && (
-                <button 
+                <button
                   onClick={() => setShowConfirmIgnore(true)}
                   className="px-6 py-2 border border-border hover:bg-muted text-secondary-foreground font-bold rounded-md shadow-sm transition-colors text-sm"
                 >
                   忽略微小尾差，继续提交
                 </button>
               )}
-              <button 
+              <button
                 onClick={() => setShowReconciliationModal(false)}
                 className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-md shadow-sm transition-colors text-sm"
               >
@@ -1198,6 +787,55 @@ export default function IctLifecycle({ onBack }: { onBack: () => void }) {
           </div>
         </div>
       )}
+
+      {showSaveAsModal && (
+        <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <form
+            onSubmit={handleSaveAsNew}
+            className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm overflow-hidden"
+          >
+            <div className="px-6 py-4 border-b border-border bg-muted/30 flex items-center justify-between">
+              <h4 className="font-bold text-sm text-foreground">另存为新方案</h4>
+              <button
+                type="button"
+                onClick={() => setShowSaveAsModal(false)}
+                className="text-secondary-foreground hover:bg-secondary p-1 rounded-md"
+              >
+                <AppIcon name="close" size={14} />
+              </button>
+            </div>
+            <div className="p-6">
+              <label className="text-xs font-semibold text-secondary-foreground block mb-1.5">方案名称 <span className="text-red-500">*</span></label>
+              <input
+                id="save_as_new_scheme_name_input"
+                type="text"
+                required
+                placeholder="例如：方案 B、第二轮测算"
+                value={saveAsSchemeName}
+                onChange={(e) => setSaveAsSchemeName(e.target.value)}
+                className="bg-background border border-border px-3 py-2 rounded-lg text-xs outline-none focus:border-primary w-full"
+              />
+            </div>
+            <div className="border-t border-border p-3 bg-muted/10 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSaveAsModal(false)}
+                className="px-3 py-1.5 border border-border hover:bg-secondary rounded-lg text-xs font-semibold text-secondary-foreground transition-all"
+              >
+                取消
+              </button>
+              <button
+                id="submit_save_as_new_scheme_btn"
+                type="submit"
+                disabled={!saveAsSchemeName.trim()}
+                className="px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-all"
+              >
+                确认
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
-  )
+  );
 }

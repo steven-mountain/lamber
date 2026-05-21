@@ -1,0 +1,176 @@
+import { invoke } from "@tauri-apps/api/core";
+
+export interface IctItem {
+  incl_tax: string;
+  tax_rate: string;
+}
+
+export interface CashflowSegment {
+  id: string;
+  name: string;
+  value: number;
+  revenueValue: number;
+  revenueTax: number;
+  revenueScope: string;
+  costValue: number;
+  costTax: number;
+  costScope: string;
+  startYear: number;
+  serviceYears: number;
+  revenueMode: string;
+  costMode: string;
+  revenueAnnualValues: number[];
+  costAnnualValues: number[];
+}
+
+export interface IctInput {
+  project_name: string;
+  customer_name?: string;
+  property_rights: string;
+  discount_rate: string;
+  project_years?: number;
+  cashflow_model?: string;
+  cashflow_segment_value_mode?: string;
+  cashflow_segments?: CashflowSegment[];
+  ignore_tail_difference?: boolean;
+  tail_difference_value?: string;
+  rev_distribution: number[];
+  cost_distribution: number[];
+  rev_cashflow_excl?: string[] | null;
+  cost_cashflow_excl?: string[] | null;
+  it_rev_cashflow_excl?: string[] | null;
+  it_cost_cashflow_excl?: string[] | null;
+  [key: string]: any;
+}
+
+export interface IctCashflowRow {
+  year: number;
+  cash_in: string;
+  cash_out: string;
+  net_cash: string;
+  cum_net_cash: string;
+  pv: string;
+  cum_pv: string;
+}
+
+export interface IctResult {
+  npv: string;
+  npv_rate: string;
+  margin_rate: string;
+  dynamic_payback: string;
+  irr: string;
+  it_npv: string;
+  it_npv_rate: string;
+  it_margin_rate: string;
+  cashflow: IctCashflowRow[];
+}
+
+export interface ProjectLog {
+  id: string;
+  timestamp: string;
+  description: string;
+}
+
+export interface SummaryMetrics {
+  margin_rate: string;
+  npv: string;
+  npv_rate: string;
+  irr: string;
+  dynamic_payback: string;
+  risk_level: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  customer_name: string;
+  status: string; // "立项中", "审批中", "实施中", "已完成"
+  benefit_status: "not_started" | "normal" | "outdated";
+  default_scheme_id?: string | null;
+  created_at: string;
+  updated_at: string;
+
+  total_revenue_incl: number;
+  total_cost_incl: number;
+  project_years: number;
+  discount_rate: number;
+  cashflow_model: string;
+
+  summary_metrics?: SummaryMetrics | null;
+  folder_path?: string | null;
+  main_document_path?: string | null;
+  main_budget_file_path?: string | null;
+  note?: string | null;
+  logs: ProjectLog[];
+}
+
+export interface BenefitAnalysisScheme {
+  id: string;
+  project_id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BenefitAnalysisSnapshot {
+  id: string;
+  scheme_id: string;
+  project_id: string;
+  version: number;
+  input_params: IctInput;
+  output_metrics: IctResult;
+  fingerprint: string;
+  created_at: string;
+}
+
+export const projectService = {
+  async getProjects(): Promise<Project[]> {
+    return invoke<Project[]>("get_projects");
+  },
+
+  async getProject(id: string): Promise<Project | null> {
+    return invoke<Project | null>("get_project", { id });
+  },
+
+  async createProject(name: string, customerName: string): Promise<Project> {
+    return invoke<Project>("create_project", { name, customerName });
+  },
+
+  async updateProject(project: Project): Promise<Project> {
+    return invoke<Project>("update_project", { project });
+  },
+
+  async deleteProject(id: string): Promise<void> {
+    return invoke<void>("delete_project", { id });
+  },
+
+  async deleteBenefitScheme(projectId: string, schemeId: string): Promise<Project> {
+    return invoke<Project>("delete_benefit_scheme", { projectId, schemeId });
+  },
+
+  async getSchemes(projectId: string): Promise<BenefitAnalysisScheme[]> {
+    return invoke<BenefitAnalysisScheme[]>("get_schemes", { projectId });
+  },
+
+  async getSnapshots(schemeId: string): Promise<BenefitAnalysisSnapshot[]> {
+    return invoke<BenefitAnalysisSnapshot[]>("get_snapshots", { schemeId });
+  },
+
+  async saveBenefitScheme(
+    projectId: string,
+    schemeIdOpt: string | null,
+    schemeName: string,
+    inputParams: any,
+    outputMetrics: any,
+    isSaveAsNew: boolean
+  ): Promise<Project> {
+    return invoke<Project>("save_benefit_scheme", {
+      projectId,
+      schemeIdOpt,
+      schemeName,
+      inputParams,
+      outputMetrics,
+      isSaveAsNew,
+    });
+  },
+};

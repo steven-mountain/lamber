@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -16,7 +16,10 @@ pub struct ConfigManager {
 
 impl ConfigManager {
     pub fn new(app_handle: &AppHandle) -> Self {
-        let mut config_path = app_handle.path().app_data_dir().expect("Failed to get app data dir");
+        let mut config_path = app_handle
+            .path()
+            .app_data_dir()
+            .expect("Failed to get app data dir");
         // Ensure the directory exists
         if !config_path.exists() {
             fs::create_dir_all(&config_path).unwrap();
@@ -43,9 +46,11 @@ impl ConfigManager {
     /// Resolves a path within a module's workspace and ensures the directory exists.
     pub fn resolve_module_path(&self, module_id: &str, sub_dir: &str) -> Result<PathBuf, String> {
         let config = self.load();
-        let base_path_str = config.module_paths.get(module_id)
+        let base_path_str = config
+            .module_paths
+            .get(module_id)
             .ok_or_else(|| format!("未设置模块 {} 的工作目录", module_id))?;
-        
+
         let mut path = PathBuf::from(base_path_str);
         if !sub_dir.is_empty() {
             path.push(sub_dir);

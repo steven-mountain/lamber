@@ -1,21 +1,21 @@
 use crate::config_manager;
-use std::collections::{HashSet, HashMap};
+use base64::Engine;
+use regex::Regex;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{Read, Write};
-use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
-use regex::Regex;
-use base64::Engine;
+use zip::{write::SimpleFileOptions, ZipArchive, ZipWriter};
 
-/// Attempts to parse out `{variable}` placeholders. 
-/// In raw XML, tags might be fragmented like `<w:t>{</w:t> ... <w:t>name</w:t>`. 
+/// Attempts to parse out `{variable}` placeholders.
+/// In raw XML, tags might be fragmented like `<w:t>{</w:t> ... <w:t>name</w:t>`.
 /// To handle this, we do a purely text-based extraction by stripping XML tags first.
 #[tauri::command]
 pub fn extract_docx_variables(path: String) -> Result<Vec<String>, String> {
     let file = File::open(&path).map_err(|e| format!("Failed to open file: {}", e))?;
     let mut archive = ZipArchive::new(file).map_err(|e| format!("Failed to read zip: {}", e))?;
-    
+
     let mut doc_xml = String::new();
-    
+
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).unwrap();
         if file.name().ends_with(".xml") {
@@ -51,17 +51,27 @@ pub fn extract_docx_variables(path: String) -> Result<Vec<String>, String> {
 
 /// Generates the docx by replacing variables in the xml files.
 #[tauri::command]
-pub fn generate_docx(template_path: String, output_path: String, variables: HashMap<String, String>) -> Result<(), String> {
+pub fn generate_docx(
+    template_path: String,
+    output_path: String,
+    variables: HashMap<String, String>,
+) -> Result<(), String> {
     internal_generate_docx(&template_path, &output_path, &variables)
 }
 
-fn internal_generate_docx(template_path: &str, output_path: &str, variables: &HashMap<String, String>) -> Result<(), String> {
+fn internal_generate_docx(
+    template_path: &str,
+    output_path: &str,
+    variables: &HashMap<String, String>,
+) -> Result<(), String> {
     let file = File::open(template_path).map_err(|e| format!("Failed to open template: {}", e))?;
-    let mut archive = ZipArchive::new(file).map_err(|e| format!("Failed to read template zip: {}", e))?;
-    
-    let out_file = File::create(output_path).map_err(|e| format!("Failed to create output: {}", e))?;
+    let mut archive =
+        ZipArchive::new(file).map_err(|e| format!("Failed to read template zip: {}", e))?;
+
+    let out_file =
+        File::create(output_path).map_err(|e| format!("Failed to create output: {}", e))?;
     let mut zip_writer = ZipWriter::new(out_file);
-    
+
     let options: SimpleFileOptions = SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Stored)
         .unix_permissions(0o755);
@@ -71,22 +81,32 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
         let mut f = archive.by_index(i).unwrap();
         let name = f.name().to_string();
         let mut content = Vec::new();
-        f.read_to_end(&mut content).map_err(|e| format!("Read error: {}", e))?;
+        f.read_to_end(&mut content)
+            .map_err(|e| format!("Read error: {}", e))?;
         files.push((name, content));
     }
 
-    let mut image_map: HashMap<String, Vec<(Vec<u8>, String, String, u32, u32, String)>> = HashMap::new();
+    let mut image_map: HashMap<String, Vec<(Vec<u8>, String, String, u32, u32, String)>> =
+        HashMap::new();
     for (k, v) in variables {
-        if !k.contains("IMAGE") && !k.contains("SCREENSHOT") { continue; }
+        if !k.contains("IMAGE") && !k.contains("SCREENSHOT") {
+            continue;
+        }
         let val = v.trim();
-        if val.is_empty() { continue; }
+        if val.is_empty() {
+            continue;
+        }
 
         let mut raw_images = Vec::new();
         if val.starts_with('[') {
             // JSON array of images
             if let Ok(list) = serde_json::from_str::<Vec<serde_json::Value>>(val) {
                 for item in list {
-                    if let (Some(data), Some(w), Some(h)) = (item["data"].as_str(), item["width"].as_u64(), item["height"].as_u64()) {
+                    if let (Some(data), Some(w), Some(h)) = (
+                        item["data"].as_str(),
+                        item["width"].as_u64(),
+                        item["height"].as_u64(),
+                    ) {
                         let title = item["title"].as_str().unwrap_or("").to_string();
                         raw_images.push((data.to_string(), w as u32, h as u32, title));
                     }
@@ -103,8 +123,16 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
                 Some(x) => x,
                 None => continue,
             };
-            let ext = if meta.contains("image/png") { "png" } else { "jpg" };
-            let ct = if ext == "png" { "image/png" } else { "image/jpeg" };
+            let ext = if meta.contains("image/png") {
+                "png"
+            } else {
+                "jpg"
+            };
+            let ct = if ext == "png" {
+                "image/png"
+            } else {
+                "image/jpeg"
+            };
             if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(b64) {
                 processed.push((bytes, ext.to_string(), ct.to_string(), w, h, title));
             }
@@ -127,21 +155,32 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
 
             for (k, v) in variables {
                 if k.starts_with("TABLE_") {
-                    if let Ok(rows_data) = serde_json::from_str::<Vec<std::collections::HashMap<String, String>>>(v) {
+                    if let Ok(rows_data) =
+                        serde_json::from_str::<Vec<std::collections::HashMap<String, String>>>(v)
+                    {
                         let first_key = if !rows_data.is_empty() {
                             rows_data[0].keys().next().cloned()
                         } else {
-                            if k == "TABLE_TECH_ITEMS" { Some("TECH_ITEM_NAME".to_string()) }
-                            else if k == "TABLE_INQ_VENDORS" { Some("INQ_VENDOR_NAME".to_string()) }
-                            else { None }
+                            if k == "TABLE_TECH_ITEMS" {
+                                Some("TECH_ITEM_NAME".to_string())
+                            } else if k == "TABLE_INQ_VENDORS" {
+                                Some("INQ_VENDOR_NAME".to_string())
+                            } else {
+                                None
+                            }
                         };
 
                         if let Some(first_key) = first_key {
                             let pattern = format!("{{{}}}", first_key);
 
                             if let Some(idx) = xml_str.find(&pattern) {
-                                let tr_start = xml_str[..idx].rfind("<w:tr>").or_else(|| xml_str[..idx].rfind("<w:tr ")).unwrap_or(0);
-                                let tr_end_rel = xml_str[idx..].find("</w:tr>").unwrap_or(xml_str.len() - idx);
+                                let tr_start = xml_str[..idx]
+                                    .rfind("<w:tr>")
+                                    .or_else(|| xml_str[..idx].rfind("<w:tr "))
+                                    .unwrap_or(0);
+                                let tr_end_rel = xml_str[idx..]
+                                    .find("</w:tr>")
+                                    .unwrap_or(xml_str.len() - idx);
                                 let tr_end = idx + tr_end_rel + 7;
 
                                 if tr_start < tr_end && tr_end <= xml_str.len() {
@@ -152,15 +191,24 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
                                         let mut new_row = row_xml.to_string();
                                         for (rk, rv) in &row_data {
                                             let r_pattern = format!("{{{}}}", rk);
-                                            let escaped_rv = rv.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-                                            let docx_rv = escaped_rv.replace("\n", "</w:t><w:br/><w:t>");
+                                            let escaped_rv = rv
+                                                .replace("&", "&amp;")
+                                                .replace("<", "&lt;")
+                                                .replace(">", "&gt;");
+                                            let docx_rv =
+                                                escaped_rv.replace("\n", "</w:t><w:br/><w:t>");
                                             new_row = new_row.replace(&r_pattern, &docx_rv);
                                         }
                                         let re = regex::Regex::new(r"\{[A-Z_0-9]+\}").unwrap();
                                         new_row = re.replace_all(&new_row, "").to_string();
                                         new_rows.push_str(&new_row);
                                     }
-                                    xml_str = format!("{}{}{}", &xml_str[..tr_start], new_rows, &xml_str[tr_end..]);
+                                    xml_str = format!(
+                                        "{}{}{}",
+                                        &xml_str[..tr_start],
+                                        new_rows,
+                                        &xml_str[tr_end..]
+                                    );
                                 }
                             }
                         }
@@ -170,7 +218,9 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
 
             for (key, images) in &image_map {
                 let placeholder = format!("{{{}}}", key);
-                if !xml_str.contains(&placeholder) { continue; }
+                if !xml_str.contains(&placeholder) {
+                    continue;
+                }
 
                 let mut combined_xml = String::new();
                 // Close the current text run and paragraph in which the placeholder resides
@@ -178,7 +228,12 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
 
                 let mut prev_title = String::new();
                 for (idx, (bytes, ext, ct, w, h, title)) in images.iter().enumerate() {
-                    let safe_key = format!("{}_{}", key.to_lowercase().replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_"), idx);
+                    let safe_key = format!(
+                        "{}_{}",
+                        key.to_lowercase()
+                            .replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_"),
+                        idx
+                    );
                     let media_name = format!("word/media/{}.{}", safe_key, ext);
                     let rid = format!("rId{}", docpr_id);
                     docpr_id += 1;
@@ -194,7 +249,7 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
                     if *w > 0 && *h > 0 {
                         let original_cx = (*w as u64) * 9525; // 1 pixel ~= 9525 EMUs at 96dpi
                         let original_cy = (*h as u64) * 9525;
-                        
+
                         if original_cx < cx {
                             cx = original_cx;
                             cy = original_cy;
@@ -209,13 +264,17 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
                     if is_new_vendor {
                         if idx > 0 {
                             // Add empty line between DIFFERENT vendors
-                            combined_xml.push_str("<w:p><w:pPr><w:jc w:val=\"left\"/></w:pPr></w:p>");
+                            combined_xml
+                                .push_str("<w:p><w:pPr><w:jc w:val=\"left\"/></w:pPr></w:p>");
                         }
-                        
+
                         // Open left-aligned paragraph for the vendor
                         combined_xml.push_str("<w:p><w:pPr><w:jc w:val=\"left\"/></w:pPr>");
 
-                        let escaped_title = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+                        let escaped_title = title
+                            .replace("&", "&amp;")
+                            .replace("<", "&lt;")
+                            .replace(">", "&gt;");
                         // Render Title as a bolded text run, then a break
                         combined_xml.push_str(&format!(
                             r#"<w:r><w:rPr><w:b/></w:rPr><w:t>{}</w:t></w:r><w:r><w:br/></w:r>"#,
@@ -226,8 +285,6 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
                         // Same vendor (or empty title), no empty line, no title, just open a new paragraph
                         combined_xml.push_str("<w:p><w:pPr><w:jc w:val=\"left\"/></w:pPr>");
                     }
-
-
 
                     // Render the drawing run inside the same paragraph
                     combined_xml.push_str(&format!(
@@ -251,11 +308,18 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
             }
 
             for (k, v) in variables {
-                if k.starts_with("TABLE_") { continue; }
-                if image_map.contains_key(k) { continue; }
+                if k.starts_with("TABLE_") {
+                    continue;
+                }
+                if image_map.contains_key(k) {
+                    continue;
+                }
                 let pattern = format!("{{{}}}", k);
-                let escaped_v = v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-                
+                let escaped_v = v
+                    .replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;");
+
                 let docx_v = if k == "VENDOR_SCREENSHOT_LIST" {
                     let mut formatted = String::new();
                     // Close original paragraph
@@ -276,7 +340,7 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
                 } else {
                     escaped_v.replace("\n", "</w:t><w:br/><w:t>")
                 };
-                
+
                 xml_str = xml_str.replace(&pattern, &docx_v);
             }
 
@@ -304,9 +368,12 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
                 let mut xml = String::from_utf8(content.clone()).map_err(|e| e.to_string())?;
                 for (ext, ct) in &content_type_additions {
                     let pat = format!(r#"Extension="{}""#, ext);
-                    if xml.contains(&pat) { continue; }
+                    if xml.contains(&pat) {
+                        continue;
+                    }
                     if let Some(idx) = xml.rfind("</Types>") {
-                        let insert = format!(r#"<Default Extension="{}" ContentType="{}"/>"#, ext, ct);
+                        let insert =
+                            format!(r#"<Default Extension="{}" ContentType="{}"/>"#, ext, ct);
                         xml = format!("{}{}{}", &xml[..idx], insert, &xml[idx..]);
                     }
                 }
@@ -316,15 +383,21 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
     }
 
     for (name, content) in &files {
-        zip_writer.start_file(name, options).map_err(|e| e.to_string())?;
+        zip_writer
+            .start_file(name, options)
+            .map_err(|e| e.to_string())?;
         zip_writer.write_all(content).map_err(|e| e.to_string())?;
     }
     for (name, content) in &media_additions {
-        zip_writer.start_file(name, options).map_err(|e| e.to_string())?;
+        zip_writer
+            .start_file(name, options)
+            .map_err(|e| e.to_string())?;
         zip_writer.write_all(content).map_err(|e| e.to_string())?;
     }
-    
-    zip_writer.finish().map_err(|e| format!("Finish zip error: {}", e))?;
+
+    zip_writer
+        .finish()
+        .map_err(|e| format!("Finish zip error: {}", e))?;
     Ok(())
 }
 
@@ -333,7 +406,7 @@ fn internal_generate_docx(template_path: &str, output_path: &str, variables: &Ha
 fn clean_xml_placeholders(xml: &str) -> String {
     let re = Regex::new(r"\{(<[^>]+>|[^}])*?\}").unwrap();
     let tag_re = Regex::new(r"<[^>]+>").unwrap();
-    
+
     re.replace_all(xml, |caps: &regex::Captures| {
         let matched = &caps[0];
         if matched.contains('<') {
@@ -343,20 +416,27 @@ fn clean_xml_placeholders(xml: &str) -> String {
         } else {
             matched.to_string()
         }
-    }).to_string()
+    })
+    .to_string()
 }
 
 #[tauri::command]
-pub fn get_available_templates(state: tauri::State<'_, std::sync::Mutex<config_manager::AppConfig>>, module_id: String) -> Result<Vec<String>, String> {
+pub fn get_available_templates(
+    state: tauri::State<'_, std::sync::Mutex<config_manager::AppConfig>>,
+    module_id: String,
+) -> Result<Vec<String>, String> {
     use std::fs;
     let config = state.lock().unwrap();
-    let module_path = config.module_paths.get(&module_id).ok_or("未设置工作目录")?;
+    let module_path = config
+        .module_paths
+        .get(&module_id)
+        .ok_or("未设置工作目录")?;
     let template_dir = std::path::Path::new(module_path).join("templates");
-    
+
     if !template_dir.exists() {
         return Ok(vec![]);
     }
-    
+
     let mut templates = Vec::new();
     if let Ok(entries) = fs::read_dir(&template_dir) {
         for entry in entries.flatten() {
@@ -365,77 +445,117 @@ pub fn get_available_templates(state: tauri::State<'_, std::sync::Mutex<config_m
                 if let Some(ext) = path.extension() {
                     let ext_str = ext.to_string_lossy().to_lowercase();
                     let file_name = path.file_name().unwrap().to_string_lossy().to_string();
-                    if (ext_str == "docx" || ext_str == "xlsx") && !file_name.starts_with("~$") && !file_name.starts_with(".~") {
+                    if (ext_str == "docx" || ext_str == "xlsx")
+                        && !file_name.starts_with("~$")
+                        && !file_name.starts_with(".~")
+                    {
                         templates.push(file_name);
                     }
                 }
             }
         }
     }
-    
+
     Ok(templates)
 }
 
 #[tauri::command]
-pub fn generate_lifecycle_docs(state: tauri::State<'_, std::sync::Mutex<config_manager::AppConfig>>, module_id: String, variables: HashMap<String, String>, selected_templates: Vec<String>) -> Result<String, String> {
+pub fn generate_lifecycle_docs(
+    state: tauri::State<'_, std::sync::Mutex<config_manager::AppConfig>>,
+    module_id: String,
+    variables: HashMap<String, String>,
+    selected_templates: Vec<String>,
+    output_dir: Option<String>,
+) -> Result<String, String> {
     use std::fs;
-    
-    let config = state.lock().unwrap();
-    let module_path = config.module_paths.get(&module_id).ok_or("未设置工作目录")?;
-    let base_path = std::path::Path::new(module_path);
-    
+
+    let module_path = {
+        let config = state.lock().unwrap();
+        config
+            .module_paths
+            .get(&module_id)
+            .ok_or("未设置工作目录")?
+            .clone()
+    };
+    let base_path = std::path::Path::new(&module_path);
+
     let template_dir = base_path.join("templates");
-    
+
     if !template_dir.exists() {
         return Err(format!("未找到模板目录: {}", template_dir.display()));
     }
-    
-    let output_dir = base_path.join("output");
+
+    let output_dir = output_dir
+        .filter(|path| !path.trim().is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| base_path.join("output"));
     if !output_dir.exists() {
         fs::create_dir_all(&output_dir).map_err(|e| format!("创建输出目录失败: {}", e))?;
     }
-    
+
     let mut generated_count = 0;
-    
+
     // Iterate over files in template directory
     let entries = fs::read_dir(&template_dir).map_err(|e| e.to_string())?;
     for entry_result in entries {
         let entry = entry_result.map_err(|e| e.to_string())?;
         let path = entry.path();
-        
+
         if path.is_file() {
             if let Some(ext) = path.extension() {
                 let ext_str = ext.to_string_lossy().to_lowercase();
                 let file_name = path.file_name().unwrap().to_string_lossy().to_string();
-                
+
                 // Ignore temporary files created by MS Word/Excel (starting with ~$)
-                if (ext_str == "docx" || ext_str == "xlsx") && !file_name.starts_with("~$") && !file_name.starts_with(".~") {
-                    
+                if (ext_str == "docx" || ext_str == "xlsx")
+                    && !file_name.starts_with("~$")
+                    && !file_name.starts_with(".~")
+                {
                     // Only generate files that the user explicitly selected
                     if !selected_templates.contains(&file_name) {
                         continue;
                     }
-                    
-                    let proj_name = variables.get("PROJECT_NAME").cloned().unwrap_or_else(|| "未命名".to_string());
-                    let safe_proj_name = proj_name.chars().filter(|c| !r#"\/:*?"<>|"#.contains(*c)).collect::<String>();
-                    
+
+                    let proj_name = variables
+                        .get("PROJECT_NAME")
+                        .cloned()
+                        .unwrap_or_else(|| "未命名".to_string());
+                    let safe_proj_name = proj_name
+                        .chars()
+                        .filter(|c| !r#"\/:*?"<>|"#.contains(*c))
+                        .collect::<String>();
+
                     // First clean up some generic template markings
-                    let mut clean_name = file_name.replace("模板", "").replace("【2024版】", "").replace("【2025版】", "").replace("_变量版", "");
+                    let mut clean_name = file_name
+                        .replace("模板", "")
+                        .replace("【2024版】", "")
+                        .replace("【2025版】", "")
+                        .replace("_变量版", "");
                     // Remove extension
                     if let Some(dot_idx) = clean_name.rfind('.') {
                         clean_name = clean_name[..dot_idx].to_string();
                     }
                     // Trim trailing hyphens or underscores
-                    clean_name = clean_name.trim_end_matches('-').trim_end_matches('_').to_string();
-                    
+                    clean_name = clean_name
+                        .trim_end_matches('-')
+                        .trim_end_matches('_')
+                        .to_string();
+
                     // Reconstruct: clean_name-project_name.extension
                     let out_name = format!("{}-{}.{}", clean_name, safe_proj_name, ext_str);
-                    
+
                     let out_path = output_dir.join(&out_name);
-                    
+
                     if ext_str == "docx" {
-                        if let Err(e) = internal_generate_docx(path.to_str().unwrap(), out_path.to_str().unwrap(), &variables) {
-                            println!("Warning: failed to process docx template {}: {}", file_name, e);
+                        if let Err(e) = internal_generate_docx(
+                            path.to_str().unwrap(),
+                            out_path.to_str().unwrap(),
+                            &variables,
+                        ) {
+                            println!(
+                                "Warning: failed to process docx template {}: {}",
+                                file_name, e
+                            );
                             continue;
                         }
                     } else if ext_str == "xlsx" {
@@ -444,40 +564,56 @@ pub fn generate_lifecycle_docs(state: tauri::State<'_, std::sync::Mutex<config_m
                             println!("Warning: failed to copy xlsx template {}: {}", file_name, e);
                             continue;
                         }
-                        if let Err(e) = internal_generate_xlsx(out_path.to_str().unwrap(), &variables) {
-                            println!("Warning: failed to process xlsx template {}: {}", file_name, e);
+                        if let Err(e) =
+                            internal_generate_xlsx(out_path.to_str().unwrap(), &variables)
+                        {
+                            println!(
+                                "Warning: failed to process xlsx template {}: {}",
+                                file_name, e
+                            );
                             continue;
                         }
                     }
-                    
+
                     generated_count += 1;
                 }
             }
         }
     }
-    
+
     if generated_count == 0 {
         return Err("模板目录中未找到任何 .docx 模板文件。".into());
     }
-    
+
     Ok(output_dir.to_string_lossy().to_string())
 }
 
 #[tauri::command]
-pub fn batch_generate_docx_from_excel(state: tauri::State<'_, std::sync::Mutex<config_manager::AppConfig>>, module_id: String, excel_path: String, template_path: String) -> Result<String, String> {
+pub fn batch_generate_docx_from_excel(
+    state: tauri::State<'_, std::sync::Mutex<config_manager::AppConfig>>,
+    module_id: String,
+    excel_path: String,
+    template_path: String,
+) -> Result<String, String> {
     use calamine::{open_workbook, Reader, Xlsx};
     use chrono::Local;
 
-    let mut workbook: Xlsx<_> = open_workbook(&excel_path).map_err(|e| format!("打开Excel异常: {}", e))?;
+    let mut workbook: Xlsx<_> =
+        open_workbook(&excel_path).map_err(|e| format!("打开Excel异常: {}", e))?;
     let sheet_names = workbook.sheet_names().to_owned();
     let sheet_name = sheet_names.first().ok_or("找不到工作表")?.clone();
-    let range = workbook.worksheet_range(&sheet_name).map_err(|e| format!("读取工作表异常: {}", e))?;
+    let range = workbook
+        .worksheet_range(&sheet_name)
+        .map_err(|e| format!("读取工作表异常: {}", e))?;
 
     // Create output directory from module config
     let config = state.lock().unwrap();
-    let module_path = config.module_paths.get(&module_id).ok_or("未设置工作目录")?;
+    let module_path = config
+        .module_paths
+        .get(&module_id)
+        .ok_or("未设置工作目录")?;
     let output_dir = std::path::Path::new(module_path).join("output");
-    
+
     if !output_dir.exists() {
         std::fs::create_dir_all(&output_dir).map_err(|e| format!("创建输出目录失败: {}", e))?;
     }
@@ -490,8 +626,11 @@ pub fn batch_generate_docx_from_excel(state: tauri::State<'_, std::sync::Mutex<c
             headers.insert(h, i);
         }
     }
-    
-    println!("Found Excel Headers: {:?}", headers.keys().collect::<Vec<_>>());
+
+    println!(
+        "Found Excel Headers: {:?}",
+        headers.keys().collect::<Vec<_>>()
+    );
 
     // Mapping: Excel Header Label -> Docx Placeholder Name
     let mapping = [
@@ -517,11 +656,14 @@ pub fn batch_generate_docx_from_excel(state: tauri::State<'_, std::sync::Mutex<c
     for row in rows {
         let mut vars = HashMap::new();
         vars.insert("CURR_DATE".to_string(), curr_date.clone());
-        
+
         // Add default values for new dynamic subjects to ensure batch generation doesn't leave un-replaced placeholders
         vars.insert("SUBJECT_IT_COST".to_string(), "IT集成".to_string());
         vars.insert("SUBJECT_CT_COST".to_string(), "CT-专线及产品".to_string());
-        vars.insert("SUBJECT_IT_REV".to_string(), "小微ICT业务-IoT-集成".to_string());
+        vars.insert(
+            "SUBJECT_IT_REV".to_string(),
+            "小微ICT业务-IoT-集成".to_string(),
+        );
         vars.insert("SUBJECT_CT_REV".to_string(), "CT-专线及产品".to_string());
         vars.insert("PROJECT_BACKGROUND".to_string(), "".to_string());
 
@@ -529,25 +671,31 @@ pub fn batch_generate_docx_from_excel(state: tauri::State<'_, std::sync::Mutex<c
             if let Some(&idx) = headers.get(ch_key) {
                 if idx < row.len() {
                     let mut val = row[idx].to_string();
-                    
+
                     // Format percentage rates
                     if en_key.contains("RATE") || en_key.contains("MARGIN") {
                         if let Ok(num) = val.parse::<f64>() {
                             val = format!("{:.2}%", num * 100.0);
                         }
                     }
-                    
+
                     vars.insert(en_key.to_string(), val);
                 }
             }
         }
-        
+
         if count == 0 {
-           println!("Sample Variables for first row: {:?}", vars);
+            println!("Sample Variables for first row: {:?}", vars);
         }
 
-        let proj_name = vars.get("PROJECT_NAME").cloned().unwrap_or_else(|| format!("未命名_{}", count));
-        let safe_proj_name = proj_name.chars().filter(|c| !r#"\/:*?"<>|"#.contains(*c)).collect::<String>();
+        let proj_name = vars
+            .get("PROJECT_NAME")
+            .cloned()
+            .unwrap_or_else(|| format!("未命名_{}", count));
+        let safe_proj_name = proj_name
+            .chars()
+            .filter(|c| !r#"\/:*?"<>|"#.contains(*c))
+            .collect::<String>();
         let target_name = format!("立项签批表-{}.docx", safe_proj_name);
         let target_path = output_dir.join(target_name);
 
@@ -555,10 +703,17 @@ pub fn batch_generate_docx_from_excel(state: tauri::State<'_, std::sync::Mutex<c
         count += 1;
     }
 
-    Ok(format!("成功生成 {} 份签批表，保存在目录：\n{}", count, output_dir.display()))
+    Ok(format!(
+        "成功生成 {} 份签批表，保存在目录：\n{}",
+        count,
+        output_dir.display()
+    ))
 }
 
-fn internal_generate_xlsx(output_path: &str, variables: &HashMap<String, String>) -> Result<(), String> {
+fn internal_generate_xlsx(
+    output_path: &str,
+    variables: &HashMap<String, String>,
+) -> Result<(), String> {
     use umya_spreadsheet::*;
     let mut book = reader::xlsx::read(std::path::Path::new(output_path))
         .map_err(|e| format!("无法读取 Excel: {}", e))?;
@@ -569,7 +724,7 @@ fn internal_generate_xlsx(output_path: &str, variables: &HashMap<String, String>
             c.set_value(v);
             c.set_formula("");
         }
-        
+
         let mut set_val = |cell: &str, key: &str| {
             if let Some(v) = variables.get(key) {
                 let mut num_str = v.replace(",", "");
@@ -578,11 +733,11 @@ fn internal_generate_xlsx(output_path: &str, variables: &HashMap<String, String>
                     num_str = num_str.trim_end_matches('%').to_string();
                     is_pct = true;
                 }
-                
+
                 let cell_obj = sheet.get_cell_mut(cell);
                 // Do NOT clear formula if we are just filling inputs. Wait, if it's an input cell, we should clear formula if any? No, we only target cells we know. But wait, we target Q10, Q23, Q24, Q25. If they have formulas, we overwrite. If they don't, we overwrite.
                 // Wait, if the user explicitly wants to overwrite a cell, we overwrite it. But we MUST NOT overwrite C45-C50, C64-C66.
-                
+
                 if let Ok(mut num) = num_str.parse::<f64>() {
                     if is_pct {
                         num /= 100.0;

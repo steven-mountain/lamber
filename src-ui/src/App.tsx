@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import BenefitTool from "./views/BenefitTool"
 import DocfillTool from "./views/DocfillTool"
 import IctLifecycle from "./views/IctLifecycle"
+import ProjectBoard from "./views/ProjectBoard"
 import AiFloatingLauncher from "./components/ai/AiFloatingLauncher"
 import AiFloatingWindow from "./components/ai/AiFloatingWindow"
 import AppIcon from "./components/icons/AppIcon"
@@ -24,8 +25,10 @@ function getAiAssistantView() {
   return view || "hub"
 }
 
+import { useNavigationStore } from "./store/useNavigationStore"
+
 export default function App() {
-  const [currentView, setCurrentView] = useState("hub")
+  const { currentView, navigateTo } = useNavigationStore()
   const setActiveModule = useAiContextStore(state => state.setActiveModule)
   const aiAssistantView = getAiAssistantView()
 
@@ -35,6 +38,10 @@ export default function App() {
     localStorage.setItem(AI_CURRENT_VIEW_KEY, currentView)
     if (currentView === "hub") {
       setActiveModule("hub")
+    } else if (currentView === "project_board" || currentView === "ict_lifecycle") {
+      setActiveModule("ict")
+    } else {
+      setActiveModule(currentView)
     }
 
     if (isTauriRuntime()) {
@@ -50,20 +57,25 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground">
       {currentView === "hub" ? (
-        <HubView onOpenTool={setCurrentView} />
+        <HubView onOpenTool={(view) => navigateTo(view as any)} />
       ) : currentView === "benefit" ? (
-        <BenefitTool onBack={() => setCurrentView("hub")} />
+        <BenefitTool onBack={() => navigateTo("hub")} />
       ) : currentView === "docfill" ? (
-        <DocfillTool onBack={() => setCurrentView("hub")} />
-      ) : currentView === "ict" ? (
-        <IctLifecycle onBack={() => setCurrentView("hub")} />
+        <DocfillTool onBack={() => navigateTo("hub")} />
+      ) : currentView === "project_board" ? (
+        <ProjectBoard
+          onBack={() => navigateTo("hub")}
+          onOpenCalc={(projectId, schemeId) => navigateTo("ict_lifecycle", projectId, schemeId)}
+        />
+      ) : currentView === "ict_lifecycle" ? (
+        <IctLifecycle />
       ) : (
         <div className="p-8">
-          <button onClick={() => setCurrentView("hub")} className="mb-4 text-primary font-bold">← 返回</button>
+          <button onClick={() => navigateTo("hub")} className="mb-4 text-primary font-bold">← 返回</button>
           <p>模块正在开发中...</p>
         </div>
       )}
-      
+
       <AiFloatingLauncher currentView={currentView} />
     </div>
   )
@@ -79,35 +91,46 @@ function HubView({ onOpenTool }: { onOpenTool: (view: string) => void }) {
         <h1 className="text-4xl font-extrabold mb-2 text-foreground tracking-tight">云数中心工具集</h1>
         <p className="text-secondary-foreground font-medium">请选择需要使用的工具模块</p>
       </div>
-      <div className="grid w-full max-w-5xl grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-6 pb-8">
-        <div 
-          className="flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-border bg-card p-6 text-center shadow-sm transition-all hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg"
+      <div className="grid w-full max-w-5xl grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-6 pb-8">
+        <div
+          className="flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-border bg-card p-6 text-center shadow-sm transition-all hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg animate-in slide-in-from-bottom duration-300"
           onClick={() => onOpenTool("benefit")}
         >
           <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary text-primary transition-colors">
             <AppIcon name="calculator" size={30} />
           </div>
-          <div className="font-bold text-lg mb-1">项目效益分析</div>
+          <div className="font-bold text-lg mb-1">投资效益测算</div>
           <div className="text-sm text-secondary-foreground">测算项目经济效益</div>
         </div>
-        <div 
-          className="flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-border bg-card p-6 text-center shadow-sm transition-all hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg"
+        <div
+          className="flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-border bg-card p-6 text-center shadow-sm transition-all hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg animate-in slide-in-from-bottom duration-300 delay-75"
           onClick={() => onOpenTool("docfill")}
         >
           <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary text-primary transition-colors">
             <AppIcon name="document" size={30} />
           </div>
           <div className="font-bold text-lg mb-1">申报材料制作</div>
+          <div className="text-sm text-secondary-foreground">快速生成项目申报方案</div>
         </div>
-        <div 
-          className="flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-border bg-card p-6 text-center shadow-sm transition-all hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg"
-          onClick={() => onOpenTool("ict")}
+        <div
+          className="flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-border bg-card p-6 text-center shadow-sm transition-all hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg animate-in slide-in-from-bottom duration-300 delay-150"
+          onClick={() => onOpenTool("project_board")}
+        >
+          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary text-primary transition-colors">
+            <AppIcon name="project" size={30} />
+          </div>
+          <div className="font-bold text-lg mb-1">项目管理看板</div>
+          <div className="text-sm text-secondary-foreground mt-1">管理项目生命周期、文件及方案</div>
+        </div>
+        <div
+          className="flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-border bg-card p-6 text-center shadow-sm transition-all hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg animate-in slide-in-from-bottom duration-300 delay-200"
+          onClick={() => onOpenTool("ict_lifecycle")}
         >
           <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary text-primary transition-colors">
             <AppIcon name="cashflow" size={30} />
           </div>
           <div className="font-bold text-lg mb-1">ICT项目全生命周期</div>
-          <div className="text-sm text-secondary-foreground mt-1">经济效益与过程评估</div>
+          <div className="text-sm text-secondary-foreground mt-1">测算、现金流推演与智能反算</div>
         </div>
       </div>
     </div>
