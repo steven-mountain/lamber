@@ -74,7 +74,7 @@ const markdownComponents: Components = {
     </li>
   ),
   blockquote: ({ children, ...props }) => (
-    <blockquote className="my-4 border-l-4 border-primary/30 bg-muted/40 py-2 pl-4 pr-3 text-muted-foreground" {...props}>
+    <blockquote className="my-4 border-l-4 border-blue-200 bg-muted/40 py-2 pl-4 pr-3 text-muted-foreground" {...props}>
       {children}
     </blockquote>
   ),

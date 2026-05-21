@@ -141,27 +141,27 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state, calculations 
       <div className="grid grid-cols-2 gap-6">
         <div className="flex flex-col gap-2">
           <label className="text-sm font-bold text-secondary-foreground">项目名称</label>
-          <input id="ict-proj-name" type="text" value={projName} onChange={e => setProjName(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" />
+          <input id="ict-proj-name" type="text" value={projName} onChange={e => setProjName(e.target.value)} className="bg-card border border-input px-3.5 py-2.5 rounded-md outline-none focus:border-ring" />
         </div>
         <div className="flex flex-col gap-2">
           <label className="text-sm font-bold text-secondary-foreground">客户单位名称</label>
-          <input id="ict-customer-name" type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" />
+          <input id="ict-customer-name" type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="bg-card border border-input px-3.5 py-2.5 rounded-md outline-none focus:border-ring" />
         </div>
         <div className="flex flex-col gap-2">
           <label className="text-sm font-bold text-secondary-foreground">产权归属</label>
-          <input id="ict-property-rights" type="text" value={propertyRights} onChange={e => setPropertyRights(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" />
+          <input id="ict-property-rights" type="text" value={propertyRights} onChange={e => setPropertyRights(e.target.value)} className="bg-card border border-input px-3.5 py-2.5 rounded-md outline-none focus:border-ring" />
         </div>
         <div className="flex flex-col gap-2">
           <label className="text-sm font-bold text-secondary-foreground">项目建设/服务周期 (年)</label>
-          <input id="ict-project-years" type="number" min={1} max={10} value={projectYears} onChange={e => setProjectYears(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" />
+          <input id="ict-project-years" type="number" min={1} max={10} value={projectYears} onChange={e => setProjectYears(Number(e.target.value))} className="bg-card border border-input px-3.5 py-2.5 rounded-md outline-none focus:border-ring" />
         </div>
         <div className="flex flex-col gap-2">
           <label className="text-sm font-bold text-secondary-foreground">折现率</label>
-          <input id="ict-discount-rate" type="number" step={0.001} value={discountRate} onChange={e => setDiscountRate(Number(e.target.value))} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" />
+          <input id="ict-discount-rate" type="number" step={0.001} value={discountRate} onChange={e => setDiscountRate(Number(e.target.value))} className="bg-card border border-input px-3.5 py-2.5 rounded-md outline-none focus:border-ring" />
         </div>
         <div className="flex flex-col gap-2">
           <label className="text-sm font-bold text-secondary-foreground">资金收付模型</label>
-          <select id="ict-cashflow-model" value={cashflowModel} onChange={e => setCashflowModel(e.target.value as any)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary">
+          <select id="ict-cashflow-model" value={cashflowModel} onChange={e => setCashflowModel(e.target.value as any)} className="bg-card border border-input px-3.5 py-2.5 rounded-md outline-none focus:border-ring">
             <option value="model_a">模型 A: 100% 在第一年收付</option>
             <option value="model_b">模型 B: 按周期等额收付 (每年 1/n)</option>
             <option value="model_c">模型 C: 尾款质保金 (首年95%，末年5%)</option>
@@ -171,7 +171,7 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state, calculations 
         </div>
         <div className="flex flex-col gap-2 col-span-2">
           <label className="text-sm font-bold text-secondary-foreground">项目背景</label>
-          <textarea id="ict-project-bg" rows={3} value={projectBackground} onChange={e => setProjectBackground(e.target.value)} className="bg-muted border border-border px-3.5 py-2.5 rounded-md outline-none focus:border-primary" />
+          <textarea id="ict-project-bg" rows={3} value={projectBackground} onChange={e => setProjectBackground(e.target.value)} className="bg-card border border-input px-3.5 py-2.5 rounded-md outline-none focus:border-ring" />
         </div>
       </div>
 
@@ -198,11 +198,11 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state, calculations 
                     ))}
                     <div className="font-bold text-right pr-2 text-secondary-foreground">收入比例</div>
                     {segmentYears.map(i => (
-                      <input key={`rev-${i}`} type="number" step="0.01" value={distRev[i]} onChange={e => { const newArr = [...distRev]; newArr[i] = Number(e.target.value); setDistRev(newArr); }} className="min-w-0 w-full bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
+                      <input key={`rev-${i}`} type="number" step="0.01" value={distRev[i]} onChange={e => { const newArr = [...distRev]; newArr[i] = Number(e.target.value); setDistRev(newArr); }} className="min-w-0 w-full bg-card border border-input rounded px-1 py-1 outline-none focus:border-ring text-center" />
                     ))}
                     <div className="font-bold text-right pr-2 text-secondary-foreground">支出比例</div>
                     {segmentYears.map(i => (
-                      <input key={`cost-${i}`} type="number" step="0.01" value={distCost[i]} onChange={e => { const newArr = [...distCost]; newArr[i] = Number(e.target.value); setDistCost(newArr); }} className="min-w-0 w-full bg-muted border border-border rounded px-1 py-1 outline-none focus:border-primary text-center" />
+                      <input key={`cost-${i}`} type="number" step="0.01" value={distCost[i]} onChange={e => { const newArr = [...distCost]; newArr[i] = Number(e.target.value); setDistCost(newArr); }} className="min-w-0 w-full bg-card border border-input rounded px-1 py-1 outline-none focus:border-ring text-center" />
                     ))}
                   </div>
                 </div>
@@ -276,7 +276,7 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state, calculations 
                           type="text"
                           value={segment.name}
                           onChange={e => updateCashflowSegment(segment.id, "name", e.target.value)}
-                          className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+                          className="min-w-0 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm focus:border-ring"
                         />
                         {segmentValueMode === "ratio" ? (
                           <input
@@ -285,7 +285,7 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state, calculations 
                             step={1}
                             value={segment.value === 0 ? "" : segment.value}
                             onChange={e => updateCashflowSegment(segment.id, "value", Number(e.target.value))}
-                            className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+                            className="min-w-0 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm focus:border-ring"
                           />
                         ) : (
                           <>
@@ -295,7 +295,7 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state, calculations 
                               step={0.01}
                               value={segment.revenueValue === 0 ? "" : segment.revenueValue}
                               onChange={e => updateCashflowSegment(segment.id, "revenueValue", Number(e.target.value))}
-                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+                              className="min-w-0 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm focus:border-ring"
                             />
                             <input
                               type="number"
@@ -303,7 +303,7 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state, calculations 
                               step={0.01}
                               value={segment.revenueTax}
                               onChange={e => updateCashflowSegment(segment.id, "revenueTax", Number(e.target.value))}
-                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+                              className="min-w-0 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm focus:border-ring"
                             />
                             <input
                               type="number"
@@ -311,7 +311,7 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state, calculations 
                               step={0.01}
                               value={segment.costValue === 0 ? "" : segment.costValue}
                               onChange={e => updateCashflowSegment(segment.id, "costValue", Number(e.target.value))}
-                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+                              className="min-w-0 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm focus:border-ring"
                             />
                             <input
                               type="number"
@@ -319,12 +319,12 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state, calculations 
                               step={0.01}
                               value={segment.costTax}
                               onChange={e => updateCashflowSegment(segment.id, "costTax", Number(e.target.value))}
-                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+                              className="min-w-0 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm focus:border-ring"
                             />
                             <select
                               value={segment.revenueScope}
                               onChange={e => updateCashflowSegment(segment.id, "revenueScope", e.target.value as any)}
-                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+                              className="min-w-0 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm focus:border-ring"
                             >
                               {Object.entries(segmentRevenueScopeLabels).map(([value, label]) => (
                                 <option key={value} value={value}>{label}</option>
@@ -333,7 +333,7 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state, calculations 
                             <select
                               value={segment.costScope}
                               onChange={e => updateCashflowSegment(segment.id, "costScope", e.target.value as any)}
-                              className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+                              className="min-w-0 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm focus:border-ring"
                             >
                               {Object.entries(segmentCostScopeLabels).map(([value, label]) => (
                                 <option key={value} value={value}>{label}</option>
@@ -347,7 +347,7 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state, calculations 
                           max={10}
                           value={segment.startYear}
                           onChange={e => updateCashflowSegment(segment.id, "startYear", clampCashflowYear(Number(e.target.value)))}
-                          className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+                          className="min-w-0 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm focus:border-ring"
                         />
                         <input
                           type="number"
@@ -355,12 +355,12 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state, calculations 
                           max={10}
                           value={segment.serviceYears}
                           onChange={e => updateCashflowSegment(segment.id, "serviceYears", clampCashflowYear(Number(e.target.value)))}
-                          className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+                          className="min-w-0 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm focus:border-ring"
                         />
                         <select
                           value={segment.revenueMode}
                           onChange={e => updateCashflowSegment(segment.id, "revenueMode", e.target.value as any)}
-                          className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+                          className="min-w-0 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm focus:border-ring"
                         >
                           {Object.entries(segmentFlowModeLabels).map(([value, label]) => (
                             <option key={value} value={value}>{label}</option>
@@ -369,7 +369,7 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state, calculations 
                         <select
                           value={segment.costMode}
                           onChange={e => updateCashflowSegment(segment.id, "costMode", e.target.value as any)}
-                          className="min-w-0 bg-background border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+                          className="min-w-0 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm focus:border-ring"
                         >
                           {Object.entries(segmentFlowModeLabels).map(([value, label]) => (
                             <option key={value} value={value}>{label}</option>
@@ -415,7 +415,7 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state, calculations 
                                         value={value === 0 ? "" : value}
                                         placeholder={segmentValueMode === "amount" ? "金额" : "比例"}
                                         onChange={e => updateCashflowSegmentAnnualValue(segment.id, side, idx, Number(e.target.value))}
-                                        className="min-w-0 bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm focus:border-primary"
+                                        className="min-w-0 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm focus:border-ring"
                                       />
                                     </div>
                                   ))}
@@ -457,7 +457,7 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state, calculations 
             <button
               type="button"
               onClick={addCashflowSegment}
-              className="inline-flex items-center gap-2 rounded-md bg-primary/10 px-3 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/20"
+              className="inline-flex items-center gap-2 rounded-md bg-primary/10 px-3 py-2 text-xs font-bold text-primary transition-colors hover:bg-blue-50"
             >
               + 新增板块
             </button>

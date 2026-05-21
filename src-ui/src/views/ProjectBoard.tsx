@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { List, LayoutGrid, FolderPlus } from "lucide-react";
+import { List, LayoutGrid, FolderPlus, Plus, Search, Settings2, X } from "lucide-react";
 import AppIcon from "../components/icons/AppIcon";
 import { projectService, type Project, type BenefitAnalysisScheme, type BenefitAnalysisSnapshot } from "../utils/projectService";
 import ProjectFilesTab from "../components/project/ProjectFilesTab";
@@ -10,7 +10,47 @@ interface ProjectBoardProps {
   onOpenCalc: (projectId: string, schemeId: string | null) => void;
 }
 
-const STATUS_COLUMNS = ["立项中", "审批中", "实施中", "已完成"] as const;
+const DEFAULT_STATUS_COLUMNS = ["需求导入", "会审纪要", "甄选"];
+const PROJECT_STATUS_STORAGE_KEY = "lamber_project_board_status_options";
+
+const dedupeStatusOptions = (options: string[]) => {
+  const seen = new Set<string>();
+  return options
+    .map(option => option.trim())
+    .filter(option => {
+      if (!option || seen.has(option)) return false;
+      seen.add(option);
+      return true;
+    });
+};
+
+const readStoredStatusOptions = () => {
+  try {
+    const stored = localStorage.getItem(PROJECT_STATUS_STORAGE_KEY);
+    if (!stored) return DEFAULT_STATUS_COLUMNS;
+    const parsed = JSON.parse(stored);
+    if (Array.isArray(parsed)) {
+      const options = dedupeStatusOptions(parsed.filter(item => typeof item === "string"));
+      return options.length > 0 ? options : DEFAULT_STATUS_COLUMNS;
+    }
+  } catch (err) {
+    console.warn("读取项目阶段配置失败", err);
+  }
+  return DEFAULT_STATUS_COLUMNS;
+};
+
+const persistStatusOptions = (options: string[]) => {
+  localStorage.setItem(PROJECT_STATUS_STORAGE_KEY, JSON.stringify(options));
+};
+
+const mergeStatusOptions = (baseOptions: string[], projectList: Project[]) => {
+  return dedupeStatusOptions([
+    ...baseOptions,
+    ...projectList.map(project => project.status).filter(Boolean),
+  ]);
+};
+
+const normalizeProjectName = (value: string) => value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 
 export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -18,6 +58,11 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [projectStageFilter, setProjectStageFilter] = useState<string>("全部");
+  const [projectSearchTerm, setProjectSearchTerm] = useState("");
+  const [statusOptions, setStatusOptions] = useState<string[]>(readStoredStatusOptions);
+  const [showStatusManager, setShowStatusManager] = useState(false);
+  const [statusDrafts, setStatusDrafts] = useState<string[]>([]);
+  const [newStatusDraft, setNewStatusDraft] = useState("");
 
   // View Mode: list or grid
   const [viewMode, setViewMode] = useState<"list" | "grid">(
@@ -52,6 +97,12 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     fetchProjects();
   }, []);
 
+  useEffect(() => {
+    if (projectStageFilter !== "全部" && !statusOptions.includes(projectStageFilter)) {
+      setProjectStageFilter("全部");
+    }
+  }, [projectStageFilter, statusOptions]);
+
   const handleToggleViewMode = (mode: "list" | "grid") => {
     setViewMode(mode);
     localStorage.setItem("lamber_project_board_view_mode", mode);
@@ -72,6 +123,8 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       if (event.key === "Escape") {
         if (showProjectFolderModal) {
           setShowProjectFolderModal(false);
+        } else if (showStatusManager) {
+          setShowStatusManager(false);
         } else if (isNewSchemeModalOpen) {
           setIsNewSchemeModalOpen(false);
         } else if (showCreateModal) {
@@ -91,13 +144,18 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [selectedProject, isNewSchemeModalOpen, showCreateModal, showProjectFolderModal]);
+  }, [selectedProject, isNewSchemeModalOpen, showCreateModal, showProjectFolderModal, showStatusManager]);
 
   const fetchProjects = async () => {
     setLoading(true);
     try {
       const projs = await projectService.getProjects();
       setProjects(projs);
+      setStatusOptions(prev => {
+        const next = mergeStatusOptions(prev, projs);
+        persistStatusOptions(next);
+        return next;
+      });
       setNoteDrafts(prev => {
         const next: Record<string, string> = {};
         projs.forEach(project => {
@@ -114,14 +172,31 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     }
   };
 
+  const projectNameExists = (name: string, excludeProjectId?: string) => {
+    const normalized = normalizeProjectName(name);
+    return projects.some(project => {
+      if (project.id === excludeProjectId) return false;
+      return normalizeProjectName(project.name) === normalized;
+    });
+  };
+
+  const openCreateProjectModal = () => {
+    setShowCreateModal(true);
+  };
+
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newProjectName.trim()) return;
+    const projectName = newProjectName.trim();
+    if (!projectName) return;
+    if (projectNameExists(projectName)) {
+      alert(`项目名称「${projectName}」已存在，请换一个名称。`);
+      return;
+    }
 
     try {
       let newProj = await projectService.createProject(
-        newProjectName,
-        newCustomerName || "未知客户"
+        projectName,
+        newCustomerName.trim() || "未知客户"
       );
       let folderBindingWarning: string | null = null;
       if (createProjectFolderEnabled && createProjectFolderParent && createProjectFolderName.trim()) {
@@ -138,6 +213,11 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
         }
       }
       setProjects((prev) => [newProj, ...prev]);
+      setStatusOptions(prev => {
+        const next = mergeStatusOptions(prev, [newProj]);
+        persistStatusOptions(next);
+        return next;
+      });
       setNoteDrafts(prev => ({ ...prev, [newProj.id]: newProj.note || "" }));
       setShowCreateModal(false);
       setNewProjectName("");
@@ -249,13 +329,19 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   };
 
   const handleUpdateProjectDetails = async () => {
-    if (!selectedProject || !editingProjectName.trim()) return;
+    if (!selectedProject) return;
+    const nextProjectName = editingProjectName.trim();
+    if (!nextProjectName) return;
+    if (projectNameExists(nextProjectName, selectedProject.id)) {
+      alert(`项目名称「${nextProjectName}」已存在，请换一个名称。`);
+      return;
+    }
 
     const updated: Project = {
       ...selectedProject,
-      name: editingProjectName,
-      customer_name: editingCustomerName,
-      status: editingStatus,
+      name: nextProjectName,
+      customer_name: editingCustomerName.trim() || "未知客户",
+      status: editingStatus.trim() || statusOptions[0] || DEFAULT_STATUS_COLUMNS[0],
       updated_at: new Date().toISOString()
     };
 
@@ -263,6 +349,11 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       const result = await projectService.updateProject(updated);
       setSelectedProject(result);
       setProjects(prev => prev.map(p => p.id === result.id ? result : p));
+      setStatusOptions(prev => {
+        const next = mergeStatusOptions(prev, [result]);
+        persistStatusOptions(next);
+        return next;
+      });
       alert("项目信息更新成功");
     } catch (err) {
       console.error(err);
@@ -322,6 +413,69 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       await reloadSchemesForProject(latestProject);
     } catch (err) {
       console.error("刷新项目详情失败", err);
+    }
+  };
+
+  const handleOpenStatusManager = () => {
+    setStatusDrafts(statusOptions);
+    setNewStatusDraft("");
+    setShowStatusManager(true);
+  };
+
+  const handleAddStatusDraft = () => {
+    const nextStatus = newStatusDraft.trim();
+    if (!nextStatus) return;
+    if (statusDrafts.some(status => status.trim() === nextStatus)) {
+      alert(`阶段「${nextStatus}」已存在。`);
+      return;
+    }
+    setStatusDrafts(prev => [...prev, nextStatus]);
+    setNewStatusDraft("");
+  };
+
+  const handleSaveStatusManager = async () => {
+    const nextOptions = dedupeStatusOptions(statusDrafts);
+    if (nextOptions.length === 0) {
+      alert("至少保留一个项目阶段。");
+      return;
+    }
+
+    const renamePairs = statusOptions
+      .map((oldStatus, index) => ({ from: oldStatus, to: statusDrafts[index]?.trim() || "" }))
+      .filter(pair => pair.to && pair.from !== pair.to);
+
+    try {
+      let updatedProjects = projects;
+      for (const pair of renamePairs) {
+        const affectedProjects = updatedProjects.filter(project => project.status === pair.from);
+        if (affectedProjects.length === 0) continue;
+        const savedProjects = await Promise.all(
+          affectedProjects.map(project => projectService.updateProject({
+            ...project,
+            status: pair.to,
+            updated_at: new Date().toISOString(),
+          }))
+        );
+        updatedProjects = updatedProjects.map(project => {
+          return savedProjects.find(saved => saved.id === project.id) || project;
+        });
+      }
+
+      const finalOptions = mergeStatusOptions(nextOptions, updatedProjects);
+      persistStatusOptions(finalOptions);
+      setStatusOptions(finalOptions);
+      setProjects(updatedProjects);
+      if (selectedProject) {
+        const updatedSelected = updatedProjects.find(project => project.id === selectedProject.id);
+        if (updatedSelected) {
+          setSelectedProject(updatedSelected);
+          setEditingStatus(updatedSelected.status);
+        }
+      }
+      setShowStatusManager(false);
+    } catch (err) {
+      console.error(err);
+      alert("保存项目阶段失败: " + err);
     }
   };
 
@@ -400,7 +554,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
         onBlur={() => handleProjectNoteBlur(project)}
         rows={compact ? 2 : 3}
         placeholder="填写客户背景、推进风险、下一步动作..."
-        className="block w-full resize-none rounded-lg border border-transparent bg-muted/30 px-3 py-2 text-xs leading-5 text-foreground outline-none transition-all placeholder:text-secondary-foreground/50 focus:border-primary/30 focus:bg-background focus:ring-2 focus:ring-primary/10"
+        className="block w-full resize-none rounded-lg border border-input bg-card px-3 py-2 text-xs leading-5 text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-ring focus:bg-card focus:ring-2 focus:ring-ring/20"
       />
     </div>
   );
@@ -444,10 +598,46 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     return `${percent.toFixed(2)}%`;
   };
 
-  const filteredProjects = projects.filter(p => {
-    if (projectStageFilter === "全部") return true;
-    return p.status === projectStageFilter;
+  const matchesProjectSearch = (project: Project) => {
+    const keyword = projectSearchTerm.trim().toLocaleLowerCase();
+    if (!keyword) return true;
+    return [
+      project.name,
+      project.customer_name,
+      project.status,
+      project.note || "",
+    ].some(value => String(value || "").toLocaleLowerCase().includes(keyword));
+  };
+
+  const filteredProjects = projects.filter(project => {
+    const matchesStage = projectStageFilter === "全部" || project.status === projectStageFilter;
+    return matchesStage && matchesProjectSearch(project);
   });
+
+  const getStageCount = (stage: string) => {
+    return projects.filter(project => {
+      const matchesStage = stage === "全部" || project.status === stage;
+      return matchesStage && matchesProjectSearch(project);
+    }).length;
+  };
+
+  const renderCreateProjectEntry = (mode: "list" | "grid") => (
+    <button
+      id={`board_create_project_entry_${mode}`}
+      type="button"
+      onClick={openCreateProjectModal}
+      className={`group flex items-center justify-center gap-3 border-2 border-dashed border-primary/30 bg-primary/5 text-primary transition-all hover:border-primary hover:bg-primary/10 active:scale-[0.99] ${
+        mode === "list"
+          ? "min-h-[104px] w-full rounded-xl p-4"
+          : "min-h-[360px] rounded-2xl p-5"
+      }`}
+    >
+      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm transition-transform group-hover:scale-105">
+        <Plus className="h-5 w-5" />
+      </span>
+      <span className="text-sm font-extrabold">创建新项目</span>
+    </button>
+  );
 
   return (
     <div className="flex flex-col flex-1 h-full overflow-hidden bg-background text-foreground animate-in fade-in duration-300">
@@ -471,10 +661,10 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
 
         <button
           id="board_create_project_btn"
-          onClick={() => setShowCreateModal(true)}
+          onClick={openCreateProjectModal}
           className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground font-bold px-4 py-2 rounded-lg text-sm hover:bg-primary/95 transition-all shadow-sm active:scale-[0.98]"
         >
-          <AppIcon name="save" size={16} /> 创建新项目
+          <Plus className="h-4 w-4" /> 创建新项目
         </button>
       </header>
 
@@ -493,14 +683,12 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       ) : (
         <>
           {/* Filter Bar */}
-          <div className="px-6 py-4 bg-muted/20 border-b border-border/80 flex items-center justify-between shrink-0">
+          <div className="px-6 py-4 bg-muted/20 border-b border-border/80 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between shrink-0">
             <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
               <span className="text-xs text-secondary-foreground font-extrabold mr-2 uppercase tracking-wider shrink-0">项目阶段筛选:</span>
-              {["全部", ...STATUS_COLUMNS].map((stage) => {
+              {["全部", ...statusOptions].map((stage) => {
                 const isActive = projectStageFilter === stage;
-                const count = stage === "全部"
-                  ? projects.length
-                  : projects.filter(p => p.status === stage).length;
+                const count = getStageCount(stage);
 
                 return (
                   <button
@@ -521,52 +709,75 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={handleOpenStatusManager}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-secondary-foreground transition-all hover:bg-secondary hover:text-primary"
+                title="管理项目阶段"
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                管理阶段
+              </button>
             </div>
 
-            <div className="flex items-center border border-border bg-card rounded-lg p-0.5 shrink-0">
-              <button
-                onClick={() => handleToggleViewMode("list")}
-                className={`p-1.5 rounded-md transition-all ${
-                  viewMode === "list"
-                    ? "bg-secondary text-primary font-bold shadow-sm"
-                    : "text-secondary-foreground hover:text-foreground opacity-60 hover:opacity-100"
-                }`}
-                title="列表视图"
-              >
-                <List className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => handleToggleViewMode("grid")}
-                className={`p-1.5 rounded-md transition-all ${
-                  viewMode === "grid"
-                    ? "bg-secondary text-primary font-bold shadow-sm"
-                    : "text-secondary-foreground hover:text-foreground opacity-60 hover:opacity-100"
-                }`}
-                title="卡片视图"
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="relative w-full min-w-[220px] lg:w-72">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="search"
+                  value={projectSearchTerm}
+                  onChange={(event) => setProjectSearchTerm(event.target.value)}
+                  placeholder="搜索项目、客户或备注..."
+                  className="w-full rounded-lg border border-input bg-card py-2 pl-9 pr-9 text-xs font-semibold text-foreground outline-none transition-all focus:border-ring focus:ring-2 focus:ring-ring/20"
+                />
+                {projectSearchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setProjectSearchTerm("")}
+                    className="absolute right-2 top-1/2 rounded-md p-1 -translate-y-1/2 text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
+                    title="清空搜索"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center border border-border bg-card rounded-lg p-0.5 shrink-0">
+                <button
+                  onClick={() => handleToggleViewMode("list")}
+                  className={`p-1.5 rounded-md transition-all ${
+                    viewMode === "list"
+                      ? "bg-secondary text-primary font-bold shadow-sm"
+                      : "text-secondary-foreground hover:text-foreground opacity-60 hover:opacity-100"
+                  }`}
+                  title="列表视图"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => handleToggleViewMode("grid")}
+                  className={`p-1.5 rounded-md transition-all ${
+                    viewMode === "grid"
+                      ? "bg-secondary text-primary font-bold shadow-sm"
+                      : "text-secondary-foreground hover:text-foreground opacity-60 hover:opacity-100"
+                  }`}
+                  title="卡片视图"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Project List */}
-          {filteredProjects.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-12 text-secondary-foreground">
-              <div className="bg-muted p-4 rounded-full text-secondary-foreground/60 mb-3">
-                <AppIcon name="project" size={32} />
-              </div>
-              <span className="text-sm font-semibold">该阶段下暂无项目</span>
-              {projectStageFilter !== "全部" && (
-                <button
-                  onClick={() => setProjectStageFilter("全部")}
-                  className="mt-2 text-xs text-primary underline"
-                >
-                  查看全部项目
-                </button>
-              )}
-            </div>
-          ) : viewMode === "list" ? (
+          {viewMode === "list" ? (
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {renderCreateProjectEntry("list")}
+              {filteredProjects.length === 0 && (
+                <div className="rounded-xl border border-dashed border-border bg-card/60 p-8 text-center text-sm font-semibold text-secondary-foreground">
+                  {projectSearchTerm ? "没有匹配的项目" : "该阶段下暂无项目"}
+                </div>
+              )}
               {filteredProjects.map((project) => {
                 const metrics = project.summary_metrics;
                 return (
@@ -577,27 +788,30 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                     className="bg-card border border-border hover:border-primary/40 rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 group relative overflow-hidden animate-in fade-in slide-in-from-bottom-2"
                   >
                     {/* Left: Info */}
-                    <div className="flex-1 min-w-0 flex items-start gap-4">
-                      <div className="bg-primary/10 p-2.5 rounded-lg text-primary shrink-0 mt-0.5 group-hover:bg-primary/20 transition-colors">
-                        <AppIcon name="project" size={20} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-extrabold text-sm text-foreground group-hover:text-primary transition-colors truncate">
-                            {project.name}
-                          </h3>
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-secondary text-secondary-foreground border border-border/60">
-                            {project.status}
-                          </span>
-                          {getStatusBadge(project.benefit_status)}
+                    <div className="flex-1 min-w-0 flex flex-col gap-3">
+                      <div className="flex items-start gap-4">
+                        <div className="bg-primary/10 p-2.5 rounded-lg text-primary shrink-0 mt-0.5 group-hover:bg-blue-50 transition-colors">
+                          <AppIcon name="project" size={20} />
                         </div>
-                        <p className="text-xs text-secondary-foreground mt-1.5">
-                          客户名称: <span className="font-medium text-foreground">{project.customer_name || "未填写"}</span>
-                        </p>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-extrabold text-sm text-foreground group-hover:text-primary transition-colors truncate">
+                              {project.name}
+                            </h3>
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-secondary text-secondary-foreground border border-border/60">
+                              {project.status}
+                            </span>
+                            {getStatusBadge(project.benefit_status)}
+                          </div>
+                          <p className="text-xs text-secondary-foreground mt-1.5">
+                            客户名称: <span className="font-medium text-foreground">{project.customer_name || "未填写"}</span>
+                          </p>
+                        </div>
                       </div>
+                      {renderProjectNote(project, true)}
                     </div>
 
-                    {/* Middle: Metrics + Notes */}
+                    {/* Middle: Metrics */}
                     <div className="w-full shrink-0 md:w-[430px] lg:w-[520px] flex flex-col gap-2.5">
                       <div className="flex flex-wrap items-center gap-4 sm:gap-6 bg-muted/20 border border-border/30 px-4 py-2.5 rounded-xl">
                         {metrics ? (
@@ -636,7 +850,6 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                           <span className="text-xs text-secondary-foreground italic py-1">暂无效益分析指标</span>
                         )}
                       </div>
-                      {renderProjectNote(project, true)}
                     </div>
 
                     {/* Right: Actions */}
@@ -665,6 +878,12 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                 className="grid gap-6 animate-in fade-in duration-300"
                 style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}
               >
+                {renderCreateProjectEntry("grid")}
+                {filteredProjects.length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-border bg-card/60 p-8 text-center text-sm font-semibold text-secondary-foreground">
+                    {projectSearchTerm ? "没有匹配的项目" : "该阶段下暂无项目"}
+                  </div>
+                )}
                 {filteredProjects.map((project) => {
                   const metrics = project.summary_metrics;
                   return (
@@ -677,7 +896,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                       {/* Top: Name and Badges */}
                       <div className="space-y-3 shrink-0">
                         <div className="flex items-start justify-between gap-2">
-                          <div className="bg-primary/10 p-2.5 rounded-xl text-primary shrink-0 group-hover:bg-primary/20 transition-colors">
+                          <div className="bg-primary/10 p-2.5 rounded-xl text-primary shrink-0 group-hover:bg-blue-50 transition-colors">
                             <AppIcon name="project" size={20} />
                           </div>
                           <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -769,7 +988,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
         <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <form
             onSubmit={handleCreateProject}
-            className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
+            className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md overflow-hidden"
           >
             <div className="px-6 py-4 border-b border-border bg-muted/30 flex items-center justify-between">
               <h2 className="font-bold text-lg text-foreground flex items-center gap-2">
@@ -794,7 +1013,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                   placeholder="请输入项目名称"
                   value={newProjectName}
                   onChange={(e) => setNewProjectName(e.target.value)}
-                  className="bg-background border border-border px-3 py-2 rounded-lg text-sm outline-none focus:border-primary w-full"
+                  className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring w-full"
                 />
               </div>
 
@@ -806,7 +1025,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                   placeholder="请输入客户名称"
                   value={newCustomerName}
                   onChange={(e) => setNewCustomerName(e.target.value)}
-                  className="bg-background border border-border px-3 py-2 rounded-lg text-sm outline-none focus:border-primary w-full"
+                  className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring w-full"
                 />
               </div>
 
@@ -877,7 +1096,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
 
       {showProjectFolderModal && (
         <div className="fixed inset-0 z-[60] bg-slate-950/35 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-border bg-muted/30 flex items-center justify-between">
               <h2 className="font-bold text-base text-foreground flex items-center gap-2">
                 <FolderPlus className="h-4 w-4 text-primary" />
@@ -919,7 +1138,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                   value={createProjectFolderName}
                   onChange={(e) => setCreateProjectFolderName(e.target.value)}
                   placeholder="请输入文件夹名称"
-                  className="bg-background border border-border px-3 py-2 rounded-lg text-sm outline-none focus:border-primary w-full"
+                  className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring w-full"
                 />
               </div>
             </div>
@@ -944,12 +1163,93 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
         </div>
       )}
 
+      {showStatusManager && (
+        <div className="fixed inset-0 z-[60] bg-slate-950/35 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-border bg-muted/30 flex items-center justify-between">
+              <h2 className="font-bold text-base text-foreground flex items-center gap-2">
+                <Settings2 className="h-4 w-4 text-primary" />
+                管理项目阶段
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowStatusManager(false)}
+                className="text-secondary-foreground hover:bg-secondary p-1 rounded-md"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="space-y-2">
+                {statusDrafts.map((status, index) => (
+                  <div key={`${status}-${index}`} className="flex items-center gap-2">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-extrabold text-secondary-foreground">
+                      {index + 1}
+                    </span>
+                    <input
+                      value={status}
+                      onChange={(event) => {
+                        const next = [...statusDrafts];
+                        next[index] = event.target.value;
+                        setStatusDrafts(next);
+                      }}
+                      className="min-w-0 flex-1 rounded-lg border border-input bg-card px-3 py-2 text-sm font-semibold text-foreground outline-none transition-all focus:border-ring focus:ring-2 focus:ring-ring/20"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-2 border-t border-border/60 pt-4">
+                <input
+                  value={newStatusDraft}
+                  onChange={(event) => setNewStatusDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      handleAddStatusDraft();
+                    }
+                  }}
+                  placeholder="新增阶段名称"
+                  className="min-w-0 flex-1 rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground outline-none transition-all focus:border-ring focus:ring-2 focus:ring-ring/20"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddStatusDraft}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-2 text-xs font-bold text-primary transition-all hover:bg-primary/15"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  添加
+                </button>
+              </div>
+            </div>
+
+            <div className="border-t border-border p-4 bg-muted/20 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowStatusManager(false)}
+                className="px-4 py-2 border border-border hover:bg-secondary rounded-lg text-sm font-semibold text-secondary-foreground transition-all"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveStatusManager}
+                className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-lg text-sm transition-all"
+              >
+                保存阶段
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Project Details / Schemes & Snapshot Modal */}
       {selectedProject && (
         <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in">
           <div
             ref={drawerRef}
-            className="bg-card border border-border shadow-2xl w-[88vw] max-w-6xl h-[86vh] max-h-[920px] min-h-[560px] rounded-2xl overflow-hidden flex flex-col animate-in zoom-in-95 fade-in duration-200"
+            className="bg-card border border-border shadow-xl w-[88vw] max-w-6xl h-[86vh] max-h-[920px] min-h-[560px] rounded-2xl overflow-hidden flex flex-col animate-in zoom-in-95 fade-in duration-200"
           >
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-border bg-muted/30 flex items-center justify-between shrink-0">
@@ -1006,7 +1306,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                         type="text"
                         value={editingProjectName}
                         onChange={(e) => setEditingProjectName(e.target.value)}
-                        className="bg-background border border-border px-3 py-2 rounded-lg text-sm outline-none focus:border-primary"
+                        className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring"
                       />
                     </div>
                     <div className="flex flex-col gap-1">
@@ -1015,17 +1315,29 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                         type="text"
                         value={editingCustomerName}
                         onChange={(e) => setEditingCustomerName(e.target.value)}
-                        className="bg-background border border-border px-3 py-2 rounded-lg text-sm outline-none focus:border-primary"
+                        className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring"
                       />
                     </div>
                     <div className="flex flex-col gap-1 col-span-2">
-                      <label className="text-xs font-semibold text-secondary-foreground">看板阶段</label>
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="text-xs font-semibold text-secondary-foreground">看板阶段</label>
+                        <button
+                          type="button"
+                          onClick={handleOpenStatusManager}
+                          className="text-[11px] font-bold text-primary hover:underline"
+                        >
+                          管理阶段
+                        </button>
+                      </div>
                       <select
                         value={editingStatus}
                         onChange={(e) => setEditingStatus(e.target.value)}
-                        className="bg-background border border-border px-3 py-2 rounded-lg text-sm outline-none focus:border-primary"
+                        className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring"
                       >
-                        {STATUS_COLUMNS.map(col => (
+                        {!statusOptions.includes(editingStatus) && editingStatus && (
+                          <option value={editingStatus}>{editingStatus}</option>
+                        )}
+                        {statusOptions.map(col => (
                           <option key={col} value={col}>{col}</option>
                         ))}
                       </select>
@@ -1206,7 +1518,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       {/* New Scheme Modal */}
       {isNewSchemeModalOpen && (
         <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm overflow-hidden">
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-border bg-muted/30 flex items-center justify-between">
               <h4 className="font-bold text-sm text-foreground">新增效益分析测算方案</h4>
               <button
@@ -1225,7 +1537,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                 placeholder="例如：方案 A、设备扩容二期测算"
                 value={newSchemeName}
                 onChange={(e) => setNewSchemeName(e.target.value)}
-                className="bg-background border border-border px-3 py-2 rounded-lg text-xs outline-none focus:border-primary w-full"
+                className="bg-card border border-input px-3 py-2 rounded-lg text-xs outline-none focus:border-ring w-full"
               />
             </div>
             <div className="border-t border-border p-3 bg-muted/10 flex justify-end gap-2">

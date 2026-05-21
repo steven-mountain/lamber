@@ -357,9 +357,9 @@ export default function IctLifecycle() {
             <div key={item.key} className="flex flex-col gap-1">
               <label className="text-sm font-semibold text-secondary-foreground">{item.label}</label>
               <div className="flex gap-2">
-                <input type="number" placeholder="含税" className="w-full bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm" value={groupState[item.key].incl === 0 ? "" : groupState[item.key].incl} onChange={e => updateTaxItem(groupId, item.key, 'incl', Number(e.target.value))} />
-                <input type="number" placeholder="税率" className="w-20 bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm" value={groupState[item.key].tax} onChange={e => updateTaxItem(groupId, item.key, 'tax', Number(e.target.value))} />
-                <input type="number" placeholder="不含税" className={`w-full bg-background border px-3 py-2 rounded-md outline-none text-sm focus:border-primary ${itemErr ? 'border-red-500 ring-1 ring-red-500' : 'border-border'}`} value={groupState[item.key].excl === 0 ? "" : groupState[item.key].excl} onChange={e => updateTaxItem(groupId, item.key, 'excl', Number(e.target.value))} />
+                <input type="number" placeholder="含税" className="w-full bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={groupState[item.key].incl === 0 ? "" : groupState[item.key].incl} onChange={e => updateTaxItem(groupId, item.key, 'incl', Number(e.target.value))} />
+                <input type="number" placeholder="税率" className="w-20 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={groupState[item.key].tax} onChange={e => updateTaxItem(groupId, item.key, 'tax', Number(e.target.value))} />
+                <input type="number" placeholder="不含税" className={`w-full bg-card border px-3 py-2 rounded-md outline-none text-sm focus:border-ring ${itemErr ? 'border-red-500 ring-1 ring-red-500' : 'border-input'}`} value={groupState[item.key].excl === 0 ? "" : groupState[item.key].excl} onChange={e => updateTaxItem(groupId, item.key, 'excl', Number(e.target.value))} />
               </div>
               {itemErr && <span className="text-[10px] text-red-500 font-bold">校验失败：偏离 {itemErr.difference} 元，要求：{itemErr.expectedExcl} 元</span>}
             </div>
@@ -388,10 +388,10 @@ export default function IctLifecycle() {
         <div className="w-[260px] bg-muted p-6 overflow-y-auto flex flex-col gap-4 border-r border-border shrink-0">
           <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mb-1">测算流程</h3>
           <div className="flex flex-col gap-1">
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'basic' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("basic")}><AppIcon name="project" size={18} /> 项目概况与参数</button>
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'revenue' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("revenue")}><AppIcon name="revenue" size={18} /> 收入侧测算</button>
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cost' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cost")}><AppIcon name="cost" size={18} /> 支出侧测算</button>
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cashflow' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cashflow")}><AppIcon name="cashflow" size={18} /> 10年现金流推演</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'basic' ? 'bg-blue-50 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("basic")}><AppIcon name="project" size={18} /> 项目概况与参数</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'revenue' ? 'bg-blue-50 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("revenue")}><AppIcon name="revenue" size={18} /> 收入侧测算</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cost' ? 'bg-blue-50 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cost")}><AppIcon name="cost" size={18} /> 支出侧测算</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cashflow' ? 'bg-blue-50 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cashflow")}><AppIcon name="cashflow" size={18} /> 10年现金流推演</button>
           </div>
           <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mt-6 pt-4 border-t border-border mb-2">一键生成全流程文档</h3>
           <div className="flex flex-col gap-2">
@@ -401,7 +401,7 @@ export default function IctLifecycle() {
                 return (
                   <button
                     key={t}
-                    className={`relative overflow-hidden px-4 py-3 rounded-lg text-sm flex items-start gap-2.5 transition-all text-left border-b border-border/60 shadow-sm ${isActive ? 'bg-primary/20 text-primary font-bold border-transparent shadow' : 'text-secondary-foreground font-semibold hover:bg-primary/10 hover:text-primary'}`}
+                    className={`relative overflow-hidden px-4 py-3 rounded-lg text-sm flex items-start gap-2.5 transition-all text-left border-b border-border/60 shadow-sm ${isActive ? 'bg-blue-50 text-primary font-bold border-blue-200 shadow-sm' : 'text-secondary-foreground font-semibold hover:bg-primary/10 hover:text-primary'}`}
                     onClick={() => handleTabSwitch("generate", t)}
                   >
                     {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
@@ -418,7 +418,7 @@ export default function IctLifecycle() {
 
         <div className="flex-1 p-6 overflow-y-auto bg-background flex flex-col">
           {activeProject ? (
-            <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 mb-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-sm animate-in slide-in-from-top duration-300">
+            <div className="bg-card border border-border rounded-xl p-4 mb-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-sm animate-in slide-in-from-top duration-300">
               <div className="flex items-center gap-3">
                 <div className="bg-primary/10 p-2.5 rounded-lg text-primary shrink-0">
                   <AppIcon name="project" size={20} />
@@ -429,10 +429,10 @@ export default function IctLifecycle() {
                     <span className="text-xs text-secondary-foreground">({activeProject.customer_name})</span>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                       activeProject.benefit_status === 'normal'
-                        ? 'bg-green-100 text-green-700 border border-green-200'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                         : activeProject.benefit_status === 'outdated'
-                        ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                        : 'bg-gray-100 text-gray-700 border border-gray-200'
+                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                        : 'bg-slate-100 text-slate-700 border border-slate-200'
                     }`}>
                       效益状态: {activeProject.benefit_status === 'normal' ? '最新' : activeProject.benefit_status === 'outdated' ? '已失效' : '未测算'}
                     </span>
@@ -457,7 +457,7 @@ export default function IctLifecycle() {
                     }
                   }}
                   value={activeProject.id}
-                  className="bg-background border border-border px-3 py-1.5 rounded-lg text-xs outline-none focus:border-primary font-semibold text-foreground cursor-pointer min-w-[160px] mr-1"
+                  className="bg-card border border-input px-3 py-1.5 rounded-lg text-xs outline-none focus:border-ring font-semibold text-foreground cursor-pointer min-w-[160px] mr-1"
                 >
                   <option value="free">断开关联 (进入自由测算)</option>
                   {projects.map(p => (
@@ -507,7 +507,7 @@ export default function IctLifecycle() {
                     }
                   }}
                   value=""
-                  className="bg-background border border-border px-3 py-1.5 rounded-lg text-xs outline-none focus:border-primary font-semibold text-foreground cursor-pointer min-w-[200px]"
+                  className="bg-card border border-input px-3 py-1.5 rounded-lg text-xs outline-none focus:border-ring font-semibold text-foreground cursor-pointer min-w-[200px]"
                 >
                   <option value="" disabled>-- 关联已有项目 --</option>
                   {projects.map(p => (
@@ -524,7 +524,7 @@ export default function IctLifecycle() {
 
           {activeTab === "revenue" && (
             <div>
-              <div className="mb-6 border border-primary/30 bg-primary/5 p-5 rounded-xl shadow-sm">
+              <div className="mb-6 border border-border bg-card p-5 rounded-xl shadow-sm">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-bold text-primary text-base flex items-center gap-2">
                     <AppIcon name="quickAction" size={18} /> 快捷收入拆分计算器 (融入自有产品测算)
@@ -554,7 +554,7 @@ export default function IctLifecycle() {
                           setQuickRevProduct("");
                         }
                       }}
-                      className="bg-background border border-border px-3 py-2 rounded-md outline-none focus:border-primary text-sm font-semibold shadow-sm"
+                      className="bg-card border border-input px-3 py-2 rounded-md outline-none focus:border-ring text-sm font-semibold shadow-sm"
                     />
                   </div>
                   <div className="flex flex-col gap-1.5 flex-1">
@@ -567,7 +567,7 @@ export default function IctLifecycle() {
                       placeholder="产品金额"
                       value={quickRevProduct}
                       onChange={e => setQuickRevProduct(e.target.value)}
-                      className="bg-background border border-border px-3 py-2 rounded-md outline-none focus:border-primary text-sm font-semibold shadow-sm"
+                      className="bg-card border border-input px-3 py-2 rounded-md outline-none focus:border-ring text-sm font-semibold shadow-sm"
                     />
                   </div>
                   <div className="flex flex-col gap-1.5 flex-1">
@@ -576,7 +576,7 @@ export default function IctLifecycle() {
                       type="number"
                       disabled
                       value={Math.max(0, (Number(quickRevTotal)||0) - (Number(quickRevProduct)||0)).toFixed(2)}
-                      className="bg-background/50 border border-primary/30 px-3 py-2 rounded-md outline-none text-sm font-bold text-primary shadow-sm"
+                      className="bg-slate-50 border border-input px-3 py-2 rounded-md outline-none text-sm font-bold text-foreground shadow-sm"
                     />
                   </div>
                   <button
@@ -591,7 +591,7 @@ export default function IctLifecycle() {
                   </button>
                 </div>
               </div>
-              <div className="mb-4 text-xs text-blue-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
+              <div className="mb-4 text-xs text-blue-700 bg-blue-50 p-3 rounded-lg border border-blue-200">
                 <span className="inline-flex items-start gap-2"><AppIcon name="info" size={16} className="mt-0.5" /> <span>提示：在「CT收入」中填写的产品或专线含税收入，将会自动【1:1平过】填入对应的「CT投入」中。</span></span>
               </div>
               {renderTaxGroup("IT/移动云收入", 'revIt', revIt, [{key: 'integration', label: '系统集成服务收入'}, {key: 'maintenance', label: '维保收入'}, {key: 'device_sales', label: '设备销售收入'}, {key: 'device_lease', label: '设备租赁收入'}, {key: 'other', label: '其他收入'}, {key: 'cloud', label: '移动云-定制化收入'}])}
@@ -602,21 +602,21 @@ export default function IctLifecycle() {
 
           {activeTab === "cost" && (
             <div>
-              <div className="mb-6 border border-primary/30 bg-primary/5 p-4 rounded-xl">
+              <div className="mb-6 border border-border bg-card p-4 rounded-xl">
                 <h3 className="font-bold text-primary mb-2">快捷投入拆分计算器</h3>
                 <p className="text-xs text-secondary-foreground mb-4">输入含税总投入与含税产品投入，计算“系统集成服务投入”并一键填入下方表单。</p>
                 <div className="flex gap-4 items-end">
                   <div className="flex flex-col gap-1 flex-1">
                     <label className="text-xs font-semibold">含税总投入</label>
-                    <input type="number" value={quickCostTotal} onChange={e => setQuickCostTotal(e.target.value)} className="bg-background border border-border px-3 py-2 rounded-md outline-none text-sm" />
+                    <input type="number" value={quickCostTotal} onChange={e => setQuickCostTotal(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" />
                   </div>
                   <div className="flex flex-col gap-1 flex-1">
                     <label className="text-xs font-semibold">含税产品投入</label>
-                    <input type="number" value={quickCostProduct} onChange={e => setQuickCostProduct(e.target.value)} className="bg-background border border-border px-3 py-2 rounded-md outline-none text-sm" />
+                    <input type="number" value={quickCostProduct} onChange={e => setQuickCostProduct(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" />
                   </div>
                   <div className="flex flex-col gap-1 flex-1">
                     <label className="text-xs font-semibold text-primary">系统集成服务投入 (自动)</label>
-                    <input type="number" disabled value={Math.max(0, (Number(quickCostTotal)||0) - (Number(quickCostProduct)||0))} className="bg-background/50 border border-primary/30 px-3 py-2 rounded-md outline-none text-sm font-bold text-primary" />
+                    <input type="number" disabled value={Math.max(0, (Number(quickCostTotal)||0) - (Number(quickCostProduct)||0))} className="bg-slate-50 border border-input px-3 py-2 rounded-md outline-none text-sm font-bold text-primary" />
                   </div>
                   <button onClick={() => {
                      const integration = Math.max(0, (Number(quickCostTotal)||0) - (Number(quickCostProduct)||0));
@@ -647,7 +647,8 @@ export default function IctLifecycle() {
               setTechItems={state.setTechItems}
               inqVendors={state.inqVendors}
               setInqVendors={state.setInqVendors}
-              outputDir={activeProject?.folder_path ? `${activeProject.folder_path}/output` : undefined}
+              outputDir={activeProject?.folder_path || undefined}
+              projectId={activeProject?.id || undefined}
             />
           </div>
 
@@ -657,7 +658,7 @@ export default function IctLifecycle() {
         {(activeTab === 'revenue' || activeTab === 'cost') && (
           <div className="w-[300px] bg-card border-l border-border p-6 flex flex-col shrink-0 overflow-y-auto animate-in slide-in-from-right duration-200">
             <h3 className="font-bold text-foreground mb-4">智能反算</h3>
-            <div className="bg-muted border border-border p-4 rounded-xl flex flex-col gap-4 mb-6">
+            <div className="bg-card border border-border p-4 rounded-xl flex flex-col gap-4 mb-6">
               <p className="text-xs leading-relaxed text-secondary-foreground">
                 反算结果为含税总额参数值，系统将根据当前资金收付模型自动分摊至各年度现金流。
               </p>
@@ -671,30 +672,30 @@ export default function IctLifecycle() {
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-secondary-foreground">目标值 (如0.15代表15%)</label>
-                <input type="number" step="0.0001" className="bg-background border border-border px-3 py-2 rounded-md outline-none text-sm" value={revTargetValue} onChange={e => setRevTargetValue(e.target.value)} />
+                <input type="number" step="0.0001" className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={revTargetValue} onChange={e => setRevTargetValue(e.target.value)} />
               </div>
               <button className="flex w-full items-center justify-center gap-2 bg-primary text-primary-foreground font-bold py-2 rounded-lg shadow-sm" onClick={performReverseCalculation}><AppIcon name="reverse" size={16} /> 智能反算</button>
             </div>
             <h3 className="font-bold text-foreground mb-4">采购甄选费测算</h3>
-            <div className="bg-muted border border-border p-4 rounded-xl flex flex-col gap-3">
+            <div className="bg-card border border-border p-4 rounded-xl flex flex-col gap-3">
               <div className="flex flex-col gap-1">
                  <label className="text-xs font-semibold text-secondary-foreground">供应商报价 (元)</label>
-                 <input type="number" value={selQuote} onChange={e => handleSelFeeChange('quote', e.target.value)} className="bg-background border border-border px-3 py-2 rounded-md text-sm outline-none" />
+                 <input type="number" value={selQuote} onChange={e => handleSelFeeChange('quote', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none" />
               </div>
               <div className="flex flex-col gap-1">
                  <label className="text-xs font-semibold text-secondary-foreground">代理服务费浮动 (+)</label>
-                 <input type="number" value={selMarkup} onChange={e => handleSelFeeChange('markup', e.target.value)} className="bg-background border border-border px-3 py-2 rounded-md text-sm outline-none" />
+                 <input type="number" value={selMarkup} onChange={e => handleSelFeeChange('markup', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none" />
               </div>
               <div className="flex flex-col gap-1">
                  <label className="text-xs font-semibold text-secondary-foreground">测算甄选费 / 实际测算成本</label>
                  <div className="flex gap-2">
-                   <input type="text" disabled value={selFee} className="bg-background/50 border border-border px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
-                   <input type="text" disabled value={selActualCost} className="bg-background/50 border border-border px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
+                   <input type="text" disabled value={selFee} className="bg-slate-50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
+                   <input type="text" disabled value={selActualCost} className="bg-slate-50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
                  </div>
               </div>
               <div className="flex flex-col gap-1 mt-2 border-t border-border pt-3">
                  <label className="text-xs font-semibold text-primary">甄选最高限价 (反向测算入口)</label>
-                 <input type="number" value={selLimit} onChange={e => handleSelFeeChange('limit', e.target.value)} className="bg-primary/5 border border-primary px-3 py-2 rounded-md text-sm outline-none text-primary font-bold" />
+                 <input type="number" value={selLimit} onChange={e => handleSelFeeChange('limit', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none text-foreground font-bold" />
               </div>
               <button
                 onClick={applySelectionLimit}
@@ -710,7 +711,7 @@ export default function IctLifecycle() {
 
       {showReconciliationModal && (
         <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-card border border-red-500/30 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col">
+          <div className="bg-card border border-red-500/30 rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col">
             <div className="bg-red-500/10 border-b border-red-500/20 px-6 py-4 flex items-center gap-3">
               <AppIcon name="warning" size={24} className="text-red-600" />
               <div>
@@ -768,7 +769,7 @@ export default function IctLifecycle() {
 
       {showConfirmIgnore && pendingTab && (
         <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b border-border bg-yellow-500/10 flex items-center gap-2">
               <AppIcon name="warning" size={20} className="text-yellow-600" />
               <h2 className="font-bold text-yellow-700 text-base">确认忽略误差？</h2>
@@ -792,7 +793,7 @@ export default function IctLifecycle() {
         <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <form
             onSubmit={handleSaveAsNew}
-            className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm overflow-hidden"
+            className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm overflow-hidden"
           >
             <div className="px-6 py-4 border-b border-border bg-muted/30 flex items-center justify-between">
               <h4 className="font-bold text-sm text-foreground">另存为新方案</h4>
@@ -813,7 +814,7 @@ export default function IctLifecycle() {
                 placeholder="例如：方案 B、第二轮测算"
                 value={saveAsSchemeName}
                 onChange={(e) => setSaveAsSchemeName(e.target.value)}
-                className="bg-background border border-border px-3 py-2 rounded-lg text-xs outline-none focus:border-primary w-full"
+                className="bg-card border border-input px-3 py-2 rounded-lg text-xs outline-none focus:border-ring w-full"
               />
             </div>
             <div className="border-t border-border p-3 bg-muted/10 flex justify-end gap-2">

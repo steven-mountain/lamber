@@ -84,7 +84,7 @@ export interface Project {
   id: string;
   name: string;
   customer_name: string;
-  status: string; // "立项中", "审批中", "实施中", "已完成"
+  status: string; // User-editable lifecycle tag, defaults to "需求导入"
   benefit_status: "not_started" | "normal" | "outdated";
   default_scheme_id?: string | null;
   created_at: string;

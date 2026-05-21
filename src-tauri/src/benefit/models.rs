@@ -173,7 +173,7 @@ pub struct Project {
     pub id: String,
     pub name: String,
     pub customer_name: String,
-    pub status: String,         // "立项中", "审批中", "实施中", "已完成"
+    pub status: String, // User-editable lifecycle tag, defaults to "需求导入"
     pub benefit_status: String, // "not_started", "normal", "outdated"
     pub default_scheme_id: Option<String>,
     pub created_at: String,

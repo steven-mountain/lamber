@@ -466,6 +466,7 @@ pub fn generate_lifecycle_docs(
     variables: HashMap<String, String>,
     selected_templates: Vec<String>,
     output_dir: Option<String>,
+    overwrite_existing: Option<bool>,
 ) -> Result<String, String> {
     use std::fs;
 
@@ -492,6 +493,7 @@ pub fn generate_lifecycle_docs(
     if !output_dir.exists() {
         fs::create_dir_all(&output_dir).map_err(|e| format!("创建输出目录失败: {}", e))?;
     }
+    let overwrite_existing = overwrite_existing.unwrap_or(false);
 
     let mut generated_count = 0;
 
@@ -545,6 +547,9 @@ pub fn generate_lifecycle_docs(
                     let out_name = format!("{}-{}.{}", clean_name, safe_proj_name, ext_str);
 
                     let out_path = output_dir.join(&out_name);
+                    if out_path.exists() && !overwrite_existing {
+                        return Err(format!("FILE_EXISTS::{}", out_path.to_string_lossy()));
+                    }
 
                     if ext_str == "docx" {
                         if let Err(e) = internal_generate_docx(
@@ -582,7 +587,7 @@ pub fn generate_lifecycle_docs(
     }
 
     if generated_count == 0 {
-        return Err("模板目录中未找到任何 .docx 模板文件。".into());
+        return Err("模板目录中未找到任何可生成的 .docx 或 .xlsx 模板文件。".into());
     }
 
     Ok(output_dir.to_string_lossy().to_string())

@@ -126,7 +126,7 @@ export default function DocfillTool({ onBack }: { onBack: () => void }) {
                 <button 
                   key={t}
                   onClick={() => handleSelectTemplate(t)}
-                  className={`text-left px-4 py-3 rounded-lg text-sm font-semibold transition-all border ${templateName === t ? 'bg-primary/20 border-primary text-primary shadow-sm' : 'bg-card border-border hover:bg-secondary text-foreground'}`}
+                  className={`text-left px-4 py-3 rounded-lg text-sm font-semibold transition-all border ${templateName === t ? 'bg-blue-50 border-blue-200 text-primary shadow-sm' : 'bg-card border-border hover:bg-secondary text-foreground'}`}
                 >
                   <span className="inline-flex items-center gap-2">
                     <AppIcon name="document" size={16} />
@@ -143,7 +143,7 @@ export default function DocfillTool({ onBack }: { onBack: () => void }) {
                <div className="text-xs text-primary font-bold break-all bg-primary/5 p-2 rounded border border-primary/20">{templateName}</div>
                <button 
                 onClick={handleGenerate}
-                className="flex w-full items-center justify-center gap-2 bg-gradient-to-b from-primary to-primary/90 text-primary-foreground font-semibold py-3 px-6 rounded-md shadow-sm hover:shadow-md hover:-translate-y-[1px] transition-all"
+                className="flex w-full items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 px-6 rounded-md shadow-sm hover:shadow-md hover:-translate-y-[1px] transition-all"
               >
                 <AppIcon name="generate" size={18} /> 执行生成
               </button>
@@ -166,7 +166,7 @@ export default function DocfillTool({ onBack }: { onBack: () => void }) {
                     type="text" 
                     value={formData[variable]} 
                     onChange={e => setFormData({...formData, [variable]: e.target.value})}
-                    className="bg-muted border border-border text-foreground px-3.5 py-2.5 rounded-md outline-none text-sm font-semibold focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                    className="bg-card border border-input text-foreground px-3.5 py-2.5 rounded-md outline-none text-sm font-semibold focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all"
                   />
                 </div>
               ))}

@@ -406,7 +406,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
               type="text"
               value={endpoint}
               onChange={event => setEndpoint(event.target.value)}
-              className="rounded border border-border bg-background px-2 py-1.5 outline-none focus:border-primary"
+              className="rounded border border-border bg-background px-2 py-1.5 outline-none focus:border-ring"
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -415,7 +415,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
               type="text"
               value={model}
               onChange={event => setModel(event.target.value)}
-              className="rounded border border-border bg-background px-2 py-1.5 outline-none focus:border-primary"
+              className="rounded border border-border bg-background px-2 py-1.5 outline-none focus:border-ring"
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -425,7 +425,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
               value={apiKey}
               onChange={event => setApiKey(event.target.value)}
               placeholder="Bearer Token"
-              className="rounded border border-border bg-background px-2 py-1.5 outline-none focus:border-primary"
+              className="rounded border border-border bg-background px-2 py-1.5 outline-none focus:border-ring"
             />
           </div>
           <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">

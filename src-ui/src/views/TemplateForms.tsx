@@ -4,6 +4,7 @@ import AppIcon from "../components/icons/AppIcon"
 import { MID_THREE_CAPABILITIES } from "../lib/midThreeConstants"
 import { useAiContextStore } from "../store/useAiContextStore"
 import { buildAiContextKey } from "../utils/aiContextKeys"
+import { projectFileService } from "../services/projectFileService"
 
 interface Props {
   selectedTemplate: string;
@@ -16,6 +17,8 @@ interface Props {
   setInqVendors: React.Dispatch<React.SetStateAction<any[]>>;
   metrics?: any;
   outputDir?: string;
+  projectId?: string;
+  onGenerated?: () => void;
 }
 
 type ProjectScale = "large" | "small"
@@ -86,7 +89,9 @@ export default function TemplateForms({
   inqVendors,
   setInqVendors,
   metrics,
-  outputDir
+  outputDir,
+  projectId,
+  onGenerated
 }: Props) {
   const formRef = useRef<HTMLFormElement>(null)
 
@@ -137,6 +142,17 @@ export default function TemplateForms({
   const hasItIntegrationFee = getTaxItemAmount(projectData.cost?.it?.integration) > 0
   const hasItMaintenanceFee = getTaxItemAmount(projectData.cost?.it?.maintenance) > 0
   const selfThreeMissingFees = getSelfThreeMissingFees(selectedSelfThree.requirements, hasItIntegrationFee, hasItMaintenanceFee)
+  const totalRevenueIncl = [
+    projectData.revenue?.it?.integration,
+    projectData.revenue?.it?.maintenance,
+    projectData.revenue?.it?.device_sales,
+    projectData.revenue?.it?.device_lease,
+    projectData.revenue?.it?.other,
+    projectData.revenue?.it?.cloud,
+    projectData.revenue?.ct?.line,
+    projectData.revenue?.ct?.product,
+    projectData.revenue?.non_it_ct,
+  ].reduce((sum, item) => sum + Number(item?.incl || 0), 0)
 
 
 
@@ -270,6 +286,15 @@ export default function TemplateForms({
     newItems[i] = { ...newItems[i], [key]: val }
     setInqVendors(newItems)
   }
+  const handleInquiryAmountChange = (i: number, value: string) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) {
+      updateInqVendor(i, 'amount', 0)
+      return
+    }
+    const capped = totalRevenueIncl > 0 ? Math.min(numeric, totalRevenueIncl) : numeric
+    updateInqVendor(i, 'amount', Number(capped.toFixed(2)))
+  }
   const removeInqVendor = (i: number) => setInqVendors(inqVendors.filter((_, idx) => idx !== i))
 
   const autoGenerateInquiry = () => {
@@ -282,11 +307,19 @@ export default function TemplateForms({
       alert("请先完善 IT 投入明细（当前 IT 总成本为 0），三家报价的底价需硬性绑定成本。")
       return
     }
+    if (totalRevenueIncl <= 0) {
+      alert("请先完善收入侧含税总收入，三家询价最高价不能超过含税总收入。")
+      return
+    }
+    if (limit > totalRevenueIncl) {
+      alert(`当前 IT 投入含税总成本为 ${limit.toFixed(2)}，已超过含税总收入 ${totalRevenueIncl.toFixed(2)}，无法生成合规三家报价。`)
+      return
+    }
 
     const quotes = [
       limit, // 最低价直接等于 IT 投入含税总成本
-      Math.round(limit * (1.05 + Math.random() * 0.02)), // 基准价上浮约 5%-7%
-      Math.round(limit * (1.10 + Math.random() * 0.05))  // 最高价上浮约 10%-15%
+      Math.min(totalRevenueIncl, Math.round(limit * (1.05 + Math.random() * 0.02))), // 基准价上浮约 5%-7%
+      Math.min(totalRevenueIncl, Math.round(limit * (1.10 + Math.random() * 0.05)))  // 最高价上浮约 10%-15%
     ].sort((a, b) => a - b)
 
     const shuffled = [0, 1, 2].sort(() => Math.random() - 0.5)
@@ -358,6 +391,22 @@ export default function TemplateForms({
     if (!formRef.current) return
     const fd = new FormData(formRef.current)
     const get = (name: string) => fd.get(name)?.toString() || ""
+
+    if (selectedTemplate.includes('会审')) {
+      const activeQuotes = inqVendors
+        .filter(v => v.vendorName || Number(v.amount || 0) > 0)
+        .map(v => Number(v.amount || 0))
+        .filter(value => value > 0)
+      const maxQuote = activeQuotes.length > 0 ? Math.max(...activeQuotes) : 0
+      if (maxQuote > 0 && totalRevenueIncl <= 0) {
+        alert("请先完善收入侧含税总收入，三家询价最高价不能超过含税总收入。")
+        return
+      }
+      if (totalRevenueIncl > 0 && maxQuote > totalRevenueIncl + 0.01) {
+        alert(`三家询价最高价 ${maxQuote.toFixed(2)} 不能超过含税总收入 ${totalRevenueIncl.toFixed(2)}。`)
+        return
+      }
+    }
 
     const formatDateStr = (dateStr: string) => {
       if (!dateStr) return ""
@@ -630,13 +679,36 @@ export default function TemplateForms({
       'CONTRACT_DURATION': String(projectData.basic?.project_years || 1),
     }
 
-    try {
-      const generatedOutputDir = await invoke<string>('generate_lifecycle_docs', {
+    const runGenerate = (overwriteExisting = false) => invoke<string>('generate_lifecycle_docs', {
           moduleId: "ict_lifecycle",
           variables: variables,
           selectedTemplates: [selectedTemplate],
-          outputDir
+          outputDir,
+          overwriteExisting
       })
+
+    try {
+      let generatedOutputDir: string
+      try {
+        generatedOutputDir = await runGenerate(false)
+      } catch (err) {
+        const message = String(err)
+        if (!message.startsWith("FILE_EXISTS::")) {
+          throw err
+        }
+        const conflictPath = message.replace("FILE_EXISTS::", "")
+        const shouldOverwrite = confirm(`目标文件已存在，是否覆盖？\n${conflictPath}`)
+        if (!shouldOverwrite) return
+        generatedOutputDir = await runGenerate(true)
+      }
+      if (projectId && outputDir) {
+        try {
+          await projectFileService.scanProjectFolder(projectId, false)
+          onGenerated?.()
+        } catch (scanErr) {
+          console.warn("生成后同步项目文件失败", scanErr)
+        }
+      }
       if (confirm(`生成成功！文件已保存至：\n${generatedOutputDir}\n是否立即打开输出目录？`)) {
         invoke('open_file', { path: generatedOutputDir })
       }
@@ -661,7 +733,7 @@ export default function TemplateForms({
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">IT部分商务模式</label>
-                <select name="gen_it_bus_mode" value={itBusMode} onChange={e => setItBusMode(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm">
+                <select name="gen_it_bus_mode" value={itBusMode} onChange={e => setItBusMode(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm">
                   <option value="服务模式">服务模式</option>
                   <option value="集成购销">集成购销</option>
                   <option value="投资">投资</option>
@@ -669,7 +741,7 @@ export default function TemplateForms({
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">IT部分资金来源</label>
-                <select name="gen_it_fund_src" value={itFundSrc} onChange={e => setItFundSrc(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm">
+                <select name="gen_it_fund_src" value={itFundSrc} onChange={e => setItFundSrc(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm">
                   <option value="分公司成本开支">分公司成本开支</option>
                   <option value="市公司专项资源">市公司专项资源</option>
                 </select>
@@ -692,15 +764,15 @@ export default function TemplateForms({
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">会审开始日期</label>
-                <input type="date" name="gen_meet_start" defaultValue={todayStr} className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="date" name="gen_meet_start" defaultValue={todayStr} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">会审结束日期</label>
-                <input type="date" name="gen_meet_end" defaultValue={todayStr} className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="date" name="gen_meet_end" defaultValue={todayStr} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">会审方式</label>
-                <select name="gen_meet_mode" defaultValue="线上" className="bg-muted border border-border px-3 py-2 rounded-md">
+                <select name="gen_meet_mode" defaultValue="线上" className="bg-card border border-input px-3 py-2 rounded-md">
                   <option value="线上">线上</option>
                   <option value="线下">线下</option>
                 </select>
@@ -711,7 +783,7 @@ export default function TemplateForms({
                   name="gen_project_scale"
                   value={projectScale}
                   onChange={e => handleProjectScaleChange(normalizeProjectScale(e.target.value))}
-                  className="bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm"
+                  className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm"
                 >
                   <option value="large">大项目 (市/省)</option>
                   <option value="small">小项目 (分公司)</option>
@@ -720,51 +792,51 @@ export default function TemplateForms({
               {projectScale === 'large' && (
                 <div className="flex flex-col gap-1 col-span-2">
                   <label className="text-sm font-semibold">市公司政企部参会人员</label>
-                  <input type="text" name="gen_city_attendees" placeholder="人员A、人员B" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                  <input type="text" name="gen_city_attendees" placeholder="人员A、人员B" className="bg-card border border-input px-3 py-2 rounded-md" />
                 </div>
               )}
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">分公司参会人员</label>
                 <div className="flex gap-2">
-                  <input type="text" name="gen_branch_name" defaultValue="XXXX" placeholder="分公司名称" className="w-32 bg-muted border border-border px-3 py-2 rounded-md" />
-                  <input type="text" name="gen_branch_attendees" placeholder="人员D、人员E" className="flex-1 bg-muted border border-border px-3 py-2 rounded-md" />
+                  <input type="text" name="gen_branch_name" defaultValue="XXXX" placeholder="分公司名称" className="w-32 bg-card border border-input px-3 py-2 rounded-md" />
+                  <input type="text" name="gen_branch_attendees" placeholder="人员D、人员E" className="flex-1 bg-card border border-input px-3 py-2 rounded-md" />
                 </div>
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">驻点支撑人员</label>
-                <input type="text" name="gen_onsite_support" placeholder="如有请填写" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_onsite_support" placeholder="如有请填写" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">项目背景</label>
-                <textarea name="gen_proj_bg" rows={3} value={projectBackground} onChange={e => setProjectBackground(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <textarea name="gen_proj_bg" rows={3} value={projectBackground} onChange={e => setProjectBackground(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
 
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold flex items-center justify-between">IT建设内容 <span className="text-xs text-secondary-foreground font-normal">根据项目名称自动生成</span></label>
-                <textarea name="gen_it_content" value={itContent} onChange={e => setItContent(e.target.value)} rows={2} className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <textarea name="gen_it_content" value={itContent} onChange={e => setItContent(e.target.value)} rows={2} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold flex items-center justify-between">CT建设内容 <span className="text-xs text-secondary-foreground font-normal">中台能力联动修改</span></label>
-                <textarea name="gen_ct_content" value={ctContent} onChange={e => setCtContent(e.target.value)} rows={2} className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <textarea name="gen_ct_content" value={ctContent} onChange={e => setCtContent(e.target.value)} rows={2} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
 
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">技术方案</label>
-                <textarea name="gen_tech_solution" rows={2} defaultValue="采用端-管-云架构..." className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <textarea name="gen_tech_solution" rows={2} defaultValue="采用端-管-云架构..." className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
 
               <div className="col-span-2 border border-border rounded-lg p-4 bg-background">
                 <div className="flex justify-between items-center mb-3">
                   <label className="text-sm font-bold">技术方案可行性清单</label>
-                  <button type="button" onClick={addTechItem} className="text-xs bg-primary/10 text-primary px-3 py-1.5 rounded font-semibold hover:bg-primary/20">+ 新增一行</button>
+                  <button type="button" onClick={addTechItem} className="text-xs bg-primary/10 text-primary px-3 py-1.5 rounded font-semibold hover:bg-blue-50">+ 新增一行</button>
                 </div>
                 <div className="flex flex-col gap-2">
                   {techItems.map((item, i) => (
                     <div key={i} className="flex gap-2 items-center">
-                      <input type="text" placeholder="服务名称" value={item.serviceName} onChange={e => updateTechItem(i, 'serviceName', e.target.value)} className="w-1/4 bg-muted border border-border px-2 py-1.5 rounded-md text-sm" />
-                      <input type="text" placeholder="服务说明" value={item.serviceDesc} onChange={e => updateTechItem(i, 'serviceDesc', e.target.value)} className="flex-1 bg-muted border border-border px-2 py-1.5 rounded-md text-sm" />
-                      <input type="number" placeholder="数量" value={item.amount} onChange={e => updateTechItem(i, 'amount', Number(e.target.value))} className="w-16 bg-muted border border-border px-2 py-1.5 rounded-md text-sm" />
-                      <input type="text" placeholder="单位" value={item.unit} onChange={e => updateTechItem(i, 'unit', e.target.value)} className="w-16 bg-muted border border-border px-2 py-1.5 rounded-md text-sm" />
+                      <input type="text" placeholder="服务名称" value={item.serviceName} onChange={e => updateTechItem(i, 'serviceName', e.target.value)} className="w-1/4 bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
+                      <input type="text" placeholder="服务说明" value={item.serviceDesc} onChange={e => updateTechItem(i, 'serviceDesc', e.target.value)} className="flex-1 bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
+                      <input type="number" placeholder="数量" value={item.amount} onChange={e => updateTechItem(i, 'amount', Number(e.target.value))} className="w-16 bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
+                      <input type="text" placeholder="单位" value={item.unit} onChange={e => updateTechItem(i, 'unit', e.target.value)} className="w-16 bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
                       <button type="button" onClick={() => removeTechItem(i)} className="text-destructive hover:bg-destructive/10 p-1.5 rounded" title="删除">
                         <AppIcon name="delete" size={14} />
                       </button>
@@ -779,7 +851,7 @@ export default function TemplateForms({
                   name="gen_self_three"
                   value={selfThreeValue}
                   onChange={e => handleSelfThreeChange(e.target.value)}
-                  className="bg-muted border border-border px-3 py-2 rounded-md outline-none text-sm"
+                  className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm"
                 >
                   {SELF_THREE_OPTIONS.map(option => (
                     <option key={option.value} value={option.value}>{option.value}</option>
@@ -802,15 +874,15 @@ export default function TemplateForms({
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">三化方案</label>
-                <input type="text" name="gen_threeization" defaultValue="本项目不涉及三化方案。" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_threeization" defaultValue="本项目不涉及三化方案。" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">战略价值</label>
-                <input type="text" name="gen_strategic_value" placeholder="战略价值说明" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_strategic_value" placeholder="战略价值说明" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">结论</label>
-                <input type="text" name="gen_tech_conclusion" defaultValue="方案可行同时能满足客户需求。" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_tech_conclusion" defaultValue="方案可行同时能满足客户需求。" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
 
               <div className="flex flex-col gap-1 col-span-2">
@@ -827,7 +899,7 @@ export default function TemplateForms({
                         value={midThreeCode}
                         onChange={e => setMidThreeCode(e.target.value)}
                         placeholder="能力编号"
-                        className="w-1/3 bg-muted border border-border px-3 py-2 rounded-md text-sm"
+                        className="w-1/3 bg-card border border-input px-3 py-2 rounded-md text-sm"
                       />
                       <input
                         type="text"
@@ -843,7 +915,7 @@ export default function TemplateForms({
                           }
                         }}
                         placeholder="请选择或输入所需的中台能力"
-                        className="flex-1 bg-muted border border-border px-3 py-2 rounded-md text-sm"
+                        className="flex-1 bg-card border border-input px-3 py-2 rounded-md text-sm"
                       />
                       <button
                         type="button"
@@ -867,16 +939,16 @@ export default function TemplateForms({
 
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">收入侧收款方式</label>
-                <input type="text" name="gen_rev_collection" value={revCollection} onChange={e => setRevCollection(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_rev_collection" value={revCollection} onChange={e => setRevCollection(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">支出侧付款方式</label>
-                <input type="text" name="gen_exp_payment" value={expPayment} onChange={e => setExpPayment(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_exp_payment" value={expPayment} onChange={e => setExpPayment(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
 
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">IT部分商务模式</label>
-                <select name="gen_it_bus_mode" value={itBusMode} onChange={e => setItBusMode(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md">
+                <select name="gen_it_bus_mode" value={itBusMode} onChange={e => setItBusMode(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md">
                   <option value="服务模式">服务模式</option>
                   <option value="集成购销">集成购销</option>
                   <option value="投资">投资</option>
@@ -884,7 +956,7 @@ export default function TemplateForms({
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">IT部分资金来源</label>
-                <select name="gen_it_fund_src" value={itFundSrc} onChange={e => setItFundSrc(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md">
+                <select name="gen_it_fund_src" value={itFundSrc} onChange={e => setItFundSrc(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md">
                   <option value="分公司成本开支">分公司成本开支</option>
                   <option value="市公司专项资源">市公司专项资源</option>
                 </select>
@@ -892,24 +964,31 @@ export default function TemplateForms({
 
               <div className="col-span-2 border border-border rounded-lg p-4 bg-background">
                 <div className="flex justify-between items-center mb-3">
-                  <label className="text-sm font-bold">IT部分询价过程</label>
+                  <div>
+                    <label className="text-sm font-bold">IT部分询价过程</label>
+                    {totalRevenueIncl > 0 && (
+                      <div className="mt-1 text-[11px] font-semibold text-secondary-foreground">
+                        三家询价最高价不超过含税总收入 {totalRevenueIncl.toFixed(2)}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex gap-2">
                     <button type="button" onClick={autoGenerateInquiry} className="inline-flex items-center gap-1.5 text-xs bg-amber-100 text-amber-700 px-3 py-1.5 rounded font-bold hover:bg-amber-200">
                       <AppIcon name="quickAction" size={14} /> 一键生成三家报价
                     </button>
-                    <button type="button" onClick={addInqVendor} className="text-xs bg-primary/10 text-primary px-3 py-1.5 rounded font-semibold hover:bg-primary/20">+ 新增厂商</button>
+                    <button type="button" onClick={addInqVendor} className="text-xs bg-primary/10 text-primary px-3 py-1.5 rounded font-semibold hover:bg-blue-50">+ 新增厂商</button>
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
                   {inqVendors.map((item, i) => (
                     <div key={i} className="flex gap-2 items-center">
-                      <input type="text" placeholder="厂商名称" value={item.vendorName} onChange={e => updateInqVendor(i, 'vendorName', e.target.value)} className="flex-1 bg-muted border border-border px-2 py-1.5 rounded-md text-sm" />
-                      <input type="number" placeholder="含税报价" value={item.amount === 0 ? '' : item.amount} onChange={e => updateInqVendor(i, 'amount', Number(e.target.value))} className="w-28 bg-muted border border-border px-2 py-1.5 rounded-md text-sm" />
+                      <input type="text" placeholder="厂商名称" value={item.vendorName} onChange={e => updateInqVendor(i, 'vendorName', e.target.value)} className="flex-1 bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
+                      <input type="number" placeholder="含税报价" value={item.amount === 0 ? '' : item.amount} onChange={e => handleInquiryAmountChange(i, e.target.value)} className="w-28 bg-card border border-input px-2 py-1.5 rounded-md text-sm" title={totalRevenueIncl > 0 ? `最高不超过含税总收入 ${totalRevenueIncl.toFixed(2)}` : undefined} />
                       <div className="flex items-center gap-1">
-                        <input type="number" placeholder="税率" value={item.taxRate} onChange={e => updateInqVendor(i, 'taxRate', Number(e.target.value))} className="w-16 bg-muted border border-border px-2 py-1.5 rounded-md text-sm" />
+                        <input type="number" placeholder="税率" value={item.taxRate} onChange={e => updateInqVendor(i, 'taxRate', Number(e.target.value))} className="w-16 bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
                         <span className="text-xs text-secondary-foreground">%</span>
                       </div>
-                      <input type="text" placeholder="备注" value={item.remark} onChange={e => updateInqVendor(i, 'remark', e.target.value)} className="w-20 bg-muted border border-border px-2 py-1.5 rounded-md text-sm" />
+                      <input type="text" placeholder="备注" value={item.remark} onChange={e => updateInqVendor(i, 'remark', e.target.value)} className="w-20 bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
                       <button type="button" onClick={() => removeInqVendor(i)} className="text-destructive hover:bg-destructive/10 p-1.5 rounded" title="删除">
                         <AppIcon name="delete" size={14} />
                       </button>
@@ -958,7 +1037,7 @@ export default function TemplateForms({
                           />
 
                           <div
-                            className="border border-dashed border-border rounded-lg p-5 text-center cursor-pointer hover:bg-muted/50 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all flex flex-col items-center justify-center gap-2 bg-muted/20"
+                            className="border border-dashed border-border rounded-lg p-5 text-center cursor-pointer hover:bg-muted/50 focus:border-ring focus:ring-2 focus:ring-ring/20 outline-none transition-all flex flex-col items-center justify-center gap-2 bg-muted/20"
                             onClick={(e) => e.currentTarget.focus()}
                             onDragOver={e => e.preventDefault()}
                             onDrop={e => { e.preventDefault(); handleImageUpload(e, setVendorImages); }}
@@ -1008,15 +1087,15 @@ export default function TemplateForms({
 
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">风险点及其他责任人</label>
-                <input type="text" name="gen_risk_owner" defaultValue="人员A" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_risk_owner" defaultValue="人员A" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">是否联合体投标</label>
-                <input type="text" name="gen_is_joint" defaultValue="否" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_is_joint" defaultValue="否" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">项目评审表准确完整</label>
-                <input type="text" name="gen_review_acc" defaultValue="是，项目投入收入核算完整，各表填写准确" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_review_acc" defaultValue="是，项目投入收入核算完整，各表填写准确" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
 
               <div className="flex flex-col gap-1 col-span-2 mt-2">
@@ -1025,28 +1104,28 @@ export default function TemplateForms({
                   是否涉及单一来源
                 </label>
                 {hasSingleSource && (
-                  <textarea name="gen_single_source" rows={3} defaultValue="单一来源决策依据：符合单一来源场景..." className="bg-muted border border-border px-3 py-2 rounded-md" />
+                  <textarea name="gen_single_source" rows={3} defaultValue="单一来源决策依据：符合单一来源场景..." className="bg-card border border-input px-3 py-2 rounded-md" />
                 )}
               </div>
 
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-bold text-foreground">采购方式</label>
-                <select value={procurementMethod} onChange={e => setProcurementMethod(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md">
+                <select value={procurementMethod} onChange={e => setProcurementMethod(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md">
                   <option value="短名单甄选">短名单甄选</option>
                   <option value="采购">采购</option>
                   <option value="其他">其他</option>
                 </select>
                 {procurementMethod === '其他' && (
-                  <input type="text" name="gen_procurement_method_other" placeholder="请输入其他采购方式" className="bg-muted border border-border px-3 py-2 rounded-md mt-1" />
+                  <input type="text" name="gen_procurement_method_other" placeholder="请输入其他采购方式" className="bg-card border border-input px-3 py-2 rounded-md mt-1" />
                 )}
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">时间要求</label>
-                <textarea name="gen_construction_time_req" rows={2} defaultValue="合同签定后30天内。" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <textarea name="gen_construction_time_req" rows={2} defaultValue="合同签定后30天内。" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">售中建设及施工界面</label>
-                <textarea name="gen_construction_interface" rows={2} defaultValue="本项目采购统一集成单位实施。分公司负责客户侧的协调工作，并协调管理合作伙伴完成交付。" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <textarea name="gen_construction_interface" rows={2} defaultValue="本项目采购统一集成单位实施。分公司负责客户侧的协调工作，并协调管理合作伙伴完成交付。" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
             </div>
           </div>
@@ -1059,19 +1138,19 @@ export default function TemplateForms({
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">计费科目：IT投入</label>
-                <input type="text" name="gen_subject_it_cost" value={subjectItCost} onChange={e => setSubjectItCost(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_subject_it_cost" value={subjectItCost} onChange={e => setSubjectItCost(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">计费科目：CT投入</label>
-                <input type="text" name="gen_subject_ct_cost" value={subjectCtCost} onChange={e => setSubjectCtCost(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_subject_ct_cost" value={subjectCtCost} onChange={e => setSubjectCtCost(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">计费科目：IT收入</label>
-                <input type="text" name="gen_subject_it_rev" value={subjectItRev} onChange={e => setSubjectItRev(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_subject_it_rev" value={subjectItRev} onChange={e => setSubjectItRev(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">计费科目：CT收入</label>
-                <input type="text" name="gen_subject_ct_rev" value={subjectCtRev} onChange={e => setSubjectCtRev(e.target.value)} className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_subject_ct_rev" value={subjectCtRev} onChange={e => setSubjectCtRev(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold flex items-center gap-2">
@@ -1090,35 +1169,35 @@ export default function TemplateForms({
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">项目需求单位</label>
-                <input type="text" name="gen_demand_branch_name" defaultValue="XXX分公司" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_demand_branch_name" defaultValue="XXX分公司" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">业务模式</label>
-                <select name="gen_demand_it_business_mode" className="bg-muted border border-border px-3 py-2 rounded-md">
+                <select name="gen_demand_it_business_mode" className="bg-card border border-input px-3 py-2 rounded-md">
                   <option value="服务模式">服务模式</option>
                   <option value="投资">投资</option>
                 </select>
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">服务内容</label>
-                <textarea name="gen_demand_service_content" defaultValue="IT；CT" rows={2} className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <textarea name="gen_demand_service_content" defaultValue="IT；CT" rows={2} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">设备清单</label>
-                <input type="text" name="gen_demand_device_list" defaultValue="不涉及" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_demand_device_list" defaultValue="不涉及" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="col-span-2 border border-border rounded-lg p-4 bg-background">
                 <div className="flex justify-between items-center mb-3">
                   <label className="text-sm font-bold text-foreground">技术方案可行性清单 (设备需求清单)</label>
-                  <button type="button" onClick={addTechItem} className="text-xs bg-primary/10 text-primary px-3 py-1.5 rounded font-semibold hover:bg-primary/20">+ 新增一行</button>
+                  <button type="button" onClick={addTechItem} className="text-xs bg-primary/10 text-primary px-3 py-1.5 rounded font-semibold hover:bg-blue-50">+ 新增一行</button>
                 </div>
                 <div className="flex flex-col gap-2">
                   {techItems.map((item, i) => (
                     <div key={i} className="flex gap-2 items-center">
-                      <input type="text" placeholder="服务名称" value={item.serviceName} onChange={e => updateTechItem(i, 'serviceName', e.target.value)} className="w-1/4 bg-muted border border-border px-2 py-1.5 rounded-md text-sm text-foreground" />
-                      <input type="text" placeholder="服务说明" value={item.serviceDesc} onChange={e => updateTechItem(i, 'serviceDesc', e.target.value)} className="flex-1 bg-muted border border-border px-2 py-1.5 rounded-md text-sm text-foreground" />
-                      <input type="number" placeholder="数量" value={item.amount} onChange={e => updateTechItem(i, 'amount', Number(e.target.value))} className="w-16 bg-muted border border-border px-2 py-1.5 rounded-md text-sm text-foreground" />
-                      <input type="text" placeholder="单位" value={item.unit} onChange={e => updateTechItem(i, 'unit', e.target.value)} className="w-16 bg-muted border border-border px-2 py-1.5 rounded-md text-sm text-foreground" />
+                      <input type="text" placeholder="服务名称" value={item.serviceName} onChange={e => updateTechItem(i, 'serviceName', e.target.value)} className="w-1/4 bg-card border border-input px-2 py-1.5 rounded-md text-sm text-foreground" />
+                      <input type="text" placeholder="服务说明" value={item.serviceDesc} onChange={e => updateTechItem(i, 'serviceDesc', e.target.value)} className="flex-1 bg-card border border-input px-2 py-1.5 rounded-md text-sm text-foreground" />
+                      <input type="number" placeholder="数量" value={item.amount} onChange={e => updateTechItem(i, 'amount', Number(e.target.value))} className="w-16 bg-card border border-input px-2 py-1.5 rounded-md text-sm text-foreground" />
+                      <input type="text" placeholder="单位" value={item.unit} onChange={e => updateTechItem(i, 'unit', e.target.value)} className="w-16 bg-card border border-input px-2 py-1.5 rounded-md text-sm text-foreground" />
                       <button type="button" onClick={() => removeTechItem(i)} className="text-destructive hover:bg-destructive/10 p-1.5 rounded" title="删除">
                         <AppIcon name="delete" size={14} />
                       </button>
@@ -1128,11 +1207,11 @@ export default function TemplateForms({
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">客户确认</label>
-                <input type="text" name="gen_demand_customer_confirm" defaultValue="微信截图" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_demand_customer_confirm" defaultValue="微信截图" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">部署环境要求</label>
-                <input type="text" name="gen_demand_env_require" defaultValue="客户提供部署环境，不包含在本次项目范围内" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                <input type="text" name="gen_demand_env_require" defaultValue="客户提供部署环境，不包含在本次项目范围内" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
 
               <div className="flex flex-col gap-1 col-span-2 mt-2">
@@ -1144,7 +1223,7 @@ export default function TemplateForms({
                   项目有效的公示网址及招标文件
                 </label>
                 {hasPublicUrl && (
-                  <input type="text" name="gen_demand_public_url" placeholder="https://..." className="bg-muted border border-border px-3 py-2 rounded-md" />
+                  <input type="text" name="gen_demand_public_url" placeholder="https://..." className="bg-card border border-input px-3 py-2 rounded-md" />
                 )}
               </div>
 
@@ -1154,7 +1233,7 @@ export default function TemplateForms({
                   信息安全、密评
                 </label>
                 {hasSecurity && (
-                  <input type="text" name="gen_demand_security_detail" placeholder="例如：已做密评/待补充" className="bg-muted border border-border px-3 py-2 rounded-md" />
+                  <input type="text" name="gen_demand_security_detail" placeholder="例如：已做密评/待补充" className="bg-card border border-input px-3 py-2 rounded-md" />
                 )}
               </div>
 
@@ -1164,7 +1243,7 @@ export default function TemplateForms({
                 <label className="text-sm font-bold text-foreground">附件1截图（客户确认材料）</label>
                 <input type="file" multiple accept="image/*" className="hidden" ref={fileInput1Ref} onChange={(e) => handleImageUpload(e, setAttach1Images)} />
                 <div
-                  className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:bg-muted/50 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all flex flex-col items-center justify-center gap-3 bg-muted/20"
+                  className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:bg-muted/50 focus:border-ring focus:ring-2 focus:ring-ring/20 outline-none transition-all flex flex-col items-center justify-center gap-3 bg-muted/20"
                   onClick={(e) => e.currentTarget.focus()}
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.preventDefault(); handleImageUpload(e, setAttach1Images); }}
@@ -1202,7 +1281,7 @@ export default function TemplateForms({
                   <label className="text-sm font-bold text-foreground">附件2截图（招标文件/挂网截图）</label>
                   <input type="file" multiple accept="image/*" className="hidden" ref={fileInput2Ref} onChange={(e) => handleImageUpload(e, setAttach2Images)} />
                   <div
-                    className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:bg-muted/50 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all flex flex-col items-center justify-center gap-3 bg-muted/20"
+                    className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:bg-muted/50 focus:border-ring focus:ring-2 focus:ring-ring/20 outline-none transition-all flex flex-col items-center justify-center gap-3 bg-muted/20"
                     onClick={(e) => e.currentTarget.focus()}
                     onDragOver={e => e.preventDefault()}
                     onDrop={e => { e.preventDefault(); handleImageUpload(e, setAttach2Images); }}
@@ -1247,7 +1326,7 @@ export default function TemplateForms({
 
       {isMidThreeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-background rounded-xl shadow-lg w-full max-w-3xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-card rounded-xl shadow-md w-full max-w-3xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h3 className="font-bold text-lg flex items-center gap-2">
                 <AppIcon name="tableProperties" size={20} className="text-primary" />
@@ -1265,7 +1344,7 @@ export default function TemplateForms({
                   value={midThreeSearch}
                   onChange={e => setMidThreeSearch(e.target.value)}
                   placeholder="搜索能力名称、编号或所属类别..."
-                  className="w-full pl-9 pr-4 py-2.5 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+                  className="w-full pl-9 pr-4 py-2.5 rounded-md border border-input bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 shadow-sm"
                   autoFocus
                 />
               </div>

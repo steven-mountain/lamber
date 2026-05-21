@@ -207,20 +207,36 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
       const folderName = getFolderName(folderPath);
       let finalProjectName = project?.name || "";
       let renamed = false;
+      let renameWarning: string | null = null;
 
       await projectFileService.bindProjectFolder(projectId, folderPath);
-
-      if (renameProject && project && folderName && folderName !== project.name) {
-        const updatedProject = await projectService.updateProject({
-          ...project,
-          name: folderName
-        });
-        setProject(updatedProject);
-        finalProjectName = updatedProject.name;
-        renamed = true;
+      const latestProject = await projectService.getProject(projectId);
+      if (latestProject) {
+        setProject(latestProject);
+        finalProjectName = latestProject.name;
       }
 
-      showTemporaryMessage(renamed ? `成功绑定本地项目目录，项目名称已更新为「${finalProjectName}」` : "成功绑定本地项目目录！");
+      const projectForRename = latestProject || project;
+      if (renameProject && projectForRename && folderName && folderName !== projectForRename.name) {
+        try {
+          const updatedProject = await projectService.updateProject({
+            ...projectForRename,
+            name: folderName
+          });
+          setProject(updatedProject);
+          finalProjectName = updatedProject.name;
+          renamed = true;
+        } catch (renameErr: any) {
+          console.error(renameErr);
+          renameWarning = renameErr?.toString() || "同步项目名称失败";
+        }
+      }
+
+      const bindResultMessage = renameWarning
+        ? `目录已绑定，但项目名称同步失败：${renameWarning}`
+        : renamed
+          ? `成功绑定本地项目目录，项目名称已更新为「${finalProjectName}」`
+          : "成功绑定本地项目目录！";
 
       const scannedFiles = await projectFileService.scanProjectFolder(projectId, false);
       const excelFiles = scannedFiles.filter(f => f.fileType === 'excel' && f.exists);
@@ -243,6 +259,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
       }
 
       await loadData();
+      showTemporaryMessage(bindResultMessage, Boolean(renameWarning));
       if (onRefreshProject) onRefreshProject();
     } catch (err: any) {
       showTemporaryMessage(err?.toString() || "绑定目录失败", true);
@@ -446,7 +463,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
   const getFileIcon = (type: string) => {
     switch (type) {
       case "word":
-        return <FileText className="w-5 h-5 text-blue-500" />;
+        return <FileText className="w-5 h-5 text-blue-600" />;
       case "excel":
         return <FileSpreadsheet className="w-5 h-5 text-emerald-500" />;
       case "pdf":
@@ -467,13 +484,13 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
     <div className="flex flex-col flex-1 h-full overflow-hidden p-6 bg-background">
       {/* Top Banner Message */}
       {error && (
-        <div className="mb-4 p-4 rounded-xl bg-red-500/10 text-red-500 text-sm font-semibold flex items-center gap-2.5 animate-in slide-in-from-top-4 duration-300">
+        <div className="mb-4 p-4 rounded-xl bg-red-50 text-red-700 text-sm font-semibold flex items-center gap-2.5 animate-in slide-in-from-top-4 duration-300">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
       {successMsg && (
-        <div className="mb-4 p-4 rounded-xl bg-emerald-500/10 text-emerald-500 text-sm font-semibold flex items-center gap-2.5 animate-in slide-in-from-top-4 duration-300">
+        <div className="mb-4 p-4 rounded-xl bg-emerald-50 text-emerald-700 text-sm font-semibold flex items-center gap-2.5 animate-in slide-in-from-top-4 duration-300">
           <Check className="w-4 h-4 shrink-0" />
           <span>{successMsg}</span>
         </div>
@@ -505,7 +522,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
           {project?.folder_path && (
             <button
               onClick={handleOpenFolder}
-              className="shrink-0 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all"
+              className="shrink-0 px-3 py-1.5 bg-primary/10 hover:bg-blue-50 text-primary rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all"
               title="在系统文件管理器中打开此文件夹"
             >
               <FolderOpen className="w-3.5 h-3.5" />
@@ -528,14 +545,14 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
               </button>
               <button
                 onClick={handleBindFolder}
-                className="px-3.5 py-1.5 bg-secondary text-secondary-foreground hover:bg-muted border border-border rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all"
+                className="px-3.5 py-1.5 bg-secondary text-secondary-foreground hover:bg-card border border-input rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all"
               >
                 更换绑定
               </button>
               <button
                 onClick={handleCreateFolderClick}
                 disabled={loading}
-                className="px-3.5 py-1.5 bg-secondary text-secondary-foreground hover:bg-muted border border-border rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all disabled:opacity-50"
+                className="px-3.5 py-1.5 bg-secondary text-secondary-foreground hover:bg-card border border-input rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all disabled:opacity-50"
               >
                 <FolderPlus className="w-3.5 h-3.5" />
                 新建并绑定
@@ -560,7 +577,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
               <button
                 onClick={handleCreateFolderClick}
                 disabled={loading}
-                className="px-3.5 py-1.5 bg-secondary text-secondary-foreground hover:bg-muted border border-border rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all disabled:opacity-50"
+                className="px-3.5 py-1.5 bg-secondary text-secondary-foreground hover:bg-card border border-input rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all disabled:opacity-50"
               >
                 <FolderPlus className="w-3.5 h-3.5" />
                 新建项目文件夹
@@ -611,7 +628,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
             placeholder="搜索文件名称或路径..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-muted/40 border border-transparent rounded-xl text-xs outline-none focus:bg-background focus:border-primary/30 transition-all text-foreground"
+            className="w-full pl-9 pr-4 py-2 bg-card border border-input rounded-xl text-xs outline-none focus:bg-card focus:border-ring transition-all text-foreground"
           />
         </div>
 
@@ -707,7 +724,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
                     {/* Indicators */}
                     <div className="w-[16%] flex flex-col gap-1.5 items-start">
                       {file.isMainDocument && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 text-[10px] font-bold">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold">
                           <Pin className="w-3 h-3 rotate-45 shrink-0" />
                           效益测算主文档
                         </span>
@@ -752,7 +769,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
                           <button
                             onClick={() => handleToggleMainDoc(file)}
                             title={file.isMainDocument ? "取消设定为效益测算主文档" : "设定为效益测算主文档"}
-                            className={`p-1.5 rounded-lg hover:bg-muted text-secondary-foreground transition-all ${file.isMainDocument ? 'text-blue-500 bg-blue-500/10' : 'opacity-60 hover:opacity-100'}`}
+                            className={`p-1.5 rounded-lg hover:bg-muted text-secondary-foreground transition-all ${file.isMainDocument ? 'text-blue-700 bg-blue-50' : 'opacity-60 hover:opacity-100'}`}
                           >
                             <Pin className="w-3.5 h-3.5 rotate-45" />
                           </button>
@@ -805,7 +822,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
 
       {pendingBindFolder && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-xl border border-border bg-background p-5 shadow-2xl">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-xl">
             <div className="flex items-start gap-3">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <FolderOpen className="h-4 w-4" />
@@ -830,7 +847,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
                 type="button"
                 onClick={() => setPendingBindFolder(null)}
                 disabled={loading}
-                className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-bold text-secondary-foreground transition-all hover:bg-muted disabled:opacity-50"
+                className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold text-secondary-foreground transition-all hover:bg-muted disabled:opacity-50"
               >
                 取消
               </button>
@@ -863,7 +880,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
               event.preventDefault();
               handleConfirmCreateFolder();
             }}
-            className="w-full max-w-md rounded-xl border border-border bg-background p-5 shadow-2xl"
+            className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-xl"
           >
             <div className="flex items-start gap-3">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600">
@@ -890,7 +907,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
                     value={createFolderName}
                     onChange={(event) => setCreateFolderName(event.target.value)}
                     disabled={loading}
-                    className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground outline-none transition-all focus:border-primary/50 focus:ring-2 focus:ring-primary/10 disabled:opacity-50"
+                    className="mt-1 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm font-semibold text-foreground outline-none transition-all focus:border-ring focus:ring-2 focus:ring-ring/20 disabled:opacity-50"
                     placeholder="请输入文件夹名称"
                   />
                 </div>
@@ -906,7 +923,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
                   setCreateFolderName("");
                 }}
                 disabled={loading}
-                className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-bold text-secondary-foreground transition-all hover:bg-muted disabled:opacity-50"
+                className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold text-secondary-foreground transition-all hover:bg-muted disabled:opacity-50"
               >
                 取消
               </button>

@@ -90,13 +90,13 @@ export default function BenefitTool({ onBack }: { onBack: () => void }) {
           <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mb-1">效益分析导航</h3>
           <div className="flex flex-col gap-1 mb-6">
             <button 
-              className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${subView === 'single' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`}
+              className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${subView === 'single' ? 'bg-blue-50 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`}
               onClick={() => setSubView("single")}
             >
               <AppIcon name="calculator" size={18} /> 单项效益测算
             </button>
             <button 
-              className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${subView === 'batch' ? 'bg-primary/20 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`}
+              className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${subView === 'batch' ? 'bg-blue-50 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`}
               onClick={() => setSubView("batch")}
             >
               <AppIcon name="batch" size={18} /> 批量效益处理
@@ -108,19 +108,19 @@ export default function BenefitTool({ onBack }: { onBack: () => void }) {
               <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mt-2">计算配置</h3>
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-secondary-foreground">含税总收入 (元)</label>
-                <input type="number" value={input.total_income_incl} onChange={e => setInput({...input, total_income_incl: Number(e.target.value)})} className="bg-card border border-border text-foreground px-3.5 py-2.5 rounded-md outline-none text-sm font-semibold focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all" />
+                <input type="number" value={input.total_income_incl} onChange={e => setInput({...input, total_income_incl: Number(e.target.value)})} className="bg-card border border-input text-foreground px-3.5 py-2.5 rounded-md outline-none text-sm font-semibold focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all" />
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-secondary-foreground">IT税率</label>
-                <input type="number" step={0.01} value={input.tax_rate_it} onChange={e => setInput({...input, tax_rate_it: Number(e.target.value)})} className="bg-card border border-border text-foreground px-3.5 py-2.5 rounded-md outline-none text-sm font-semibold focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all" />
+                <input type="number" step={0.01} value={input.tax_rate_it} onChange={e => setInput({...input, tax_rate_it: Number(e.target.value)})} className="bg-card border border-input text-foreground px-3.5 py-2.5 rounded-md outline-none text-sm font-semibold focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all" />
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-secondary-foreground">CT税率</label>
-                <input type="number" step={0.01} value={input.tax_rate_ct} onChange={e => setInput({...input, tax_rate_ct: Number(e.target.value)})} className="bg-card border border-border text-foreground px-3.5 py-2.5 rounded-md outline-none text-sm font-semibold focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all" />
+                <input type="number" step={0.01} value={input.tax_rate_ct} onChange={e => setInput({...input, tax_rate_ct: Number(e.target.value)})} className="bg-card border border-input text-foreground px-3.5 py-2.5 rounded-md outline-none text-sm font-semibold focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all" />
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-secondary-foreground">CT产品含税总额 (选填)</label>
-                <input type="number" step={0.01} placeholder="未填由系统智能推算" value={input.ct_income_incl_opt} onChange={e => setInput({...input, ct_income_incl_opt: e.target.value})} className="bg-card border border-border text-foreground px-3.5 py-2.5 rounded-md outline-none text-sm font-semibold focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all" />
+                <input type="number" step={0.01} placeholder="未填由系统智能推算" value={input.ct_income_incl_opt} onChange={e => setInput({...input, ct_income_incl_opt: e.target.value})} className="bg-card border border-input text-foreground px-3.5 py-2.5 rounded-md outline-none text-sm font-semibold focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all" />
               </div>
 
               <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mt-2">模式选择</h3>
@@ -141,10 +141,10 @@ export default function BenefitTool({ onBack }: { onBack: () => void }) {
 
               <div className="flex flex-col gap-2 mt-2">
                 <label className="text-xs font-bold text-secondary-foreground">目标值 (小数或金额)</label>
-                <input type="number" step={0.0001} value={input.target_value} onChange={e => setInput({...input, target_value: Number(e.target.value)})} className="bg-card border border-border text-foreground px-3.5 py-2.5 rounded-md outline-none text-sm font-semibold focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all" />
+                <input type="number" step={0.0001} value={input.target_value} onChange={e => setInput({...input, target_value: Number(e.target.value)})} className="bg-card border border-input text-foreground px-3.5 py-2.5 rounded-md outline-none text-sm font-semibold focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all" />
               </div>
 
-              <button onClick={handleCalc} className="bg-gradient-to-b from-primary to-primary/90 text-primary-foreground font-semibold py-3 px-6 rounded-md shadow-sm hover:shadow-md hover:-translate-y-[1px] transition-all mt-4 w-full">
+              <button onClick={handleCalc} className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 px-6 rounded-md shadow-sm hover:shadow-md hover:-translate-y-[1px] transition-all mt-4 w-full">
                 开始测算
               </button>
               {warning && (

@@ -39,6 +39,13 @@ fn generate_id() -> String {
     )
 }
 
+fn normalize_project_name(name: &str) -> String {
+    name.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
 fn get_incl(item: &super::models::IctItem) -> f64 {
     item.incl_tax.parse::<f64>().unwrap_or(0.0)
 }
@@ -106,12 +113,33 @@ impl ProjectService {
     }
 
     pub fn create_project(&self, name: String, customer_name: String) -> Result<Project, String> {
+        let name = name.trim().to_string();
+        if name.is_empty() {
+            return Err("项目名称不能为空".to_string());
+        }
+        let normalized_name = normalize_project_name(&name);
+        let existing_projects = self.repository.get_projects()?;
+        if existing_projects
+            .iter()
+            .any(|project| normalize_project_name(&project.name) == normalized_name)
+        {
+            return Err(format!("项目名称已存在：{}", name));
+        }
+
+        let customer_name = {
+            let trimmed = customer_name.trim();
+            if trimmed.is_empty() {
+                "未知客户".to_string()
+            } else {
+                trimmed.to_string()
+            }
+        };
         let timestamp = chrono::Utc::now().to_rfc3339();
         let project = Project {
             id: generate_id(),
             name,
             customer_name,
-            status: "立项中".to_string(),
+            status: "需求导入".to_string(),
             benefit_status: "not_started".to_string(),
             default_scheme_id: None,
             created_at: timestamp.clone(),
@@ -133,6 +161,26 @@ impl ProjectService {
     }
 
     pub fn update_project(&self, mut project: Project) -> Result<Project, String> {
+        project.name = project.name.trim().to_string();
+        if project.name.is_empty() {
+            return Err("项目名称不能为空".to_string());
+        }
+        project.customer_name = {
+            let trimmed = project.customer_name.trim();
+            if trimmed.is_empty() {
+                "未知客户".to_string()
+            } else {
+                trimmed.to_string()
+            }
+        };
+        let normalized_name = normalize_project_name(&project.name);
+        let existing_projects = self.repository.get_projects()?;
+        if existing_projects.iter().any(|existing| {
+            existing.id != project.id && normalize_project_name(&existing.name) == normalized_name
+        }) {
+            return Err(format!("项目名称已存在：{}", project.name));
+        }
+
         let original_project_opt = self.repository.get_project(&project.id)?;
 
         // Calculate/verify status based on fingerprint mismatch

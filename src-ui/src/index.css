@@ -4,25 +4,25 @@
 
 @layer base {
   :root {
-    --background: 240 100% 98%; /* surface #f9f9ff */
-    --foreground: 213 100% 21%; /* on_surface #00316b */
-    --card: 0 0% 100%; /* lowest #ffffff */
-    --card-foreground: 213 100% 21%;
+    --background: 210 40% 98%; /* slate-50 #f8fafc */
+    --foreground: 222 47% 11%; /* slate-900 #0f172a */
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 213 100% 21%;
-    --primary: 219 64% 44%; /* primary #285ab9 */
+    --popover-foreground: 222 47% 11%;
+    --primary: 221 83% 53%; /* blue-600 #2563eb */
     --primary-foreground: 210 40% 98%;
-    --secondary: 227 100% 95%; /* surface_container #e8edff */
-    --secondary-foreground: 216 100% 37%; /* on_surface_variant #005cbf */
-    --muted: 226 100% 97%; /* surface_container_low */
-    --muted-foreground: 216 100% 37%;
-    --accent: 226 100% 97%;
-    --accent-foreground: 213 100% 21%;
+    --secondary: 210 40% 96%; /* slate-100 #f1f5f9 */
+    --secondary-foreground: 215 16% 47%; /* slate-500 #64748b */
+    --muted: 210 40% 96%; /* slate-100 #f1f5f9 */
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
     --destructive: 2 45% 43%; /* error #9f403d */
     --destructive-foreground: 0 0% 100%;
-    --border: 215 100% 93%; /* surface_container_highest */
-    --input: 215 100% 93%;
-    --ring: 219 64% 44%;
+    --border: 214 32% 91%; /* slate-200 #e2e8f0 */
+    --input: 213 27% 84%; /* slate-300 #cbd5e1 */
+    --ring: 217 91% 60%; /* blue-500 #3b82f6 */
     --radius: 0.5rem;
   }
 }

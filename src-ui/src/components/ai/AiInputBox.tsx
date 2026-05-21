@@ -173,7 +173,7 @@ export default function AiInputBox({
           onPaste={handlePaste}
           placeholder={isTyping ? 'AI 正在思考中...' : '输入问题，按 Ctrl+Enter 发送...'}
           disabled={isTyping}
-          className="min-h-[44px] max-h-[180px] flex-1 resize-none overflow-y-auto rounded-xl border border-border bg-muted px-4 py-2.5 text-sm shadow-inner outline-none transition-colors focus:border-primary disabled:opacity-70"
+          className="min-h-[44px] max-h-[180px] flex-1 resize-none overflow-y-auto rounded-xl border border-border bg-muted px-4 py-2.5 text-sm shadow-inner outline-none transition-colors focus:border-ring disabled:opacity-70"
           rows={1}
         />
 
