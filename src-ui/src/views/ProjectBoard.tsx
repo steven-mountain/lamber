@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
-import { List, LayoutGrid, FolderPlus, Plus, Search, Settings2, X } from "lucide-react";
+import { ArrowRight, BarChart3, FileText, Info, List, LayoutGrid, FolderPlus, FolderOpen, Plus, Search, Settings2, StickyNote, X } from "lucide-react";
 import AppIcon from "../components/icons/AppIcon";
-import { projectService, type Project, type BenefitAnalysisScheme, type BenefitAnalysisSnapshot } from "../utils/projectService";
+import { projectService, type Project, type BenefitAnalysisScheme, type BenefitAnalysisSnapshot, type SummaryMetrics } from "../utils/projectService";
 import ProjectFilesTab from "../components/project/ProjectFilesTab";
 import { projectFileService } from "../services/projectFileService";
 
@@ -67,6 +67,11 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   // View Mode: list or grid
   const [viewMode, setViewMode] = useState<"list" | "grid">(
     () => (localStorage.getItem("lamber_project_board_view_mode") as "list" | "grid") || "list"
+  );
+
+  // Density Mode: original, standard, compact
+  const [densityMode, setDensityMode] = useState<"original" | "standard" | "compact">(
+    () => (localStorage.getItem("lamber_project_board_density_mode") as "original" | "standard" | "compact") || "compact"
   );
 
   // Drawer Ref for Outside Clicks
@@ -541,32 +546,37 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
 
   const renderProjectNote = (project: Project, compact = false) => (
     <div
-      className={`rounded-xl border border-border/50 bg-background/80 ${compact ? "p-3" : "p-3.5"}`}
+      className="flex items-start gap-2.5"
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-[10px] font-extrabold uppercase tracking-wide text-secondary-foreground">项目备注</span>
+      <div className="mt-0.5 rounded-md bg-amber-50 p-1 text-amber-500">
+        <StickyNote className="h-4 w-4" />
       </div>
-      <textarea
-        value={noteDrafts[project.id] ?? project.note ?? ""}
-        onChange={(e) => handleProjectNoteChange(project.id, e.target.value)}
-        onBlur={() => handleProjectNoteBlur(project)}
-        rows={compact ? 2 : 3}
-        placeholder="填写客户背景、推进风险、下一步动作..."
-        className="block w-full resize-none rounded-lg border border-input bg-card px-3 py-2 text-xs leading-5 text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-ring focus:bg-card focus:ring-2 focus:ring-ring/20"
-      />
+      <div className="min-w-0 flex-1">
+        <span className="block text-xs font-bold text-slate-800">项目备注</span>
+        <textarea
+          value={noteDrafts[project.id] ?? project.note ?? ""}
+          onChange={(e) => handleProjectNoteChange(project.id, e.target.value)}
+          onBlur={() => handleProjectNoteBlur(project)}
+          rows={compact ? 2 : 3}
+          placeholder="填写客户背景、推进风险、下一步动作..."
+          className={`mt-1 block w-full resize-none rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-200 focus:bg-white focus:ring-2 focus:ring-blue-100 ${
+            compact ? "min-h-[48px]" : "min-h-[58px]"
+          }`}
+        />
+      </div>
     </div>
   );
 
   const getStatusBadge = (status: Project["benefit_status"]) => {
     switch (status) {
       case "normal":
-        return <span className="inline-flex items-center gap-1 text-[10px] bg-green-500/10 text-green-500 px-2 py-0.5 rounded-full font-bold border border-green-500/20"><span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" /> 测算已更新</span>;
+        return <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md font-bold border border-emerald-200"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" /> 测算已更新</span>;
       case "outdated":
-        return <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded-full font-bold border border-amber-500/20"><span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" /> 测算已失效</span>;
+        return <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md font-bold border border-amber-200"><span className="w-1.5 h-1.5 bg-amber-500 rounded-full" /> 测算已失效</span>;
       default:
-        return <span className="inline-flex items-center gap-1 text-[10px] bg-gray-500/10 text-gray-500 px-2 py-0.5 rounded-full font-bold border border-gray-500/20">未测算</span>;
+        return <span className="inline-flex items-center gap-1 text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold border border-slate-200">未测算</span>;
     }
   };
 
@@ -598,6 +608,184 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     return `${percent.toFixed(2)}%`;
   };
 
+  const getRiskTone = (level?: string) => {
+    if (level === "高风险") {
+      return {
+        badge: "border-rose-200 bg-rose-50 text-rose-700",
+        dot: "bg-rose-500",
+      };
+    }
+    if (level === "中风险") {
+      return {
+        badge: "border-amber-200 bg-amber-50 text-amber-700",
+        dot: "bg-amber-500",
+      };
+    }
+    return {
+      badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      dot: "bg-emerald-500",
+    };
+  };
+
+  const getRiskBorderStyles = (level?: string) => {
+    if (level === "高风险") {
+      return "border-l-4 border-l-rose-500";
+    }
+    if (level === "中风险") {
+      return "border-l-4 border-l-amber-500";
+    }
+    return "border-l-4 border-l-emerald-500";
+  };
+
+  const getRiskTopBorderStyles = (level?: string) => {
+    if (level === "高风险") {
+      return "border-t-4 border-t-rose-500";
+    }
+    if (level === "中风险") {
+      return "border-t-4 border-t-amber-500";
+    }
+    return "border-t-4 border-t-emerald-500";
+  };
+
+  const renderMetricValue = (
+    value: string,
+    options: { unit?: string; prefix?: string; compact?: boolean } = {}
+  ) => {
+    const { unit, prefix, compact = false } = options;
+    const hasUnit = Boolean(unit && value.endsWith(unit));
+    const displayValue = hasUnit && unit ? value.slice(0, -unit.length) : value;
+    const isEmpty = displayValue === "--";
+
+    return (
+      <div className="flex min-w-0 items-baseline gap-1">
+        {prefix && !isEmpty && <span className="text-[10px] font-bold text-slate-400">{prefix}</span>}
+        <span className={`${compact ? "text-xl" : "text-2xl"} min-w-0 truncate font-extrabold tracking-tight text-slate-950`}>
+          {displayValue}
+        </span>
+        {unit && !isEmpty && <span className="text-xs font-bold text-slate-400">{unit}</span>}
+      </div>
+    );
+  };
+
+  const renderMetricTile = (
+    label: string,
+    value: string,
+    options: { unit?: string; prefix?: string; compact?: boolean } = {}
+  ) => (
+    <div className={`${options.compact ? "p-3" : "p-3.5"} min-w-0 rounded-xl border border-slate-100 bg-white transition-colors hover:border-blue-100`}>
+      <span className="mb-1 block truncate text-[11px] font-semibold text-slate-500">{label}</span>
+      {renderMetricValue(value, options)}
+    </div>
+  );
+
+  const renderRiskAssessment = (metrics: SummaryMetrics, compact = false) => {
+    const tone = getRiskTone(metrics.risk_level);
+    return (
+      <div className={`${compact ? "mt-3 px-3 py-2" : "mt-4 px-4 py-2.5"} flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-slate-100/70`}>
+        <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-slate-500">
+          <Info className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+          <span className="truncate">风险综合评估</span>
+        </span>
+        <span className={`${tone.badge} inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-bold`}>
+          <span className={`${tone.dot} h-1.5 w-1.5 rounded-full`} />
+          {metrics.risk_level}
+        </span>
+      </div>
+    );
+  };
+
+  const renderMetricPanel = (metrics: SummaryMetrics | null | undefined, compact = false) => {
+    if (!metrics) {
+      return (
+        <div className="rounded-xl border border-dashed border-slate-200 bg-white/70 px-4 py-6 text-center text-xs font-medium leading-5 text-slate-500">
+          暂无效益分析指标，点击下方按钮开始测算
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <div className={`grid grid-cols-2 ${compact ? "gap-2.5" : "gap-3"}`}>
+          {renderMetricTile("毛利率", formatMetricPercent(metrics.margin_rate), { unit: "%", compact })}
+          {renderMetricTile("净现值 NPV", formatMetricNumber(metrics.npv), { prefix: "¥", compact })}
+          {renderMetricTile("净现值率 NPVR", formatMetricPercent(metrics.npv_rate), { unit: "%", compact })}
+          {renderMetricTile("内部收益率 IRR", formatMetricPercent(metrics.irr), { unit: "%", compact })}
+        </div>
+        {renderRiskAssessment(metrics, compact)}
+      </>
+    );
+  };
+
+  const renderProjectCardHeader = (project: Project, compact = false) => (
+    <div className={`${compact ? "p-4" : "p-5"} border-b border-slate-100`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-slate-600 transition-colors group-hover:bg-blue-50 group-hover:text-blue-600">
+            <FileText className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <h3 className={`${compact ? "text-base" : "text-lg"} truncate font-extrabold leading-snug tracking-tight text-slate-900`} title={project.name}>
+              {project.name}
+            </h3>
+            <p className="mt-1 truncate text-xs leading-5 text-slate-500">
+              客户: <span className="font-medium text-slate-700">{project.customer_name || "未填写"}</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+            {project.status}
+          </span>
+          {getStatusBadge(project.benefit_status)}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderOpenCalcButton = (project: Project, id: string, compact = false) => (
+    <button
+      id={id}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpenCalc(project.id, project.default_scheme_id || null);
+      }}
+      className={`${compact ? "px-3 py-1.5" : "px-4 py-2"} group inline-flex shrink-0 items-center justify-center rounded-xl bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white dark:bg-blue-950/30 dark:text-blue-400 dark:hover:bg-blue-600 dark:hover:text-white border border-blue-100 dark:border-blue-900/40 text-xs font-bold shadow-sm transition-all active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200`}
+    >
+      <BarChart3 className="h-4 w-4" />
+      <span className="ml-2">打开效益分析</span>
+      <ArrowRight className="ml-1.5 h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+    </button>
+  );
+
+  const renderOpenFolderButton = (project: Project, compact = false) => {
+    const hasFolder = !!project.folder_path;
+    return (
+      <button
+        onClick={async (e) => {
+          e.stopPropagation();
+          if (!hasFolder) {
+            alert("该项目尚未绑定项目文件夹，请在项目详情中设置。");
+            return;
+          }
+          try {
+            await projectFileService.openProjectFolder(project.id);
+          } catch (err) {
+            console.error("打开项目文件夹失败:", err);
+            alert("无法打开项目文件夹: " + err);
+          }
+        }}
+        className={`group inline-flex shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/80 text-xs font-bold transition-all active:scale-[0.98] ${
+          compact ? "p-1.5" : "px-3 py-2"
+        } ${!hasFolder ? "opacity-40 cursor-not-allowed" : ""}`}
+        title={hasFolder ? `打开项目文件夹: ${project.folder_path}` : "未绑定项目文件夹"}
+      >
+        <FolderOpen className="h-4 w-4" />
+        {!compact && <span className="ml-1.5">打开文件夹</span>}
+      </button>
+    );
+  };
+
   const matchesProjectSearch = (project: Project) => {
     const keyword = projectSearchTerm.trim().toLocaleLowerCase();
     if (!keyword) return true;
@@ -621,23 +809,34 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     }).length;
   };
 
-  const renderCreateProjectEntry = (mode: "list" | "grid") => (
-    <button
-      id={`board_create_project_entry_${mode}`}
-      type="button"
-      onClick={openCreateProjectModal}
-      className={`group flex items-center justify-center gap-3 border-2 border-dashed border-primary/30 bg-primary/5 text-primary transition-all hover:border-primary hover:bg-primary/10 active:scale-[0.99] ${
-        mode === "list"
-          ? "min-h-[104px] w-full rounded-xl p-4"
-          : "min-h-[360px] rounded-2xl p-5"
-      }`}
-    >
-      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm transition-transform group-hover:scale-105">
-        <Plus className="h-5 w-5" />
-      </span>
-      <span className="text-sm font-extrabold">创建新项目</span>
-    </button>
-  );
+  const renderCreateProjectEntry = (mode: "list" | "grid") => {
+    let heightClass = "min-h-[360px]";
+    if (mode === "list") {
+      heightClass = "min-h-[104px] w-full rounded-xl p-4";
+    } else {
+      if (densityMode === "standard") {
+        heightClass = "min-h-[320px] rounded-xl p-4";
+      } else if (densityMode === "compact") {
+        heightClass = "min-h-[220px] rounded-xl p-4";
+      } else {
+        heightClass = "min-h-[360px] rounded-2xl p-5";
+      }
+    }
+
+    return (
+      <button
+        id={`board_create_project_entry_${mode}`}
+        type="button"
+        onClick={openCreateProjectModal}
+        className={`group flex items-center justify-center gap-3 border-2 border-dashed border-slate-300 bg-white dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 shadow-sm transition-all hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 active:scale-[0.99] ${heightClass}`}
+      >
+        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shadow-sm transition-all group-hover:scale-105 group-hover:bg-blue-600 group-hover:text-white">
+          <Plus className="h-5 w-5" />
+        </span>
+        <span className="text-sm font-extrabold">创建新项目</span>
+      </button>
+    );
+  };
 
   return (
     <div className="flex flex-col flex-1 h-full overflow-hidden bg-background text-foreground animate-in fade-in duration-300">
@@ -647,13 +846,13 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
           <button
             id="board_back_btn"
             onClick={onBack}
-            className="p-2 hover:bg-secondary rounded-lg transition-colors text-secondary-foreground hover:text-primary"
+            className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-500 hover:text-slate-900"
           >
             <AppIcon name="chevronDown" size={20} className="rotate-90" />
           </button>
           <div>
             <h1 className="text-xl font-extrabold flex items-center gap-2 text-foreground">
-              <AppIcon name="project" size={22} className="text-primary" /> 项目看板
+              <AppIcon name="project" size={22} className="text-slate-500" /> 项目看板
             </h1>
             <p className="text-xs text-secondary-foreground mt-0.5">管理项目生命周期及其关联的效益分析测算</p>
           </div>
@@ -662,7 +861,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
         <button
           id="board_create_project_btn"
           onClick={openCreateProjectModal}
-          className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground font-bold px-4 py-2 rounded-lg text-sm hover:bg-primary/95 transition-all shadow-sm active:scale-[0.98]"
+          className="inline-flex items-center gap-1.5 bg-blue-600 text-white font-bold px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-all shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
         >
           <Plus className="h-4 w-4" /> 创建新项目
         </button>
@@ -696,13 +895,13 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                     onClick={() => setProjectStageFilter(stage)}
                     className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 active:scale-[0.98] ${
                       isActive
-                        ? "bg-primary text-primary-foreground shadow-sm font-extrabold"
-                        : "bg-card border border-border text-secondary-foreground hover:bg-secondary hover:text-primary"
+                        ? "bg-blue-600 text-white shadow-sm font-extrabold"
+                        : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                     }`}
                   >
                     {stage}
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                      isActive ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-secondary-foreground"
+                      isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
                     }`}>
                       {count}
                     </span>
@@ -712,7 +911,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
               <button
                 type="button"
                 onClick={handleOpenStatusManager}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-secondary-foreground transition-all hover:bg-secondary hover:text-primary"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition-all hover:bg-slate-50 hover:text-slate-900"
                 title="管理项目阶段"
               >
                 <Settings2 className="h-3.5 w-3.5" />
@@ -744,10 +943,55 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
 
               <div className="flex items-center border border-border bg-card rounded-lg p-0.5 shrink-0">
                 <button
+                  onClick={() => {
+                    setDensityMode("original");
+                    localStorage.setItem("lamber_project_board_density_mode", "original");
+                  }}
+                  className={`px-2 py-1 rounded-md text-[10px] transition-all ${
+                    densityMode === "original"
+                      ? "bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white font-extrabold shadow-sm"
+                      : "text-secondary-foreground hover:text-foreground opacity-60 hover:opacity-100 font-bold"
+                  }`}
+                  title="低密度 - 原版高卡"
+                >
+                  低密度
+                </button>
+                <button
+                  onClick={() => {
+                    setDensityMode("standard");
+                    localStorage.setItem("lamber_project_board_density_mode", "standard");
+                  }}
+                  className={`px-2 py-1 rounded-md text-[10px] transition-all ${
+                    densityMode === "standard"
+                      ? "bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white font-extrabold shadow-sm"
+                      : "text-secondary-foreground hover:text-foreground opacity-60 hover:opacity-100 font-bold"
+                  }`}
+                  title="中密度 - 标准精致"
+                >
+                  中密度
+                </button>
+                <button
+                  onClick={() => {
+                    setDensityMode("compact");
+                    localStorage.setItem("lamber_project_board_density_mode", "compact");
+                  }}
+                  className={`px-2 py-1 rounded-md text-[10px] transition-all ${
+                    densityMode === "compact"
+                      ? "bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white font-extrabold shadow-sm"
+                      : "text-secondary-foreground hover:text-foreground opacity-60 hover:opacity-100 font-bold"
+                  }`}
+                  title="高密度 - 极致紧凑"
+                >
+                  高密度
+                </button>
+              </div>
+
+              <div className="flex items-center border border-border bg-card rounded-lg p-0.5 shrink-0">
+                <button
                   onClick={() => handleToggleViewMode("list")}
                   className={`p-1.5 rounded-md transition-all ${
                     viewMode === "list"
-                      ? "bg-secondary text-primary font-bold shadow-sm"
+                      ? "bg-slate-100 text-slate-900 font-bold shadow-sm"
                       : "text-secondary-foreground hover:text-foreground opacity-60 hover:opacity-100"
                   }`}
                   title="列表视图"
@@ -758,7 +1002,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                   onClick={() => handleToggleViewMode("grid")}
                   className={`p-1.5 rounded-md transition-all ${
                     viewMode === "grid"
-                      ? "bg-secondary text-primary font-bold shadow-sm"
+                      ? "bg-slate-100 text-slate-900 font-bold shadow-sm"
                       : "text-secondary-foreground hover:text-foreground opacity-60 hover:opacity-100"
                   }`}
                   title="卡片视图"
@@ -780,93 +1024,234 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
               )}
               {filteredProjects.map((project) => {
                 const metrics = project.summary_metrics;
+
+                // ==================== MODE 1: ORIGINAL (低密度 - 原图大卡片) ====================
+                if (densityMode === "original") {
+                  return (
+                    <div
+                      key={project.id}
+                      id={`project_card_${project.id}`}
+                      onClick={() => handleOpenDetails(project)}
+                      className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:border-slate-300 hover:shadow-md animate-in fade-in slide-in-from-bottom-2"
+                    >
+                      <div className="flex flex-col xl:flex-row">
+                        <div className="min-w-0 flex-1">
+                          {renderProjectCardHeader(project, true)}
+                          <div className="p-4">
+                            {renderProjectNote(project, true)}
+                          </div>
+                        </div>
+
+                        <div className="flex w-full flex-col border-t border-slate-100 bg-slate-50/60 xl:w-[560px] xl:border-l xl:border-t-0">
+                          <div className="p-4">
+                            {renderMetricPanel(metrics, true)}
+                          </div>
+
+                          <div className="flex items-center justify-between gap-4 border-t border-slate-100 bg-white/70 px-4 py-3">
+                            <span className="shrink-0 text-[11px] font-medium text-slate-400">
+                              更新于 {new Date(project.updated_at).toLocaleDateString()}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {renderOpenFolderButton(project, true)}
+                              {renderOpenCalcButton(project, `open_calc_btn_${project.id}`, true)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // ==================== MODE 2: STANDARD (中密度 - 标准配置) ====================
+                if (densityMode === "standard") {
+                  return (
+                    <div
+                      key={project.id}
+                      id={`project_card_${project.id}`}
+                      onClick={() => handleOpenDetails(project)}
+                      className="group relative cursor-pointer overflow-hidden bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/85 dark:border-slate-800 p-4 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col md:flex-row items-stretch gap-4 animate-in fade-in slide-in-from-bottom-2"
+                    >
+                      {/* Left Block (30% Width): Meta info & notes */}
+                      <div className="md:w-[30%] flex flex-col justify-between border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-800 pb-3 md:pb-0 md:pr-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                              {project.status}
+                            </span>
+                            {getStatusBadge(project.benefit_status)}
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-black text-slate-900 dark:text-white tracking-tight truncate" title={project.name}>{project.name}</h3>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 truncate" title={project.customer_name || "未填写"}>
+                              客户: {project.customer_name || "未填写"}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Note Box */}
+                        <div className="mt-3 bg-slate-50/50 dark:bg-slate-800/40 p-2 rounded-lg border border-slate-100/60 dark:border-slate-800/60 flex items-start gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          <StickyNote className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                          <div className="min-w-0 flex-1">
+                            <textarea
+                              value={noteDrafts[project.id] ?? project.note ?? ""}
+                              onChange={(e) => handleProjectNoteChange(project.id, e.target.value)}
+                              onBlur={() => handleProjectNoteBlur(project)}
+                              rows={2}
+                              placeholder="填写备注..."
+                              className="w-full resize-none bg-transparent text-[10px] text-slate-500 dark:text-slate-400 outline-none leading-normal placeholder:text-slate-400 focus:ring-0"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Middle Block (50% Width): 4 Metrics horizontally */}
+                      <div className="md:w-[50%] flex flex-col justify-center px-2">
+                        <div className="grid grid-cols-4 gap-2 text-left">
+                          <div className="bg-slate-50/30 dark:bg-slate-800/20 p-2.5 rounded-xl border border-slate-100/40 dark:border-slate-800/80">
+                            <span className="text-[9px] text-slate-400 dark:text-slate-500 block font-bold uppercase truncate">毛利率</span>
+                            <span className="text-sm font-black text-slate-900 dark:text-white truncate block">
+                              {metrics ? formatMetricPercent(metrics.margin_rate) : "--"}
+                            </span>
+                          </div>
+                          <div className="bg-slate-50/30 dark:bg-slate-800/20 p-2.5 rounded-xl border border-slate-100/40 dark:border-slate-800/80">
+                            <span className="text-[9px] text-slate-400 dark:text-slate-500 block font-bold uppercase truncate">净现值 NPV</span>
+                            <span className="text-sm font-black text-slate-900 dark:text-white truncate block">
+                              {metrics ? `¥${formatMetricNumber(metrics.npv)}` : "--"}
+                            </span>
+                          </div>
+                          <div className="bg-slate-50/30 dark:bg-slate-800/20 p-2.5 rounded-xl border border-slate-100/40 dark:border-slate-800/80">
+                            <span className="text-[9px] text-slate-400 dark:text-slate-500 block font-bold uppercase truncate">NPVR</span>
+                            <span className="text-sm font-black text-slate-900 dark:text-white truncate block">
+                              {metrics ? formatMetricPercent(metrics.npv_rate) : "--"}
+                            </span>
+                          </div>
+                          <div className="bg-slate-50/30 dark:bg-slate-800/20 p-2.5 rounded-xl border border-slate-100/40 dark:border-slate-800/80">
+                            <span className="text-[9px] text-slate-400 dark:text-slate-500 block font-bold uppercase truncate">IRR</span>
+                            <span className="text-sm font-black text-slate-900 dark:text-white truncate block">
+                              {metrics ? formatMetricPercent(metrics.irr) : "--"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Combined Risk tag */}
+                        {metrics && metrics.risk_level && (
+                          <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+                            <span className="font-semibold">风险评估:</span>
+                            <span className={`px-2 py-0.5 font-bold border rounded-md text-[9px] ${getRiskTone(metrics.risk_level).badge}`}>
+                              <span className={`w-1 h-1 rounded-full ${getRiskTone(metrics.risk_level).dot} mr-1 inline-block`} />
+                              {metrics.risk_level}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Right Block (20% Width): Date & Action */}
+                      <div className="md:w-[20%] border-t md:border-t-0 md:border-l border-slate-100 dark:border-slate-800 pt-3 md:pt-0 md:pl-4 flex flex-col justify-between items-end gap-2 text-right">
+                        <span className="text-[9px] text-slate-400 dark:text-slate-500">
+                          更新于 {new Date(project.updated_at).toLocaleDateString()}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {renderOpenFolderButton(project, true)}
+                          {renderOpenCalcButton(project, `open_calc_btn_standard_${project.id}`, true)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // ==================== MODE 3: ULTRA-COMPACT (高密度 - 极致对齐单行) ====================
                 return (
                   <div
                     key={project.id}
                     id={`project_card_${project.id}`}
                     onClick={() => handleOpenDetails(project)}
-                    className="bg-card border border-border hover:border-primary/40 rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 group relative overflow-hidden animate-in fade-in slide-in-from-bottom-2"
+                    className={`bg-white dark:bg-slate-900 rounded-xl border border-slate-200/85 dark:border-slate-800/85 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col lg:flex-row lg:items-center justify-between p-3 gap-3 min-h-[64px] ${getRiskBorderStyles(metrics?.risk_level)} animate-in fade-in slide-in-from-bottom-2`}
                   >
-                    {/* Left: Info */}
-                    <div className="flex-1 min-w-0 flex flex-col gap-3">
-                      <div className="flex items-start gap-4">
-                        <div className="bg-primary/10 p-2.5 rounded-lg text-primary shrink-0 mt-0.5 group-hover:bg-blue-50 transition-colors">
-                          <AppIcon name="project" size={20} />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-extrabold text-sm text-foreground group-hover:text-primary transition-colors truncate">
-                              {project.name}
-                            </h3>
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-secondary text-secondary-foreground border border-border/60">
-                              {project.status}
-                            </span>
-                            {getStatusBadge(project.benefit_status)}
-                          </div>
-                          <p className="text-xs text-secondary-foreground mt-1.5">
-                            客户名称: <span className="font-medium text-foreground">{project.customer_name || "未填写"}</span>
-                          </p>
-                        </div>
+                    {/* Column 1: Project Identity & Stage (26% width) */}
+                    <div className="lg:w-[26%] flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 bg-slate-50 dark:bg-slate-800 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-700/50 flex-shrink-0">
+                        <FileText className="h-4 w-4" />
                       </div>
-                      {renderProjectNote(project, true)}
-                    </div>
-
-                    {/* Middle: Metrics */}
-                    <div className="w-full shrink-0 md:w-[430px] lg:w-[520px] flex flex-col gap-2.5">
-                      <div className="flex flex-wrap items-center gap-4 sm:gap-6 bg-muted/20 border border-border/30 px-4 py-2.5 rounded-xl">
-                        {metrics ? (
-                          <>
-                            <div className="flex flex-col gap-0.5 min-w-[50px]">
-                              <span className="text-[10px] text-secondary-foreground">毛利率</span>
-                              <span className="text-xs font-bold text-foreground">{formatMetricPercent(metrics.margin_rate)}</span>
-                            </div>
-                            <div className="w-px h-6 bg-border/40" />
-                            <div className="flex flex-col gap-0.5 min-w-[70px]">
-                              <span className="text-[10px] text-secondary-foreground">净现值 NPV</span>
-                              <span className="text-xs font-bold text-foreground">{formatMetricNumber(metrics.npv)}</span>
-                            </div>
-                            <div className="w-px h-6 bg-border/40" />
-                            <div className="flex flex-col gap-0.5 min-w-[70px]">
-                              <span className="text-[10px] text-secondary-foreground">净现值率 NPVR</span>
-                              <span className="text-xs font-bold text-foreground">{formatMetricPercent(metrics.npv_rate)}</span>
-                            </div>
-                            <div className="w-px h-6 bg-border/40" />
-                            <div className="flex flex-col gap-0.5 min-w-[50px]">
-                              <span className="text-[10px] text-secondary-foreground">IRR</span>
-                              <span className="text-xs font-bold text-foreground">{formatMetricPercent(metrics.irr)}</span>
-                            </div>
-                            <div className="w-px h-6 bg-border/40" />
-                            <div className="flex flex-col gap-0.5 min-w-[60px]">
-                              <span className="text-[10px] text-secondary-foreground">风险等级</span>
-                              <span className={`text-xs font-bold ${
-                                metrics.risk_level === '低风险' ? 'text-green-500' :
-                                metrics.risk_level === '中风险' ? 'text-amber-500' : 'text-red-500'
-                              }`}>
-                                {metrics.risk_level}
-                              </span>
-                            </div>
-                          </>
-                        ) : (
-                          <span className="text-xs text-secondary-foreground italic py-1">暂无效益分析指标</span>
-                        )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <h3 className="text-xs font-black text-slate-900 dark:text-white truncate leading-tight hover:text-blue-600 cursor-pointer" title={project.name}>
+                            {project.name}
+                          </h3>
+                          <span className="px-1 py-0.5 text-[8px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded flex-shrink-0">
+                            {project.status}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5" title={project.customer_name || "未填写"}>
+                          {project.customer_name || "未填写"}
+                        </p>
                       </div>
                     </div>
 
-                    {/* Right: Actions */}
-                    <div className="shrink-0 flex items-center gap-4 self-end md:self-auto">
-                      <span className="text-[10px] text-secondary-foreground hidden lg:inline">
-                        {new Date(project.updated_at).toLocaleDateString()} 更新
-                      </span>
-                      <button
-                        id={`open_calc_btn_${project.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onOpenCalc(project.id, project.default_scheme_id || null);
-                        }}
-                        className="text-xs font-bold text-primary hover:text-primary-foreground hover:bg-primary px-3 py-1.5 rounded-lg transition-all border border-primary/20 hover:border-transparent flex items-center gap-1.5 bg-background shadow-sm active:scale-[0.98]"
+                    {/* Column 2: Risk Indicator (8% width) */}
+                    <div className="lg:w-[8%] flex items-center justify-start lg:justify-center flex-shrink-0">
+                      {metrics && metrics.risk_level ? (
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-extrabold border rounded-md ${getRiskTone(metrics.risk_level).badge}`}>
+                          <span className={`w-1 h-1 rounded-full ${getRiskTone(metrics.risk_level).dot}`} />
+                          {metrics.risk_level}
+                        </span>
+                      ) : (
+                        <span className="text-[9px] text-slate-400">无风险评估</span>
+                      )}
+                    </div>
+
+                    {/* Column 3: High Density Financial Metrics (44% width) */}
+                    <div className="lg:w-[44%] bg-slate-50/50 dark:bg-slate-800/30 rounded-lg p-1.5 border border-slate-100/60 dark:border-slate-800/80">
+                      <div className="grid grid-cols-4 gap-1 text-center divide-x divide-slate-200/40 dark:divide-slate-700/40">
+                        <div className="px-1 text-left sm:text-center">
+                          <span className="text-[8px] text-slate-400 dark:text-slate-500 font-bold block scale-90 origin-left sm:origin-center">毛利率</span>
+                          <span className="text-xs font-black text-slate-900 dark:text-white truncate block">
+                            {metrics ? formatMetricPercent(metrics.margin_rate) : "--"}
+                          </span>
+                        </div>
+
+                        <div className="px-1 text-left sm:text-center">
+                          <span className="text-[8px] text-slate-400 dark:text-slate-500 font-bold block scale-90 origin-left sm:origin-center">NPV</span>
+                          <span className="text-xs font-black text-slate-900 dark:text-white truncate block">
+                            {metrics ? `¥${formatMetricNumber(metrics.npv)}` : "--"}
+                          </span>
+                        </div>
+
+                        <div className="px-1 text-left sm:text-center">
+                          <span className="text-[8px] text-slate-400 dark:text-slate-500 font-bold block scale-90 origin-left sm:origin-center">NPVR</span>
+                          <span className="text-xs font-black text-slate-900 dark:text-white truncate block">
+                            {metrics ? formatMetricPercent(metrics.npv_rate) : "--"}
+                          </span>
+                        </div>
+
+                        <div className="px-1 text-left sm:text-center">
+                          <span className="text-[8px] text-slate-400 dark:text-slate-500 font-bold block scale-90 origin-left sm:origin-center">IRR</span>
+                          <span className="text-xs font-black text-slate-900 dark:text-white truncate block">
+                            {metrics ? formatMetricPercent(metrics.irr) : "--"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Column 4: Truncated Remarks with tooltip (12% width) */}
+                    <div className="lg:w-[12%] min-w-0 flex items-center gap-1 bg-amber-500/5 dark:bg-amber-500/10 px-2 py-1 rounded-lg border border-amber-500/10 dark:border-amber-500/20">
+                      <StickyNote className="h-3 w-3 text-amber-500 flex-shrink-0" />
+                      <span
+                        className="text-[10px] text-slate-600 dark:text-slate-300 font-semibold truncate flex-1"
+                        title={project.note ? `项目备注: ${project.note}` : "暂无备注"}
                       >
-                        <AppIcon name="calculator" size={13} /> 打开效益分析
-                      </button>
+                        {project.note || "暂无备注"}
+                      </span>
+                    </div>
+
+                    {/* Column 5: Single Row Actions (10% width) */}
+                    <div className="lg:w-[10%] flex lg:flex-col items-center lg:items-end justify-between lg:justify-center gap-1 flex-shrink-0 text-right border-t lg:border-t-0 border-slate-100 dark:border-slate-800 pt-2 lg:pt-0">
+                      <span className="text-[8px] text-slate-400 dark:text-slate-500 scale-90 origin-right">
+                        更新于 {new Date(project.updated_at).toLocaleDateString()}
+                      </span>
+                      <div className="flex items-center gap-1.5 mt-1 lg:mt-0">
+                        {renderOpenFolderButton(project, true)}
+                        {renderOpenCalcButton(project, `open_calc_btn_compact_${project.id}`, true)}
+                      </div>
                     </div>
                   </div>
                 );
@@ -876,7 +1261,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
             <div className="flex-1 overflow-y-auto p-6">
               <div
                 className="grid gap-6 animate-in fade-in duration-300"
-                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}
+                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))' }}
               >
                 {renderCreateProjectEntry("grid")}
                 {filteredProjects.length === 0 && (
@@ -886,93 +1271,156 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                 )}
                 {filteredProjects.map((project) => {
                   const metrics = project.summary_metrics;
+
+                  // ==================== MODE 1: ORIGINAL (低密度 - 原版大卡片) ====================
+                  if (densityMode === "original") {
+                    return (
+                      <div
+                        key={project.id}
+                        id={`project_card_${project.id}`}
+                        onClick={() => handleOpenDetails(project)}
+                        className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:bg-slate-900 shadow-sm transition-all duration-200 hover:border-slate-300 hover:shadow-md animate-in fade-in slide-in-from-bottom-2"
+                      >
+                        {renderProjectCardHeader(project)}
+
+                        <div className="bg-slate-50/60 dark:bg-slate-800/30 px-5 py-4">
+                          {renderMetricPanel(metrics)}
+                        </div>
+
+                        <div className="border-t border-slate-100 dark:border-slate-800 p-5">
+                          {renderProjectNote(project)}
+                        </div>
+
+                        <div className="mt-auto flex items-center justify-between gap-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 px-5 py-3.5">
+                          <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                            更新于 {new Date(project.updated_at).toLocaleDateString()}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {renderOpenFolderButton(project, true)}
+                            {renderOpenCalcButton(project, `open_calc_btn_grid_${project.id}`)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // ==================== MODE 2: STANDARD (中密度 - 标准配置) ====================
+                  if (densityMode === "standard") {
+                    return (
+                      <div
+                        key={project.id}
+                        id={`project_card_${project.id}`}
+                        onClick={() => handleOpenDetails(project)}
+                        className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-slate-200 bg-white dark:bg-slate-900 shadow-sm transition-all duration-200 hover:border-slate-300 hover:shadow-md animate-in fade-in slide-in-from-bottom-2"
+                      >
+                        {renderProjectCardHeader(project, true)}
+
+                        <div className="bg-slate-50/40 dark:bg-slate-800/20 px-4 py-3">
+                          {renderMetricPanel(metrics, true)}
+                        </div>
+
+                        <div className="border-t border-slate-100 dark:border-slate-800 p-4">
+                          {renderProjectNote(project, true)}
+                        </div>
+
+                        <div className="mt-auto flex items-center justify-between gap-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 px-4 py-2.5">
+                          <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                            更新于 {new Date(project.updated_at).toLocaleDateString()}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {renderOpenFolderButton(project, true)}
+                            {renderOpenCalcButton(project, `open_calc_btn_grid_standard_${project.id}`, true)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // ==================== MODE 3: ULTRA-COMPACT (高密度 - 极致紧凑卡片) ====================
                   return (
                     <div
                       key={project.id}
                       id={`project_card_${project.id}`}
                       onClick={() => handleOpenDetails(project)}
-                      className="bg-card border border-border hover:border-primary/40 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4 group relative overflow-hidden animate-in fade-in slide-in-from-bottom-2"
+                      className={`group relative flex cursor-pointer flex-col justify-between overflow-hidden rounded-xl border border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-slate-900 shadow-sm hover:shadow-md transition-all duration-200 p-4 min-h-[220px] ${getRiskTopBorderStyles(metrics?.risk_level)} animate-in fade-in slide-in-from-bottom-2`}
                     >
-                      {/* Top: Name and Badges */}
-                      <div className="space-y-3 shrink-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="bg-primary/10 p-2.5 rounded-xl text-primary shrink-0 group-hover:bg-blue-50 transition-colors">
-                            <AppIcon name="project" size={20} />
-                          </div>
-                          <div className="flex flex-col items-end gap-1.5 shrink-0">
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-secondary text-secondary-foreground border border-border/60">
+                      {/* Header: Title + Client + Stage Tag Inline */}
+                      <div className="border-b border-slate-100 dark:border-slate-800/80 pb-2 flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                            <h3 className="text-xs font-black text-slate-900 dark:text-white truncate" title={project.name}>
+                              {project.name}
+                            </h3>
+                            <span className="px-1 py-0.5 text-[8px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded flex-shrink-0">
                               {project.status}
                             </span>
-                            {getStatusBadge(project.benefit_status)}
                           </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <h3 className="font-extrabold text-base text-foreground group-hover:text-primary transition-colors truncate" title={project.name}>
-                            {project.name}
-                          </h3>
-                          <p className="text-xs text-secondary-foreground truncate">
-                            客户名称: <span className="font-medium text-foreground">{project.customer_name || "未填写"}</span>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5" title={project.customer_name || "未填写"}>
+                            {project.customer_name || "未填写"}
                           </p>
                         </div>
-                      </div>
 
-                      {/* Middle: Metrics */}
-                      <div className="flex-1 bg-muted/20 border border-border/30 rounded-xl p-4 flex flex-col justify-center min-h-[100px]">
-                        {metrics ? (
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-[10px] text-secondary-foreground">毛利率</span>
-                              <span className="text-xs font-bold text-foreground">{formatMetricPercent(metrics.margin_rate)}</span>
-                            </div>
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-[10px] text-secondary-foreground">净现值 NPV</span>
-                              <span className="text-xs font-bold text-foreground">{formatMetricNumber(metrics.npv)}</span>
-                            </div>
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-[10px] text-secondary-foreground">净现值率 NPVR</span>
-                              <span className="text-xs font-bold text-foreground">{formatMetricPercent(metrics.npv_rate)}</span>
-                            </div>
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-[10px] text-secondary-foreground">IRR</span>
-                              <span className="text-xs font-bold text-foreground">{formatMetricPercent(metrics.irr)}</span>
-                            </div>
-                            <div className="flex flex-col gap-0.5 col-span-2 border-t border-border/30 pt-2 flex flex-row justify-between items-center">
-                              <span className="text-[10px] text-secondary-foreground">风险等级</span>
-                              <span className={`text-xs font-bold ${
-                                metrics.risk_level === '低风险' ? 'text-green-500' :
-                                metrics.risk_level === '中风险' ? 'text-amber-500' : 'text-red-500'
-                              }`}>
-                                {metrics.risk_level}
-                              </span>
-                            </div>
-                          </div>
+                        {/* Risk Badge on Top Right */}
+                        {metrics && metrics.risk_level ? (
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-extrabold border rounded-md flex-shrink-0 ${getRiskTone(metrics.risk_level).badge}`}>
+                            <span className={`w-1 h-1 rounded-full ${getRiskTone(metrics.risk_level).dot}`} />
+                            {metrics.risk_level}
+                          </span>
                         ) : (
-                          <div className="text-center py-4 flex flex-col items-center justify-center gap-2">
-                            <span className="text-xs text-secondary-foreground opacity-60 leading-relaxed">
-                              暂无效益分析指标，点击下方按钮开始测算
-                            </span>
-                          </div>
+                          <span className="text-[9px] text-slate-450 dark:text-slate-500">无风险评估</span>
                         )}
                       </div>
 
-                      {renderProjectNote(project)}
+                      {/* Compact Metrics Row */}
+                      <div className="py-2.5">
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs font-mono">
+                          <div className="flex justify-between items-baseline border-b border-slate-100/50 dark:border-slate-800/50 pb-1">
+                            <span className="text-[10px] text-slate-400 font-semibold font-sans">毛利率</span>
+                            <span className="text-xs font-black text-slate-900 dark:text-white">
+                              {metrics ? formatMetricPercent(metrics.margin_rate) : "--"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-baseline border-b border-slate-100/50 dark:border-slate-800/50 pb-1">
+                            <span className="text-[10px] text-slate-400 font-semibold font-sans">NPV</span>
+                            <span className="text-xs font-black text-slate-900 dark:text-white">
+                              {metrics ? `¥${formatMetricNumber(metrics.npv)}` : "--"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-baseline">
+                            <span className="text-[10px] text-slate-400 font-semibold font-sans">NPVR</span>
+                            <span className="text-xs font-black text-slate-900 dark:text-white">
+                              {metrics ? formatMetricPercent(metrics.npv_rate) : "--"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-baseline">
+                            <span className="text-[10px] text-slate-400 font-semibold font-sans">IRR</span>
+                            <span className="text-xs font-black text-slate-900 dark:text-white">
+                              {metrics ? formatMetricPercent(metrics.irr) : "--"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
 
-                      {/* Bottom: Action and Update date */}
-                      <div className="flex items-center justify-between border-t border-border/40 pt-3 shrink-0">
-                        <span className="text-[10px] text-secondary-foreground">
-                          {new Date(project.updated_at).toLocaleDateString()} 更新
-                        </span>
-                        <button
-                          id={`open_calc_btn_grid_${project.id}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenCalc(project.id, project.default_scheme_id || null);
-                          }}
-                          className="text-xs font-bold text-primary hover:text-primary-foreground hover:bg-primary px-3 py-1.5 rounded-lg transition-all border border-primary/20 hover:border-transparent flex items-center gap-1.5 bg-background shadow-sm active:scale-[0.98]"
+                      {/* Compressed Remarks Box */}
+                      <div className="bg-slate-50/50 dark:bg-slate-800/30 p-2 rounded-xl text-[10px] flex items-center gap-1.5 border border-slate-100/50 dark:border-slate-800/80 mb-2">
+                        <StickyNote className="h-3 w-3 text-amber-500 flex-shrink-0" />
+                        <span
+                          className="text-slate-500 dark:text-slate-400 font-semibold truncate flex-1 cursor-help"
+                          title={project.note ? `项目备注: ${project.note}` : "暂无备注"}
                         >
-                          <AppIcon name="calculator" size={13} /> 打开效益分析
-                        </button>
+                          {project.note || "暂无备注"}
+                        </span>
+                      </div>
+
+                      {/* Footer Actions */}
+                      <div className="border-t border-slate-100 dark:border-slate-800/80 pt-2 flex items-center justify-between text-[10px]">
+                        <span className="text-slate-400 dark:text-slate-500">
+                          更新于 {new Date(project.updated_at).toLocaleDateString()}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {renderOpenFolderButton(project, true)}
+                          {renderOpenCalcButton(project, `open_calc_btn_grid_compact_${project.id}`, true)}
+                        </div>
                       </div>
                     </div>
                   );

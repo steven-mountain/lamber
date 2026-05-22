@@ -199,7 +199,7 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
           openAiWindow();
         }
       }}
-      className="fixed z-50 flex h-14 w-14 touch-none items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform hover:scale-105 active:scale-95"
+      className="fixed z-50 flex h-14 w-14 touch-none items-center justify-center rounded-full border border-slate-200 bg-white text-blue-600 shadow-md transition-all hover:scale-105 hover:bg-blue-600 hover:text-white hover:shadow-lg active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
       style={{ left: `${position.x}px`, top: `${position.y}px` }}
       title="打开 AI 助手"
       aria-label="打开 AI 助手"
