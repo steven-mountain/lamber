@@ -298,6 +298,7 @@ impl ProjectFileService {
     pub fn add_project_file(
         &self,
         app_handle: &tauri::AppHandle,
+        workspace_root: &str,
         project_id: &str,
         src_path: &str,
         storage_mode: &str,
@@ -369,12 +370,12 @@ impl ProjectFileService {
         };
 
         if storage_mode == "copied" {
-            let app_data_dir = app_handle
+            let _app_data_dir = app_handle
                 .path()
                 .app_data_dir()
                 .map_err(|e| format!("无法获取App数据目录: {}", e))?;
 
-            let dest_dir = app_data_dir.join("projects").join(project_id).join("files");
+            let dest_dir = Path::new(workspace_root).join("projects").join(project_id).join("files");
 
             if !dest_dir.exists() {
                 fs::create_dir_all(&dest_dir).map_err(|e| format!("无法创建托管文件夹: {}", e))?;

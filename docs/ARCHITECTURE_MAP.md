@@ -1,6 +1,6 @@
 # ARCHITECTURE_MAP.md
 
-Last updated: 2026-05-23
+Last updated: 2026-05-28
 
 ## 1. Repository overview
 
@@ -12,9 +12,9 @@ graph TD
     Tauri -->|Rust calculations| Calc[Benefit Calculator / benefit]
     Tauri -->|Word Variable filling| Doc[Docfill Engine / docfill.rs]
     Tauri -->|Directory scanning| Scan[Scanner / project_files]
-    Tauri -->|Data persistence| Repo[Dual Repository Wrapper]
-    Repo -->|JSON Driver| JSON[(projects_store.json)]
-    Repo -->|SQLite Driver| DB[(projects_store.db)]
+    Tauri -->|Workspace Runtime| WS[WorkspaceRuntime]
+    WS -->|Current workspace root| DB[(lamber.sqlite)]
+    WS -->|Local app config| CFG[(config.json recentWorkspaces)]
 ```
 
 ## 2. Directory map
@@ -22,6 +22,7 @@ graph TD
 ### `src-tauri/...` (Rust Backend)
 - **`src/main.rs`**: Entry point. Sets up plugins (dialog, http), initializes state managers, and registers Tauri command handlers.
 - **`src/config_manager.rs`**: Manages the application workspace configurations.
+- **`src/workspace.rs`**: Manages Lamber Workspace manifests, recent workspaces, last workspace restore, workspace readiness checks, and the active SQLite connection.
 - **`src/db.rs`**: SQLite initialization, table creation, and schema version management.
 - **`src/migration.rs`**: JSON-to-SQLite transactional database migration service and Tauri commands.
 - **`src/docfill.rs`**: Extract variables from Word `.docx` zip packages and fills templates.
@@ -62,10 +63,10 @@ graph TD
 
 ## 3. Main application flow
 
-1. **Boot**: `main.rs` starts the Tauri runtime. It queries the local configurations path (`projects_store.json` located in the OS App Data directory).
+1. **Boot**: `main.rs` starts the Tauri runtime, loads local `config.json`, and attempts to restore `lastOpenedWorkspacePath`. It does not create or open an AppData primary database.
 2. **Mount**: `main.tsx` mounts React. It queries `localStorage` to recover previous navigation states and active project choices.
 3. **Routing**: `App.tsx` reads `currentView` from `useNavigationStore`. Toggling views changes the displayed view container.
-4. **State Load**: If a project was active, `IctLifecycle.tsx` invokes `get_schemes` and `get_snapshots` to restore calculations from the database, back-filling form inputs.
+4. **State Load**: If a workspace is ready and a project was active, `IctLifecycle.tsx` invokes `get_schemes` and `get_snapshots` against the current workspace database to restore calculations.
 
 ## 4. Core data flows
 
@@ -106,7 +107,8 @@ graph TD
   - `activeProjectId` / `activeSchemeId`: The focused project context.
   - `entrySource`: Remembers the previous view (Hub vs Project Board) to handle back-navigation.
 - **RAG Context**: Managed by `useAiContextStore` (Zustand). Debounces workspace changes and shares states with LLM prompt builders.
-- **Persistence Database**: Managed by `projects_store.json` (Rust backend atomic read/write).
+- **Workspace State**: Managed by `useWorkspaceStore` and `WorkspaceRuntime`. Frontend tracks `currentWorkspace`, `workspaceRoot`, `workspaceName`, `workspaceId`, `recentWorkspaces`, and `isWorkspaceReady`.
+- **Persistence Database**: Managed by the current workspace's `lamber.sqlite`. Project operations are blocked while no workspace is open.
 
 ## 6. Calculation engine map
 

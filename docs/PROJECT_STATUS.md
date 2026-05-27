@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md
 
-Last updated: 2026-05-23
+Last updated: 2026-05-28
 
 ## 1. Project summary
 
@@ -15,6 +15,7 @@ Lamber is a lightweight sales support and project management desktop tool design
   - AI Context: `useAiContextStore` (Zustand + local storage + Tauri events)
   - Layout & view modes: Local storage (`lamber_project_board_view_mode`, etc.)
 - **Database/Persistence**: SQLite (via `rusqlite` with `bundled` feature) for structured relational tables, alongside dynamic `projects_store.json` backward compatibility
+- **Workspace Runtime**: Business data is now scoped to an explicit Lamber Workspace root containing `lamber.workspace.json`, `lamber.sqlite`, `projects/`, `backups/`, and `exports/`. The app remembers `recentWorkspaces` and `lastOpenedWorkspacePath` in local AppConfig, not in the workspace manifest.
 - **Styling**: Tailwind CSS + Shadcn/UI (Radix UI) + HSL-based design system
 - **AI integration**: Local SSE streaming client (Ollama / OpenAI standard endpoint) with semantic Markdown context serialization
 - **File handling**:
@@ -106,6 +107,11 @@ Lamber is a lightweight sales support and project management desktop tool design
 - **AI Direct Write Lock**: AI is allowed to read and analyze any active workspace variables, but is prohibited from updating the database files directly. Binders or "apply" buttons are the only allowed write mechanisms.
 
 ## 5. Important architecture decisions
+
+### ADR-006: Workspace-Scoped Primary Database
+- **Decision**: Introduce a Lamber Workspace root as the owner of the primary SQLite database. Project, file, roots, relocation, import, template asset, and document image resolution commands must require an opened workspace and obtain the active `lamber.sqlite` through `WorkspaceRuntime`.
+- **Reason**: Avoid scattering the primary database in the OS AppData directory and prepare the app for portable project workspaces.
+- **Impact**: Startup no longer initializes `AppData/projects_store.db`. If last workspace auto-restore fails, the app shows a WorkspaceGate and does not create an empty database or fall back to AppData. Legacy AppData/JSON migration is deferred to a compatibility phase.
 
 ### ADR-001: File-based JSON Database Repository
 - **Decision**: Store projects and files in `projects_store.json` using atomic loading, modifying, and saving operations. (Superceded by SQLite in Phase 1 upgrade).

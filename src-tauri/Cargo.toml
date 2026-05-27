@@ -24,6 +24,7 @@ umya-spreadsheet = "2.3.3"
 base64 = "0.22.1"
 tauri-plugin-http = "2.5.9"
 rusqlite = { version = "0.31.0", features = ["bundled"] }
+uuid = { version = "1.8", features = ["v4"] }
 
 [features]
 default = [ "custom-protocol" ]

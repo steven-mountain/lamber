@@ -1,10 +1,31 @@
 # AI_CONTEXT.md
 
-Last updated: 2026-05-23
+Last updated: 2026-05-28
 
 ## What this project is
 
 Lamber is a lightweight sales support desktop tool built with **Tauri, React, and Rust**. It helps client managers and solutions experts manage ICT project lifecycles, perform economic benefit calculations (NPV, margin, cashflow), and fill out standardized bidding and project review documents (Word/Excel) using structured templates.
+
+## Workspace foundation
+
+Business persistence is scoped to an explicit Lamber Workspace root:
+
+```text
+LamberWorkspace/
+├─ lamber.workspace.json
+├─ lamber.sqlite
+├─ projects/
+├─ backups/
+└─ exports/
+```
+
+`WorkspaceRuntime` owns the current workspace state and active SQLite connection. Project, file, template asset, root, health, relocation, import, and document generation commands must require an open workspace and use `{workspaceRoot}/lamber.sqlite`. Startup may restore `lastOpenedWorkspacePath`; if it fails, the app must show WorkspaceGate and must not create an empty DB or fall back to AppData.
+
+When a workspace is opened or created, the workspace root is automatically registered in `project_roots` if it is missing. Project folders created or bound under the workspace should therefore not ask the user to register an additional root directory.
+
+Workspace selection is part of the Project Board workflow: entering Project Board first shows the Project Workspace layer when no workspace is open, and only loads project cards after a workspace is selected.
+
+Workspace switching should present a workspace overview similar to the project list, backed by locally recorded `recentWorkspaces`. Users choose a recorded workspace card first; opening another folder is an explicit secondary action.
 
 ## Read order for new AI sessions
 
@@ -34,6 +55,7 @@ Before starting any task, read the status and architecture documentation in this
 
 - **0-tolerance reconciliation check**: Any changes to input fields or calculations must satisfy `excl_tax = incl_tax / (1 + rate)` within a zero-tolerance margin. Mismatches block navigation and document generation.
 - **SQLite Connection & Transaction management**: The storage layer has migrated to SQLite. When writing multi-row operations or migrating data, always wrap operations in a transaction (`tx`) to prevent database locks and ensure structural integrity. Use `Arc<Mutex<rusqlite::Connection>>` to share connection locks. Avoid `INSERT OR REPLACE` when saving parent records (like `projects`) that have foreign key cascade-delete relations, as `REPLACE` acts as a `DELETE` followed by an `INSERT` in SQLite, wiping out related child rows in `project_directories`, `project_files`, `benefit_schemes`, and `benefit_snapshots`.
+- **Workspace readiness**: Do not run database-backed project operations unless `WorkspaceRuntime::require_workspace()` and `require_db()` succeed. Do not reintroduce startup fallback to AppData `projects_store.db`.
 - **Local Folder binding & scan synchronization**: Scanning folders updates physical file existence, but must never delete files physically on linked mode. Sandboxed (`copied`) files should be physically deleted only after user confirmation. Folder binding warning options allow auto-parent folder registration as project roots. Scanning and adding files inside absolute-only (rootless) folders must keep `directory_id` set to `None` to prevent SQLite `FOREIGN KEY constraint failed` errors on the `project_files` table.
 - **Template Form & Image Assets Separation**: Form configurations are saved in `project_settings` under key `template_form_data::<template_name>`, and any large base64 image data is stripped beforehand to prevent database bloat. Pasted/dropped images are uploaded directly to the backend project asset sandbox, tracked in `project_template_assets`, and represented using `assetId` references. When generating documents, the frontend must NOT pass absolute file paths; the backend validates project ownership of the `assetId`, loads the physical file from the sandbox, and embeds it directly. Legacy base64 images must be migrated automatically during the next form save. Image uploads are constrained to PNG, JPEG, and WEBP formats and must not exceed 20MB.
 - **Built-in Product Recommendations**: Recommended products must be cross-checked with codes in `midThreeConstants.ts`. If matched, append `[系统内置]` label; otherwise, append `【系统外扩展】`.

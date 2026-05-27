@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 use super::service::ProjectFileService;
 use super::repository::ProjectFileRepository;
+use super::repository::SqliteProjectFileRepository;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -115,7 +116,10 @@ impl FileLinkHealthService {
 
 #[tauri::command]
 pub async fn run_file_health_check(
-    service: State<'_, Arc<FileLinkHealthService>>,
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
 ) -> Result<HealthReport, String> {
+    let repo = Arc::new(SqliteProjectFileRepository::new(runtime.require_db()?));
+    let file_service = Arc::new(ProjectFileService::new(repo.clone()));
+    let service = FileLinkHealthService::new(file_service, repo);
     service.run_health_check()
 }

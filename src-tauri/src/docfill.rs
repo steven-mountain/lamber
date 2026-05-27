@@ -53,19 +53,22 @@ pub fn extract_docx_variables(path: String) -> Result<Vec<String>, String> {
 #[tauri::command]
 pub fn generate_docx(
     app: tauri::AppHandle,
-    db: tauri::State<'_, std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>>,
+    runtime: tauri::State<'_, std::sync::Arc<crate::workspace::WorkspaceRuntime>>,
     template_path: String,
     output_path: String,
     variables: HashMap<String, String>,
 ) -> Result<(), String> {
+    let workspace = runtime.require_workspace()?;
+    let db = runtime.require_db()?;
     let conn = db.lock().map_err(|e| e.to_string())?;
-    internal_generate_docx(Some(&app), Some(&conn), &template_path, &output_path, &variables)
+    internal_generate_docx(Some(&app), Some(&conn), Some(&workspace.workspace_root), &template_path, &output_path, &variables)
 }
 
 
 fn internal_generate_docx(
     app_handle: Option<&tauri::AppHandle>,
     db_conn: Option<&rusqlite::Connection>,
+    workspace_root: Option<&str>,
     template_path: &str,
     output_path: &str,
     variables: &HashMap<String, String>,
@@ -116,7 +119,8 @@ fn internal_generate_docx(
 
                         if data.starts_with("asset_") {
                             if let (Some(app), Some(conn)) = (app_handle, db_conn) {
-                                if let Ok(physical_path) = crate::project_files::assets::get_template_asset_path_internal(app, conn, data) {
+                                if let Some(root) = workspace_root {
+                                    if let Ok(physical_path) = crate::project_files::assets::get_template_asset_path_internal(app, conn, root, data) {
                                     if let Ok(bytes) = std::fs::read(&physical_path) {
                                         let path = std::path::Path::new(&physical_path);
                                         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("png").to_string();
@@ -128,6 +132,7 @@ fn internal_generate_docx(
                                             "image/webp"
                                         }.to_string();
                                         processed.push((bytes, ext, ct, w, h, title));
+                                    }
                                     }
                                 }
                             }
@@ -143,7 +148,8 @@ fn internal_generate_docx(
         } else if val.starts_with("asset_") {
             // Single assetId directly
             if let (Some(app), Some(conn)) = (app_handle, db_conn) {
-                if let Ok(physical_path) = crate::project_files::assets::get_template_asset_path_internal(app, conn, val) {
+                if let Some(root) = workspace_root {
+                    if let Ok(physical_path) = crate::project_files::assets::get_template_asset_path_internal(app, conn, root, val) {
                     if let Ok(bytes) = std::fs::read(&physical_path) {
                         let path = std::path::Path::new(&physical_path);
                         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("png").to_string();
@@ -155,6 +161,7 @@ fn internal_generate_docx(
                             "image/webp"
                         }.to_string();
                         processed.push((bytes, ext, ct, 0, 0, "".to_string()));
+                    }
                     }
                 }
             }
@@ -505,7 +512,7 @@ pub fn get_available_templates(
 #[tauri::command]
 pub fn generate_lifecycle_docs(
     app: tauri::AppHandle,
-    db: tauri::State<'_, std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>>,
+    runtime: tauri::State<'_, std::sync::Arc<crate::workspace::WorkspaceRuntime>>,
     state: tauri::State<'_, std::sync::Mutex<config_manager::AppConfig>>,
     module_id: String,
     variables: HashMap<String, String>,
@@ -513,6 +520,8 @@ pub fn generate_lifecycle_docs(
     output_dir: Option<String>,
     overwrite_existing: Option<bool>,
 ) -> Result<String, String> {
+    let workspace = runtime.require_workspace()?;
+    let db = runtime.require_db()?;
     let conn = db.lock().map_err(|e| e.to_string())?;
     use std::fs;
 
@@ -601,6 +610,7 @@ pub fn generate_lifecycle_docs(
                         if let Err(e) = internal_generate_docx(
                             Some(&app),
                             Some(&conn),
+                            Some(&workspace.workspace_root),
                             path.to_str().unwrap(),
                             out_path.to_str().unwrap(),
                             &variables,
@@ -752,7 +762,7 @@ pub fn batch_generate_docx_from_excel(
         let target_name = format!("立项签批表-{}.docx", safe_proj_name);
         let target_path = output_dir.join(target_name);
 
-        internal_generate_docx(None, None, &template_path, target_path.to_str().unwrap(), &vars)?;
+        internal_generate_docx(None, None, None, &template_path, target_path.to_str().unwrap(), &vars)?;
         count += 1;
     }
 

@@ -6,8 +6,11 @@ use tauri::AppHandle;
 use tauri::Manager;
 
 #[derive(Serialize, Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     pub module_paths: HashMap<String, String>,
+    pub recent_workspaces: Vec<crate::workspace::RecentWorkspace>,
+    pub last_opened_workspace_path: Option<String>,
 }
 
 pub struct ConfigManager {

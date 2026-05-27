@@ -403,16 +403,18 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
 // Tauri commands
 #[tauri::command]
 pub async fn scan_import_candidates(
-    service: State<'_, Arc<ImportScanner>>,
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     parent_path: String,
 ) -> Result<Vec<ImportCandidate>, String> {
+    let service = ImportScanner::new(runtime.require_db()?);
     service.scan_import_candidates(&parent_path)
 }
 
 #[tauri::command]
 pub async fn execute_bulk_import(
-    service: State<'_, Arc<ImportScanner>>,
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     selections: Vec<ImportSelection>,
 ) -> Result<(), String> {
+    let service = ImportScanner::new(runtime.require_db()?);
     service.execute_bulk_import(selections)
 }

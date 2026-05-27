@@ -91,6 +91,7 @@ fn get_project_folder_info_from_db(conn: &Connection, project_id: &str) -> Resul
 pub fn save_template_asset_internal(
     app_handle: &AppHandle,
     conn: &Connection,
+    workspace_root: &str,
     project_id: &str,
     template_name: &str,
     asset_type: &str,
@@ -119,11 +120,12 @@ pub fn save_template_asset_internal(
     let asset_id = format!("asset_{:x}", hash_val);
     let stored_file_name = format!("{}.{}", asset_id, ext);
 
-    let app_data_dir = app_handle
+    let _app_data_dir = app_handle
         .path()
         .app_data_dir()
         .map_err(|e| format!("无法获取 App 数据目录: {}", e))?;
-    
+    let workspace_root = Path::new(workspace_root);
+
     // Check if the project is bound to a folder
     let folder_info_opt = get_project_folder_info_from_db(conn, project_id)?;
     let (dest_file_path, relative_path) = if let Some((ref folder_path, ref project_name)) = folder_info_opt {
@@ -139,7 +141,7 @@ pub fn save_template_asset_internal(
             let rel = format!("{}/assets/{}", folder_name, stored_file_name);
             (dest, rel)
         } else {
-            let assets_dir = app_data_dir.join("projects").join(project_id).join("assets");
+            let assets_dir = workspace_root.join("projects").join(project_id).join("assets");
             if !assets_dir.exists() {
                 fs::create_dir_all(&assets_dir)
                     .map_err(|e| format!("创建资产目录失败: {}", e))?;
@@ -149,7 +151,7 @@ pub fn save_template_asset_internal(
             (dest, rel)
         }
     } else {
-        let assets_dir = app_data_dir.join("projects").join(project_id).join("assets");
+        let assets_dir = workspace_root.join("projects").join(project_id).join("assets");
         if !assets_dir.exists() {
             fs::create_dir_all(&assets_dir)
                 .map_err(|e| format!("创建资产目录失败: {}", e))?;
@@ -255,6 +257,7 @@ pub fn delete_template_asset_internal(
 pub fn get_template_asset_path_internal(
     app_handle: &AppHandle,
     conn: &Connection,
+    workspace_root: &str,
     asset_id: &str,
 ) -> Result<String, String> {
     let mut stmt = conn
@@ -270,7 +273,8 @@ pub fn get_template_asset_path_internal(
             .path()
             .app_data_dir()
             .map_err(|e| format!("无法获取 App 数据目录: {}", e))?;
-        
+        let workspace_root = Path::new(workspace_root);
+
         // 1. Try resolving relative to the bound project folder if appropriate
         let folder_info_opt = get_project_folder_info_from_db(conn, &project_id)?;
         if let Some((ref folder_path, ref project_name)) = folder_info_opt {
@@ -298,10 +302,14 @@ pub fn get_template_asset_path_internal(
             }
         }
         
-        // 2. Try resolving relative to the app_data_dir
-        let full_path = app_data_dir.join(&rel_path);
+        // 2. Try resolving relative to the current workspace
+        let full_path = workspace_root.join(&rel_path);
         if full_path.exists() {
             return Ok(full_path.to_string_lossy().to_string());
+        }
+        let legacy_full_path = app_data_dir.join(&rel_path);
+        if legacy_full_path.exists() {
+            return Ok(legacy_full_path.to_string_lossy().to_string());
         }
         
         // 3. Fall back to absolute path snapshot
@@ -319,6 +327,7 @@ pub fn get_template_asset_path_internal(
 pub fn cleanup_orphan_template_assets_internal(
     app_handle: &AppHandle,
     conn: &Connection,
+    workspace_root: &str,
     project_id: &str,
 ) -> Result<(usize, Vec<String>), String> {
     let mut stmt = conn
@@ -401,9 +410,14 @@ pub fn cleanup_orphan_template_assets_internal(
                 }
 
                 if !deleted_physical {
-                    let full_path = app_data_dir.join(&rel);
+                    let full_path = Path::new(workspace_root).join(&rel);
                     if full_path.exists() {
                         let _ = fs::remove_file(&full_path);
+                    } else {
+                        let legacy_full_path = app_data_dir.join(&rel);
+                        if legacy_full_path.exists() {
+                            let _ = fs::remove_file(&legacy_full_path);
+                        }
                     }
                 }
 

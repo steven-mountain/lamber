@@ -2,6 +2,33 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-05-28
+
+### Workspace Runtime Foundation
+
+Created:
+- [workspace.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/workspace.rs): Workspace manifest model, UUID v4 workspace creation, current workspace runtime, database connection binding, recent workspace updates, last-opened restore, and directory-state inspection.
+- [useWorkspaceStore.ts](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/store/useWorkspaceStore.ts): Frontend global workspace state.
+- [WorkspaceGate.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/components/workspace/WorkspaceGate.tsx): Gate shown when database-backed modules are accessed without an open workspace.
+- [workspaceService.ts](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/utils/workspaceService.ts): Frontend Workspace IPC wrapper and error parsing.
+
+Modified:
+- [main.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/main.rs): Removed startup initialization of AppData `projects_store.db`; registered Workspace commands; attempts to restore `lastOpenedWorkspacePath`.
+- [config_manager.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/config_manager.rs): Added `recentWorkspaces` and `lastOpenedWorkspacePath` to local AppConfig.
+- Project, file, root, health, relocation, import, template asset, and docfill commands now obtain the active SQLite connection from `WorkspaceRuntime`.
+- [App.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/App.tsx): Keeps Hub focused on module selection and blocks database-backed non-board modules behind WorkspaceGate.
+- [ProjectBoard.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/ProjectBoard.tsx): Moved workspace selection into the Project Board flow, making "Project Workspace" the first layer before project cards are loaded. Switching workspaces now opens a workspace overview instead of immediately opening a folder picker.
+- [WorkspaceGate.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/components/workspace/WorkspaceGate.tsx): Refactored into a card-based workspace overview using locally recorded recent workspaces, with current-workspace marking and explicit open/create actions.
+- [WorkspaceGate.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/components/workspace/WorkspaceGate.tsx) and [ProjectBoard.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/ProjectBoard.tsx): Clicking the current workspace card now directly closes the workspace overview and returns to the existing project board. Only selecting a different workspace performs a workspace switch.
+
+Decisions:
+- `lamber.workspace.json` stores only workspace identity metadata. Recent workspace history remains local to the machine.
+- A directory with `lamber.sqlite` but no manifest is treated as `legacySuspected`; the app does not overwrite or migrate it in this phase.
+- Opening or creating a workspace automatically registers the workspace root as a default project root when missing, so project folders under the workspace do not trigger the legacy "register as new root" prompt.
+- Workspace selection belongs to the Project Board workflow. Hub should open the Project Board module, while ProjectBoard presents the Project Workspace layer before project list operations.
+- Project workspace switching should show the recorded workspace overview first. Opening an arbitrary directory remains an explicit secondary action.
+- Legacy JSON/AppData migration is deferred and no longer runs automatically on startup.
+
 ## 2026-05-27
 
 ### Project Background Persistence in Calculator Snapshots

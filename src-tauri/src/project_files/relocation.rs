@@ -172,18 +172,20 @@ impl BulkRelocationService {
 // Tauri commands
 #[tauri::command]
 pub async fn get_relocation_preview(
-    service: State<'_, Arc<BulkRelocationService>>,
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     old_root_id: String,
     new_root_path: String,
 ) -> Result<RelocationPreview, String> {
+    let service = BulkRelocationService::new(runtime.require_db()?);
     service.get_relocation_preview(&old_root_id, &new_root_path)
 }
 
 #[tauri::command]
 pub async fn execute_bulk_relocation(
-    service: State<'_, Arc<BulkRelocationService>>,
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     old_root_id: String,
     new_root_path: String,
 ) -> Result<(), String> {
+    let service = BulkRelocationService::new(runtime.require_db()?);
     service.execute_bulk_relocation(&old_root_id, &new_root_path)
 }

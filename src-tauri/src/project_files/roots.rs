@@ -281,42 +281,52 @@ impl ProjectRootService {
 // Tauri commands
 #[tauri::command]
 pub async fn get_project_roots(
-    service: State<'_, Arc<ProjectRootService>>,
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
 ) -> Result<Vec<ProjectRoot>, String> {
+    let repo = Arc::new(SqliteProjectRootRepository::new(runtime.require_db()?));
+    let service = ProjectRootService::new(repo);
     service.get_roots()
 }
 
 #[tauri::command]
 pub async fn create_project_root(
-    service: State<'_, Arc<ProjectRootService>>,
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     name: String,
     root_path: String,
     root_alias: Option<String>,
     is_default: bool,
 ) -> Result<ProjectRoot, String> {
+    let repo = Arc::new(SqliteProjectRootRepository::new(runtime.require_db()?));
+    let service = ProjectRootService::new(repo);
     service.create_root(name, root_path, root_alias, is_default)
 }
 
 #[tauri::command]
 pub async fn update_project_root(
-    service: State<'_, Arc<ProjectRootService>>,
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     root: ProjectRoot,
 ) -> Result<ProjectRoot, String> {
+    let repo = Arc::new(SqliteProjectRootRepository::new(runtime.require_db()?));
+    let service = ProjectRootService::new(repo);
     service.update_root(root)
 }
 
 #[tauri::command]
 pub async fn delete_project_root(
-    service: State<'_, Arc<ProjectRootService>>,
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     id: String,
 ) -> Result<(), String> {
+    let repo = Arc::new(SqliteProjectRootRepository::new(runtime.require_db()?));
+    let service = ProjectRootService::new(repo);
     service.delete_root(&id)
 }
 
 #[tauri::command]
 pub async fn set_default_project_root(
-    service: State<'_, Arc<ProjectRootService>>,
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     id: String,
 ) -> Result<(), String> {
+    let repo = Arc::new(SqliteProjectRootRepository::new(runtime.require_db()?));
+    let service = ProjectRootService::new(repo);
     service.set_default_root(&id)
 }

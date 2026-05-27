@@ -6,6 +6,7 @@ mod db;
 mod docfill;
 mod migration;
 mod project_files;
+mod workspace;
 
 use config_manager::{AppConfig, ConfigManager};
 use std::sync::Mutex;
@@ -72,83 +73,11 @@ fn main() {
         .setup(|app| {
             let manager = ConfigManager::new(app.handle());
             let config = manager.load();
-            app.manage(Mutex::new(config));
+            app.manage(Mutex::new(config.clone()));
 
-            let app_data_dir = app
-                .path()
-                .app_data_dir()
-                .expect("Failed to get app data dir");
-            if !app_data_dir.exists() {
-                std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data dir");
-            }
-            let store_path = app_data_dir.join("projects_store.json");
-            let db_path = app_data_dir.join("projects_store.db");
-
-            // 1. Initialize SQLite Database
-            let db_conn = db::init_db(&db_path).expect("Failed to initialize SQLite database");
-            let shared_conn = std::sync::Arc::new(std::sync::Mutex::new(db_conn));
-            app.manage(shared_conn.clone());
-
-            // 2. Determine initial storage backend
-            let is_migration_needed = {
-                let conn = shared_conn.lock().unwrap();
-                migration::check_migration_needed(&conn, &store_path)
-            };
-
-            let (project_repo, file_repo) = if is_migration_needed {
-                let json_p = benefit::repository::JsonProjectRepository::new(store_path.clone());
-                let json_f = project_files::repository::JsonProjectFileRepository::new(store_path);
-                
-                let p_repo = std::sync::Arc::new(benefit::repository::DualProjectRepository::new(
-                    benefit::repository::RepoBackend::Json(json_p)
-                ));
-                let f_repo = std::sync::Arc::new(project_files::repository::DualProjectFileRepository::new(
-                    project_files::repository::FileRepoBackend::Json(json_f)
-                ));
-                (p_repo, f_repo)
-            } else {
-                let sqlite_p = benefit::repository::SqliteProjectRepository::new(shared_conn.clone());
-                let sqlite_f = project_files::repository::SqliteProjectFileRepository::new(shared_conn.clone());
-                
-                let p_repo = std::sync::Arc::new(benefit::repository::DualProjectRepository::new(
-                    benefit::repository::RepoBackend::Sqlite(sqlite_p)
-                ));
-                let f_repo = std::sync::Arc::new(project_files::repository::DualProjectFileRepository::new(
-                    project_files::repository::FileRepoBackend::Sqlite(sqlite_f)
-                ));
-                (p_repo, f_repo)
-            };
-
-            // 3. Manage repositories & services
-            app.manage(project_repo.clone());
-            app.manage(file_repo.clone());
-
-            let service = std::sync::Arc::new(benefit::service::ProjectService::new(Box::new((*project_repo).clone())));
-            app.manage(service);
-
-            let file_service = std::sync::Arc::new(
-                project_files::service::ProjectFileService::new(file_repo.clone()),
-            );
-            app.manage(file_service.clone());
-
-            let root_repo = std::sync::Arc::new(project_files::roots::SqliteProjectRootRepository::new(shared_conn.clone()));
-            let root_service = std::sync::Arc::new(project_files::roots::ProjectRootService::new(root_repo));
-            app.manage(root_service);
-
-            let health_service = std::sync::Arc::new(
-                project_files::health::FileLinkHealthService::new(file_service, file_repo)
-            );
-            app.manage(health_service);
-
-            let relocation_service = std::sync::Arc::new(
-                project_files::relocation::BulkRelocationService::new(shared_conn.clone())
-            );
-            app.manage(relocation_service);
-
-            let import_scanner_service = std::sync::Arc::new(
-                project_files::import_scanner::ImportScanner::new(shared_conn.clone())
-            );
-            app.manage(import_scanner_service);
+            let workspace_runtime = std::sync::Arc::new(workspace::WorkspaceRuntime::new());
+            workspace::try_restore_last_workspace(app.handle(), &workspace_runtime, &config);
+            app.manage(workspace_runtime);
 
             Ok(())
         })
@@ -213,6 +142,12 @@ fn main() {
             project_files::commands::cleanup_orphan_template_assets,
             project_files::commands::get_project_setting,
             project_files::commands::save_project_setting,
+            workspace::get_workspace_state,
+            workspace::inspect_workspace_path,
+            workspace::select_workspace_folder,
+            workspace::create_workspace,
+            workspace::open_workspace,
+            workspace::clear_workspace,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

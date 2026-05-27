@@ -4,6 +4,7 @@ import WorkspaceHeader from "../components/WorkspaceHeader"
 import AppIcon from "../components/icons/AppIcon"
 import { useAiContextStore } from "../store/useAiContextStore"
 import { AI_CONTEXT_KEY } from "../utils/aiContextKeys"
+import { useWorkspaceStore } from "../store/useWorkspaceStore"
 
 export default function BenefitTool({ onBack }: { onBack: () => void }) {
   const [subView, setSubView] = useState<"single" | "batch">("single")
@@ -20,6 +21,7 @@ export default function BenefitTool({ onBack }: { onBack: () => void }) {
   const [warning, setWarning] = useState("")
   const setActiveModule = useAiContextStore(state => state.setActiveModule)
   const updateBusinessData = useAiContextStore(state => state.updateBusinessData)
+  const isWorkspaceReady = useWorkspaceStore(state => state.isWorkspaceReady)
 
   useEffect(() => {
     setActiveModule(AI_CONTEXT_KEY.BENEFIT_CORE)
@@ -58,6 +60,10 @@ export default function BenefitTool({ onBack }: { onBack: () => void }) {
   }
 
   const handleBatch = async () => {
+    if (!isWorkspaceReady) {
+      alert("请先新建或打开工作区后再执行批处理输出。");
+      return;
+    }
     try {
       const selected = await invoke('plugin:dialog|open', {
         multiple: false,

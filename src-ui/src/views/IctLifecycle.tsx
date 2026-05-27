@@ -17,9 +17,11 @@ import {
   type BenefitAnalysisScheme,
   type BenefitAnalysisSnapshot
 } from "../utils/projectService";
+import { useWorkspaceStore } from "../store/useWorkspaceStore";
 
 export default function IctLifecycle() {
   const { activeProjectId, activeSchemeId, entrySource, navigateTo } = useNavigationStore();
+  const isWorkspaceReady = useWorkspaceStore(state => state.isWorkspaceReady);
   const state = useIctState();
   const calculations = useIctCalculations(state);
 
@@ -33,8 +35,12 @@ export default function IctLifecycle() {
   const [saveAsSchemeName, setSaveAsSchemeName] = useState("");
 
   useEffect(() => {
+    if (!isWorkspaceReady) {
+      setProjects([]);
+      return;
+    }
     projectService.getProjects().then(setProjects).catch(console.error);
-  }, [activeProjectId]);
+  }, [activeProjectId, isWorkspaceReady]);
 
 
   const fillCalculatorState = useCallback((params: any) => {
@@ -134,6 +140,9 @@ export default function IctLifecycle() {
       setPendingNewSchemeName(null);
       return;
     }
+    if (!isWorkspaceReady) {
+      return;
+    }
 
     try {
       const project = await projectService.getProject(targetProjectId);
@@ -205,13 +214,17 @@ export default function IctLifecycle() {
     } catch (err) {
       console.error("Failed to load project context:", err);
     }
-  }, [state, fillCalculatorState]);
+  }, [state, fillCalculatorState, isWorkspaceReady]);
 
   useEffect(() => {
     loadProjectContext(activeProjectId, activeSchemeId);
   }, [activeProjectId, activeSchemeId]);
 
   const handleSaveToCurrent = async () => {
+    if (!isWorkspaceReady) {
+      alert("请先新建或打开工作区后再保存项目方案。");
+      return;
+    }
     if (!activeProject) return;
     const schemeId = pendingNewSchemeName ? null : (activeScheme?.id || activeProject.default_scheme_id || null);
     const schemeName = pendingNewSchemeName || activeScheme?.name || activeProject.name || "默认测算方案";
@@ -240,6 +253,10 @@ export default function IctLifecycle() {
 
   const handleSaveAsNew = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isWorkspaceReady) {
+      alert("请先新建或打开工作区后再保存项目方案。");
+      return;
+    }
     if (!activeProject || !saveAsSchemeName.trim()) return;
 
     try {

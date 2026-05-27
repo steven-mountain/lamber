@@ -253,6 +253,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-http",
  "umya-spreadsheet",
+ "uuid",
  "zip 8.5.1",
 ]
 

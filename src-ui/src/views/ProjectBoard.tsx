@@ -5,6 +5,8 @@ import { projectService, type Project, type BenefitAnalysisScheme, type BenefitA
 import ProjectFilesTab from "../components/project/ProjectFilesTab";
 import { projectFileService } from "../services/projectFileService";
 import { invoke } from "@tauri-apps/api/core";
+import WorkspaceGate from "../components/workspace/WorkspaceGate";
+import { useWorkspaceStore } from "../store/useWorkspaceStore";
 
 interface CandidateFile {
   name: string;
@@ -67,6 +69,13 @@ const mergeStatusOptions = (baseOptions: string[], projectList: Project[]) => {
 const normalizeProjectName = (value: string) => value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 
 export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) {
+  const {
+    currentWorkspace,
+    isWorkspaceReady,
+    isLoading: workspaceLoading,
+    selectAndCreateWorkspace,
+  } = useWorkspaceStore();
+  const [showWorkspaceOverview, setShowWorkspaceOverview] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -123,8 +132,14 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   const [newSchemeName, setNewSchemeName] = useState("");
 
   useEffect(() => {
-    fetchProjects();
-  }, []);
+    if (isWorkspaceReady) {
+      setShowWorkspaceOverview(false);
+      fetchProjects();
+    } else {
+      setProjects([]);
+      setLoading(false);
+    }
+  }, [isWorkspaceReady, currentWorkspace?.workspaceId]);
 
   useEffect(() => {
     if (projectStageFilter !== "全部" && !statusOptions.includes(projectStageFilter)) {
@@ -930,6 +945,36 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     );
   };
 
+  if (!isWorkspaceReady || showWorkspaceOverview) {
+    return (
+      <div className="flex flex-col flex-1 h-full overflow-hidden bg-background text-foreground animate-in fade-in duration-300">
+        <header className="flex items-center justify-between px-6 py-4 shrink-0 bg-card shadow-sm">
+          <div className="flex items-center gap-3">
+            <button
+              id="board_back_btn"
+              onClick={onBack}
+              className="p-2 hover:bg-muted rounded-lg transition-colors text-secondary-foreground hover:text-foreground"
+            >
+              <AppIcon name="chevronDown" size={20} className="rotate-90" />
+            </button>
+            <div>
+              <h1 className="text-xl font-extrabold flex items-center gap-2 text-foreground">
+                <AppIcon name="project" size={22} className="text-slate-500" /> 项目工作区
+              </h1>
+              <p className="text-xs text-secondary-foreground mt-0.5">选择工作区后进入对应的项目看板</p>
+            </div>
+          </div>
+        </header>
+        <WorkspaceGate
+          onBack={isWorkspaceReady ? () => setShowWorkspaceOverview(false) : undefined}
+          backLabel="返回当前项目列表"
+          onCurrentWorkspaceSelected={() => setShowWorkspaceOverview(false)}
+          onWorkspaceChanged={() => setShowWorkspaceOverview(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col flex-1 h-full overflow-hidden bg-background text-foreground animate-in fade-in duration-300">
       {/* Top Header */}
@@ -966,6 +1011,40 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
           </button>
         </div>
       </header>
+
+      <section className="shrink-0 bg-muted/35 px-6 py-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="text-[10px] font-extrabold uppercase tracking-wide text-secondary-foreground">项目工作区</div>
+            <div className="mt-1 flex min-w-0 items-center gap-2">
+              <span className="shrink-0 rounded-md bg-primary/10 px-2 py-1 text-xs font-extrabold text-primary">
+                {currentWorkspace?.workspaceName || "当前工作区"}
+              </span>
+              <span className="truncate font-mono text-[11px] text-secondary-foreground">
+                {currentWorkspace?.workspaceRoot}
+              </span>
+            </div>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              disabled={workspaceLoading}
+              onClick={() => setShowWorkspaceOverview(true)}
+              className="rounded-md bg-card px-3 py-2 text-xs font-bold text-foreground shadow-sm disabled:opacity-50"
+            >
+              切换工作区
+            </button>
+            <button
+              type="button"
+              disabled={workspaceLoading}
+              onClick={selectAndCreateWorkspace}
+              className="rounded-md bg-primary px-3 py-2 text-xs font-bold text-primary-foreground shadow-sm disabled:opacity-50"
+            >
+              新建工作区
+            </button>
+          </div>
+        </div>
+      </section>
 
       {/* Kanban Board Container */}
       {loading ? (
