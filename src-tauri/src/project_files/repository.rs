@@ -15,8 +15,14 @@ pub trait ProjectFileRepository {
         folder_path: Option<String>,
         main_doc: Option<String>,
         main_budget: Option<String>,
+        folder_name: Option<String>,
+        relative_path: Option<String>,
+        linked_folder_type: Option<String>,
+        linked_folder_relative_path: Option<String>,
+        linked_folder_external_path: Option<String>,
     ) -> Result<(), String>;
     fn get_project_folder(&self, project_id: &str) -> Result<Option<String>, String>;
+    fn get_project_folder_name(&self, project_id: &str) -> Result<Option<String>, String>;
     fn find_matching_root(&self, path: &str) -> Result<Option<(String, String)>, String>;
     fn save_project_directory(&self, id: &str, project_id: &str, root_id: &str, relative_path: &str, name: &str) -> Result<(), String>;
     fn delete_project_directory(&self, project_id: &str) -> Result<(), String>;
@@ -126,6 +132,11 @@ impl ProjectFileRepository for JsonProjectFileRepository {
         folder_path: Option<String>,
         main_doc: Option<String>,
         main_budget: Option<String>,
+        folder_name: Option<String>,
+        relative_path: Option<String>,
+        linked_folder_type: Option<String>,
+        linked_folder_relative_path: Option<String>,
+        linked_folder_external_path: Option<String>,
     ) -> Result<(), String> {
         let mut store = self.read_store()?;
         if let Some(idx) = store.projects.iter().position(|p| p.id == project_id) {
@@ -150,6 +161,41 @@ impl ProjectFileRepository for JsonProjectFileRepository {
                     store.projects[idx].main_budget_file_path = Some(budget);
                 }
             }
+            if let Some(f_name) = folder_name {
+                if f_name.is_empty() {
+                    store.projects[idx].folder_name = None;
+                } else {
+                    store.projects[idx].folder_name = Some(f_name);
+                }
+            }
+            if let Some(rel_path) = relative_path {
+                if rel_path.is_empty() {
+                    store.projects[idx].relative_path = None;
+                } else {
+                    store.projects[idx].relative_path = Some(rel_path);
+                }
+            }
+            if let Some(lf_type) = linked_folder_type {
+                if lf_type.is_empty() {
+                    store.projects[idx].linked_folder_type = None;
+                } else {
+                    store.projects[idx].linked_folder_type = Some(lf_type);
+                }
+            }
+            if let Some(lf_rel) = linked_folder_relative_path {
+                if lf_rel.is_empty() {
+                    store.projects[idx].linked_folder_relative_path = None;
+                } else {
+                    store.projects[idx].linked_folder_relative_path = Some(lf_rel);
+                }
+            }
+            if let Some(lf_ext) = linked_folder_external_path {
+                if lf_ext.is_empty() {
+                    store.projects[idx].linked_folder_external_path = None;
+                } else {
+                    store.projects[idx].linked_folder_external_path = Some(lf_ext);
+                }
+            }
             self.write_store(&store)?;
             Ok(())
         } else {
@@ -164,6 +210,15 @@ impl ProjectFileRepository for JsonProjectFileRepository {
             .into_iter()
             .find(|p| p.id == project_id)
             .and_then(|p| p.folder_path))
+    }
+
+    fn get_project_folder_name(&self, project_id: &str) -> Result<Option<String>, String> {
+        let store = self.read_store()?;
+        Ok(store
+            .projects
+            .into_iter()
+            .find(|p| p.id == project_id)
+            .and_then(|p| p.folder_name))
     }
 
     fn find_matching_root(&self, _path: &str) -> Result<Option<(String, String)>, String> {
@@ -371,6 +426,11 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
         folder_path: Option<String>,
         main_doc: Option<String>,
         main_budget: Option<String>,
+        folder_name: Option<String>,
+        relative_path: Option<String>,
+        linked_folder_type: Option<String>,
+        linked_folder_relative_path: Option<String>,
+        linked_folder_external_path: Option<String>,
     ) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         
@@ -405,6 +465,51 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
             }
         }
 
+        if let Some(f_name) = folder_name {
+            updates.push(format!("folder_name = ?{}", updates.len() + 1));
+            if f_name.is_empty() {
+                params.push(Box::new(Option::<String>::None));
+            } else {
+                params.push(Box::new(f_name));
+            }
+        }
+
+        if let Some(rel_p) = relative_path {
+            updates.push(format!("relative_path = ?{}", updates.len() + 1));
+            if rel_p.is_empty() {
+                params.push(Box::new(Option::<String>::None));
+            } else {
+                params.push(Box::new(rel_p));
+            }
+        }
+
+        if let Some(lf_type) = linked_folder_type {
+            updates.push(format!("linked_folder_type = ?{}", updates.len() + 1));
+            if lf_type.is_empty() {
+                params.push(Box::new(Option::<String>::None));
+            } else {
+                params.push(Box::new(lf_type));
+            }
+        }
+
+        if let Some(lf_rel) = linked_folder_relative_path {
+            updates.push(format!("linked_folder_relative_path = ?{}", updates.len() + 1));
+            if lf_rel.is_empty() {
+                params.push(Box::new(Option::<String>::None));
+            } else {
+                params.push(Box::new(lf_rel));
+            }
+        }
+
+        if let Some(lf_ext) = linked_folder_external_path {
+            updates.push(format!("linked_folder_external_path = ?{}", updates.len() + 1));
+            if lf_ext.is_empty() {
+                params.push(Box::new(Option::<String>::None));
+            } else {
+                params.push(Box::new(lf_ext));
+            }
+        }
+
         if updates.is_empty() {
             return Ok(());
         }
@@ -424,6 +529,20 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare("SELECT folder_path FROM projects WHERE id = ?1")
+            .map_err(|e| e.to_string())?;
+        
+        let mut rows = stmt.query([project_id]).map_err(|e| e.to_string())?;
+        if let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            Ok(row.get(0).map_err(|e| e.to_string())?)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn get_project_folder_name(&self, project_id: &str) -> Result<Option<String>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT folder_name FROM projects WHERE id = ?1")
             .map_err(|e| e.to_string())?;
         
         let mut rows = stmt.query([project_id]).map_err(|e| e.to_string())?;
@@ -619,10 +738,35 @@ impl ProjectFileRepository for DualProjectFileRepository {
         folder_path: Option<String>,
         main_doc: Option<String>,
         main_budget: Option<String>,
+        folder_name: Option<String>,
+        relative_path: Option<String>,
+        linked_folder_type: Option<String>,
+        linked_folder_relative_path: Option<String>,
+        linked_folder_external_path: Option<String>,
     ) -> Result<(), String> {
         match &*self.backend.read().unwrap() {
-            FileRepoBackend::Json(r) => r.update_project_fields(project_id, folder_path, main_doc, main_budget),
-            FileRepoBackend::Sqlite(r) => r.update_project_fields(project_id, folder_path, main_doc, main_budget),
+            FileRepoBackend::Json(r) => r.update_project_fields(
+                project_id,
+                folder_path,
+                main_doc,
+                main_budget,
+                folder_name,
+                relative_path,
+                linked_folder_type,
+                linked_folder_relative_path,
+                linked_folder_external_path,
+            ),
+            FileRepoBackend::Sqlite(r) => r.update_project_fields(
+                project_id,
+                folder_path,
+                main_doc,
+                main_budget,
+                folder_name,
+                relative_path,
+                linked_folder_type,
+                linked_folder_relative_path,
+                linked_folder_external_path,
+            ),
         }
     }
 
@@ -630,6 +774,13 @@ impl ProjectFileRepository for DualProjectFileRepository {
         match &*self.backend.read().unwrap() {
             FileRepoBackend::Json(r) => r.get_project_folder(project_id),
             FileRepoBackend::Sqlite(r) => r.get_project_folder(project_id),
+        }
+    }
+
+    fn get_project_folder_name(&self, project_id: &str) -> Result<Option<String>, String> {
+        match &*self.backend.read().unwrap() {
+            FileRepoBackend::Json(r) => r.get_project_folder_name(project_id),
+            FileRepoBackend::Sqlite(r) => r.get_project_folder_name(project_id),
         }
     }
 

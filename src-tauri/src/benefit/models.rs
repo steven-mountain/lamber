@@ -198,6 +198,21 @@ pub struct Project {
     pub note: Option<String>,
 
     pub logs: Vec<ProjectLog>,
+
+    #[serde(default)]
+    pub folder_name: Option<String>,
+    #[serde(default)]
+    pub relative_path: Option<String>,
+    #[serde(default)]
+    pub progress: f64,
+    #[serde(default)]
+    pub deadline: Option<String>,
+    #[serde(default)]
+    pub linked_folder_type: Option<String>,
+    #[serde(default)]
+    pub linked_folder_relative_path: Option<String>,
+    #[serde(default)]
+    pub linked_folder_external_path: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

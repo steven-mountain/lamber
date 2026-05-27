@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { parseWorkspaceError, workspaceService, type RecentWorkspace, type WorkspaceInfo } from "../utils/workspaceService";
+import { useProjectStore } from "./useProjectStore";
 
 interface WorkspaceStore {
   currentWorkspace: WorkspaceInfo | null;
@@ -17,6 +18,9 @@ interface WorkspaceStore {
 }
 
 function applyWorkspace(workspace: WorkspaceInfo | null) {
+  if (!workspace) {
+    useProjectStore.getState().clearCurrentProject();
+  }
   return {
     currentWorkspace: workspace,
     workspaceRoot: workspace?.workspaceRoot || null,
@@ -40,6 +44,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set({ isLoading: true });
     try {
       const state = await workspaceService.getState();
+      const prevWorkspace = get().currentWorkspace;
+      
+      // If we are clearing or changing to a different workspace, clear project
+      if (!state.currentWorkspace || (prevWorkspace && prevWorkspace.workspaceId !== state.currentWorkspace.workspaceId)) {
+        useProjectStore.getState().clearCurrentProject();
+      }
+      
       set({
         ...applyWorkspace(state.currentWorkspace),
         recentWorkspaces: state.recentWorkspaces,
@@ -47,6 +58,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         isLoading: false,
       });
     } catch (error) {
+      useProjectStore.getState().clearCurrentProject();
       set({ ...applyWorkspace(null), error: parseWorkspaceError(error).message, isLoading: false });
     }
   },
@@ -56,6 +68,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     if (!path) return;
     set({ isLoading: true, error: null });
     try {
+      useProjectStore.getState().clearCurrentProject();
       const workspace = await workspaceService.open(path);
       await get().refreshWorkspaceState();
       set({ ...applyWorkspace(workspace), isLoading: false });
@@ -81,6 +94,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         set({ isLoading: false });
         return;
       }
+      useProjectStore.getState().clearCurrentProject();
       const workspace = await workspaceService.create(path, undefined, allowNonEmpty);
       await get().refreshWorkspaceState();
       set({ ...applyWorkspace(workspace), isLoading: false });
@@ -92,6 +106,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   openRecentWorkspace: async (path: string) => {
     set({ isLoading: true, error: null });
     try {
+      useProjectStore.getState().clearCurrentProject();
       const workspace = await workspaceService.open(path);
       await get().refreshWorkspaceState();
       set({ ...applyWorkspace(workspace), isLoading: false });

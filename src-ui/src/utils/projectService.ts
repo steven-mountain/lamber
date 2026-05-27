@@ -102,6 +102,28 @@ export interface Project {
   main_budget_file_path?: string | null;
   note?: string | null;
   logs: ProjectLog[];
+
+  // Workspace integration fields
+  folder_name?: string | null;
+  relative_path?: string | null;
+  progress?: number;
+  deadline?: string | null;
+  linked_folder_type?: "none" | "internal" | "external" | null;
+  linked_folder_relative_path?: string | null;
+  linked_folder_external_path?: string | null;
+  directoryExists?: boolean;
+}
+
+export interface UnregisteredProject {
+  projectId: string;
+  name: string;
+  relativePath: string;
+  folderName: string;
+}
+
+export interface WorkspaceProjectInfo {
+  project: Project;
+  directoryExists: boolean;
 }
 
 export interface BenefitAnalysisScheme {
@@ -214,6 +236,18 @@ export const projectService = {
 
   async saveProjectSetting(projectId: string, key: string, value: string): Promise<void> {
     return invoke<void>("save_project_setting", { projectId, key, value });
+  },
+
+  async createProjectInWorkspace(name: string, customerName: string): Promise<Project> {
+    return invoke<Project>("create_project_in_workspace", { name, customerName });
+  },
+
+  async listWorkspaceProjects(): Promise<WorkspaceProjectInfo[]> {
+    return invoke<WorkspaceProjectInfo[]>("list_workspace_projects");
+  },
+
+  async inspectWorkspaceProjects(): Promise<UnregisteredProject[]> {
+    return invoke<UnregisteredProject[]>("inspect_workspace_projects");
   },
 };
 

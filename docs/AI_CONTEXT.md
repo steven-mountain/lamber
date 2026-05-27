@@ -21,7 +21,7 @@ LamberWorkspace/
 
 `WorkspaceRuntime` owns the current workspace state and active SQLite connection. Project, file, template asset, root, health, relocation, import, and document generation commands must require an open workspace and use `{workspaceRoot}/lamber.sqlite`. Startup may restore `lastOpenedWorkspacePath`; if it fails, the app must show WorkspaceGate and must not create an empty DB or fall back to AppData.
 
-When a workspace is opened or created, the workspace root is automatically registered in `project_roots` if it is missing. Project folders created or bound under the workspace should therefore not ask the user to register an additional root directory.
+When a workspace is opened or created, the workspace root is automatically registered in `project_roots` if it is missing. All new projects are created inside the workspace at `projects/{safeProjectName}/` with standard `assets/`, `documents/`, and `analyses/` subfolders, using workspace-relative paths for portable durability. Project folders created or bound under the workspace should therefore not ask the user to register an additional root directory.
 
 Workspace selection is part of the Project Board workflow: entering Project Board first shows the Project Workspace layer when no workspace is open, and only loads project cards after a workspace is selected.
 

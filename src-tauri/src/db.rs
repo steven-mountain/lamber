@@ -7,7 +7,7 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
     // Enable foreign keys support
     conn.execute("PRAGMA foreign_keys = ON;", [])?;
     
-    // Create tables (Version 2 structure)
+    // Create tables (Version 4 structure)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
@@ -28,7 +28,14 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
             main_document_path TEXT,
             main_budget_file_path TEXT,
             note TEXT,
-            logs TEXT
+            logs TEXT,
+            folder_name TEXT,
+            relative_path TEXT,
+            progress REAL DEFAULT 0.0,
+            deadline TEXT,
+            linked_folder_type TEXT DEFAULT 'none',
+            linked_folder_relative_path TEXT,
+            linked_folder_external_path TEXT
         );",
         [],
     )?;
@@ -328,6 +335,37 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
             let now = chrono::Utc::now().to_rfc3339();
             tx.execute(
                 "UPDATE app_settings SET value = '3', updated_at = ?1 WHERE key = 'schema_version'",
+                [now],
+            )?;
+            tx.commit()?;
+        }
+    }
+
+    // Run migration checks from Version 3 to 4
+    {
+        let version = {
+            let mut stmt = conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
+            let mut rows = stmt.query([])?;
+            if let Some(row) = rows.next()? {
+                let val_str: String = row.get(0)?;
+                val_str.parse::<i32>().unwrap_or(1)
+            } else {
+                1
+            }
+        };
+        if version < 4 {
+            let tx = conn.transaction()?;
+            tx.execute("ALTER TABLE projects ADD COLUMN folder_name TEXT;", [])?;
+            tx.execute("ALTER TABLE projects ADD COLUMN relative_path TEXT;", [])?;
+            tx.execute("ALTER TABLE projects ADD COLUMN progress REAL DEFAULT 0.0;", [])?;
+            tx.execute("ALTER TABLE projects ADD COLUMN deadline TEXT;", [])?;
+            tx.execute("ALTER TABLE projects ADD COLUMN linked_folder_type TEXT DEFAULT 'none';", [])?;
+            tx.execute("ALTER TABLE projects ADD COLUMN linked_folder_relative_path TEXT;", [])?;
+            tx.execute("ALTER TABLE projects ADD COLUMN linked_folder_external_path TEXT;", [])?;
+
+            let now = chrono::Utc::now().to_rfc3339();
+            tx.execute(
+                "UPDATE app_settings SET value = '4', updated_at = ?1 WHERE key = 'schema_version'",
                 [now],
             )?;
             tx.commit()?;

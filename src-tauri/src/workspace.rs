@@ -274,33 +274,58 @@ fn open_workspace_internal(app: &AppHandle, runtime: &WorkspaceRuntime, root: &P
 
 fn ensure_workspace_root_registered(conn: &rusqlite::Connection, root: &Path) -> Result<(), String> {
     let root_path = root.to_string_lossy().to_string();
-    let existing_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM project_roots WHERE root_path = ?1",
-            [&root_path],
-            |row| row.get(0),
-        )
-        .map_err(|e| workspace_error("DatabaseOpenFailed", format!("检查工作区根目录失败: {}", e)))?;
+    
+    // Check if there is an existing workspace root record (id starting with "workspace_root_")
+    let existing_ws_root: Option<(String, String)> = match conn.query_row(
+        "SELECT id, root_path FROM project_roots WHERE id LIKE 'workspace_root_%' LIMIT 1",
+        [],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+    ) {
+        Ok(val) => Some(val),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => return Err(workspace_error("DatabaseOpenFailed", format!("检查工作区根目录失败: {}", e))),
+    };
 
     let now = Utc::now().to_rfc3339();
-    if existing_count == 0 {
-        let any_default: i64 = conn
-            .query_row("SELECT COUNT(*) FROM project_roots WHERE is_default = 1", [], |row| row.get(0))
-            .map_err(|e| workspace_error("DatabaseOpenFailed", format!("检查默认根目录失败: {}", e)))?;
-        conn.execute(
-            "INSERT INTO project_roots (id, name, root_path, root_alias, is_default, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            rusqlite::params![
-                format!("workspace_root_{}", uuid::Uuid::new_v4()),
-                "当前工作区",
-                root_path,
-                Option::<String>::None,
-                if any_default == 0 { 1 } else { 0 },
-                now,
-                now,
-            ],
-        )
-        .map_err(|e| workspace_error("DatabaseOpenFailed", format!("注册工作区根目录失败: {}", e)))?;
+    
+    if let Some((id, old_path)) = existing_ws_root {
+        if old_path != root_path {
+            // Path has changed (workspace was moved), update the root_path!
+            conn.execute(
+                "UPDATE project_roots SET root_path = ?1, updated_at = ?2 WHERE id = ?3",
+                rusqlite::params![root_path, now, id],
+            )
+            .map_err(|e| workspace_error("DatabaseOpenFailed", format!("更新工作区根目录失败: {}", e)))?;
+        }
+    } else {
+        // No workspace root registered yet, check if root_path exists under any ID
+        let existing_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM project_roots WHERE root_path = ?1",
+                [&root_path],
+                |row| row.get(0),
+            )
+            .map_err(|e| workspace_error("DatabaseOpenFailed", format!("检查工作区根目录失败: {}", e)))?;
+
+        if existing_count == 0 {
+            let any_default: i64 = conn
+                .query_row("SELECT COUNT(*) FROM project_roots WHERE is_default = 1", [], |row| row.get(0))
+                .map_err(|e| workspace_error("DatabaseOpenFailed", format!("检查默认根目录失败: {}", e)))?;
+            conn.execute(
+                "INSERT INTO project_roots (id, name, root_path, root_alias, is_default, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![
+                    format!("workspace_root_{}", uuid::Uuid::new_v4()),
+                    "当前工作区",
+                    root_path,
+                    Option::<String>::None,
+                    if any_default == 0 { 1 } else { 0 },
+                    now,
+                    now,
+                ],
+            )
+            .map_err(|e| workspace_error("DatabaseOpenFailed", format!("注册工作区根目录失败: {}", e)))?;
+        }
     }
 
     Ok(())
@@ -408,4 +433,145 @@ pub async fn open_workspace(
 pub async fn clear_workspace(runtime: State<'_, Arc<WorkspaceRuntime>>) -> Result<(), String> {
     runtime.clear_workspace();
     Ok(())
+}
+
+use crate::benefit::models::Project;
+
+// Checks if `path` is inside `workspace_root`
+pub fn is_inside_workspace(workspace_root: &Path, path: &Path) -> bool {
+    if let (Ok(ws_canon), Ok(p_canon)) = (fs::canonicalize(workspace_root), fs::canonicalize(path)) {
+        p_canon.starts_with(ws_canon)
+    } else {
+        let ws_str = workspace_root.to_string_lossy().to_string().replace("\\", "/");
+        let p_str = path.to_string_lossy().to_string().replace("\\", "/");
+        p_str.starts_with(&ws_str)
+    }
+}
+
+// Converts absolute path to relative path under workspace root, or returns absolute path if outside
+pub fn to_relative_workspace_path(workspace_root: &Path, absolute_path: &Path) -> String {
+    let ws_abs = if workspace_root.is_absolute() {
+        workspace_root.to_path_buf()
+    } else {
+        fs::canonicalize(workspace_root).unwrap_or_else(|_| workspace_root.to_path_buf())
+    };
+    
+    let target_abs = if absolute_path.is_absolute() {
+        absolute_path.to_path_buf()
+    } else {
+        fs::canonicalize(absolute_path).unwrap_or_else(|_| absolute_path.to_path_buf())
+    };
+
+    if let Ok(rel) = target_abs.strip_prefix(&ws_abs) {
+        rel.to_string_lossy().to_string().replace("\\", "/")
+    } else {
+        let ws_str = ws_abs.to_string_lossy().to_string().replace("\\", "/");
+        let target_str = target_abs.to_string_lossy().to_string().replace("\\", "/");
+        if target_str.starts_with(&ws_str) {
+            let mut rel = &target_str[ws_str.len()..];
+            rel = rel.trim_start_matches('/');
+            rel.to_string()
+        } else {
+            absolute_path.to_string_lossy().to_string().replace("\\", "/")
+        }
+    }
+}
+
+// Resolves relative path to absolute path under workspace root. If already absolute, returns it.
+pub fn resolve_workspace_path(workspace_root: &Path, relative_path: &str) -> PathBuf {
+    let p = Path::new(relative_path);
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        workspace_root.join(relative_path)
+    }
+}
+
+// Sanitize folder name by replacing invalid characters
+pub fn sanitize_folder_name(name: &str) -> String {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return "unnamed_project".to_string();
+    }
+    
+    let mut sanitized = String::new();
+    for c in trimmed.chars() {
+        if c.is_alphanumeric() || c == '_' || c == '-' || c == '.' || c == '(' || c == ')' || c == '[' || c == ']' {
+            sanitized.push(c);
+        } else {
+            sanitized.push('_');
+        }
+    }
+    
+    let mut cleaned = sanitized.replace("__", "_");
+    while cleaned.contains("__") {
+        cleaned = cleaned.replace("__", "_");
+    }
+    cleaned = cleaned.trim_matches('_').to_string();
+    if cleaned.is_empty() {
+        cleaned = "project".to_string();
+    }
+    
+    cleaned
+}
+
+// Ensures all required directories exist for a project: assets/, documents/, analyses/
+pub fn ensure_project_dirs(workspace_root: &Path, folder_name: &str) -> Result<(), String> {
+    let project_dir = workspace_root.join("projects").join(folder_name);
+    fs::create_dir_all(&project_dir).map_err(|e| format!("无法创建项目目录: {}", e))?;
+    fs::create_dir_all(project_dir.join("assets")).map_err(|e| format!("无法创建 assets 目录: {}", e))?;
+    fs::create_dir_all(project_dir.join("documents")).map_err(|e| format!("无法创建 documents 目录: {}", e))?;
+    fs::create_dir_all(project_dir.join("analyses")).map_err(|e| format!("无法创建 analyses 目录: {}", e))?;
+    Ok(())
+}
+
+pub fn normalize_project_paths(workspace_root: &Path, project: &mut Project) {
+    if let Some(folder_path) = &project.folder_path {
+        if folder_path.trim().is_empty() {
+            project.folder_path = None;
+            project.linked_folder_type = Some("none".to_string());
+            project.linked_folder_relative_path = None;
+            project.linked_folder_external_path = None;
+            project.folder_name = None;
+            project.relative_path = None;
+            return;
+        }
+
+        let path = Path::new(folder_path);
+        if path.is_absolute() {
+            if is_inside_workspace(workspace_root, path) {
+                let rel = to_relative_workspace_path(workspace_root, path);
+                project.folder_path = Some(rel.clone());
+                project.linked_folder_type = Some("internal".to_string());
+                project.linked_folder_relative_path = Some(rel.clone());
+                project.linked_folder_external_path = None;
+                project.relative_path = Some(rel.clone());
+                if let Some(name) = Path::new(&rel).file_name() {
+                    project.folder_name = Some(name.to_string_lossy().to_string());
+                }
+            } else {
+                project.linked_folder_type = Some("external".to_string());
+                project.linked_folder_relative_path = None;
+                project.linked_folder_external_path = Some(folder_path.clone());
+                project.relative_path = Some(folder_path.clone());
+                if let Some(name) = path.file_name() {
+                    project.folder_name = Some(name.to_string_lossy().to_string());
+                }
+            }
+        } else {
+            project.linked_folder_type = Some("internal".to_string());
+            project.linked_folder_relative_path = Some(folder_path.clone());
+            project.linked_folder_external_path = None;
+            project.relative_path = Some(folder_path.clone());
+            if let Some(name) = path.file_name() {
+                project.folder_name = Some(name.to_string_lossy().to_string());
+            }
+        }
+    } else {
+        project.linked_folder_type = Some("none".to_string());
+        project.linked_folder_relative_path = None;
+        project.linked_folder_external_path = None;
+        project.folder_name = None;
+        project.relative_path = None;
+    }
 }

@@ -7,8 +7,9 @@ use tauri::{AppHandle, State};
 fn file_service_from_workspace(
     runtime: &crate::workspace::WorkspaceRuntime,
 ) -> Result<ProjectFileService, String> {
+    let ws = runtime.require_workspace()?;
     let repo = Arc::new(SqliteProjectFileRepository::new(runtime.require_db()?));
-    Ok(ProjectFileService::new(repo))
+    Ok(ProjectFileService::new(repo, std::path::PathBuf::from(ws.workspace_root)))
 }
 
 #[tauri::command]

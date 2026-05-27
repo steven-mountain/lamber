@@ -30,7 +30,7 @@ Lamber is a lightweight sales support and project management desktop tool design
 
 **Status**: Active (Fully Implemented)
 
-- **Current behavior**: Displays projects in a vertical waterfall row layout (list view) or an adaptive CSS Grid responsive layout (card/grid view). Allows filtering by phase pills (全部, 立项中, 审批中, 实施中, 已完成), searching by keyword, adding notes via auto-saving textareas, binding local folder paths, and viewing key financial metrics (margin, NPV, NPVR, IRR, payback period, risk level).
+- **Current behavior**: Displays projects scoped to the active Lamber Workspace root. It fetches project details from the current workspace SQLite database (`lamber.sqlite`). New projects are automatically created under `workspaceRoot/projects/{safeProjectName}/` with standard assets, documents, and analyses subdirectories and a redundant `project.json` manifest. Cards indicate directory health, flagging missing directories in the UI. Binding works with relative workspace paths for internal folders, and warns users when folders are external. Disconnecting folder links clears database records but keeps real disk files intact.
 - **Known requirements**: Maintain independent rendering from ICT Lifecycle view and persist UI selections in local storage.
 - **Known issues**: Large note sizes might slightly lag during immediate auto-save.
 - **Related files**:

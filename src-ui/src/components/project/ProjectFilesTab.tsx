@@ -517,6 +517,26 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
                   <code className="mt-1 block w-full max-w-full px-2.5 py-1.5 rounded bg-muted/80 border border-border/50 font-mono text-primary text-[10px] leading-5 select-all whitespace-normal break-all">
                     {project.folder_path}
                   </code>
+                  {project.linked_folder_type && (
+                    <div className="mt-1.5 flex flex-col gap-1">
+                      <div>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                          project.linked_folder_type === 'internal'
+                            ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-200/20'
+                            : project.linked_folder_type === 'external'
+                              ? 'bg-amber-500/10 text-amber-600 border border-amber-200/20'
+                              : 'bg-slate-100 text-slate-500'
+                        }`}>
+                          {project.linked_folder_type === 'internal' ? '工作区内部关联 (可迁移)' : '工作区外部关联'}
+                        </span>
+                      </div>
+                      {project.linked_folder_type === 'external' && (
+                        <p className="text-[10px] font-medium text-amber-600 leading-normal">
+                          ⚠️ 该文件夹位于当前工作区外部，复制或导出整个 Workspace 时不会自动迁移。
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </span>
               ) : (
                 "绑定项目文件夹后，可一键扫描同步该文件夹下的效益测算文件，且支持直接定位和打开文件。"

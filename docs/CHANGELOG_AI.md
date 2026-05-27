@@ -4,6 +4,28 @@ This changelog records structural modifications, business rules, and context cha
 
 ## 2026-05-28
 
+### Workspace Refactoring Phase 2: Project Board & Workspace Binding
+
+Created:
+- [useProjectStore.ts](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/store/useProjectStore.ts): Zustand store managing active currentProject context with local storage recovery and workspace linkage.
+
+Modified:
+- [workspace.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/workspace.rs): Added workspace paths normalization, verification functions, safe folder naming, standard subdirectories creation, and workspace root auto-healing logic on workspace relocation.
+- [db.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/db.rs): Expanded `projects` table columns with migration check to version 4 (added `folder_name`, `relative_path`, `progress`, `deadline`, `linked_folder_type`, `linked_folder_relative_path`, `linked_folder_external_path`).
+- [models.rs (benefit)](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/benefit/models.rs): Extended Rust `Project` model with Phase 2 workspace mapping attributes.
+- [repository.rs (benefit)](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/benefit/repository.rs): Added DB mapping of extended project attributes for SQLite database repository.
+- [commands.rs (benefit)](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/benefit/commands.rs): Implemented workspace-scoped project operations: `create_project_in_workspace` (with directory structure creation and `project.json` manifest writing), `list_workspace_projects`, and `inspect_workspace_projects`.
+- [service.rs (project_files)](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/service.rs): Updated files scanning and sandboxing paths mapping to store documents relative to the workspace projects folder and to prevent delete-on-unbind behavior.
+- [commands.rs (project_files)](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/commands.rs) & [health.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/health.rs): Passed the active workspace root to file service calls.
+- [ProjectBoard.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/ProjectBoard.tsx): Rebuilt creation flow using standard workspace paths, bound cards to missing directory warnings, removed old manual folder selection modals, and integrated project context selection.
+- [IctLifecycle.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/IctLifecycle.tsx): Synced global project state store context and added support for saving free calculations into any existing workspace project.
+
+Decisions:
+- Standardized project folders creation inside `workspaceRoot/projects/{safeProjectName}/` with `assets/`, `documents/`, `analyses/` subfolders and a backup `project.json` manifest.
+- SQLite remains the primary source of truth, with `project.json` serving as redundant metadata.
+- Internal folders bound to projects are stored as relative workspace paths to guarantee portable workspaces, while external folders trigger visual alerts warning users of non-portable linkages.
+- Unbinding local folders clears metadata and scanner references in the DB, but keeps actual disk files untouched.
+
 ### Workspace Runtime Foundation
 
 Created:

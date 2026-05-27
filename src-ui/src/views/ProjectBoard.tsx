@@ -7,6 +7,7 @@ import { projectFileService } from "../services/projectFileService";
 import { invoke } from "@tauri-apps/api/core";
 import WorkspaceGate from "../components/workspace/WorkspaceGate";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
+import { useProjectStore } from "../store/useProjectStore";
 
 interface CandidateFile {
   name: string;
@@ -104,10 +105,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [newCustomerName, setNewCustomerName] = useState("");
-  const [createProjectFolderEnabled, setCreateProjectFolderEnabled] = useState(false);
-  const [createProjectFolderParent, setCreateProjectFolderParent] = useState<string | null>(null);
-  const [createProjectFolderName, setCreateProjectFolderName] = useState("");
-  const [showProjectFolderModal, setShowProjectFolderModal] = useState(false);
+
 
   // Import Scanner State
   const [showImportModal, setShowImportModal] = useState(false);
@@ -165,9 +163,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        if (showProjectFolderModal) {
-          setShowProjectFolderModal(false);
-        } else if (showStatusManager) {
+        if (showStatusManager) {
           setShowStatusManager(false);
         } else if (isNewSchemeModalOpen) {
           setIsNewSchemeModalOpen(false);
@@ -188,12 +184,16 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [selectedProject, isNewSchemeModalOpen, showCreateModal, showProjectFolderModal, showStatusManager]);
+  }, [selectedProject, isNewSchemeModalOpen, showCreateModal, showStatusManager]);
 
   const fetchProjects = async () => {
     setLoading(true);
     try {
-      const projs = await projectService.getProjects();
+      const workspaceProjects = await projectService.listWorkspaceProjects();
+      const projs = workspaceProjects.map(wp => ({
+        ...wp.project,
+        directoryExists: wp.directoryExists
+      }));
       setProjects(projs);
       setStatusOptions(prev => {
         const next = mergeStatusOptions(prev, projs);
@@ -238,25 +238,12 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     }
 
     try {
-      let newProj = await projectService.createProject(
+      const newProj = await projectService.createProjectInWorkspace(
         projectName,
         newCustomerName.trim() || "未知客户"
       );
-      let folderBindingWarning: string | null = null;
-      if (createProjectFolderEnabled && createProjectFolderParent && createProjectFolderName.trim()) {
-        try {
-          const folderPath = await projectFileService.createProjectFolder(
-            createProjectFolderParent,
-            createProjectFolderName.trim()
-          );
-          await projectFileService.bindProjectFolder(newProj.id, folderPath);
-          newProj = (await projectService.getProject(newProj.id)) || { ...newProj, folder_path: folderPath };
-        } catch (folderErr) {
-          console.error(folderErr);
-          folderBindingWarning = String(folderErr);
-        }
-      }
-      setProjects((prev) => [newProj, ...prev]);
+      const projWithExists = { ...newProj, directoryExists: true };
+      setProjects((prev) => [projWithExists, ...prev]);
       setStatusOptions(prev => {
         const next = mergeStatusOptions(prev, [newProj]);
         persistStatusOptions(next);
@@ -266,14 +253,8 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       setShowCreateModal(false);
       setNewProjectName("");
       setNewCustomerName("");
-      setCreateProjectFolderEnabled(false);
-      setCreateProjectFolderParent(null);
-      setCreateProjectFolderName("");
       // Automatically open the details of the newly created project
-      handleOpenDetails(newProj);
-      if (folderBindingWarning) {
-        alert("项目已创建，但项目文件夹创建或绑定失败: " + folderBindingWarning);
-      }
+      handleOpenDetails(projWithExists);
     } catch (err) {
       console.error(err);
       alert("创建项目失败: " + err);
@@ -350,57 +331,13 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
 
   const handleCloseCreateModal = () => {
     setShowCreateModal(false);
-    setShowProjectFolderModal(false);
     setNewProjectName("");
     setNewCustomerName("");
-    setCreateProjectFolderEnabled(false);
-    setCreateProjectFolderParent(null);
-    setCreateProjectFolderName("");
-  };
-
-  const handleOpenProjectFolderModal = async () => {
-    try {
-      const selected = createProjectFolderParent || await projectFileService.selectLocalFolder();
-      if (!selected) return;
-
-      setCreateProjectFolderParent(selected);
-      setCreateProjectFolderName((createProjectFolderName || newProjectName || "新建项目").trim());
-      setShowProjectFolderModal(true);
-    } catch (err) {
-      console.error(err);
-      alert("选择文件夹失败: " + err);
-    }
-  };
-
-  const handleChangeProjectFolderParent = async () => {
-    try {
-      const selected = await projectFileService.selectLocalFolder();
-      if (selected) {
-        setCreateProjectFolderParent(selected);
-      }
-    } catch (err) {
-      console.error(err);
-      alert("选择父级目录失败: " + err);
-    }
-  };
-
-  const handleConfirmProjectFolderOption = () => {
-    if (!createProjectFolderParent) {
-      alert("请先选择父级目录");
-      return;
-    }
-    if (!createProjectFolderName.trim()) {
-      alert("文件夹名称不能为空");
-      return;
-    }
-
-    setCreateProjectFolderEnabled(true);
-    setCreateProjectFolderName(createProjectFolderName.trim());
-    setShowProjectFolderModal(false);
   };
 
   const handleOpenDetails = async (project: Project) => {
     setSelectedProject(project);
+    useProjectStore.getState().setCurrentProject(project);
     setDetailTab('info');
     setEditingProjectName(project.name);
     setEditingCustomerName(project.customer_name);
@@ -459,8 +396,10 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
 
     try {
       const result = await projectService.updateProject(updated);
-      setSelectedProject(result);
-      setProjects(prev => prev.map(p => p.id === result.id ? result : p));
+      const projWithExists = { ...result, directoryExists: selectedProject.directoryExists };
+      setSelectedProject(projWithExists);
+      useProjectStore.getState().setCurrentProject(projWithExists);
+      setProjects(prev => prev.map(p => p.id === result.id ? projWithExists : p));
       setStatusOptions(prev => {
         const next = mergeStatusOptions(prev, [result]);
         persistStatusOptions(next);
@@ -477,6 +416,9 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     if (!confirm("确定要删除该项目吗？关联的所有方案和快照数据都将丢失。")) return;
     try {
       await projectService.deleteProject(projectId);
+      if (useProjectStore.getState().currentProject?.id === projectId) {
+        useProjectStore.getState().clearCurrentProject();
+      }
       setProjects(prev => prev.filter(p => p.id !== projectId));
       setNoteDrafts(prev => {
         const next = { ...prev };
@@ -509,18 +451,31 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     if (!selectedProject) return;
 
     try {
-      const latestProject = await projectService.getProject(selectedProject.id);
-      if (!latestProject) {
+      const workspaceProjects = await projectService.listWorkspaceProjects();
+      const latestInfo = workspaceProjects.find(wp => wp.project.id === selectedProject.id);
+      
+      const projs = workspaceProjects.map(wp => ({
+        ...wp.project,
+        directoryExists: wp.directoryExists
+      }));
+      setProjects(projs);
+
+      if (!latestInfo) {
         setSelectedProject(null);
-        await fetchProjects();
+        useProjectStore.getState().clearCurrentProject();
         return;
       }
 
+      const latestProject = {
+        ...latestInfo.project,
+        directoryExists: latestInfo.directoryExists
+      };
+
       setSelectedProject(latestProject);
+      useProjectStore.getState().setCurrentProject(latestProject);
       setEditingProjectName(latestProject.name);
       setEditingCustomerName(latestProject.customer_name);
       setEditingStatus(latestProject.status);
-      setProjects(prev => prev.map(p => p.id === latestProject.id ? latestProject : p));
       setNoteDrafts(prev => ({ ...prev, [latestProject.id]: latestProject.note || "" }));
       await reloadSchemesForProject(latestProject);
     } catch (err) {
@@ -845,6 +800,12 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
             {project.status}
           </span>
           {getStatusBadge(project.benefit_status)}
+          {project.directoryExists === false && (
+            <span className="rounded-md bg-rose-50 border border-rose-200 px-2 py-0.5 text-[10px] font-bold text-rose-600 flex items-center gap-1 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
+              <AlertTriangle className="h-3 w-3 shrink-0" />
+              目录缺失
+            </span>
+          )}
         </div>
       </div>
     </div>
@@ -1258,6 +1219,12 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                               {project.status}
                             </span>
                             {getStatusBadge(project.benefit_status)}
+                            {project.directoryExists === false && (
+                              <span className="rounded-md bg-rose-50 border border-rose-200 px-2 py-0.5 text-[10px] font-bold text-rose-600 flex items-center gap-1 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
+                                <AlertTriangle className="h-3 w-3 shrink-0" />
+                                目录缺失
+                              </span>
+                            )}
                           </div>
                           <div>
                             <h3 className="text-sm font-black text-slate-900 dark:text-white tracking-tight truncate" title={project.name}>{project.name}</h3>
@@ -1352,13 +1319,19 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                         <FileText className="h-4 w-4" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                           <h3 className="text-xs font-black text-slate-900 dark:text-white truncate leading-tight hover:text-blue-600 cursor-pointer" title={project.name}>
                             {project.name}
                           </h3>
                           <span className="px-1 py-0.5 text-[8px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded flex-shrink-0">
                             {project.status}
                           </span>
+                          {project.directoryExists === false && (
+                            <span className="px-1 py-0.5 text-[8px] font-bold bg-rose-50 border border-rose-200 text-rose-600 rounded flex-shrink-0 flex items-center gap-0.5 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
+                              <AlertTriangle className="h-2.5 w-2.5 shrink-0" />
+                              目录缺失
+                            </span>
+                          )}
                         </div>
                         <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5" title={project.customer_name || "未填写"}>
                           {project.customer_name || "未填写"}
@@ -1533,6 +1506,12 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                             <span className="px-1 py-0.5 text-[8px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded flex-shrink-0">
                               {project.status}
                             </span>
+                            {project.directoryExists === false && (
+                              <span className="px-1 py-0.5 text-[8px] font-bold bg-rose-50 border border-rose-200 text-rose-600 rounded flex-shrink-0 flex items-center gap-0.5 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
+                                <AlertTriangle className="h-2.5 w-2.5 shrink-0" />
+                                目录缺失
+                              </span>
+                            )}
                           </div>
                           <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5" title={project.customer_name || "未填写"}>
                             {project.customer_name || "未填写"}
@@ -1655,50 +1634,6 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                   className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring w-full"
                 />
               </div>
-
-              <div className="rounded-lg border border-border bg-muted/20 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-bold text-foreground">
-                      <FolderPlus className="h-4 w-4 text-primary" />
-                      新建并绑定项目文件夹
-                    </div>
-                    <p className="mt-1 text-xs leading-5 text-secondary-foreground">
-                      可选。文件夹名称默认使用项目名称，创建前可以单独修改。
-                    </p>
-                    {createProjectFolderEnabled && createProjectFolderParent && (
-                      <div className="mt-2 space-y-1">
-                        <div className="text-xs font-bold text-primary">将创建：{createProjectFolderName}</div>
-                        <code className="block rounded-md border border-border/50 bg-background px-2 py-1 font-mono text-[10px] leading-4 text-secondary-foreground break-all">
-                          {createProjectFolderParent}
-                        </code>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 flex-col gap-2">
-                    <button
-                      type="button"
-                      onClick={handleOpenProjectFolderModal}
-                      className="rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary/15"
-                    >
-                      {createProjectFolderEnabled ? "修改" : "设置"}
-                    </button>
-                    {createProjectFolderEnabled && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCreateProjectFolderEnabled(false);
-                          setCreateProjectFolderParent(null);
-                          setCreateProjectFolderName("");
-                        }}
-                        className="rounded-lg px-3 py-1.5 text-xs font-bold text-red-500 transition-all hover:bg-red-500/10"
-                      >
-                        取消
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
             </div>
 
             <div className="border-t border-border p-4 bg-muted/20 flex justify-end gap-3">
@@ -1721,74 +1656,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
         </div>
       )}
 
-      {showProjectFolderModal && (
-        <div className="fixed inset-0 z-[60] bg-slate-950/35 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 border-b border-border bg-muted/30 flex items-center justify-between">
-              <h2 className="font-bold text-base text-foreground flex items-center gap-2">
-                <FolderPlus className="h-4 w-4 text-primary" />
-                设置项目文件夹
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowProjectFolderModal(false)}
-                className="text-secondary-foreground hover:bg-secondary p-1 rounded-md"
-              >
-                <AppIcon name="close" size={16} />
-              </button>
-            </div>
 
-            <div className="p-6 space-y-4">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between gap-3">
-                  <label className="text-sm font-semibold text-secondary-foreground">父级目录</label>
-                  <button
-                    type="button"
-                    onClick={handleChangeProjectFolderParent}
-                    className="text-xs font-bold text-primary hover:underline"
-                  >
-                    更换
-                  </button>
-                </div>
-                <code className="block rounded-lg border border-border/60 bg-muted/40 px-3 py-2 font-mono text-[10px] leading-4 text-primary break-all">
-                  {createProjectFolderParent}
-                </code>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="new-project-folder-name" className="text-sm font-semibold text-secondary-foreground">
-                  文件夹名称
-                </label>
-                <input
-                  id="new-project-folder-name"
-                  autoFocus
-                  value={createProjectFolderName}
-                  onChange={(e) => setCreateProjectFolderName(e.target.value)}
-                  placeholder="请输入文件夹名称"
-                  className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring w-full"
-                />
-              </div>
-            </div>
-
-            <div className="border-t border-border p-4 bg-muted/20 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowProjectFolderModal(false)}
-                className="px-4 py-2 border border-border hover:bg-secondary rounded-lg text-sm font-semibold text-secondary-foreground transition-all"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmProjectFolderOption}
-                className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-lg text-sm transition-all"
-              >
-                确认
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showStatusManager && (
         <div className="fixed inset-0 z-[60] bg-slate-950/35 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">

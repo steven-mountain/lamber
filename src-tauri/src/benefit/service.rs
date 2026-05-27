@@ -155,6 +155,13 @@ impl ProjectService {
             main_budget_file_path: None,
             note: None,
             logs: vec![],
+            folder_name: None,
+            relative_path: None,
+            progress: 0.0,
+            deadline: None,
+            linked_folder_type: Some("none".to_string()),
+            linked_folder_relative_path: None,
+            linked_folder_external_path: None,
         };
         self.repository.save_project(&project)?;
         Ok(project)

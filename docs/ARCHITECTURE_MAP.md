@@ -71,9 +71,9 @@ graph TD
 ## 4. Core data flows
 
 ### 4.1 Project Board data flow
-1. User creates or edits a project card on the board.
-2. React invokes Tauri commands (`create_project` / `update_project`).
-3. Rust Backend load-modify-saves `projects_store.json` and returns the project entity.
+1. User creates a new project or edits a card on the board.
+2. React invokes Tauri commands (`create_project_in_workspace` for creation, `update_project` for updates).
+3. Rust Backend creates the standard project directories (`assets/`, `documents/`, `analyses/`), writes a redundant `project.json` manifest, saves project fields to the current workspace SQLite database, and returns the project entity.
 4. The list is re-fetched and updated.
 
 ### 4.2 Project to Benefit Analysis flow

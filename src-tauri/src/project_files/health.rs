@@ -118,8 +118,9 @@ impl FileLinkHealthService {
 pub async fn run_file_health_check(
     runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
 ) -> Result<HealthReport, String> {
+    let ws = runtime.require_workspace()?;
     let repo = Arc::new(SqliteProjectFileRepository::new(runtime.require_db()?));
-    let file_service = Arc::new(ProjectFileService::new(repo.clone()));
+    let file_service = Arc::new(ProjectFileService::new(repo.clone(), std::path::PathBuf::from(ws.workspace_root)));
     let service = FileLinkHealthService::new(file_service, repo);
     service.run_health_check()
 }

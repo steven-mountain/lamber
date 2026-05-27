@@ -18,6 +18,8 @@ import {
   type BenefitAnalysisSnapshot
 } from "../utils/projectService";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
+import { useProjectStore } from "../store/useProjectStore";
+
 
 export default function IctLifecycle() {
   const { activeProjectId, activeSchemeId, entrySource, navigateTo } = useNavigationStore();
@@ -33,6 +35,7 @@ export default function IctLifecycle() {
 
   const [showSaveAsModal, setShowSaveAsModal] = useState(false);
   const [saveAsSchemeName, setSaveAsSchemeName] = useState("");
+  const [showSelectProjectModal, setShowSelectProjectModal] = useState(false);
 
   useEffect(() => {
     if (!isWorkspaceReady) {
@@ -135,6 +138,7 @@ export default function IctLifecycle() {
       localStorage.removeItem("lamber_active_project_id");
       localStorage.removeItem("lamber_active_scheme_id");
       setActiveProject(null);
+      useProjectStore.getState().setCurrentProject(null);
       setActiveScheme(null);
       setActiveSnapshot(null);
       setPendingNewSchemeName(null);
@@ -150,6 +154,7 @@ export default function IctLifecycle() {
         localStorage.removeItem("lamber_active_project_id");
         localStorage.removeItem("lamber_active_scheme_id");
         setActiveProject(null);
+        useProjectStore.getState().setCurrentProject(null);
         setActiveScheme(null);
         setActiveSnapshot(null);
         setPendingNewSchemeName(null);
@@ -158,6 +163,7 @@ export default function IctLifecycle() {
 
       localStorage.setItem("lamber_active_project_id", project.id);
       setActiveProject(project);
+      useProjectStore.getState().setCurrentProject(project);
 
       const newSchemeNameLocal = localStorage.getItem("lamber_new_scheme_name");
       if (newSchemeNameLocal) {
@@ -219,6 +225,36 @@ export default function IctLifecycle() {
   useEffect(() => {
     loadProjectContext(activeProjectId, activeSchemeId);
   }, [activeProjectId, activeSchemeId]);
+
+  const handleSaveToSelectedProject = async (targetProjectId: string) => {
+    if (!isWorkspaceReady) {
+      alert("请先新建或打开工作区后再保存项目方案。");
+      return;
+    }
+
+    try {
+      const payload = calculations.buildInputDataPayload();
+      const project = projects.find(p => p.id === targetProjectId);
+      const schemeName = project ? `${project.name}_首次测算` : "测算方案";
+
+      const updatedProj = await projectService.saveBenefitScheme(
+        targetProjectId,
+        null,
+        schemeName,
+        payload,
+        metrics,
+        false
+      );
+
+      setPendingNewSchemeName(null);
+      const newSchemeId = updatedProj.default_scheme_id || null;
+      navigateTo("ict_lifecycle", targetProjectId, newSchemeId);
+      alert("保存测算成功！已关联到项目并生成方案。");
+    } catch (error) {
+      console.error("保存失败:", error);
+      alert("保存失败: " + error);
+    }
+  };
 
   const handleSaveToCurrent = async () => {
     if (!isWorkspaceReady) {
@@ -532,6 +568,13 @@ export default function IctLifecycle() {
                     <option key={p.id} value={p.id}>{p.name} ({p.customer_name})</option>
                   ))}
                 </select>
+                <button
+                  id="save_free_benefit_btn"
+                  onClick={() => setShowSelectProjectModal(true)}
+                  className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-lg text-xs hover:bg-primary/90 transition-all shadow-sm flex items-center gap-1.5 active:scale-[0.98]"
+                >
+                  <AppIcon name="save" size={14} /> 保存当前测算
+                </button>
               </div>
             </div>
           )}
@@ -853,6 +896,51 @@ export default function IctLifecycle() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {showSelectProjectModal && (
+        <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-border bg-muted/30 flex items-center justify-between">
+              <h4 className="font-bold text-sm text-foreground">选择要保存到的项目</h4>
+              <button
+                type="button"
+                onClick={() => setShowSelectProjectModal(false)}
+                className="text-secondary-foreground hover:bg-secondary p-1 rounded-md"
+              >
+                <AppIcon name="close" size={14} />
+              </button>
+            </div>
+            <div className="p-6">
+              <label className="text-xs font-semibold text-secondary-foreground block mb-1.5">选择项目 <span className="text-red-500">*</span></label>
+              <select
+                id="save_target_project_select"
+                defaultValue=""
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val) {
+                    setShowSelectProjectModal(false);
+                    handleSaveToSelectedProject(val);
+                  }
+                }}
+                className="bg-card border border-input px-3 py-2 rounded-lg text-xs outline-none focus:border-ring w-full cursor-pointer font-semibold"
+              >
+                <option value="" disabled>-- 请选择项目 --</option>
+                {projects.map(p => (
+                  <option key={p.id} value={p.id}>{p.name} ({p.customer_name})</option>
+                ))}
+              </select>
+            </div>
+            <div className="border-t border-border p-3 bg-muted/10 flex justify-end">
+              <button
+                onClick={() => setShowSelectProjectModal(false)}
+                className="px-3 py-1.5 border border-border hover:bg-secondary rounded-lg text-xs font-semibold text-secondary-foreground transition-all"
+              >
+                取消
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
