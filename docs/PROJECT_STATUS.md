@@ -14,6 +14,7 @@ Lamber is a lightweight sales support and project management desktop tool design
   - Global navigation: `useNavigationStore` (Zustand + local storage)
   - AI Context: `useAiContextStore` (Zustand + local storage + Tauri events)
   - Layout & view modes: Local storage (`lamber_project_board_view_mode`, etc.)
+- **Database/Persistence**: SQLite (via `rusqlite` with `bundled` feature) for structured relational tables, alongside dynamic `projects_store.json` backward compatibility
 - **Styling**: Tailwind CSS + Shadcn/UI (Radix UI) + HSL-based design system
 - **AI integration**: Local SSE streaming client (Ollama / OpenAI standard endpoint) with semantic Markdown context serialization
 - **File handling**:
@@ -39,7 +40,7 @@ Lamber is a lightweight sales support and project management desktop tool design
 
 **Status**: Active (Fully Implemented)
 
-- **Current behavior**: Computes 10-year cashflows, NPV, NPV Rate, Margin Rate, IRR, and payback period. Supports bound-project mode and standalone "free" calculator mode. Includes quick split calculators (requiring 1% own product revenue allocation), selection fee calculators, and smart back-calculations. It enforces a 0-tolerance tax validation check before allowing users to see cashflows or generate documents.
+- **Current behavior**: Computes 10-year cashflows, NPV, NPV Rate, Margin Rate, IRR, and payback period. Supports bound-project mode and standalone "free" calculator mode. Includes quick split calculators (requiring 1% own product revenue allocation), selection fee calculators, and smart back-calculations. The project background, discount rates, property rights, and cashflow details are fully persisted in the scheme snapshots. It enforces a 0-tolerance tax validation check before allowing users to see cashflows or generate documents.
 - **Known requirements**: Maintain risk analysis criteria defined in backend Rust code.
 - **Known issues**: Binary search limit for back-calculation is capped at 10 billion CNY.
 - **Related files**:
@@ -73,13 +74,27 @@ Lamber is a lightweight sales support and project management desktop tool design
 
 **Status**: Active (Fully Implemented)
 
-- **Current behavior**: Scans directories for docx/xlsx files. Back-fills form fields (from `TemplateForms.tsx`) into files via Rust backend. Word templates are generated via `docx-template`. Excels can be filled or parsed back (via `parse_benefit_excel`) to overwrite project states. Supports sandbox "copied" files or raw disk "linked" files.
+- **Current behavior**: Scans directories for docx/xlsx files. Back-fills form fields (from `TemplateForms.tsx`) into files via Rust backend. Word templates are generated via `docx-template`. Excels can be filled or parsed back (via `parse_benefit_excel`) to overwrite project states. Supports sandbox "copied" files or raw disk "linked" files. Template forms (`TemplateForms.tsx`) and embedded image resources are persisted separately: lightweight forms/table settings are saved in `project_settings` (under key `template_form_data::<template_name>`), while pasted/dropped images are uploaded instantly to project assets sandboxes (bound project folder under `{project_name}-图片/assets/` if linked, otherwise falling back to `{app_data_dir}/projects/{project_id}/assets/`) and tracked in the `project_template_assets` metadata table. Document generation reads binary contents directly from sandbox files via backend validation.
 - **Known requirements**: Scan timestamps are updated without modifying physical files.
 - **Known issues**: Cell coordinates mapping in Excel template is fragile if the spreadsheet structure changes.
 - **Related files**:
   - [TemplateForms.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/TemplateForms.tsx)
   - [docfill.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/docfill.rs)
   - [project_files/service.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/service.rs)
+
+### 3.6 Data Management Center & Path Resilience (数据管理中心与路径韧性)
+
+**Status**: Active (Fully Implemented in Phase 2)
+
+- **Current behavior**: Avoids hardcoded absolute paths by employing global project roots (`project_roots`), relative paths (`project_directories`), and file fingerprints (`size:modified_at:first_8kb_hash`). Supports global project roots CRUD, folder binding warning triggers (offering auto-parent folder registration as root with relative project subpaths, or absolute-only paths), a Health Checks Dashboard showing file links health metrics and self-healing reports, bulk path relocation (relocating directories across volumes with previews), and candidate scanner to import folders as new projects (auto-identifying file roles and resolving naming conflicts via merge/new/skip options). Allows scanning and syncing of rootless project directories safely without triggering foreign key constraint failures.
+- **Related files**:
+  - [DataManagement.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/DataManagement.tsx)
+  - [ProjectFilesTab.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/components/project/ProjectFilesTab.tsx)
+  - [ProjectBoard.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/ProjectBoard.tsx)
+  - [project_files/roots.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/roots.rs)
+  - [project_files/health.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/health.rs)
+  - [project_files/relocation.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/relocation.rs)
+  - [project_files/import_scanner.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/import_scanner.rs)
 
 ## 4. Important business rules
 
@@ -93,9 +108,14 @@ Lamber is a lightweight sales support and project management desktop tool design
 ## 5. Important architecture decisions
 
 ### ADR-001: File-based JSON Database Repository
-- **Decision**: Store projects and files in `projects_store.json` using atomic loading, modifying, and saving operations.
+- **Decision**: Store projects and files in `projects_store.json` using atomic loading, modifying, and saving operations. (Superceded by SQLite in Phase 1 upgrade).
 - **Reason**: Simplifies desktop deployments without DB servers, preparing interfaces for an easy future SQLite migration.
-- **Impact**: Concurrency is managed via Rust load-modify-save cycles. Simultaneous database writes must be controlled.
+- **Impact**: Concurrency is managed via Rust load-modify-save cycles. (Migrated to SQLite transaction management).
+
+### ADR-005: SQLite Core Database with Dual-Repository Swapping
+- **Decision**: Introduce SQLite as the primary data store and implement a dynamic `DualProjectRepository` wrapper to allow hot-swapping between JSON and SQLite.
+- **Reason**: To support relational features (ICT lifecycle fields, AI knowledge, scanned page indexes) and handle transactional integrity safely.
+- **Impact**: JSON files are backed up automatically on startup, migrated using transactional inserts, and dynamically swapped to SQLite without requiring an application restart.
 
 ### ADR-002: Tonal Shifting (No solid borders) UI Theme
 - **Decision**: Avoid standard `border-t`, `border-l` 1px lines in page segments, replacing them with background colors (`bg-muted` vs `bg-card`) and surface nesting.
@@ -124,6 +144,7 @@ Lamber is a lightweight sales support and project management desktop tool design
 - **Excel Cell Coordinates mapping**: Cell coordinates in `excel.rs` and `parse_benefit_excel` are hardcoded. Changing Excel template sheets will break parsing.
 - **Zip / Word XML extraction**: docx variable extraction depends on direct XML parsing. Malformed documents or tables inside docx templates can cause extraction failures.
 - **0-tolerance reconciliation check**: Floating-point rounding in JavaScript vs Rust Decimal might trigger false positives in validation. All UI inputs are handled via strings or decimal crates.
+- **SQLite INSERT OR REPLACE Cascade Deletion Risk**: Avoid using `INSERT OR REPLACE` on parent tables (e.g. `projects`) that have child tables referencing them with `ON DELETE CASCADE` (like `project_directories`, `project_files`, `benefit_schemes`, `benefit_snapshots`). SQLite's `REPLACE` executes as a `DELETE` followed by an `INSERT`, which fires foreign key cascade deletions, wiping out all related child rows. Use manual existence checks and separate `UPDATE`/`INSERT` commands instead.
 
 ## 8. Do not break
 

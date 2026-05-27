@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from "react"
-import { invoke } from "@tauri-apps/api/core"
+import { invoke, convertFileSrc } from "@tauri-apps/api/core"
 import AppIcon from "../components/icons/AppIcon"
 import { MID_THREE_CAPABILITIES } from "../lib/midThreeConstants"
 import { useAiContextStore } from "../store/useAiContextStore"
 import { buildAiContextKey } from "../utils/aiContextKeys"
 import { projectFileService } from "../services/projectFileService"
+import { projectService } from "../utils/projectService"
 
 interface Props {
   selectedTemplate: string;
@@ -154,9 +155,35 @@ export default function TemplateForms({
     projectData.revenue?.non_it_ct,
   ].reduce((sum, item) => sum + Number(item?.incl || 0), 0)
 
-
-
   const formDataRef = useRef<Record<string, string>>({});
+  const [formData, setFormData] = useState<Record<string, string>>({});
+
+  const handleFieldChange = (name: string, value: string) => {
+    formDataRef.current[name] = value;
+    setFormData({ ...formDataRef.current });
+    setSyncTrigger(prev => prev + 1);
+  };
+
+  const getBind = (name: string, defaultVal: string = "") => {
+    return {
+      value: formData[name] ?? defaultVal,
+      onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+        handleFieldChange(name, e.target.value);
+      }
+    };
+  };
+
+  const getBindCheckbox = (name: string, defaultVal: boolean = false) => {
+    const val = formData[name];
+    const checked = val !== undefined ? (val === "true" || val === "on") : defaultVal;
+    return {
+      checked,
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+        handleFieldChange(name, e.target.checked ? "on" : "off");
+      }
+    };
+  };
+
   const handleFormChange = (e: any) => {
     const target = e.target;
     if (target && target.name && target.name.startsWith('gen_')) {
@@ -168,24 +195,297 @@ export default function TemplateForms({
     }
   };
 
-  useEffect(() => {
-    if (formDataRef.current.gen_project_scale) {
-      setProjectScale(normalizeProjectScale(formDataRef.current.gen_project_scale));
+  const isLoadingRef = useRef(false);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // --- Load Form Settings from DB ---
+  const resolveImages = async (imagesList: any[]) => {
+    if (!imagesList) return [];
+    return Promise.all(imagesList.map(async (img: any) => {
+      if (img.assetId && !img.data) {
+        try {
+          const path = await projectService.getTemplateAssetPath(img.assetId);
+          const dataUrl = convertFileSrc(path);
+          return {
+            assetId: img.assetId,
+            data: dataUrl,
+            width: img.width,
+            height: img.height,
+          };
+        } catch (e) {
+          console.warn("Failed to get asset path for id:", img.assetId, e);
+          return {
+            assetId: img.assetId,
+            data: "",
+            width: img.width,
+            height: img.height,
+            error: true,
+          };
+        }
+      }
+      return img;
+    }));
+  };
+
+  const resetFormToDefaults = () => {
+    setItContent("");
+    setCtContent("视频监控");
+    setMidThreeCode("A302600342");
+    setMidThreeName("视频监控能力");
+    setItBusMode("服务购销");
+    setItFundSrc("分公司成本开支");
+    setRevCollection("项目验收完成后30天内客户单位支付100%");
+    setExpPayment("项目验收完成且收到款项后30天内支付100%");
+    setSelfThreeValue(SELF_THREE_OPTIONS[0].value);
+    setProjectScale("large");
+    setHasMidThree(true);
+    setHasSingleSource(false);
+    setProcurementMethod("短名单甄选");
+    setHasPublicUrl(false);
+    setHasSecurity(false);
+    setTechItems([]);
+    setInqVendors([]);
+    setAttach1Images([]);
+    setAttach2Images([]);
+    formDataRef.current = {};
+    if (formRef.current) {
+      formRef.current.reset();
     }
-    if (formDataRef.current.gen_self_three) {
-      setSelfThreeValue(formDataRef.current.gen_self_three);
+    
+    let name = projectData.basic?.proj_name || ""
+    name = name.replace(/项目/g, "")
+    if (name && !name.includes("服务")) name += "服务"
+    setItContent(name)
+  };
+
+  const loadFormSettings = async () => {
+    if (!projectId || !selectedTemplate) {
+      resetFormToDefaults();
+      return;
+    }
+    isLoadingRef.current = true;
+    try {
+      const rawVal = await projectService.getProjectSetting(projectId, "template_form_data::" + selectedTemplate);
+      if (rawVal) {
+        const parsed = JSON.parse(rawVal);
+        if (parsed.itContent !== undefined) setItContent(parsed.itContent);
+        if (parsed.ctContent !== undefined) setCtContent(parsed.ctContent);
+        if (parsed.midThreeCode !== undefined) setMidThreeCode(parsed.midThreeCode);
+        if (parsed.midThreeName !== undefined) setMidThreeName(parsed.midThreeName);
+        if (parsed.itBusMode !== undefined) setItBusMode(parsed.itBusMode);
+        if (parsed.itFundSrc !== undefined) setItFundSrc(parsed.itFundSrc);
+        if (parsed.revCollection !== undefined) setRevCollection(parsed.revCollection);
+        if (parsed.expPayment !== undefined) setExpPayment(parsed.expPayment);
+        if (parsed.selfThreeValue !== undefined) setSelfThreeValue(parsed.selfThreeValue);
+        if (parsed.projectScale !== undefined) {
+          setProjectScale(parsed.projectScale);
+          formDataRef.current.gen_project_scale = parsed.projectScale;
+        }
+        if (parsed.hasMidThree !== undefined) setHasMidThree(parsed.hasMidThree);
+        if (parsed.hasSingleSource !== undefined) setHasSingleSource(parsed.hasSingleSource);
+        if (parsed.procurementMethod !== undefined) setProcurementMethod(parsed.procurementMethod);
+        if (parsed.hasPublicUrl !== undefined) setHasPublicUrl(parsed.hasPublicUrl);
+        if (parsed.hasSecurity !== undefined) setHasSecurity(parsed.hasSecurity);
+        if (parsed.techItems !== undefined) setTechItems(parsed.techItems);
+        
+        if (parsed.formData) {
+          formDataRef.current = { ...parsed.formData };
+          if (formRef.current) {
+            setTimeout(() => {
+              if (formRef.current) {
+                Object.entries(parsed.formData).forEach(([name, val]) => {
+                  const el = formRef.current?.querySelector(`[name="${name}"]`) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+                  if (el) {
+                    el.value = val as string;
+                  }
+                });
+              }
+            }, 0);
+          }
+        } else {
+          formDataRef.current = {};
+        }
+
+        if (parsed.inqVendors) {
+          const resolvedVendors = await Promise.all(parsed.inqVendors.map(async (v: any) => {
+            const resolvedImages = await resolveImages(v.images || []);
+            return { ...v, images: resolvedImages };
+          }));
+          setInqVendors(resolvedVendors);
+        } else {
+          setInqVendors([]);
+        }
+
+        const resolvedAttach1 = await resolveImages(parsed.attach1Images || []);
+        setAttach1Images(resolvedAttach1);
+
+        const resolvedAttach2 = await resolveImages(parsed.attach2Images || []);
+        setAttach2Images(resolvedAttach2);
+      } else {
+        resetFormToDefaults();
+      }
+    } catch (err) {
+      console.error("Failed to load template settings", err);
+      resetFormToDefaults();
+    } finally {
+      setTimeout(() => {
+        isLoadingRef.current = false;
+      }, 100);
+    }
+  };
+
+  useEffect(() => {
+    loadFormSettings();
+  }, [projectId, selectedTemplate]);
+
+  // --- Auto-save and image migration ---
+  const ensureAllImagesMigrated = async (imagesList: any[], typeName: string): Promise<any[]> => {
+    if (!imagesList || !projectId) return [];
+    return Promise.all(imagesList.map(async (img) => {
+      if (!img.assetId && img.data && img.data.startsWith("data:image/")) {
+        try {
+          const assetId = await projectService.saveTemplateAsset(
+            projectId,
+            selectedTemplate,
+            "image",
+            typeName,
+            "migrated_image",
+            img.data,
+            img.width || null,
+            img.height || null
+          );
+          return {
+            assetId,
+            data: img.data,
+            width: img.width,
+            height: img.height
+          };
+        } catch (err) {
+          console.error("Migration failed for image:", err);
+          return img;
+        }
+      }
+      return img;
+    }));
+  };
+
+  const autoSaveFormSettings = async () => {
+    if (!projectId || !selectedTemplate || isLoadingRef.current) return;
+
+    const migratedAttach1 = await ensureAllImagesMigrated(attach1Images, "attach1");
+    const migratedAttach2 = await ensureAllImagesMigrated(attach2Images, "attach2");
+    
+    const migratedVendors = await Promise.all(inqVendors.map(async (v, idx) => {
+      if (v.images && v.images.length > 0) {
+        const migratedImgs = await ensureAllImagesMigrated(v.images, `vendor_${idx}`);
+        return { ...v, images: migratedImgs };
+      }
+      return v;
+    }));
+
+    let changed = false;
+    migratedAttach1.forEach((img, idx) => {
+      if (img.assetId !== attach1Images[idx]?.assetId) changed = true;
+    });
+    migratedAttach2.forEach((img, idx) => {
+      if (img.assetId !== attach2Images[idx]?.assetId) changed = true;
+    });
+    if (changed) {
+      setAttach1Images(migratedAttach1);
+      setAttach2Images(migratedAttach2);
     }
 
-    if (formRef.current) {
-      Object.entries(formDataRef.current).forEach(([name, value]) => {
-        if (name === 'gen_project_scale' || name === 'gen_self_three') return;
-        const el = formRef.current?.querySelector(`[name="${name}"]`) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
-        if (el && el.value !== value) {
-          el.value = value;
+    let vendorsChanged = false;
+    migratedVendors.forEach((v, idx) => {
+      const oldV = inqVendors[idx];
+      if (oldV && oldV.images && v.images) {
+        if (oldV.images.length !== v.images.length) vendorsChanged = true;
+        else {
+          v.images.forEach((img: any, imgIdx: number) => {
+            if (img.assetId !== oldV.images[imgIdx]?.assetId) vendorsChanged = true;
+          });
         }
-      });
+      }
+    });
+    if (vendorsChanged) {
+      setInqVendors(migratedVendors);
     }
-  }, [selectedTemplate]);
+
+    const stripData = (imgs: any[]) => imgs.map(img => ({
+      assetId: img.assetId,
+      width: img.width,
+      height: img.height
+    }));
+
+    const payload = {
+      itContent,
+      ctContent,
+      midThreeCode,
+      midThreeName,
+      itBusMode,
+      itFundSrc,
+      revCollection,
+      expPayment,
+      selfThreeValue,
+      projectScale,
+      hasMidThree,
+      hasSingleSource,
+      procurementMethod,
+      hasPublicUrl,
+      hasSecurity,
+      techItems,
+      inqVendors: migratedVendors.map(v => ({
+        ...v,
+        images: stripData(v.images || [])
+      })),
+      attach1Images: stripData(migratedAttach1),
+      attach2Images: stripData(migratedAttach2),
+      formData: formDataRef.current,
+    };
+
+    try {
+      await projectService.saveProjectSetting(projectId, "template_form_data::" + selectedTemplate, JSON.stringify(payload));
+    } catch (err) {
+      console.error("Failed to auto-save template settings", err);
+    }
+  };
+
+  useEffect(() => {
+    if (!projectId || !selectedTemplate || isLoadingRef.current) return;
+
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+
+    autoSaveTimerRef.current = setTimeout(() => {
+      autoSaveFormSettings();
+    }, 1000);
+
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [
+    projectId,
+    selectedTemplate,
+    itContent,
+    ctContent,
+    midThreeCode,
+    midThreeName,
+    itBusMode,
+    itFundSrc,
+    revCollection,
+    expPayment,
+    selfThreeValue,
+    projectScale,
+    hasMidThree,
+    hasSingleSource,
+    procurementMethod,
+    hasPublicUrl,
+    hasSecurity,
+    techItems,
+    inqVendors,
+    attach1Images,
+    attach2Images,
+    syncTrigger
+  ]);
 
   // --- AI Context Sync for Templates ---
   const updateData = useAiContextStore(state => state.updateBusinessData);
@@ -220,7 +520,6 @@ export default function TemplateForms({
     const templateId = buildAiContextKey('ict', 'template', selectedTemplate);
     const payload = buildTemplateContextPayload(overrides);
     updateData(templateId, payload);
-    console.log(`AI Context Synced: ${templateId}`, payload);
   }
 
   const handleProjectScaleChange = (value: ProjectScale) => {
@@ -238,7 +537,6 @@ export default function TemplateForms({
   }
 
   useEffect(() => {
-    // Debounced sync (500ms)
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
 
     syncTimerRef.current = setTimeout(() => {
@@ -252,6 +550,8 @@ export default function TemplateForms({
 
   // -- Linkage Logic --
   useEffect(() => {
+    // Only set initial name link if we are not loading saved settings
+    if (isLoadingRef.current) return;
     let name = projectData.basic?.proj_name || ""
     name = name.replace(/项目/g, "")
     if (name && !name.includes("服务")) name += "服务"
@@ -259,6 +559,7 @@ export default function TemplateForms({
   }, [projectData.basic?.proj_name])
 
   useEffect(() => {
+    if (isLoadingRef.current) return;
     if (hasMidThree) {
       const baseName = midThreeName.replace(/能力/g, "")
       setCtContent(baseName)
@@ -317,9 +618,9 @@ export default function TemplateForms({
     }
 
     const quotes = [
-      limit, // 最低价直接等于 IT 投入含税总成本
-      Math.min(totalRevenueIncl, Math.round(limit * (1.05 + Math.random() * 0.02))), // 基准价上浮约 5%-7%
-      Math.min(totalRevenueIncl, Math.round(limit * (1.10 + Math.random() * 0.05)))  // 最高价上浮约 10%-15%
+      limit,
+      Math.min(totalRevenueIncl, Math.round(limit * (1.05 + Math.random() * 0.02))),
+      Math.min(totalRevenueIncl, Math.round(limit * (1.10 + Math.random() * 0.05)))
     ].sort((a, b) => a - b)
 
     const shuffled = [0, 1, 2].sort(() => Math.random() - 0.5)
@@ -330,11 +631,10 @@ export default function TemplateForms({
     })))
   }
 
-  const handleImageUpload = (e: any, setImages: any) => {
+  const handleImageUpload = (e: any, setImages: any, typeName: string) => {
     let filesList: any[] = []
 
     if (e.clipboardData && e.clipboardData.items) {
-      // Paste event
       const items = Array.from(e.clipboardData.items) as any[];
       const imgItems = items.filter(it => it.type && it.type.startsWith('image/'));
       if (imgItems.length > 0) {
@@ -347,47 +647,74 @@ export default function TemplateForms({
         });
       }
     } else if (e.dataTransfer) {
-      // Drop event
       filesList = Array.from(e.dataTransfer.files);
     } else if (e.target && e.target.files) {
-      // File input event
       filesList = Array.from(e.target.files);
     }
 
     if (filesList.length === 0) return;
 
-    const newImages: any[] = []
-    let processed = 0
     const imageFiles = filesList.filter((file: any) => file.type && file.type.indexOf('image/') === 0);
-
     if (imageFiles.length === 0) return;
 
     imageFiles.forEach((file: any) => {
       const reader = new FileReader()
       reader.onload = (event) => {
         const img = new Image()
-        img.onload = () => {
-          newImages.push({
-            data: event.target?.result as string,
-            width: img.width,
-            height: img.height
-          })
-          processed++
-          if (processed === imageFiles.length) {
-            setImages((prev: any) => [...prev, ...newImages])
+        img.onload = async () => {
+          const base64Data = event.target?.result as string;
+          const w = img.width;
+          const h = img.height;
+          
+          if (projectId) {
+            try {
+              const assetId = await projectService.saveTemplateAsset(
+                projectId,
+                selectedTemplate,
+                "image",
+                typeName,
+                file.name || "pasted_image",
+                base64Data,
+                w,
+                h
+              );
+              setImages((prev: any) => [...prev, {
+                assetId,
+                data: base64Data,
+                width: w,
+                height: h
+              }]);
+            } catch (err) {
+              alert("上传图片失败: " + err);
+            }
+          } else {
+            alert("请选择项目后再上传图片");
           }
         }
         img.src = event.target?.result as string
       }
       reader.readAsDataURL(file)
-    })
-  }
+    });
+  };
 
-  const removeImage = (index: number, setImages: any) => {
-    setImages((prev: any) => prev.filter((_: any, i: number) => i !== index))
-  }
+  const handleRemoveImage = async (img: any, index: number, setImages: any) => {
+    setImages((prev: any) => prev.filter((item: any, idx: number) => {
+      if (img.assetId && item.assetId) {
+        return item.assetId !== img.assetId;
+      }
+      return idx !== index;
+    }));
+    if (img.assetId) {
+      try {
+        await projectService.deleteTemplateAsset(img.assetId);
+      } catch (err) {
+        console.warn("Soft delete of template asset failed:", err);
+      }
+    }
+  };
 
   const handleGenerate = async () => {
+
     if (!formRef.current) return
     const fd = new FormData(formRef.current)
     const get = (name: string) => fd.get(name)?.toString() || ""
@@ -764,15 +1091,15 @@ export default function TemplateForms({
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">会审开始日期</label>
-                <input type="date" name="gen_meet_start" defaultValue={todayStr} className="bg-card border border-input px-3 py-2 rounded-md" />
+                <input type="date" name="gen_meet_start" {...getBind("gen_meet_start", todayStr)} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">会审结束日期</label>
-                <input type="date" name="gen_meet_end" defaultValue={todayStr} className="bg-card border border-input px-3 py-2 rounded-md" />
+                <input type="date" name="gen_meet_end" {...getBind("gen_meet_end", todayStr)} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">会审方式</label>
-                <select name="gen_meet_mode" defaultValue="线上" className="bg-card border border-input px-3 py-2 rounded-md">
+                <select name="gen_meet_mode" {...getBind("gen_meet_mode", "线上")} className="bg-card border border-input px-3 py-2 rounded-md">
                   <option value="线上">线上</option>
                   <option value="线下">线下</option>
                 </select>
@@ -792,19 +1119,19 @@ export default function TemplateForms({
               {projectScale === 'large' && (
                 <div className="flex flex-col gap-1 col-span-2">
                   <label className="text-sm font-semibold">市公司政企部参会人员</label>
-                  <input type="text" name="gen_city_attendees" placeholder="人员A、人员B" className="bg-card border border-input px-3 py-2 rounded-md" />
+                  <input type="text" name="gen_city_attendees" {...getBind("gen_city_attendees")} placeholder="人员A、人员B" className="bg-card border border-input px-3 py-2 rounded-md" />
                 </div>
               )}
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">分公司参会人员</label>
                 <div className="flex gap-2">
-                  <input type="text" name="gen_branch_name" defaultValue="XXXX" placeholder="分公司名称" className="w-32 bg-card border border-input px-3 py-2 rounded-md" />
-                  <input type="text" name="gen_branch_attendees" placeholder="人员D、人员E" className="flex-1 bg-card border border-input px-3 py-2 rounded-md" />
+                  <input type="text" name="gen_branch_name" {...getBind("gen_branch_name", "XXXX")} placeholder="分公司名称" className="w-32 bg-card border border-input px-3 py-2 rounded-md" />
+                  <input type="text" name="gen_branch_attendees" {...getBind("gen_branch_attendees")} placeholder="人员D、人员E" className="flex-1 bg-card border border-input px-3 py-2 rounded-md" />
                 </div>
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">驻点支撑人员</label>
-                <input type="text" name="gen_onsite_support" placeholder="如有请填写" className="bg-card border border-input px-3 py-2 rounded-md" />
+                <input type="text" name="gen_onsite_support" {...getBind("gen_onsite_support")} placeholder="如有请填写" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">项目背景</label>
@@ -822,7 +1149,7 @@ export default function TemplateForms({
 
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">技术方案</label>
-                <textarea name="gen_tech_solution" rows={2} defaultValue="采用端-管-云架构..." className="bg-card border border-input px-3 py-2 rounded-md" />
+                <textarea name="gen_tech_solution" rows={2} {...getBind("gen_tech_solution", "采用端-管-云架构...")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
 
               <div className="col-span-2 border border-border rounded-lg p-4 bg-background">
@@ -874,15 +1201,15 @@ export default function TemplateForms({
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">三化方案</label>
-                <input type="text" name="gen_threeization" defaultValue="本项目不涉及三化方案。" className="bg-card border border-input px-3 py-2 rounded-md" />
+                <input type="text" name="gen_threeization" {...getBind("gen_threeization", "本项目不涉及三化方案。")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">战略价值</label>
-                <input type="text" name="gen_strategic_value" placeholder="战略价值说明" className="bg-card border border-input px-3 py-2 rounded-md" />
+                <input type="text" name="gen_strategic_value" {...getBind("gen_strategic_value")} placeholder="战略价值说明" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">结论</label>
-                <input type="text" name="gen_tech_conclusion" defaultValue="方案可行同时能满足客户需求。" className="bg-card border border-input px-3 py-2 rounded-md" />
+                <input type="text" name="gen_tech_conclusion" {...getBind("gen_tech_conclusion", "方案可行同时能满足客户需求。")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
 
               <div className="flex flex-col gap-1 col-span-2">
@@ -1033,15 +1360,15 @@ export default function TemplateForms({
                             accept="image/*"
                             className="hidden"
                             id={`vendor-file-input-${i}`}
-                            onChange={(e) => handleImageUpload(e, setVendorImages)}
+                            onChange={(e) => handleImageUpload(e, setVendorImages, "vendor_" + i)}
                           />
 
                           <div
                             className="border border-dashed border-border rounded-lg p-5 text-center cursor-pointer hover:bg-muted/50 focus:border-ring focus:ring-2 focus:ring-ring/20 outline-none transition-all flex flex-col items-center justify-center gap-2 bg-muted/20"
                             onClick={(e) => e.currentTarget.focus()}
                             onDragOver={e => e.preventDefault()}
-                            onDrop={e => { e.preventDefault(); handleImageUpload(e, setVendorImages); }}
-                            onPaste={e => handleImageUpload(e, setVendorImages)}
+                            onDrop={e => { e.preventDefault(); handleImageUpload(e, setVendorImages, "vendor_" + i); }}
+                            onPaste={e => handleImageUpload(e, setVendorImages, "vendor_" + i)}
                             tabIndex={0}
                           >
                             <p className="text-xs text-secondary-foreground">
@@ -1067,7 +1394,7 @@ export default function TemplateForms({
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setVendorImages(vendorImages.filter((_: any, idx: number) => idx !== imgIdx));
+                                      handleRemoveImage(img, imgIdx, setVendorImages);
                                     }}
                                     className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm"
                                     title="移除图片"
@@ -1087,15 +1414,15 @@ export default function TemplateForms({
 
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">风险点及其他责任人</label>
-                <input type="text" name="gen_risk_owner" defaultValue="人员A" className="bg-card border border-input px-3 py-2 rounded-md" />
+                <input type="text" name="gen_risk_owner" {...getBind("gen_risk_owner", "人员A")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">是否联合体投标</label>
-                <input type="text" name="gen_is_joint" defaultValue="否" className="bg-card border border-input px-3 py-2 rounded-md" />
+                <input type="text" name="gen_is_joint" {...getBind("gen_is_joint", "否")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">项目评审表准确完整</label>
-                <input type="text" name="gen_review_acc" defaultValue="是，项目投入收入核算完整，各表填写准确" className="bg-card border border-input px-3 py-2 rounded-md" />
+                <input type="text" name="gen_review_acc" {...getBind("gen_review_acc", "是，项目投入收入核算完整，各表填写准确")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
 
               <div className="flex flex-col gap-1 col-span-2 mt-2">
@@ -1104,7 +1431,7 @@ export default function TemplateForms({
                   是否涉及单一来源
                 </label>
                 {hasSingleSource && (
-                  <textarea name="gen_single_source" rows={3} defaultValue="单一来源决策依据：符合单一来源场景..." className="bg-card border border-input px-3 py-2 rounded-md" />
+                  <textarea name="gen_single_source" rows={3} {...getBind("gen_single_source", "单一来源决策依据：符合单一来源场景...")} className="bg-card border border-input px-3 py-2 rounded-md" />
                 )}
               </div>
 
@@ -1116,16 +1443,16 @@ export default function TemplateForms({
                   <option value="其他">其他</option>
                 </select>
                 {procurementMethod === '其他' && (
-                  <input type="text" name="gen_procurement_method_other" placeholder="请输入其他采购方式" className="bg-card border border-input px-3 py-2 rounded-md mt-1" />
+                  <input type="text" name="gen_procurement_method_other" {...getBind("gen_procurement_method_other")} placeholder="请输入其他采购方式" className="bg-card border border-input px-3 py-2 rounded-md mt-1" />
                 )}
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">时间要求</label>
-                <textarea name="gen_construction_time_req" rows={2} defaultValue="合同签定后30天内。" className="bg-card border border-input px-3 py-2 rounded-md" />
+                <textarea name="gen_construction_time_req" rows={2} {...getBind("gen_construction_time_req", "合同签定后30天内。")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">售中建设及施工界面</label>
-                <textarea name="gen_construction_interface" rows={2} defaultValue="本项目采购统一集成单位实施。分公司负责客户侧的协调工作，并协调管理合作伙伴完成交付。" className="bg-card border border-input px-3 py-2 rounded-md" />
+                <textarea name="gen_construction_interface" rows={2} {...getBind("gen_construction_interface", "本项目采购统一集成单位实施。分公司负责客户侧的协调工作，并协调管理合作伙伴完成交付。")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
             </div>
           </div>
@@ -1154,7 +1481,7 @@ export default function TemplateForms({
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold flex items-center gap-2">
-                  <input type="checkbox" name="gen_is_advance" className="w-4 h-4" />
+                  <input type="checkbox" name="gen_is_advance" {...getBindCheckbox("gen_is_advance")} className="w-4 h-4" />
                   是否涉及垫资
                 </label>
               </div>
@@ -1169,22 +1496,22 @@ export default function TemplateForms({
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">项目需求单位</label>
-                <input type="text" name="gen_demand_branch_name" defaultValue="XXX分公司" className="bg-card border border-input px-3 py-2 rounded-md" />
+                <input type="text" name="gen_demand_branch_name" {...getBind("gen_demand_branch_name", "XXX分公司")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">业务模式</label>
-                <select name="gen_demand_it_business_mode" className="bg-card border border-input px-3 py-2 rounded-md">
+                <select name="gen_demand_it_business_mode" {...getBind("gen_demand_it_business_mode", "服务模式")} className="bg-card border border-input px-3 py-2 rounded-md">
                   <option value="服务模式">服务模式</option>
                   <option value="投资">投资</option>
                 </select>
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">服务内容</label>
-                <textarea name="gen_demand_service_content" defaultValue="IT；CT" rows={2} className="bg-card border border-input px-3 py-2 rounded-md" />
+                <textarea name="gen_demand_service_content" {...getBind("gen_demand_service_content", "IT；CT")} rows={2} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">设备清单</label>
-                <input type="text" name="gen_demand_device_list" defaultValue="不涉及" className="bg-card border border-input px-3 py-2 rounded-md" />
+                <input type="text" name="gen_demand_device_list" {...getBind("gen_demand_device_list", "不涉及")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="col-span-2 border border-border rounded-lg p-4 bg-background">
                 <div className="flex justify-between items-center mb-3">
@@ -1207,33 +1534,43 @@ export default function TemplateForms({
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">客户确认</label>
-                <input type="text" name="gen_demand_customer_confirm" defaultValue="微信截图" className="bg-card border border-input px-3 py-2 rounded-md" />
+                <input type="text" name="gen_demand_customer_confirm" {...getBind("gen_demand_customer_confirm", "微信截图")} className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">部署环境要求</label>
-                <input type="text" name="gen_demand_env_require" defaultValue="客户提供部署环境，不包含在本次项目范围内" className="bg-card border border-input px-3 py-2 rounded-md" />
+                <input type="text" name="gen_demand_env_require" {...getBind("gen_demand_env_require", "客户提供部署环境，不包含在本次项目范围内")} className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
               </div>
 
               <div className="flex flex-col gap-1 col-span-2 mt-2">
                 <label className="text-sm font-bold text-foreground flex items-center gap-2">
                   <input type="checkbox" checked={hasPublicUrl} onChange={e => {
                     setHasPublicUrl(e.target.checked);
-                    if (!e.target.checked) setAttach2Images([]);
+                    handleFieldChange("gen_has_public_url", e.target.checked ? "on" : "off");
+                    if (!e.target.checked) {
+                      setAttach2Images([]);
+                      handleFieldChange("gen_demand_public_url", "");
+                    }
                   }} className="w-4 h-4" />
                   项目有效的公示网址及招标文件
                 </label>
                 {hasPublicUrl && (
-                  <input type="text" name="gen_demand_public_url" placeholder="https://..." className="bg-card border border-input px-3 py-2 rounded-md" />
+                  <input type="text" name="gen_demand_public_url" {...getBind("gen_demand_public_url")} placeholder="https://..." className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
                 )}
               </div>
 
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-bold text-foreground flex items-center gap-2">
-                  <input type="checkbox" checked={hasSecurity} onChange={e => setHasSecurity(e.target.checked)} className="w-4 h-4" />
+                  <input type="checkbox" checked={hasSecurity} onChange={e => {
+                    setHasSecurity(e.target.checked);
+                    handleFieldChange("gen_has_security", e.target.checked ? "on" : "off");
+                    if (!e.target.checked) {
+                      handleFieldChange("gen_demand_security_detail", "");
+                    }
+                  }} className="w-4 h-4" />
                   信息安全、密评
                 </label>
                 {hasSecurity && (
-                  <input type="text" name="gen_demand_security_detail" placeholder="例如：已做密评/待补充" className="bg-card border border-input px-3 py-2 rounded-md" />
+                  <input type="text" name="gen_demand_security_detail" {...getBind("gen_demand_security_detail")} placeholder="例如：已做密评/待补充" className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
                 )}
               </div>
 
@@ -1241,13 +1578,13 @@ export default function TemplateForms({
               {/* Image Attachments */}
               <div className="flex flex-col gap-1 col-span-2 mt-2">
                 <label className="text-sm font-bold text-foreground">附件1截图（客户确认材料）</label>
-                <input type="file" multiple accept="image/*" className="hidden" ref={fileInput1Ref} onChange={(e) => handleImageUpload(e, setAttach1Images)} />
+                <input type="file" multiple accept="image/*" className="hidden" ref={fileInput1Ref} onChange={(e) => handleImageUpload(e, setAttach1Images, "attach1")} />
                 <div
                   className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:bg-muted/50 focus:border-ring focus:ring-2 focus:ring-ring/20 outline-none transition-all flex flex-col items-center justify-center gap-3 bg-muted/20"
                   onClick={(e) => e.currentTarget.focus()}
                   onDragOver={e => e.preventDefault()}
-                  onDrop={e => { e.preventDefault(); handleImageUpload(e, setAttach1Images); }}
-                  onPaste={e => handleImageUpload(e, setAttach1Images)}
+                  onDrop={e => { e.preventDefault(); handleImageUpload(e, setAttach1Images, "attach1"); }}
+                  onPaste={e => handleImageUpload(e, setAttach1Images, "attach1")}
                   tabIndex={0}
                 >
                   <p className="text-sm text-secondary-foreground">
@@ -1268,7 +1605,7 @@ export default function TemplateForms({
                   {attach1Images.map((img, i) => (
                     <div key={i} className="relative w-24 h-24 border rounded overflow-hidden group">
                       <img src={img.data} className="w-full h-full object-cover" />
-                      <button type="button" onClick={() => removeImage(i, setAttach1Images)} className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm" title="移除图片">
+                      <button type="button" onClick={() => handleRemoveImage(img, i, setAttach1Images)} className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm" title="移除图片">
                         <AppIcon name="close" size={12} strokeWidth={2} />
                       </button>
                     </div>
@@ -1279,13 +1616,13 @@ export default function TemplateForms({
               {hasPublicUrl && (
                 <div className="flex flex-col gap-1 col-span-2 mt-2">
                   <label className="text-sm font-bold text-foreground">附件2截图（招标文件/挂网截图）</label>
-                  <input type="file" multiple accept="image/*" className="hidden" ref={fileInput2Ref} onChange={(e) => handleImageUpload(e, setAttach2Images)} />
+                  <input type="file" multiple accept="image/*" className="hidden" ref={fileInput2Ref} onChange={(e) => handleImageUpload(e, setAttach2Images, "attach2")} />
                   <div
                     className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:bg-muted/50 focus:border-ring focus:ring-2 focus:ring-ring/20 outline-none transition-all flex flex-col items-center justify-center gap-3 bg-muted/20"
                     onClick={(e) => e.currentTarget.focus()}
                     onDragOver={e => e.preventDefault()}
-                    onDrop={e => { e.preventDefault(); handleImageUpload(e, setAttach2Images); }}
-                    onPaste={e => handleImageUpload(e, setAttach2Images)}
+                    onDrop={e => { e.preventDefault(); handleImageUpload(e, setAttach2Images, "attach2"); }}
+                    onPaste={e => handleImageUpload(e, setAttach2Images, "attach2")}
                     tabIndex={0}
                   >
                     <p className="text-sm text-secondary-foreground">
@@ -1306,7 +1643,7 @@ export default function TemplateForms({
                     {attach2Images.map((img, i) => (
                       <div key={i} className="relative w-24 h-24 border rounded overflow-hidden group">
                         <img src={img.data} className="w-full h-full object-cover" />
-                        <button type="button" onClick={() => removeImage(i, setAttach2Images)} className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm" title="移除图片">
+                        <button type="button" onClick={() => handleRemoveImage(img, i, setAttach2Images)} className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm" title="移除图片">
                           <AppIcon name="close" size={12} strokeWidth={2} />
                         </button>
                       </div>

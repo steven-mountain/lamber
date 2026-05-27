@@ -37,6 +37,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
   const [createFolderParentPath, setCreateFolderParentPath] = useState<string | null>(null);
   const [createFolderName, setCreateFolderName] = useState("");
   const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
+  const [notInRootFolder, setNotInRootFolder] = useState<{ folderPath: string; renameProject: boolean } | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -201,7 +202,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
     }
   };
 
-  const executeBindFolder = async (folderPath: string, renameProject: boolean) => {
+  const executeBindFolder = async (folderPath: string, renameProject: boolean, forceMode?: string) => {
     setLoading(true);
     try {
       const folderName = getFolderName(folderPath);
@@ -209,7 +210,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
       let renamed = false;
       let renameWarning: string | null = null;
 
-      await projectFileService.bindProjectFolder(projectId, folderPath);
+      await projectFileService.bindProjectFolder(projectId, folderPath, forceMode);
       const latestProject = await projectService.getProject(projectId);
       if (latestProject) {
         setProject(latestProject);
@@ -262,7 +263,12 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
       showTemporaryMessage(bindResultMessage, Boolean(renameWarning));
       if (onRefreshProject) onRefreshProject();
     } catch (err: any) {
-      showTemporaryMessage(err?.toString() || "绑定目录失败", true);
+      const errMsg = err?.toString() || "";
+      if (errMsg.includes("NOT_IN_ROOT")) {
+        setNotInRootFolder({ folderPath, renameProject });
+      } else {
+        showTemporaryMessage(errMsg || "绑定目录失败", true);
+      }
     } finally {
       setPendingBindFolder(null);
       setLoading(false);
@@ -867,6 +873,61 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
               >
                 <Check className="h-3.5 w-3.5" />
                 绑定并同步项目名称
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {notInRootFolder && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-xl">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600">
+                <AlertTriangle className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-extrabold text-foreground">未关联项目根目录</h3>
+                <p className="mt-1 text-xs leading-5 text-secondary-foreground">
+                  所选文件夹不在当前已注册的项目根目录下。为保证项目的“路径韧性”（在不同电脑或移动目录后自动识别），建议将其添加为根目录。
+                </p>
+                <code className="mt-3 block rounded-lg border border-border/60 bg-muted/50 px-3 py-2 font-mono text-[10px] leading-4 text-primary break-all">
+                  {notInRootFolder.folderPath}
+                </code>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setNotInRootFolder(null)}
+                disabled={loading}
+                className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold text-secondary-foreground transition-all hover:bg-muted disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  executeBindFolder(notInRootFolder.folderPath, notInRootFolder.renameProject, "absolute_only");
+                  setNotInRootFolder(null);
+                }}
+                disabled={loading}
+                className="rounded-lg border border-border bg-secondary px-3 py-2 text-xs font-bold text-secondary-foreground transition-all hover:bg-muted disabled:opacity-50"
+              >
+                仅保留绝对路径
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  executeBindFolder(notInRootFolder.folderPath, notInRootFolder.renameProject, "create_root");
+                  setNotInRootFolder(null);
+                }}
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground shadow-sm transition-all hover:opacity-95 disabled:opacity-50"
+              >
+                <Check className="h-3.5 w-3.5" />
+                注册为新根目录 (推荐)
               </button>
             </div>
           </div>

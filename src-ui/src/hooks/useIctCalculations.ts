@@ -85,6 +85,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       cost_distribution: costDistributionForPayload,
       cashflow_segment_value_mode: state.segmentValueMode,
       cashflow_segments: state.cashflowModel === 'model_e' ? segmentsForPayload : [],
+      project_background: state.projectBackground,
       rev_cashflow_excl: state.cashflowModel === 'model_e' && state.segmentValueMode === "amount" ? cashflowPayloadValues(directCashflowForPayload.rev) : null,
       cost_cashflow_excl: state.cashflowModel === 'model_e' && state.segmentValueMode === "amount" ? cashflowPayloadValues(directCashflowForPayload.cost) : null,
       it_rev_cashflow_excl: state.cashflowModel === 'model_e' && state.segmentValueMode === "amount" ? cashflowPayloadValues(directCashflowForPayload.itRev) : null,

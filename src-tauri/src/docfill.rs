@@ -52,14 +52,20 @@ pub fn extract_docx_variables(path: String) -> Result<Vec<String>, String> {
 /// Generates the docx by replacing variables in the xml files.
 #[tauri::command]
 pub fn generate_docx(
+    app: tauri::AppHandle,
+    db: tauri::State<'_, std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>>,
     template_path: String,
     output_path: String,
     variables: HashMap<String, String>,
 ) -> Result<(), String> {
-    internal_generate_docx(&template_path, &output_path, &variables)
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    internal_generate_docx(Some(&app), Some(&conn), &template_path, &output_path, &variables)
 }
 
+
 fn internal_generate_docx(
+    app_handle: Option<&tauri::AppHandle>,
+    db_conn: Option<&rusqlite::Connection>,
     template_path: &str,
     output_path: &str,
     variables: &HashMap<String, String>,
@@ -97,27 +103,63 @@ fn internal_generate_docx(
             continue;
         }
 
+        let mut processed = Vec::new();
         let mut raw_images = Vec::new();
         if val.starts_with('[') {
             // JSON array of images
             if let Ok(list) = serde_json::from_str::<Vec<serde_json::Value>>(val) {
                 for item in list {
-                    if let (Some(data), Some(w), Some(h)) = (
-                        item["data"].as_str(),
-                        item["width"].as_u64(),
-                        item["height"].as_u64(),
-                    ) {
+                    if let Some(data) = item["data"].as_str() {
+                        let w = item["width"].as_u64().unwrap_or(0) as u32;
+                        let h = item["height"].as_u64().unwrap_or(0) as u32;
                         let title = item["title"].as_str().unwrap_or("").to_string();
-                        raw_images.push((data.to_string(), w as u32, h as u32, title));
+
+                        if data.starts_with("asset_") {
+                            if let (Some(app), Some(conn)) = (app_handle, db_conn) {
+                                if let Ok(physical_path) = crate::project_files::assets::get_template_asset_path_internal(app, conn, data) {
+                                    if let Ok(bytes) = std::fs::read(&physical_path) {
+                                        let path = std::path::Path::new(&physical_path);
+                                        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("png").to_string();
+                                        let ct = if ext == "png" {
+                                            "image/png"
+                                        } else if ext == "jpg" || ext == "jpeg" {
+                                            "image/jpeg"
+                                        } else {
+                                            "image/webp"
+                                        }.to_string();
+                                        processed.push((bytes, ext, ct, w, h, title));
+                                    }
+                                }
+                            }
+                        } else {
+                            raw_images.push((data.to_string(), w, h, title));
+                        }
                     }
                 }
             }
         } else if val.starts_with("data:image/") {
             // Single image (legacy support)
             raw_images.push((val.to_string(), 0, 0, "".to_string()));
+        } else if val.starts_with("asset_") {
+            // Single assetId directly
+            if let (Some(app), Some(conn)) = (app_handle, db_conn) {
+                if let Ok(physical_path) = crate::project_files::assets::get_template_asset_path_internal(app, conn, val) {
+                    if let Ok(bytes) = std::fs::read(&physical_path) {
+                        let path = std::path::Path::new(&physical_path);
+                        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("png").to_string();
+                        let ct = if ext == "png" {
+                            "image/png"
+                        } else if ext == "jpg" || ext == "jpeg" {
+                            "image/jpeg"
+                        } else {
+                            "image/webp"
+                        }.to_string();
+                        processed.push((bytes, ext, ct, 0, 0, "".to_string()));
+                    }
+                }
+            }
         }
 
-        let mut processed = Vec::new();
         for (data_url, w, h, title) in raw_images {
             let (meta, b64) = match data_url.split_once(',') {
                 Some(x) => x,
@@ -141,6 +183,7 @@ fn internal_generate_docx(
             image_map.insert(k.to_string(), processed);
         }
     }
+
 
     let mut rels_additions: Vec<(String, String)> = Vec::new();
     let mut media_additions: Vec<(String, Vec<u8>)> = Vec::new();
@@ -461,6 +504,8 @@ pub fn get_available_templates(
 
 #[tauri::command]
 pub fn generate_lifecycle_docs(
+    app: tauri::AppHandle,
+    db: tauri::State<'_, std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>>,
     state: tauri::State<'_, std::sync::Mutex<config_manager::AppConfig>>,
     module_id: String,
     variables: HashMap<String, String>,
@@ -468,6 +513,7 @@ pub fn generate_lifecycle_docs(
     output_dir: Option<String>,
     overwrite_existing: Option<bool>,
 ) -> Result<String, String> {
+    let conn = db.lock().map_err(|e| e.to_string())?;
     use std::fs;
 
     let module_path = {
@@ -553,6 +599,8 @@ pub fn generate_lifecycle_docs(
 
                     if ext_str == "docx" {
                         if let Err(e) = internal_generate_docx(
+                            Some(&app),
+                            Some(&conn),
                             path.to_str().unwrap(),
                             out_path.to_str().unwrap(),
                             &variables,
@@ -704,7 +752,7 @@ pub fn batch_generate_docx_from_excel(
         let target_name = format!("立项签批表-{}.docx", safe_proj_name);
         let target_path = output_dir.join(target_name);
 
-        internal_generate_docx(&template_path, target_path.to_str().unwrap(), &vars)?;
+        internal_generate_docx(None, None, &template_path, target_path.to_str().unwrap(), &vars)?;
         count += 1;
     }
 

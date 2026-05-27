@@ -18,10 +18,10 @@ Before starting any task, read the status and architecture documentation in this
 ## Core modules
 
 - **Project Board (项目看板)**: Visual hub displaying project indicators, project phases, and local folders linkage.
-- **ICT Lifecycle Calculator (ICT生命周期测算)**: Main calculation engine handling 10-year cashflows, NPV, margins, and selection fee mappings.
+- **ICT Lifecycle Calculator (ICT生命周期测算)**: Main calculation engine handling 10-year cashflows, NPV, margins, and selection fee mappings. Standardizes persistence of project backgrounds and economic assumptions directly in the scheme snapshots database storage.
 - **AI Assistant / Copilot (智能顾问)**: Streamed (SSE) local LLM chatbot that pulls the active view's serialized state to give contextual recommendations based on a built-in capabilities database.
-- **Template Word/Excel Engine (文档填报与填充)**: Backend Rust logic mapping form values and calculation results into docx variables and excel cells.
-- **Local File & Scan Engine (本地文件扫描管理)**: Service linking projects to local directory folders, scanning files (Word/Excel/PDF), and managing linked vs. sandbox-copied storage modes.
+- **Template Word/Excel Engine (文档填报与填充)**: Backend Rust logic mapping form values and calculation results into docx variables and excel cells. Now utilizes separate template form data (saved in `project_settings` under key `template_form_data::<template_name>`) and sandboxed image assets (saved to the bound project folder under `{project_name}-图片/assets/` if linked, or falling back to `{app_data_dir}/projects/{project_id}/assets/` and tracked in `project_template_assets`), ensuring form configurations are kept lightweight and database volume is small.
+- **Local File & Scan Engine (本地文件扫描管理)**: Service linking projects to local directory folders, scanning files (Word/Excel/PDF), managing linked vs. sandbox-copied storage modes, and handling elastic path resilience via project roots and relative subpaths.
 
 ## Current priorities
 
@@ -33,8 +33,9 @@ Before starting any task, read the status and architecture documentation in this
 ## High-risk areas
 
 - **0-tolerance reconciliation check**: Any changes to input fields or calculations must satisfy `excl_tax = incl_tax / (1 + rate)` within a zero-tolerance margin. Mismatches block navigation and document generation.
-- **Json Store load-modify-save cycle**: All repo files perform atomic load-modify-save cycles. Be very careful with concurrency when writing to `projects_store.json`.
-- **Local Folder binding & scan synchronization**: Scanning folders updates physical file existence, but must never delete files physically on linked mode. Sandboxed (`copied`) files should be physically deleted only after user confirmation.
+- **SQLite Connection & Transaction management**: The storage layer has migrated to SQLite. When writing multi-row operations or migrating data, always wrap operations in a transaction (`tx`) to prevent database locks and ensure structural integrity. Use `Arc<Mutex<rusqlite::Connection>>` to share connection locks. Avoid `INSERT OR REPLACE` when saving parent records (like `projects`) that have foreign key cascade-delete relations, as `REPLACE` acts as a `DELETE` followed by an `INSERT` in SQLite, wiping out related child rows in `project_directories`, `project_files`, `benefit_schemes`, and `benefit_snapshots`.
+- **Local Folder binding & scan synchronization**: Scanning folders updates physical file existence, but must never delete files physically on linked mode. Sandboxed (`copied`) files should be physically deleted only after user confirmation. Folder binding warning options allow auto-parent folder registration as project roots. Scanning and adding files inside absolute-only (rootless) folders must keep `directory_id` set to `None` to prevent SQLite `FOREIGN KEY constraint failed` errors on the `project_files` table.
+- **Template Form & Image Assets Separation**: Form configurations are saved in `project_settings` under key `template_form_data::<template_name>`, and any large base64 image data is stripped beforehand to prevent database bloat. Pasted/dropped images are uploaded directly to the backend project asset sandbox, tracked in `project_template_assets`, and represented using `assetId` references. When generating documents, the frontend must NOT pass absolute file paths; the backend validates project ownership of the `assetId`, loads the physical file from the sandbox, and embeds it directly. Legacy base64 images must be migrated automatically during the next form save. Image uploads are constrained to PNG, JPEG, and WEBP formats and must not exceed 20MB.
 - **Built-in Product Recommendations**: Recommended products must be cross-checked with codes in `midThreeConstants.ts`. If matched, append `[系统内置]` label; otherwise, append `【系统外扩展】`.
 
 ## Where to start for common tasks
@@ -56,6 +57,9 @@ Before starting any task, read the status and architecture documentation in this
 - **UI Design modifications**:
   - Main styling: [index.css](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/index.css)
   - Design Tokens: [DESIGN.md](file:///d:/HermesJang/CMCC/tools/lambert/lamber/DESIGN.md)
+- **Data Management Center changes**:
+  - Frontend: [DataManagement.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/DataManagement.tsx)
+  - Backend: [roots.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/roots.rs), [health.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/health.rs), [relocation.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/relocation.rs), [import_scanner.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/import_scanner.rs)
 
 ## Do not break
 

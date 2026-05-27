@@ -56,6 +56,7 @@ export default function IctLifecycle() {
     if (params.cost_distribution) state.setDistCost(params.cost_distribution);
     if (params.cashflow_segment_value_mode) state.setSegmentValueMode(params.cashflow_segment_value_mode);
     if (params.cashflow_segments) state.setCashflowSegments(params.cashflow_segments);
+    if (params.project_background) state.setProjectBackground(params.project_background);
 
     const revItRestored = {
       integration: restoreItem(params.rev_it_integration, 6),

@@ -16,8 +16,9 @@ pub async fn bind_project_folder(
     state: State<'_, Arc<ProjectFileService>>,
     project_id: String,
     folder_path: String,
+    force_mode: Option<String>,
 ) -> Result<(), String> {
-    state.bind_project_folder(&project_id, &folder_path)
+    state.bind_project_folder(&project_id, &folder_path, force_mode)
 }
 
 #[tauri::command]
@@ -138,3 +139,82 @@ pub async fn select_local_file(
     let file = dialog.blocking_pick_file();
     Ok(file.map(|f| f.to_string()))
 }
+
+#[tauri::command]
+pub async fn save_template_asset(
+    app: AppHandle,
+    db: State<'_, Arc<std::sync::Mutex<rusqlite::Connection>>>,
+    project_id: String,
+    template_name: String,
+    asset_type: String,
+    usage: Option<String>,
+    original_file_name: Option<String>,
+    base64_data: String,
+    width: Option<i32>,
+    height: Option<i32>,
+) -> Result<String, String> {
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    super::assets::save_template_asset_internal(
+        &app,
+        &conn,
+        &project_id,
+        &template_name,
+        &asset_type,
+        usage.as_deref(),
+        original_file_name.as_deref(),
+        &base64_data,
+        width,
+        height,
+    )
+}
+
+#[tauri::command]
+pub async fn get_template_asset_path(
+    app: AppHandle,
+    db: State<'_, Arc<std::sync::Mutex<rusqlite::Connection>>>,
+    asset_id: String,
+) -> Result<String, String> {
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    super::assets::get_template_asset_path_internal(&app, &conn, &asset_id)
+}
+
+#[tauri::command]
+pub async fn delete_template_asset(
+    db: State<'_, Arc<std::sync::Mutex<rusqlite::Connection>>>,
+    asset_id: String,
+) -> Result<(), String> {
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    super::assets::delete_template_asset_internal(&conn, &asset_id)
+}
+
+#[tauri::command]
+pub async fn cleanup_orphan_template_assets(
+    app: AppHandle,
+    db: State<'_, Arc<std::sync::Mutex<rusqlite::Connection>>>,
+    project_id: String,
+) -> Result<(usize, Vec<String>), String> {
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    super::assets::cleanup_orphan_template_assets_internal(&app, &conn, &project_id)
+}
+
+#[tauri::command]
+pub async fn get_project_setting(
+    project_repo: State<'_, Arc<crate::benefit::repository::DualProjectRepository>>,
+    project_id: String,
+    key: String,
+) -> Result<Option<String>, String> {
+    use crate::benefit::repository::ProjectRepository;
+    project_repo.get_project_setting(&project_id, &key)
+}
+
+#[tauri::command]
+pub async fn save_project_setting(
+    project_repo: State<'_, Arc<crate::benefit::repository::DualProjectRepository>>,
+    project_id: String,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    use crate::benefit::repository::ProjectRepository;
+    project_repo.save_project_setting(&project_id, &key, &value)
+}
+

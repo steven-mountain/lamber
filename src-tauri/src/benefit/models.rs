@@ -66,6 +66,7 @@ pub struct IctInput {
     pub cashflow_model: Option<String>,
     pub cashflow_segment_value_mode: Option<String>,
     pub cashflow_segments: Option<Vec<CashflowSegment>>,
+    pub project_background: Option<String>,
 
     // Ignore Tail Difference Payload
     pub ignore_tail_difference: Option<bool>,

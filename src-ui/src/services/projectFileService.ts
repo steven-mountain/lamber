@@ -26,8 +26,8 @@ export const projectFileService = {
     return invoke<ProjectFile[]>("get_project_files", { projectId });
   },
 
-  async bindProjectFolder(projectId: string, folderPath: string): Promise<void> {
-    return invoke<void>("bind_project_folder", { projectId, folderPath });
+  async bindProjectFolder(projectId: string, folderPath: string, forceMode?: string): Promise<void> {
+    return invoke<void>("bind_project_folder", { projectId, folderPath, forceMode });
   },
 
   async createProjectFolder(parentPath: string, folderName: string): Promise<string> {

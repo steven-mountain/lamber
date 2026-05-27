@@ -109,6 +109,12 @@ fn scan_dir_recursive(
                 note: None,
                 created_at: now.clone(),
                 updated_at: now,
+                root_id: None,
+                directory_id: None,
+                relative_path: None,
+                absolute_path_snapshot: None,
+                file_hash: None,
+                file_role: None,
             });
         }
     }

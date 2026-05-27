@@ -173,4 +173,47 @@ export const projectService = {
       isSaveAsNew,
     });
   },
+
+  async saveTemplateAsset(
+    projectId: string,
+    templateName: string,
+    assetType: string,
+    usage: string | null,
+    originalFileName: string | null,
+    base64Data: string,
+    width: number | null,
+    height: number | null
+  ): Promise<string> {
+    return invoke<string>("save_template_asset", {
+      projectId,
+      templateName,
+      assetType,
+      usage,
+      originalFileName,
+      base64Data,
+      width,
+      height,
+    });
+  },
+
+  async getTemplateAssetPath(assetId: string): Promise<string> {
+    return invoke<string>("get_template_asset_path", { assetId });
+  },
+
+  async deleteTemplateAsset(assetId: string): Promise<void> {
+    return invoke<void>("delete_template_asset", { assetId });
+  },
+
+  async cleanupOrphanTemplateAssets(projectId: string): Promise<[number, string[]]> {
+    return invoke<[number, string[]]>("cleanup_orphan_template_assets", { projectId });
+  },
+
+  async getProjectSetting(projectId: string, key: string): Promise<string | null> {
+    return invoke<string | null>("get_project_setting", { projectId, key });
+  },
+
+  async saveProjectSetting(projectId: string, key: string, value: string): Promise<void> {
+    return invoke<void>("save_project_setting", { projectId, key, value });
+  },
 };
+

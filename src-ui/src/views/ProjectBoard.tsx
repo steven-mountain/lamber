@@ -1,9 +1,23 @@
 import { useEffect, useState, useRef } from "react";
-import { ArrowRight, BarChart3, FileText, Info, List, LayoutGrid, FolderPlus, FolderOpen, Plus, Search, Settings2, StickyNote, X } from "lucide-react";
+import { ArrowRight, BarChart3, FileText, Info, List, LayoutGrid, FolderPlus, FolderOpen, Plus, Search, Settings2, StickyNote, X, ChevronDown, ChevronUp, AlertTriangle, RefreshCw } from "lucide-react";
 import AppIcon from "../components/icons/AppIcon";
 import { projectService, type Project, type BenefitAnalysisScheme, type BenefitAnalysisSnapshot, type SummaryMetrics } from "../utils/projectService";
 import ProjectFilesTab from "../components/project/ProjectFilesTab";
 import { projectFileService } from "../services/projectFileService";
+import { invoke } from "@tauri-apps/api/core";
+
+interface CandidateFile {
+  name: string;
+  path: string;
+  fileRole: 'benefit_scheme' | 'budget' | 'proposal' | 'other';
+}
+
+interface ImportCandidate {
+  folderName: string;
+  folderPath: string;
+  existsConflict: boolean;
+  files: CandidateFile[];
+}
 
 interface ProjectBoardProps {
   onBack: () => void;
@@ -85,6 +99,16 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   const [createProjectFolderParent, setCreateProjectFolderParent] = useState<string | null>(null);
   const [createProjectFolderName, setCreateProjectFolderName] = useState("");
   const [showProjectFolderModal, setShowProjectFolderModal] = useState(false);
+
+  // Import Scanner State
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importParentPath, setImportParentPath] = useState("");
+  const [importCandidates, setImportCandidates] = useState<ImportCandidate[]>([]);
+  const [selectedCandidates, setSelectedCandidates] = useState<Record<string, boolean>>({});
+  const [conflictActions, setConflictActions] = useState<Record<string, "merge" | "new" | "skip">>({});
+  const [expandedCandidates, setExpandedCandidates] = useState<Record<string, boolean>>({});
+  const [importLoading, setImportLoading] = useState(false);
+  const [scanLoading, setScanLoading] = useState(false);
 
   // Details Modal State
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -238,6 +262,74 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     } catch (err) {
       console.error(err);
       alert("创建项目失败: " + err);
+    }
+  };
+
+  const handleOpenImportScanner = async () => {
+    try {
+      const selected = await projectFileService.selectLocalFolder();
+      if (!selected) return;
+
+      setImportParentPath(selected);
+      setShowImportModal(true);
+      setScanLoading(true);
+      setImportCandidates([]);
+      
+      const candidates = await invoke<ImportCandidate[]>("scan_import_candidates", { parentPath: selected });
+      setImportCandidates(candidates);
+      
+      // Initialize selections and conflict actions
+      const initialSelected: Record<string, boolean> = {};
+      const initialConflicts: Record<string, "merge" | "new" | "skip"> = {};
+      candidates.forEach(c => {
+        initialSelected[c.folderPath] = true;
+        if (c.existsConflict) {
+          initialConflicts[c.folderPath] = "merge";
+        }
+      });
+      setSelectedCandidates(initialSelected);
+      setConflictActions(initialConflicts);
+      setScanLoading(false);
+    } catch (err: any) {
+      console.error(err);
+      alert("扫描导入目录失败: " + err);
+      setScanLoading(false);
+      setShowImportModal(false);
+    }
+  };
+
+  const handleExecuteImport = async () => {
+    setImportLoading(true);
+    try {
+      const selections = importCandidates
+        .filter(c => selectedCandidates[c.folderPath])
+        .map(c => {
+          let conflictAction = "merge";
+          if (c.existsConflict) {
+            conflictAction = conflictActions[c.folderPath] || "merge";
+          }
+          return {
+            folderPath: c.folderPath,
+            conflictAction
+          };
+        })
+        .filter(sel => sel.conflictAction !== "skip");
+
+      if (selections.length === 0) {
+        alert("未选择任何要导入的项目目录。");
+        setImportLoading(false);
+        return;
+      }
+
+      await invoke("execute_bulk_import", { selections });
+      alert("批量导入完成！");
+      setShowImportModal(false);
+      await fetchProjects();
+    } catch (err: any) {
+      console.error(err);
+      alert("批量导入失败: " + err);
+    } finally {
+      setImportLoading(false);
     }
   };
 
@@ -858,13 +950,21 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
           </div>
         </div>
 
-        <button
-          id="board_create_project_btn"
-          onClick={openCreateProjectModal}
-          className="inline-flex items-center gap-1.5 bg-blue-600 text-white font-bold px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-all shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-        >
-          <Plus className="h-4 w-4" /> 创建新项目
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleOpenImportScanner}
+            className="inline-flex items-center gap-1.5 bg-secondary hover:bg-muted text-secondary-foreground border border-input font-bold px-4 py-2 rounded-lg text-sm transition-all shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+          >
+            <FolderPlus className="h-4 w-4" /> 批量扫描导入
+          </button>
+          <button
+            id="board_create_project_btn"
+            onClick={openCreateProjectModal}
+            className="inline-flex items-center gap-1.5 bg-blue-600 text-white font-bold px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-all shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+          >
+            <Plus className="h-4 w-4" /> 创建新项目
+          </button>
+        </div>
       </header>
 
       {/* Kanban Board Container */}
@@ -2001,6 +2101,223 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                 className="px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-all"
               >
                 确认并去测算
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Candidates Scanner Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-border bg-muted/30 flex items-center justify-between shrink-0 font-bold">
+              <div className="flex items-center gap-2">
+                <FolderPlus className="h-5 w-5 text-primary" />
+                <h4 className="font-extrabold text-sm text-foreground">批量扫描与项目导入</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowImportModal(false)}
+                className="text-secondary-foreground hover:bg-secondary p-1 rounded-md transition-colors"
+                disabled={importLoading}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              <div className="bg-muted/30 p-4 rounded-xl flex items-center justify-between gap-4 border border-border/40">
+                <div className="min-w-0">
+                  <span className="text-[10px] uppercase font-extrabold text-secondary-foreground opacity-70 block">当前扫描目录</span>
+                  <code className="text-xs font-mono text-primary truncate block mt-0.5 select-all">{importParentPath}</code>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleOpenImportScanner}
+                  disabled={importLoading || scanLoading}
+                  className="px-3 py-1.5 bg-secondary hover:bg-muted text-secondary-foreground rounded-lg text-xs font-bold transition-all border border-input shrink-0"
+                >
+                  重新选择目录
+                </button>
+              </div>
+
+              {scanLoading ? (
+                <div className="py-20 flex flex-col items-center justify-center gap-3 text-secondary-foreground">
+                  <RefreshCw className="animate-spin text-primary h-8 w-8" />
+                  <span className="text-sm font-semibold">正在扫描子文件夹，并智能分析项目文件...</span>
+                </div>
+              ) : importCandidates.length === 0 ? (
+                <div className="py-20 text-center text-secondary-foreground">
+                  <span className="text-sm">在该目录下未扫描到任何有效的候选项目子文件夹。</span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center text-xs font-bold text-secondary-foreground px-1 pb-1">
+                    <span>候选目录数量: {importCandidates.length}</span>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next: Record<string, boolean> = {};
+                          importCandidates.forEach(c => next[c.folderPath] = true);
+                          setSelectedCandidates(next);
+                        }}
+                        className="text-primary hover:underline font-bold"
+                      >
+                        全选
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next: Record<string, boolean> = {};
+                          importCandidates.forEach(c => next[c.folderPath] = false);
+                          setSelectedCandidates(next);
+                        }}
+                        className="text-primary hover:underline font-bold"
+                      >
+                        取消全选
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {importCandidates.map(c => {
+                      const isSelected = !!selectedCandidates[c.folderPath];
+                      const isExpanded = !!expandedCandidates[c.folderPath];
+                      const conflictAction = conflictActions[c.folderPath] || "merge";
+
+                      return (
+                        <div
+                          key={c.folderPath}
+                          className={`rounded-xl border transition-all ${
+                            isSelected
+                              ? "bg-card border-border/80"
+                              : "bg-muted/10 border-border/40 opacity-70"
+                          }`}
+                        >
+                          <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 select-none">
+                            <div className="flex items-start gap-3 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={e => {
+                                  setSelectedCandidates(prev => ({
+                                    ...prev,
+                                    [c.folderPath]: e.target.checked
+                                  }));
+                                }}
+                                className="mt-1 h-4.5 w-4.5 rounded border-input text-primary focus:ring-primary/20 accent-primary cursor-pointer shrink-0"
+                              />
+                              <div className="min-w-0">
+                                <span className="font-extrabold text-sm text-foreground flex items-center gap-2">
+                                  <FolderOpen className="h-4 w-4 text-slate-400 shrink-0" />
+                                  {c.folderName}
+                                  {c.existsConflict && (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 text-[9px] font-bold border border-amber-500/20">
+                                      <AlertTriangle className="h-2.5 w-2.5" />
+                                      同名项目已存在
+                                    </span>
+                                  )}
+                                </span>
+                                <code className="text-[10px] text-muted-foreground font-mono block mt-1 truncate">
+                                  {c.folderPath}
+                                </code>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 self-end md:self-auto">
+                              {c.existsConflict && isSelected && (
+                                <div className="flex items-center gap-1.5 shrink-0 bg-amber-50/50 px-2 py-1 rounded-lg border border-amber-100">
+                                  <span className="text-[10px] font-bold text-amber-700 uppercase">冲突策略:</span>
+                                  <select
+                                    value={conflictAction}
+                                    onChange={e => {
+                                      const val = e.target.value as "merge" | "new" | "skip";
+                                      setConflictActions(prev => ({
+                                        ...prev,
+                                        [c.folderPath]: val
+                                      }));
+                                    }}
+                                    className="bg-transparent text-[10px] font-bold text-amber-800 outline-none cursor-pointer"
+                                  >
+                                    <option value="merge">覆盖合并 (Merge)</option>
+                                    <option value="new">另存为新项目 (New)</option>
+                                    <option value="skip">跳过此项 (Skip)</option>
+                                  </select>
+                                </div>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setExpandedCandidates(prev => ({
+                                    ...prev,
+                                    [c.folderPath]: !isExpanded
+                                  }));
+                                }}
+                                className="text-[10px] font-bold text-primary hover:underline inline-flex items-center gap-1 shrink-0 px-2 py-1 hover:bg-muted rounded"
+                              >
+                                {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                {isExpanded ? "隐藏文件" : `查看文件 (${c.files.length})`}
+                              </button>
+                            </div>
+                          </div>
+
+                          {isExpanded && c.files.length > 0 && (
+                            <div className="px-4 pb-4 pt-1 border-t border-border/20 bg-muted/10 rounded-b-xl">
+                              <div className="space-y-1.5 pt-2">
+                                {c.files.map(f => {
+                                  let pillClass = "bg-slate-100 text-slate-600";
+                                  let roleLabel = "普通文件";
+                                  if (f.fileRole === "benefit_scheme") {
+                                    pillClass = "bg-blue-50 text-blue-700";
+                                    roleLabel = "效益测算主方案";
+                                  } else if (f.fileRole === "budget") {
+                                    pillClass = "bg-orange-500/10 text-orange-600";
+                                    roleLabel = "项目预算表";
+                                  } else if (f.fileRole === "proposal") {
+                                    pillClass = "bg-emerald-500/10 text-emerald-600";
+                                    roleLabel = "立项申报书";
+                                  }
+
+                                  return (
+                                    <div key={f.path} className="flex items-center justify-between text-xs py-1 px-2 hover:bg-card rounded transition-colors font-mono">
+                                      <span className="truncate text-secondary-foreground pr-4" title={f.name}>{f.name}</span>
+                                      <span className={`px-2 py-0.5 rounded text-[8px] font-bold shrink-0 uppercase ${pillClass}`}>
+                                        {roleLabel}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-border p-4 bg-muted/20 flex justify-end gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowImportModal(false)}
+                disabled={importLoading}
+                className="px-4 py-2 border border-border bg-card hover:bg-secondary rounded-lg text-xs font-semibold text-secondary-foreground transition-all disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteImport}
+                disabled={importLoading || scanLoading || importCandidates.length === 0}
+                className="px-4 py-2 bg-primary hover:bg-primary/95 disabled:opacity-50 text-white font-extrabold rounded-lg text-xs transition-all flex items-center gap-1.5 shadow-sm active:scale-[0.98]"
+              >
+                {importLoading && <RefreshCw className="animate-spin h-3.5 w-3.5 shrink-0" />}
+                开始批量导入
               </button>
             </div>
           </div>

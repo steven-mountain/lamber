@@ -21,4 +21,18 @@ pub struct ProjectFile {
     pub note: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+
+    // Phase 2 path resilience fields
+    #[serde(default)]
+    pub root_id: Option<String>,
+    #[serde(default)]
+    pub directory_id: Option<String>,
+    #[serde(default)]
+    pub relative_path: Option<String>,
+    #[serde(default)]
+    pub absolute_path_snapshot: Option<String>,
+    #[serde(default)]
+    pub file_hash: Option<String>,
+    #[serde(default)]
+    pub file_role: Option<String>,
 }

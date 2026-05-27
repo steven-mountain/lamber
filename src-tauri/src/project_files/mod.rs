@@ -3,3 +3,8 @@ pub mod models;
 pub mod repository;
 pub mod scanner;
 pub mod service;
+pub mod roots;
+pub mod health;
+pub mod relocation;
+pub mod import_scanner;
+pub mod assets;
