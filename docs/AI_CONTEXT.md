@@ -35,9 +35,9 @@ On application launch, the view always defaults to the HubView (`"hub"`) to guar
 
 Before starting any task, read the status and architecture documentation in this order:
 
-1. [PROJECT_STATUS.md](file:///d:/HermesJang/CMCC/tools/lambert/lamber/docs/PROJECT_STATUS.md) - Current development status, milestones, business rules, and constraints.
-2. [ARCHITECTURE_MAP.md](file:///d:/HermesJang/CMCC/tools/lambert/lamber/docs/ARCHITECTURE_MAP.md) - Directory layout, Boot processes, data flow, and state serialization.
-3. [CHANGELOG_AI.md](file:///d:/HermesJang/CMCC/tools/lambert/lamber/docs/CHANGELOG_AI.md) - History of AI contributions, decisions, and ongoing questions.
+1. [PROJECT_STATUS.md](./PROJECT_STATUS.md) - Current development status, milestones, business rules, and constraints.
+2. [ARCHITECTURE_MAP.md](./ARCHITECTURE_MAP.md) - Directory layout, Boot processes, data flow, and state serialization.
+3. [CHANGELOG_AI.md](./CHANGELOG_AI.md) - History of AI contributions, decisions, and ongoing questions.
 4. Relevant source files only (do not scan the entire codebase).
 
 ## Core modules
@@ -67,25 +67,25 @@ Before starting any task, read the status and architecture documentation in this
 ## Where to start for common tasks
 
 - **Project Board changes**:
-  - Frontend: [ProjectBoard.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/ProjectBoard.tsx)
-  - Backend: [project_files/service.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/service.rs)
+  - Frontend: [ProjectBoard.tsx](../src-ui/src/views/ProjectBoard.tsx)
+  - Backend: [project_files/service.rs](../src-tauri/src/project_files/service.rs)
 - **Benefit Calculation math / NPV changes**:
-  - Math Engine: [calculator.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/benefit/calculator.rs)
-  - Lifecycle View: [IctLifecycle.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/IctLifecycle.tsx)
+  - Math Engine: [calculator.rs](../src-tauri/src/benefit/calculator.rs)
+  - Lifecycle View: [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx)
 - **AI Chat Copilot changes**:
-  - Chat Box Component: [AiChatPanel.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/components/ai/AiChatPanel.tsx)
-  - AI State Store: [useAiContextStore.ts](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/store/useAiContextStore.ts)
-  - LLM Runtime: [AiRuntime.ts](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/ai/AiRuntime.ts)
+  - Chat Box Component: [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx)
+  - AI State Store: [useAiContextStore.ts](../src-ui/src/store/useAiContextStore.ts)
+  - LLM Runtime: [AiRuntime.ts](../src-ui/src/ai/AiRuntime.ts)
 - **Word/Excel Template Filling changes**:
-  - Template forms: [TemplateForms.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/TemplateForms.tsx)
-  - Docfill service: [docfill.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/docfill.rs)
-  - Excel parser: [excel.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/benefit/excel.rs)
+  - Template forms: [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx)
+  - Docfill service: [docfill.rs](../src-tauri/src/docfill.rs)
+  - Excel parser: [excel.rs](../src-tauri/src/benefit/excel.rs)
 - **UI Design modifications**:
-  - Main styling: [index.css](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/index.css)
-  - Design Tokens: [DESIGN.md](file:///d:/HermesJang/CMCC/tools/lambert/lamber/DESIGN.md)
+  - Main styling: [index.css](../src-ui/src/index.css)
+  - Design Tokens: [DESIGN.md](../DESIGN.md)
 - **Data Management Center changes**:
-  - Frontend: [DataManagement.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/DataManagement.tsx)
-  - Backend: [roots.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/roots.rs), [health.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/health.rs), [relocation.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/relocation.rs), [import_scanner.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/import_scanner.rs)
+  - Frontend: [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx)
+  - Backend: [roots.rs](../src-tauri/src/project_files/roots.rs), [health.rs](../src-tauri/src/project_files/health.rs), [relocation.rs](../src-tauri/src/project_files/relocation.rs), [import_scanner.rs](../src-tauri/src/project_files/import_scanner.rs)
 
 ## Do not break
 

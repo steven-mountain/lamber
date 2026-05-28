@@ -27,39 +27,39 @@ graph TD
 - **`src/migration.rs`**: JSON-to-SQLite transactional database migration service and Tauri commands.
 - **`src/docfill.rs`**: Extract variables from Word `.docx` zip packages and fills templates.
 - **`src/benefit/`**: Benefit analysis engine.
-  - [calculator.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/benefit/calculator.rs): Computes 10-year cashflows, NPV, NPV rates, and margin rates.
-  - [excel.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/benefit/excel.rs): Generates template Excels and parses imported sheets.
-  - [service.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/benefit/service.rs): Manages Project lifecycle actions, risk levels, Schemes, and Snapshots.
-  - [repository.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/benefit/repository.rs): Handles JSON reads/writes and SQLite queries via dynamic repository backend.
-  - [models.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/benefit/models.rs): Rust data structures corresponding to frontend types.
+  - [calculator.rs](../src-tauri/src/benefit/calculator.rs): Computes 10-year cashflows, NPV, NPV rates, and margin rates.
+  - [excel.rs](../src-tauri/src/benefit/excel.rs): Generates template Excels and parses imported sheets.
+  - [service.rs](../src-tauri/src/benefit/service.rs): Manages Project lifecycle actions, risk levels, Schemes, and Snapshots.
+  - [repository.rs](../src-tauri/src/benefit/repository.rs): Handles JSON reads/writes and SQLite queries via dynamic repository backend.
+  - [models.rs](../src-tauri/src/benefit/models.rs): Rust data structures corresponding to frontend types.
 - **`src/project_files/`**: Local folders and documents scanner.
-  - [scanner.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/scanner.rs): Scans directories recursively for Word, Excel, PDF, PPT, and Image files.
-  - [service.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/service.rs): Coordinates linked vs. copied file paths, binds project folders, and tracks scanning metadata.
-  - [roots.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/roots.rs): Global project roots configuration CRUD and default manager.
-  - [health.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/health.rs): Analyzes files existence, checks path links, and executes auto-healing.
-  - [relocation.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/relocation.rs): Performs transaction-wrapped bulk directories relocation.
-  - [import_scanner.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/import_scanner.rs): Recursively scans large folders to identify candidate projects and import them in database transactions.
-  - [assets.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/assets.rs): Manages project template assets in sandboxed sandbox directory (nesting inside bound project folder `{project_name}-图片/assets/` if linked, falling back to app data directory if rootless), verifies MIME/size constraints, handles soft deletes and orphan garbage collections.
+  - [scanner.rs](../src-tauri/src/project_files/scanner.rs): Scans directories recursively for Word, Excel, PDF, PPT, and Image files.
+  - [service.rs](../src-tauri/src/project_files/service.rs): Coordinates linked vs. copied file paths, binds project folders, and tracks scanning metadata.
+  - [roots.rs](../src-tauri/src/project_files/roots.rs): Global project roots configuration CRUD and default manager.
+  - [health.rs](../src-tauri/src/project_files/health.rs): Analyzes files existence, checks path links, and executes auto-healing.
+  - [relocation.rs](../src-tauri/src/project_files/relocation.rs): Performs transaction-wrapped bulk directories relocation.
+  - [import_scanner.rs](../src-tauri/src/project_files/import_scanner.rs): Recursively scans large folders to identify candidate projects and import them in database transactions.
+  - [assets.rs](../src-tauri/src/project_files/assets.rs): Manages project template assets in sandboxed sandbox directory (nesting inside bound project folder `{project_name}-图片/assets/` if linked, falling back to app data directory if rootless), verifies MIME/size constraints, handles soft deletes and orphan garbage collections.
 
 
 ### `src-ui/...` (Vite + React Frontend)
 - **`src/main.tsx`**: Bootstraps the React application.
 - **`src/App.tsx`**: Router matching `currentView` in Zustand.
 - **`src/views/`**: Screen layouts.
-  - [ProjectBoard.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/ProjectBoard.tsx): Kanban lists, detail drawers, and candidate batch importer.
-  - [IctLifecycle.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/IctLifecycle.tsx): The main calculator workspace tabs.
-  - [TemplateForms.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/TemplateForms.tsx): Variable mapping and document filling triggers.
-  - [BenefitTool.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/BenefitTool.tsx): Standalone economic evaluation panel.
-  - [DataManagement.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/DataManagement.tsx): Data Management view containing Roots, Health Checker, and Relocator.
+  - [ProjectBoard.tsx](../src-ui/src/views/ProjectBoard.tsx): Kanban lists, detail drawers, and candidate batch importer.
+  - [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): The main calculator workspace tabs.
+  - [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Variable mapping and document filling triggers.
+  - [BenefitTool.tsx](../src-ui/src/views/BenefitTool.tsx): Standalone economic evaluation panel.
+  - [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): Data Management view containing Roots, Health Checker, and Relocator.
 - **`src/store/`**: Zustand state management.
-  - [useNavigationStore.ts](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/store/useNavigationStore.ts): Navigation routing and tracking origin.
-  - [useAiContextStore.ts](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/store/useAiContextStore.ts): Local RAG workspace synchronization.
+  - [useNavigationStore.ts](../src-ui/src/store/useNavigationStore.ts): Navigation routing and tracking origin.
+  - [useAiContextStore.ts](../src-ui/src/store/useAiContextStore.ts): Local RAG workspace synchronization.
 - **`src/components/`**: Modular UI components.
-  - [IctBasicInfo.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/components/IctBasicInfo.tsx): Project parameters form.
-  - [IctCashflowTable.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/components/IctCashflowTable.tsx): 10-year present value table.
-  - [IctMetricsDashboard.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/components/IctMetricsDashboard.tsx): Margin and NPV indicators overlay.
-  - [ProjectFilesTab.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/components/project/ProjectFilesTab.tsx): Handles file binding, scanning, and main doc marking in the Project Board drawer.
-  - [AiChatPanel.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/components/ai/AiChatPanel.tsx): The AI assistant drawer interface.
+  - [IctBasicInfo.tsx](../src-ui/src/components/IctBasicInfo.tsx): Project parameters form.
+  - [IctCashflowTable.tsx](../src-ui/src/components/IctCashflowTable.tsx): 10-year present value table.
+  - [IctMetricsDashboard.tsx](../src-ui/src/components/IctMetricsDashboard.tsx): Margin and NPV indicators overlay.
+  - [ProjectFilesTab.tsx](../src-ui/src/components/project/ProjectFilesTab.tsx): Handles file binding, scanning, and main doc marking in the Project Board drawer.
+  - [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx): The AI assistant drawer interface.
 
 ## 3. Main application flow
 
@@ -84,7 +84,7 @@ graph TD
 
 ### 4.3 Funding model to Cashflow flow
 1. Form edits are calculated in real-time or via manual trigger.
-2. Input parameters (`IctInput` containing distributions) are calculated in [calculator.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/benefit/calculator.rs).
+2. Input parameters (`IctInput` containing distributions) are calculated in [calculator.rs](../src-tauri/src/benefit/calculator.rs).
 3. Output results (`IctResult` with 10 cashflow row models containing PV, net cash, payback) are sent back to the frontend.
 4. Toggling tabs to "10年现金流推演" renders the cashflow row objects.
 
@@ -92,7 +92,7 @@ graph TD
 1. User types in form fields or switches tabs.
 2. Frontend triggers debounced (300ms) updates to `useAiContextStore` via `updateBusinessData`.
 3. The store persists states to local storage and emits a Tauri event `lamber-ai-context-updated` to keep windows in sync.
-4. On sending a chat message, [AiChatPanel.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/components/ai/AiChatPanel.tsx) serializes active workspace scopes to Markdown, appends them to the system prompt, and pipes them to `AiRuntime.ts`.
+4. On sending a chat message, [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx) serializes active workspace scopes to Markdown, appends them to the system prompt, and pipes them to `AiRuntime.ts`.
 
 ### 4.5 File / Excel import flow
 1. User clicks "一键导入" (Import Excel) on a parsed spreadsheet list item.
@@ -122,16 +122,16 @@ All core math operations are located in `calculator.rs` under Tauri:
 ## 7. UI system map
 
 Following "The Architectural Ledger" specs in `DESIGN.md`:
-- **Colors**: Hex tokens mapped in [DESIGN.md](file:///d:/HermesJang/CMCC/tools/lambert/lamber/DESIGN.md) (e.g. Primary `#285ab9`, Surface `#f9f9ff`).
+- **Colors**: Hex tokens mapped in [DESIGN.md](../DESIGN.md) (e.g. Primary `#285ab9`, Surface `#f9f9ff`).
 - **No-border design**: Demarcate layout sections using tonal color differences (`bg-muted` vs `bg-card` vs `bg-white`) rather than solid border lines.
 - **Typography**: Inter font with `font-variant-numeric: tabular-nums` for alignment of financial values.
 
 ## 8. Common task entry points
 
-- **Modify Project Board columns or list layouts**: Start at [ProjectBoard.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/ProjectBoard.tsx)
-- **Change financial calculation values**: Start at [calculator.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/benefit/calculator.rs)
-- **Introduce new Document template parameters**: Start at [TemplateForms.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/TemplateForms.tsx) and update variables mapping in [docfill.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/docfill.rs).
-- **Modify AI prompt behaviour or recommendation algorithms**: Start at [AiChatPanel.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/components/ai/AiChatPanel.tsx).
+- **Modify Project Board columns or list layouts**: Start at [ProjectBoard.tsx](../src-ui/src/views/ProjectBoard.tsx)
+- **Change financial calculation values**: Start at [calculator.rs](../src-tauri/src/benefit/calculator.rs)
+- **Introduce new Document template parameters**: Start at [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx) and update variables mapping in [docfill.rs](../src-tauri/src/docfill.rs).
+- **Modify AI prompt behaviour or recommendation algorithms**: Start at [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx).
 
 ## 9. Areas needing caution
 

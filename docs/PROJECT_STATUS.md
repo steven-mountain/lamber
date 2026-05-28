@@ -34,8 +34,8 @@ Lamber is a lightweight sales support and project management desktop tool design
 - **Known requirements**: Maintain independent rendering from ICT Lifecycle view and persist UI selections in local storage.
 - **Known issues**: Large note sizes might slightly lag during immediate auto-save.
 - **Related files**:
-  - [ProjectBoard.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/ProjectBoard.tsx)
-  - [projectService.ts](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/utils/projectService.ts)
+  - [ProjectBoard.tsx](../src-ui/src/views/ProjectBoard.tsx)
+  - [projectService.ts](../src-ui/src/utils/projectService.ts)
 
 ### 3.2 ICT Lifecycle Calculator (ICT生命周期测算)
 
@@ -45,8 +45,8 @@ Lamber is a lightweight sales support and project management desktop tool design
 - **Known requirements**: Maintain risk analysis criteria defined in backend Rust code.
 - **Known issues**: Binary search limit for back-calculation is capped at 10 billion CNY.
 - **Related files**:
-  - [IctLifecycle.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/IctLifecycle.tsx)
-  - [calculator.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/benefit/calculator.rs)
+  - [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx)
+  - [calculator.rs](../src-tauri/src/benefit/calculator.rs)
 
 ### 3.3 Investment Benefit Analysis (项目效益分析)
 
@@ -56,8 +56,8 @@ Lamber is a lightweight sales support and project management desktop tool design
 - **Known requirements**: Excel batch processing outputs files into the workspace `output/` directory.
 - **Known issues**: Batch processor requires Excel headers to match exact templates.
 - **Related files**:
-  - [BenefitTool.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/BenefitTool.tsx)
-  - [excel.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/benefit/excel.rs)
+  - [BenefitTool.tsx](../src-ui/src/views/BenefitTool.tsx)
+  - [excel.rs](../src-tauri/src/benefit/excel.rs)
 
 ### 3.4 AI Assistant (Lamber 智能顾问)
 
@@ -67,9 +67,9 @@ Lamber is a lightweight sales support and project management desktop tool design
 - **Known requirements**: Multi-round history optimization and PDF/Markdown local RAG.
 - **Known issues**: High token consumption on large templates since the entire form structure is serialized.
 - **Related files**:
-  - [AiChatPanel.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/components/ai/AiChatPanel.tsx)
-  - [useAiContextStore.ts](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/store/useAiContextStore.ts)
-  - [AiRuntime.ts](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/ai/AiRuntime.ts)
+  - [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx)
+  - [useAiContextStore.ts](../src-ui/src/store/useAiContextStore.ts)
+  - [AiRuntime.ts](../src-ui/src/ai/AiRuntime.ts)
 
 ### 3.5 File / Excel / Word Integration (文件及模板集成)
 
@@ -79,9 +79,9 @@ Lamber is a lightweight sales support and project management desktop tool design
 - **Known requirements**: Scan timestamps are updated without modifying physical files.
 - **Known issues**: Cell coordinates mapping in Excel template is fragile if the spreadsheet structure changes.
 - **Related files**:
-  - [TemplateForms.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/TemplateForms.tsx)
-  - [docfill.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/docfill.rs)
-  - [project_files/service.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/service.rs)
+  - [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx)
+  - [docfill.rs](../src-tauri/src/docfill.rs)
+  - [project_files/service.rs](../src-tauri/src/project_files/service.rs)
 
 ### 3.6 Data Management Center & Path Resilience (数据管理中心与路径韧性)
 
@@ -89,13 +89,13 @@ Lamber is a lightweight sales support and project management desktop tool design
 
 - **Current behavior**: Avoids hardcoded absolute paths by employing global project roots (`project_roots`), relative paths (`project_directories`), and file fingerprints (`size:modified_at:first_8kb_hash`). Supports global project roots CRUD, folder binding warning triggers (offering auto-parent folder registration as root with relative project subpaths, or absolute-only paths), a Health Checks Dashboard showing file links health metrics and self-healing reports, bulk path relocation (relocating directories across volumes with previews), and candidate scanner to import folders as new projects (auto-identifying file roles and resolving naming conflicts via merge/new/skip options). Allows scanning and syncing of rootless project directories safely without triggering foreign key constraint failures.
 - **Related files**:
-  - [DataManagement.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/DataManagement.tsx)
-  - [ProjectFilesTab.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/components/project/ProjectFilesTab.tsx)
-  - [ProjectBoard.tsx](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-ui/src/views/ProjectBoard.tsx)
-  - [project_files/roots.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/roots.rs)
-  - [project_files/health.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/health.rs)
-  - [project_files/relocation.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/relocation.rs)
-  - [project_files/import_scanner.rs](file:///d:/HermesJang/CMCC/tools/lambert/lamber/src-tauri/src/project_files/import_scanner.rs)
+  - [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx)
+  - [ProjectFilesTab.tsx](../src-ui/src/components/project/ProjectFilesTab.tsx)
+  - [ProjectBoard.tsx](../src-ui/src/views/ProjectBoard.tsx)
+  - [project_files/roots.rs](../src-tauri/src/project_files/roots.rs)
+  - [project_files/health.rs](../src-tauri/src/project_files/health.rs)
+  - [project_files/relocation.rs](../src-tauri/src/project_files/relocation.rs)
+  - [project_files/import_scanner.rs](../src-tauri/src/project_files/import_scanner.rs)
 
 ## 4. Important business rules
 
