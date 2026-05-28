@@ -213,9 +213,26 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
         let version_exists = stmt.exists([])?;
         if !version_exists {
             let now = chrono::Utc::now().to_rfc3339();
+            
+            // Check if projects table already has version 4 columns (fresh database check)
+            let has_folder_name: bool = {
+                let mut col_stmt = conn.prepare("PRAGMA table_info(projects)")?;
+                let mut rows = col_stmt.query([])?;
+                let mut found = false;
+                while let Some(row) = rows.next()? {
+                    let name: String = row.get(1)?;
+                    if name == "folder_name" {
+                        found = true;
+                        break;
+                    }
+                }
+                found
+            };
+
+            let initial_version = if has_folder_name { "4" } else { "2" };
             conn.execute(
-                "INSERT INTO app_settings (key, value, updated_at) VALUES ('schema_version', '2', ?1)",
-                [now],
+                "INSERT INTO app_settings (key, value, updated_at) VALUES ('schema_version', ?1, ?2)",
+                [initial_version, &now],
             )?;
         }
     }

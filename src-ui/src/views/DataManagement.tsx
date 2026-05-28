@@ -238,11 +238,9 @@ export default function DataManagement({ onBack }: { onBack: () => void }) {
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
-            className="p-2 rounded-lg bg-muted text-secondary-foreground hover:bg-muted/80 hover:text-foreground transition-all flex items-center justify-center"
+            className="text-secondary-foreground hover:text-primary hover:bg-secondary font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
+            <span>←</span> 返回集市
           </button>
           <div>
             <h1 className="text-xl font-bold tracking-tight">数据管理中心</h1>

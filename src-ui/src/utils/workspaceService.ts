@@ -31,8 +31,15 @@ export interface WorkspaceStateDto {
 }
 
 export interface WorkspacePathStatus {
-  status: "workspace" | "legacySuspected" | "emptyOrInitializable" | "nonEmptyNonWorkspace";
+  status: "workspace" | "legacySuspected" | "emptyOrInitializable" | "nonEmptyNonWorkspace" | "importablePlainDirectory";
   message?: string | null;
+}
+
+export interface InitializeWorkspaceOptions {
+  workspaceName?: string;
+  selectedDirectories: string[];
+  createProjectJson?: boolean;
+  createSubDirs?: boolean;
 }
 
 export function parseWorkspaceError(error: unknown) {
@@ -63,5 +70,11 @@ export const workspaceService = {
   },
   open(path: string) {
     return invoke<WorkspaceInfo>("open_workspace", { path });
+  },
+  initializeFromExisting(path: string, options: InitializeWorkspaceOptions) {
+    return invoke<WorkspaceInfo>("initialize_workspace_from_existing_directory", { path, options });
+  },
+  scanAndImportAllCalculations() {
+    return invoke<number>("scan_and_import_all_workspace_calculations");
   },
 };

@@ -421,7 +421,6 @@ impl ProjectFileService {
             let folder_name = self.repository.get_project_folder_name(project_id)?
                 .unwrap_or_else(|| crate::workspace::sanitize_folder_name(project_id));
             let dest_dir = Path::new(workspace_root)
-                .join("projects")
                 .join(&folder_name)
                 .join("documents");
 
@@ -434,7 +433,7 @@ impl ProjectFileService {
                 .map_err(|e| format!("复制托管文件失败: {}", e))?;
 
             // Save path as relative workspace path
-            let relative_file_path = format!("projects/{}/documents/{}", folder_name, file_name).replace("\\", "/");
+            let relative_file_path = format!("{}/documents/{}", folder_name, file_name).replace("\\", "/");
             project_file.file_path = relative_file_path.clone();
             project_file.managed_path = Some(relative_file_path);
         } else {

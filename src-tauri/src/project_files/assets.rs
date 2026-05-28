@@ -141,23 +141,23 @@ pub fn save_template_asset_internal(
             let rel = format!("{}/assets/{}", folder_name, stored_file_name);
             (dest, rel)
         } else {
-            let assets_dir = workspace_root.join("projects").join(project_id).join("assets");
+            let assets_dir = workspace_root.join(".projects").join(project_id).join("assets");
             if !assets_dir.exists() {
                 fs::create_dir_all(&assets_dir)
                     .map_err(|e| format!("创建资产目录失败: {}", e))?;
             }
             let dest = assets_dir.join(&stored_file_name);
-            let rel = format!("projects/{}/assets/{}", project_id, stored_file_name);
+            let rel = format!(".projects/{}/assets/{}", project_id, stored_file_name);
             (dest, rel)
         }
     } else {
-        let assets_dir = workspace_root.join("projects").join(project_id).join("assets");
+        let assets_dir = workspace_root.join(".projects").join(project_id).join("assets");
         if !assets_dir.exists() {
             fs::create_dir_all(&assets_dir)
                 .map_err(|e| format!("创建资产目录失败: {}", e))?;
         }
         let dest = assets_dir.join(&stored_file_name);
-        let rel = format!("projects/{}/assets/{}", project_id, stored_file_name);
+        let rel = format!(".projects/{}/assets/{}", project_id, stored_file_name);
         (dest, rel)
     };
 

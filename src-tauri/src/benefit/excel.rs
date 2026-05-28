@@ -1,5 +1,5 @@
 use super::calculator::calculate_benefit;
-use super::models::CalcInput;
+use super::models::{CalcInput, IctInput, IctItem};
 use crate::config_manager;
 use calamine::{open_workbook, Reader, Xlsx};
 use rust_xlsxwriter::{Format, Workbook};
@@ -668,107 +668,244 @@ fn parse_lifecycle_benefit_excel(
 }
 
 #[tauri::command]
-pub async fn parse_benefit_excel(file_path: String) -> Result<ExcelParsedData, String> {
+pub async fn parse_benefit_excel(
+    runtime: tauri::State<'_, std::sync::Arc<crate::workspace::WorkspaceRuntime>>,
+    file_path: String,
+) -> Result<ExcelParsedData, String> {
+    let path_buf = std::path::PathBuf::from(&file_path);
+    let resolved_path = if !path_buf.is_absolute() {
+        if let Some(ws) = runtime.get_current_workspace() {
+            let ws_path = Path::new(&ws.workspace_root);
+            crate::workspace::resolve_workspace_path(ws_path, &file_path)
+        } else {
+            path_buf
+        }
+    } else {
+        path_buf
+    };
+
     tauri::async_runtime::spawn_blocking(move || {
-        let path = Path::new(&file_path);
-        if !path.exists() {
-            return Err("文件不存在".to_string());
+        if !resolved_path.exists() {
+            return Err(format!("文件不存在: {}", file_path));
         }
-
-        let mut workbook: Xlsx<_> =
-            open_workbook(&file_path).map_err(|e| format!("打开Excel异常: {}", e))?;
-        if let Some(parsed) = parse_lifecycle_benefit_excel(&mut workbook)? {
-            return Ok(parsed);
-        }
-
-        let sheet_names = workbook.sheet_names().to_owned();
-        let sheet_name = sheet_names.first().ok_or("找不到工作表")?.clone();
-        let range = workbook
-            .worksheet_range(&sheet_name)
-            .map_err(|e| format!("读取工作表异常: {}", e))?;
-
-        let mut rows = range.rows();
-        let headers_row = rows.next().ok_or("Excel表为空")?;
-
-        let mut proj_name_col = None;
-        let mut inc_col = None;
-        let mut cost_col = None;
-        let mut margin_col = None;
-        let mut npv_col = None;
-        let mut years_col = None;
-        let mut ct_name_col = None;
-        let mut ct_amt_col = None;
-        let mut it_tax_col = None;
-        let mut ct_tax_col = None;
-        let mut pay_collect_col = None;
-        let mut pay_pay_col = None;
-
-        for (c_idx, cell) in headers_row.iter().enumerate() {
-            let h_str = cell.to_string().trim().to_string();
-            match h_str.as_str() {
-                "项目名称" => proj_name_col = Some(c_idx),
-                "含税总收入" | "项目总收入" => inc_col = Some(c_idx),
-                "含税总投入" | "项目总投入" => cost_col = Some(c_idx),
-                "目标利润率" => margin_col = Some(c_idx),
-                "目标净现值率" => npv_col = Some(c_idx),
-                "项目周期" | "周期" => years_col = Some(c_idx),
-                "CT产品名" | "CT产品" => ct_name_col = Some(c_idx),
-                "CT产品含税总额" => ct_amt_col = Some(c_idx),
-                "IT税率" => it_tax_col = Some(c_idx),
-                "CT税率" => ct_tax_col = Some(c_idx),
-                "收款方式" => pay_collect_col = Some(c_idx),
-                "付款方式" => pay_pay_col = Some(c_idx),
-                _ => {}
-            }
-        }
-
-        let first_data_row = rows.next().ok_or("找不到数据行")?;
-
-        let get_string = |col_opt: Option<usize>| -> String {
-            if let Some(col) = col_opt {
-                if col < first_data_row.len() {
-                    return parse_cell_string(&first_data_row[col]);
-                }
-            }
-            "".to_string()
-        };
-
-        let get_f64 = |col_opt: Option<usize>| -> f64 {
-            if let Some(col) = col_opt {
-                if col < first_data_row.len() {
-                    return parse_cell_f64(&first_data_row[col]);
-                }
-            }
-            0.0
-        };
-
-        let get_i32 = |col_opt: Option<usize>| -> i32 {
-            if let Some(col) = col_opt {
-                if col < first_data_row.len() {
-                    return parse_cell_i32(&first_data_row[col]);
-                }
-            }
-            0
-        };
-
-        Ok(ExcelParsedData {
-            project_name: get_string(proj_name_col),
-            customer_name: String::new(),
-            total_income_incl: get_f64(inc_col),
-            total_cost_incl: get_f64(cost_col),
-            target_margin: get_f64(margin_col),
-            target_npv: get_f64(npv_col),
-            project_years: get_i32(years_col),
-            discount_rate: 0.055,
-            ct_name: get_string(ct_name_col),
-            ct_income_incl: get_f64(ct_amt_col),
-            it_tax: get_f64(it_tax_col),
-            ct_tax: get_f64(ct_tax_col),
-            payment_collect: get_string(pay_collect_col),
-            payment_pay: get_string(pay_pay_col),
-            items: HashMap::new(),
-        })
+        parse_benefit_excel_internal(&resolved_path)
     })
     .await
     .map_err(|e| format!("异步执行异常: {}", e))?
+}
+
+pub fn parse_benefit_excel_internal(resolved_path: &Path) -> Result<ExcelParsedData, String> {
+    let resolved_path_str = resolved_path.to_string_lossy().to_string();
+
+    let mut workbook: Xlsx<_> =
+        open_workbook(&resolved_path_str).map_err(|e| format!("打开Excel异常: {}", e))?;
+    if let Some(parsed) = parse_lifecycle_benefit_excel(&mut workbook)? {
+        return Ok(parsed);
+    }
+
+    let sheet_names = workbook.sheet_names().to_owned();
+    let sheet_name = sheet_names.first().ok_or("找不到工作表")?.clone();
+    let range = workbook
+        .worksheet_range(&sheet_name)
+        .map_err(|e| format!("读取工作表异常: {}", e))?;
+
+    let mut rows = range.rows();
+    let headers_row = rows.next().ok_or("Excel表为空")?;
+
+    let mut proj_name_col = None;
+    let mut inc_col = None;
+    let mut cost_col = None;
+    let mut margin_col = None;
+    let mut npv_col = None;
+    let mut years_col = None;
+    let mut ct_name_col = None;
+    let mut ct_amt_col = None;
+    let mut it_tax_col = None;
+    let mut ct_tax_col = None;
+    let mut pay_collect_col = None;
+    let mut pay_pay_col = None;
+
+    for (c_idx, cell) in headers_row.iter().enumerate() {
+        let h_str = cell.to_string().trim().to_string();
+        match h_str.as_str() {
+            "项目名称" => proj_name_col = Some(c_idx),
+            "含税总收入" | "项目总收入" => inc_col = Some(c_idx),
+            "含税总投入" | "项目总投入" => cost_col = Some(c_idx),
+            "目标利润率" => margin_col = Some(c_idx),
+            "目标净现值率" => npv_col = Some(c_idx),
+            "项目周期" | "周期" => years_col = Some(c_idx),
+            "CT产品名" | "CT产品" => ct_name_col = Some(c_idx),
+            "CT产品含税总额" => ct_amt_col = Some(c_idx),
+            "IT税率" => it_tax_col = Some(c_idx),
+            "CT税率" => ct_tax_col = Some(c_idx),
+            "收款方式" => pay_collect_col = Some(c_idx),
+            "付款方式" => pay_pay_col = Some(c_idx),
+            _ => {}
+        }
+    }
+
+    let first_data_row = rows.next().ok_or("找不到数据行")?;
+
+    let get_string = |col_opt: Option<usize>| -> String {
+        if let Some(col) = col_opt {
+            if col < first_data_row.len() {
+                return parse_cell_string(&first_data_row[col]);
+            }
+        }
+        "".to_string()
+    };
+
+    let get_f64 = |col_opt: Option<usize>| -> f64 {
+        if let Some(col) = col_opt {
+            if col < first_data_row.len() {
+                return parse_cell_f64(&first_data_row[col]);
+            }
+        }
+        0.0
+    };
+
+    let get_i32 = |col_opt: Option<usize>| -> i32 {
+        if let Some(col) = col_opt {
+            if col < first_data_row.len() {
+                return parse_cell_i32(&first_data_row[col]);
+            }
+        }
+        0
+    };
+
+    Ok(ExcelParsedData {
+        project_name: get_string(proj_name_col),
+        customer_name: String::new(),
+        total_income_incl: get_f64(inc_col),
+        total_cost_incl: get_f64(cost_col),
+        target_margin: get_f64(margin_col),
+        target_npv: get_f64(npv_col),
+        project_years: get_i32(years_col),
+        discount_rate: 0.055,
+        ct_name: get_string(ct_name_col),
+        ct_income_incl: get_f64(ct_amt_col),
+        it_tax: get_f64(it_tax_col),
+        ct_tax: get_f64(ct_tax_col),
+        payment_collect: get_string(pay_collect_col),
+        payment_pay: get_string(pay_pay_col),
+        items: HashMap::new(),
+    })
+}
+
+pub fn auto_import_excel_calculation(
+    project_id: &str,
+    _file_name: &str,
+    parsed_data: ExcelParsedData,
+    service: &crate::benefit::service::ProjectService,
+) -> Result<(), String> {
+    let ct_income = parsed_data.ct_income_incl;
+    let it_income = (parsed_data.total_income_incl - ct_income).max(0.0);
+
+    let to_tax_percent = |value: f64, fallback: f64| -> f64 {
+        if !value.is_finite() || value <= 0.0 {
+            fallback
+        } else if value > 0.0 && value < 1.0 {
+            value * 100.0
+        } else {
+            value
+        }
+    };
+
+    let it_tax = to_tax_percent(parsed_data.it_tax, 6.0);
+    let ct_tax = to_tax_percent(parsed_data.ct_tax, 6.0);
+
+    let has_detailed_items = parsed_data.items.values().any(|item| {
+        item.incl_tax.abs() > 0.0 || item.excl_tax.abs() > 0.0
+    });
+
+    let make_item = |incl: f64, tax: f64| -> IctItem {
+        IctItem {
+            incl_tax: format!("{:.2}", if incl.is_finite() { incl } else { 0.0 }),
+            tax_rate: format!("{:.4}", if tax.is_finite() { tax } else { 0.0 }),
+        }
+    };
+
+    let make_parsed_item = |key: &str, default_tax: f64, fallback_incl: f64| -> IctItem {
+        if let Some(item) = parsed_data.items.get(key) {
+            let tax = to_tax_percent(item.tax_rate, default_tax);
+            if item.incl_tax.is_finite() && item.incl_tax.abs() > 0.0 {
+                return make_item(item.incl_tax, tax);
+            }
+            if item.excl_tax.is_finite() && item.excl_tax.abs() > 0.0 {
+                return make_item(item.excl_tax * (1.0 + tax / 100.0), tax);
+            }
+            return make_item(0.0, tax);
+        }
+        make_item(if has_detailed_items { 0.0 } else { fallback_incl }, default_tax)
+    };
+
+    let payload = IctInput {
+        project_name: if parsed_data.project_name.is_empty() {
+            "未命名项目".to_string()
+        } else {
+            parsed_data.project_name.clone()
+        },
+        customer_name: Some("CMCC".to_string()),
+        property_rights: "客户".to_string(),
+        discount_rate: format!("{:.4}", if parsed_data.discount_rate > 0.0 { parsed_data.discount_rate } else { 0.055 }),
+        project_years: Some(if parsed_data.project_years > 0 { parsed_data.project_years } else { 1 }),
+        cashflow_model: Some("model_a".to_string()),
+        cashflow_segment_value_mode: Some("ratio".to_string()),
+        cashflow_segments: Some(vec![]),
+        project_background: None,
+        ignore_tail_difference: Some(false),
+        tail_difference_value: Some("0".to_string()),
+        rev_distribution: vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        cost_distribution: vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        rev_cashflow_excl: None,
+        cost_cashflow_excl: None,
+        it_rev_cashflow_excl: None,
+        it_cost_cashflow_excl: None,
+
+        rev_it_integration: make_parsed_item("rev_it_integration", it_tax, it_income),
+        rev_it_maintenance: make_parsed_item("rev_it_maintenance", 6.0, 0.0),
+        rev_it_device_sales: make_parsed_item("rev_it_device_sales", 13.0, 0.0),
+        rev_it_device_lease: make_parsed_item("rev_it_device_lease", 13.0, 0.0),
+        rev_it_other: make_parsed_item("rev_it_other", 6.0, 0.0),
+        rev_it_cloud: make_parsed_item("rev_it_cloud", 6.0, 0.0),
+
+        rev_ct_line: make_parsed_item("rev_ct_line", 9.0, 0.0),
+        rev_ct_product: make_parsed_item("rev_ct_product", ct_tax, ct_income),
+
+        rev_non_it_ct: make_parsed_item("rev_non_it_ct", 9.0, 0.0),
+
+        cost_it_device: make_parsed_item("cost_it_device", 13.0, parsed_data.total_cost_incl),
+        cost_it_construction: make_parsed_item("cost_it_construction", 9.0, 0.0),
+        cost_it_survey: make_parsed_item("cost_it_survey", 6.0, 0.0),
+        cost_it_integration: make_parsed_item("cost_it_integration", 6.0, 0.0),
+        cost_it_other: make_parsed_item("cost_it_other", 6.0, 0.0),
+        cost_it_maintenance: make_parsed_item("cost_it_maintenance", 6.0, 0.0),
+        cost_it_running: make_parsed_item("cost_it_running", 13.0, 0.0),
+        cost_it_bidding: make_parsed_item("cost_it_bidding", 6.0, 0.0),
+        cost_it_design_eval: make_parsed_item("cost_it_design_eval", 6.0, 0.0),
+        cost_it_audit: make_parsed_item("cost_it_audit", 6.0, 0.0),
+
+        cost_ct_construction: make_parsed_item("cost_ct_construction", 6.0, 0.0),
+        cost_ct_maintenance: make_parsed_item("cost_ct_maintenance", 9.0, 0.0),
+        cost_ct_other: make_parsed_item("cost_ct_other", ct_tax, 0.0),
+        cost_ct_bandwidth: make_parsed_item("cost_ct_bandwidth", 9.0, 0.0),
+        cost_ct_renewal: make_parsed_item("cost_ct_renewal", 9.0, 0.0),
+
+        cost_non_it_ct: make_parsed_item("cost_non_it_ct", 9.0, 0.0),
+        cost_mix_marketing: make_parsed_item("cost_mix_marketing", 6.0, 0.0),
+        cost_mix_channel: make_parsed_item("cost_mix_channel", 6.0, 0.0),
+        cost_mix_other: make_parsed_item("cost_mix_other", 6.0, 0.0),
+    };
+
+    let result = crate::benefit::calculator::calculate_ict_benefit(payload.clone())?;
+    let _ = service.save_benefit_scheme(
+        project_id.to_string(),
+        None,
+        "Excel导入测算方案".to_string(),
+        payload,
+        result,
+        false,
+    )?;
+
+    Ok(())
 }

@@ -29,7 +29,7 @@ function getInitialState(): StoredNavigation {
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
-        currentView: parsed.currentView || "hub",
+        currentView: "hub",
         activeProjectId: parsed.activeProjectId || null,
         activeSchemeId: parsed.activeSchemeId || null,
         entrySource: parsed.entrySource || null,

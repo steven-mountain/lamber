@@ -12,20 +12,24 @@ Business persistence is scoped to an explicit Lamber Workspace root:
 
 ```text
 LamberWorkspace/
-├─ lamber.workspace.json
-├─ lamber.sqlite
-├─ projects/
-├─ backups/
-└─ exports/
+├─ .lamber.workspace.json
+├─ .lamber.sqlite
+├─ .backups/
+├─ .exports/
+├─ .projects/ (用于模板沙箱图片资源等)
+├─ 项目A/
+├─ 项目B/
 ```
 
-`WorkspaceRuntime` owns the current workspace state and active SQLite connection. Project, file, template asset, root, health, relocation, import, and document generation commands must require an open workspace and use `{workspaceRoot}/lamber.sqlite`. Startup may restore `lastOpenedWorkspacePath`; if it fails, the app must show WorkspaceGate and must not create an empty DB or fall back to AppData.
+`WorkspaceRuntime` owns the current workspace state and active SQLite connection. Project, file, template asset, root, health, relocation, import, and document generation commands must require an open workspace and use `{workspaceRoot}/.lamber.sqlite`. Startup may restore `lastOpenedWorkspacePath`; if it fails, the app must show WorkspaceGate and must not create an empty DB or fall back to AppData.
 
-When a workspace is opened or created, the workspace root is automatically registered in `project_roots` if it is missing. All new projects are created inside the workspace at `projects/{safeProjectName}/` with standard `assets/`, `documents/`, and `analyses/` subfolders, using workspace-relative paths for portable durability. Project folders created or bound under the workspace should therefore not ask the user to register an additional root directory.
+When a workspace is opened or created, the workspace root is automatically registered in `project_roots` if it is missing. All new projects are created directly inside the workspace at `{safeProjectName}/` with standard `assets/`, `documents/`, and `analyses/` subfolders. Workspaces can also be initialized from existing directories, bulk-importing their first-level subdirectories as projects at the root of the workspace without moving them, writing or complementing `project.json` manifests, and using workspace-relative paths (which are dynamically resolved against the active workspace root by backend commands like `parse_benefit_excel`) for portable durability. Project folders created, imported, or bound under the workspace should therefore not ask the user to register an additional root directory.
 
 Workspace selection is part of the Project Board workflow: entering Project Board first shows the Project Workspace layer when no workspace is open, and only loads project cards after a workspace is selected.
 
 Workspace switching should present a workspace overview similar to the project list, backed by locally recorded `recentWorkspaces`. Users choose a recorded workspace card first; opening another folder is an explicit secondary action.
+
+On application launch, the view always defaults to the HubView (`"hub"`) to guarantee the user starts at the central tool selection panel, rather than automatically restoring the last active view. The `WorkspaceGate` component and view headers now support a standardized `← 返回集市` back-navigation to the Hub (across all entry views including Project Board and Data Management, in both active and inactive workspace states).
 
 ## Read order for new AI sessions
 
@@ -42,7 +46,7 @@ Before starting any task, read the status and architecture documentation in this
 - **ICT Lifecycle Calculator (ICT生命周期测算)**: Main calculation engine handling 10-year cashflows, NPV, margins, and selection fee mappings. Standardizes persistence of project backgrounds and economic assumptions directly in the scheme snapshots database storage.
 - **AI Assistant / Copilot (智能顾问)**: Streamed (SSE) local LLM chatbot that pulls the active view's serialized state to give contextual recommendations based on a built-in capabilities database.
 - **Template Word/Excel Engine (文档填报与填充)**: Backend Rust logic mapping form values and calculation results into docx variables and excel cells. Now utilizes separate template form data (saved in `project_settings` under key `template_form_data::<template_name>`) and sandboxed image assets (saved to the bound project folder under `{project_name}-图片/assets/` if linked, or falling back to `{app_data_dir}/projects/{project_id}/assets/` and tracked in `project_template_assets`), ensuring form configurations are kept lightweight and database volume is small.
-- **Local File & Scan Engine (本地文件扫描管理)**: Service linking projects to local directory folders, scanning files (Word/Excel/PDF), managing linked vs. sandbox-copied storage modes, and handling elastic path resilience via project roots and relative subpaths.
+- **Local File & Scan Engine (本地文件扫描管理)**: Service linking projects to local directory folders, scanning files (Word/Excel/PDF), managing linked vs. sandbox-copied storage modes, handling elastic path resilience via project roots and relative subpaths, and automatically importing calculations from Excel files starting with "效益分析表" and ending with ".xlsx"/".xls" (choosing the newest by modification date) when folder scans are triggered for projects with 0 schemes.
 
 ## Current priorities
 

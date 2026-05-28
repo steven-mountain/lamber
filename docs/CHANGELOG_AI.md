@@ -4,6 +4,67 @@ This changelog records structural modifications, business rules, and context cha
 
 ## 2026-05-28
 
+### Workspace Structure Flattening, Hidden System Files, and Auto Migration
+
+Modified:
+- [workspace.rs](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-tauri/src/workspace.rs): Changed manifest and database filenames to `.lamber.workspace.json` and `.lamber.sqlite` (prefixed with dot to make them hidden files on macOS/Linux). Changed backups and exports folder names to `.backups` and `.exports`. Removed the projects subfolder layer to place all project subdirectories directly at the workspace root. Added `migrate_legacy_workspace_files` to automatically rename existing visible files/folders (`lamber.workspace.json`, `lamber.sqlite`, `backups`, `exports`) to dot-prefixed hidden ones on workspace inspection and loading.
+- [commands.rs](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-tauri/src/benefit/commands.rs): Adjusted `create_project_in_workspace` and `inspect_workspace_projects` to create and scan folders directly under the workspace root, and to ignore hidden dot-prefixed system folders.
+- [service.rs](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-tauri/src/project_files/service.rs): Updated files creation and relative path references in `add_project_file` to skip the `projects/` subfolder.
+- [assets.rs](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-tauri/src/project_files/assets.rs): Changed sandboxed fallback files folder to `.projects/` (hidden) to keep the workspace root clean of database project IDs.
+
+Decisions:
+- Flattered workspace layout so that only the actual, user-visible project directories (e.g. `项目A`, `项目B`) are visible directly under the workspace root.
+- Hidden all metadata, database, and cache files/directories behind Unix dot-prefixes (`.backups`, `.exports`, `.projects`, `.lamber.sqlite`, `.lamber.workspace.json`).
+- Automatically detect and rename legacy visible workspace configuration files and directories when opened to ensure backward compatibility and seamless updates.
+
+### Automatic Excel Calculations Import on Scan and Initialization
+
+Modified:
+- [commands.rs](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-tauri/src/project_files/commands.rs): Implemented `auto_import_excel_if_needed` to search for files starting with "效益分析表" and ending with ".xlsx" / ".xls", sorting by modification date descending to pick the newest, and parsing/importing using the `ProjectService`. Updated `scan_project_folder` and `bind_project_folder` commands to trigger this check.
+- [workspace.rs](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-tauri/src/workspace.rs): Updated `initialize_workspace_from_existing_directory` to keep track of successfully imported project IDs, run directory scans, and call the auto-import logic for all projects after committing.
+
+Decisions:
+- Enforced a safety boundary: only trigger auto-import when the target project currently has 0 schemes to protect existing user work.
+- Decoupled files service scanning from the benefit service calculations: `auto_import_excel_if_needed` resolves relative workspace paths against the active workspace root and passes them to the parsing module.
+
+### Excel Importing Workspace Relative Path Resolution Fix
+
+Modified:
+- [excel.rs](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-tauri/src/benefit/excel.rs): Updated the `parse_benefit_excel` command to accept the active `WorkspaceRuntime` state and resolve workspace-relative paths (e.g. scanned files in workspace directories) against the active workspace root path prior to performing existence checks and opening the workbook.
+
+Decisions:
+- Passed `State<'_, Arc<WorkspaceRuntime>>` to `parse_benefit_excel`.
+- Checked and resolved non-absolute paths relative to the current workspace root path inside the command handler before spawning the blocking task to ensure proper lifetime handling of borrowed state objects.
+
+### Database Migration and Workspace Initialization Robustness Fixes
+
+Modified:
+- [db.rs](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-tauri/src/db.rs): Fixed a database migration bug on fresh databases. Previously, fresh databases were initialized with a schema version of `'2'`, which triggered the version 3 and 4 migrations (including `ALTER TABLE projects ADD COLUMN folder_name TEXT`) and failed with `duplicate column name: folder_name` since the table was already created using the latest schema. We added a column check on `projects` (`folder_name`) to detect fresh databases and set the initial schema version to `'4'` so migrations are skipped cleanly.
+- [workspace.rs](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-tauri/src/workspace.rs): Added robust error cleanups inside `initialize_workspace_from_existing_directory`. If any step fails during initialization (such as folder scanning or database transaction commits), the command deletes any partially created workspace manifest (`lamber.workspace.json`) and database (`lamber.sqlite`) to prevent leaving the folder in a corrupted, uninitializable state. It also automatically cleans up orphan manifests from failed runs on entry.
+
+### Workspace Initialization & Subdirectories Bulk Import
+
+Created/Modified:
+- [workspace.rs](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-tauri/src/workspace.rs): Implemented plain directories inspection logic, returning `importablePlainDirectory` when eligible subdirectories are found. Added options deserialization and `initialize_workspace_from_existing_directory` command which sets up directories, writes workspace manifest, establishes database transaction, deduplicates entries, writes/補足 `project.json` manifests and creates standard nested directories (`assets`, `documents`, `analyses`).
+- [main.rs](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-tauri/src/main.rs): Registered the `initialize_workspace_from_existing_directory` invoke handler.
+- [workspaceService.ts](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-ui/src/utils/workspaceService.ts): Added the status and new initialize command wrapper.
+- [useWorkspaceStore.ts](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-ui/src/store/useWorkspaceStore.ts): Exposed store method `initializeWorkspaceFromExisting`.
+- [WorkspaceGate.tsx](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-ui/src/components/workspace/WorkspaceGate.tsx): Unified workspace selection pickers under local inspection, rendering a checklist selection modal showing candidate project subdirectories and optional parameter options when opening plain directories.
+
+Decisions:
+- Standardized candidate directories to exclude backups, exports, standard projects, .git, and common target build directories.
+- Stored project paths relative to workspaceRoot, keeping folders at the workspace root rather than moving them under `projects/`.
+- Ensured transaction rollback and duplicates check to prevent workspace half-state or duplicate project database rows.
+
+### Navigation Defaults and Back Button Adjustments
+
+Modified:
+- [useNavigationStore.ts](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-ui/src/store/useNavigationStore.ts): Adjusted the initial view logic to always default `currentView` to `"hub"` upon application launch, avoiding restoring last active view directly (which bypasses the Hub and could immediately trigger a workspace gate or board view).
+- [WorkspaceGate.tsx](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-ui/src/components/workspace/WorkspaceGate.tsx): Allowed the back button to show even when there is no current workspace loaded (removed `currentWorkspace` check).
+- [App.tsx](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-ui/src/App.tsx): Passed the `onBack` handler and custom label to `WorkspaceGate` in the data management view, and wrapped the view in a header when `isWorkspaceReady` is false, ensuring the '返回集市' button is always consistently visible.
+- [ProjectBoard.tsx](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-ui/src/views/ProjectBoard.tsx): Passed the `onBack` handler and custom label to `WorkspaceGate` in the project board view when `isWorkspaceReady` is false. Standardized both header back buttons to use the text-button `← 返回集市` styling.
+- [DataManagement.tsx](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-ui/src/views/DataManagement.tsx): Standardized the header back button to the text-button `← 返回集市` style.
+
 ### Workspace Refactoring Phase 2: Project Board & Workspace Binding
 
 Created:

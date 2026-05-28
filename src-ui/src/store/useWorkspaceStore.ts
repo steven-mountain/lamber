@@ -15,6 +15,8 @@ interface WorkspaceStore {
   selectAndOpenWorkspace: () => Promise<void>;
   selectAndCreateWorkspace: () => Promise<void>;
   openRecentWorkspace: (path: string) => Promise<void>;
+  initializeWorkspaceFromExisting: (path: string, options: import("../utils/workspaceService").InitializeWorkspaceOptions) => Promise<void>;
+  scanAndImportAllWorkspaceCalculations: () => Promise<number>;
 }
 
 function applyWorkspace(workspace: WorkspaceInfo | null) {
@@ -112,6 +114,31 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       set({ ...applyWorkspace(workspace), isLoading: false });
     } catch (error) {
       set({ error: parseWorkspaceError(error).message, isLoading: false });
+    }
+  },
+
+  initializeWorkspaceFromExisting: async (path: string, options: import("../utils/workspaceService").InitializeWorkspaceOptions) => {
+    set({ isLoading: true, error: null });
+    try {
+      useProjectStore.getState().clearCurrentProject();
+      const workspace = await workspaceService.initializeFromExisting(path, options);
+      await get().refreshWorkspaceState();
+      set({ ...applyWorkspace(workspace), isLoading: false });
+    } catch (error) {
+      set({ error: parseWorkspaceError(error).message, isLoading: false });
+      throw error;
+    }
+  },
+
+  scanAndImportAllWorkspaceCalculations: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const count = await workspaceService.scanAndImportAllCalculations();
+      set({ isLoading: false });
+      return count;
+    } catch (error) {
+      set({ error: parseWorkspaceError(error).message, isLoading: false });
+      throw error;
     }
   },
 }));

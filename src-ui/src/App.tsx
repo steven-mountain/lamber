@@ -78,7 +78,27 @@ export default function App() {
       ) : currentView === "ict_lifecycle" ? (
         <IctLifecycle />
       ) : currentView === "data_management" ? (
-        isWorkspaceReady ? <DataManagement onBack={() => navigateTo("hub")} /> : <WorkspaceGate />
+        isWorkspaceReady ? (
+          <DataManagement onBack={() => navigateTo("hub")} />
+        ) : (
+          <div className="flex flex-col flex-1 h-full overflow-hidden bg-background text-foreground animate-in fade-in duration-300">
+            <header className="flex items-center justify-between px-6 py-4 shrink-0 bg-card shadow-sm">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => navigateTo("hub")}
+                  className="text-secondary-foreground hover:text-primary hover:bg-secondary font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors"
+                >
+                  <span>←</span> 返回集市
+                </button>
+                <div>
+                  <h1 className="text-xl font-bold tracking-tight">数据管理中心</h1>
+                  <p className="text-xs text-secondary-foreground mt-0.5">项目根目录管理、文件健康度检测与路径批量重定位</p>
+                </div>
+              </div>
+            </header>
+            <WorkspaceGate onBack={() => navigateTo("hub")} backLabel="返回集市" />
+          </div>
+        )
       ) : (
         <div className="p-8">
           <button onClick={() => navigateTo("hub")} className="mb-4 font-bold text-primary">返回</button>

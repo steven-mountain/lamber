@@ -75,6 +75,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     isWorkspaceReady,
     isLoading: workspaceLoading,
     selectAndCreateWorkspace,
+    scanAndImportAllWorkspaceCalculations,
   } = useWorkspaceStore();
   const [showWorkspaceOverview, setShowWorkspaceOverview] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -116,6 +117,21 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   const [expandedCandidates, setExpandedCandidates] = useState<Record<string, boolean>>({});
   const [importLoading, setImportLoading] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
+  const [globalImportLoading, setGlobalImportLoading] = useState(false);
+
+  const handleScanAndImportAllCalculations = async () => {
+    if (globalImportLoading) return;
+    setGlobalImportLoading(true);
+    try {
+      const count = await scanAndImportAllWorkspaceCalculations();
+      alert(`刷新完成！已为工作区内 ${count} 个符合条件的项目自动导入测算方案。`);
+      fetchProjects();
+    } catch (err: any) {
+      alert(`导入失败: ${err?.message || err}`);
+    } finally {
+      setGlobalImportLoading(false);
+    }
+  };
 
   // Details Modal State
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -914,9 +930,9 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
             <button
               id="board_back_btn"
               onClick={onBack}
-              className="p-2 hover:bg-muted rounded-lg transition-colors text-secondary-foreground hover:text-foreground"
+              className="text-secondary-foreground hover:text-primary hover:bg-secondary font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors"
             >
-              <AppIcon name="chevronDown" size={20} className="rotate-90" />
+              <span>←</span> 返回集市
             </button>
             <div>
               <h1 className="text-xl font-extrabold flex items-center gap-2 text-foreground">
@@ -927,8 +943,8 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
           </div>
         </header>
         <WorkspaceGate
-          onBack={isWorkspaceReady ? () => setShowWorkspaceOverview(false) : undefined}
-          backLabel="返回当前项目列表"
+          onBack={isWorkspaceReady ? () => setShowWorkspaceOverview(false) : onBack}
+          backLabel={isWorkspaceReady ? "返回当前项目列表" : "返回集市"}
           onCurrentWorkspaceSelected={() => setShowWorkspaceOverview(false)}
           onWorkspaceChanged={() => setShowWorkspaceOverview(false)}
         />
@@ -944,9 +960,9 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
           <button
             id="board_back_btn"
             onClick={onBack}
-            className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-500 hover:text-slate-900"
+            className="text-secondary-foreground hover:text-primary hover:bg-secondary font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors"
           >
-            <AppIcon name="chevronDown" size={20} className="rotate-90" />
+            <span>←</span> 返回集市
           </button>
           <div>
             <h1 className="text-xl font-extrabold flex items-center gap-2 text-foreground">
@@ -989,9 +1005,22 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
           <div className="flex shrink-0 gap-2">
             <button
               type="button"
+              disabled={workspaceLoading || loading || globalImportLoading}
+              onClick={handleScanAndImportAllCalculations}
+              className="rounded-md bg-card px-3 py-2 text-xs font-bold text-foreground shadow-sm disabled:opacity-50 flex items-center gap-1.5 hover:bg-muted transition-all duration-200"
+            >
+              <AppIcon
+                name={globalImportLoading ? "loading" : "reverse"}
+                size={13}
+                className={`${globalImportLoading ? "animate-spin text-primary" : "text-slate-500"}`}
+              />
+              {globalImportLoading ? "正在导入全区测算..." : "刷新全区测算"}
+            </button>
+            <button
+              type="button"
               disabled={workspaceLoading}
               onClick={() => setShowWorkspaceOverview(true)}
-              className="rounded-md bg-card px-3 py-2 text-xs font-bold text-foreground shadow-sm disabled:opacity-50"
+              className="rounded-md bg-card px-3 py-2 text-xs font-bold text-foreground shadow-sm disabled:opacity-50 hover:bg-muted transition-all duration-200"
             >
               切换工作区
             </button>
@@ -999,7 +1028,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
               type="button"
               disabled={workspaceLoading}
               onClick={selectAndCreateWorkspace}
-              className="rounded-md bg-primary px-3 py-2 text-xs font-bold text-primary-foreground shadow-sm disabled:opacity-50"
+              className="rounded-md bg-primary px-3 py-2 text-xs font-bold text-primary-foreground shadow-sm disabled:opacity-50 transition-all duration-200"
             >
               新建工作区
             </button>

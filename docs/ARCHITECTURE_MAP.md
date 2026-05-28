@@ -1,6 +1,6 @@
 # ARCHITECTURE_MAP.md
 
-Last updated: 2026-05-28
+Last updated: 2026-05-28 (Updated Workspace Structure)
 
 ## 1. Repository overview
 
@@ -13,7 +13,7 @@ graph TD
     Tauri -->|Word Variable filling| Doc[Docfill Engine / docfill.rs]
     Tauri -->|Directory scanning| Scan[Scanner / project_files]
     Tauri -->|Workspace Runtime| WS[WorkspaceRuntime]
-    WS -->|Current workspace root| DB[(lamber.sqlite)]
+    WS -->|Current workspace root| DB[(.lamber.sqlite)]
     WS -->|Local app config| CFG[(config.json recentWorkspaces)]
 ```
 
@@ -22,7 +22,7 @@ graph TD
 ### `src-tauri/...` (Rust Backend)
 - **`src/main.rs`**: Entry point. Sets up plugins (dialog, http), initializes state managers, and registers Tauri command handlers.
 - **`src/config_manager.rs`**: Manages the application workspace configurations.
-- **`src/workspace.rs`**: Manages Lamber Workspace manifests, recent workspaces, last workspace restore, workspace readiness checks, and the active SQLite connection.
+- **`src/workspace.rs`**: Manages Lamber Workspace manifests, recent workspaces, last workspace restore, workspace readiness checks, the active SQLite connection, and workspace initialization from existing plain directories with candidate subdirectories import.
 - **`src/db.rs`**: SQLite initialization, table creation, and schema version management.
 - **`src/migration.rs`**: JSON-to-SQLite transactional database migration service and Tauri commands.
 - **`src/docfill.rs`**: Extract variables from Word `.docx` zip packages and fills templates.
@@ -64,7 +64,7 @@ graph TD
 ## 3. Main application flow
 
 1. **Boot**: `main.rs` starts the Tauri runtime, loads local `config.json`, and attempts to restore `lastOpenedWorkspacePath`. It does not create or open an AppData primary database.
-2. **Mount**: `main.tsx` mounts React. It queries `localStorage` to recover previous navigation states and active project choices.
+2. **Mount**: `main.tsx` mounts React. It queries `localStorage` to recover previous navigation context (e.g. active project/scheme IDs) but always defaults the current view to `"hub"`.
 3. **Routing**: `App.tsx` reads `currentView` from `useNavigationStore`. Toggling views changes the displayed view container.
 4. **State Load**: If a workspace is ready and a project was active, `IctLifecycle.tsx` invokes `get_schemes` and `get_snapshots` against the current workspace database to restore calculations.
 
@@ -96,9 +96,10 @@ graph TD
 
 ### 4.5 File / Excel import flow
 1. User clicks "一键导入" (Import Excel) on a parsed spreadsheet list item.
-2. Frontend invokes `parse_benefit_excel(filePath)`.
-3. Rust backend reads coordinates, determines matching formulas, and returns mapped financial parameters.
-4. User confirms overwrite, which updates frontend states and triggers an automated recalculation.
+2: Frontend invokes `parse_benefit_excel(filePath)`.
+3: Rust backend obtains the workspace root path, resolves workspace-relative paths if the input is relative, opens and reads coordinates from the Excel spreadsheet, determines matching formulas, and returns mapped financial parameters.
+4: User confirms overwrite, which updates frontend states and triggers an automated recalculation.
+5: Automated background import: during folder scans, folder binding, or workspace project bulk initialization, the backend checks if the project has 0 schemes. If so, it matches files starting with "效益分析表" and ending with ".xlsx"/".xls", picks the newest by modification date, parses it, and automatically imports it as the default scheme "Excel导入测算方案" without user intervention.
 
 ## 5. State management map
 
@@ -107,7 +108,7 @@ graph TD
   - `activeProjectId` / `activeSchemeId`: The focused project context.
   - `entrySource`: Remembers the previous view (Hub vs Project Board) to handle back-navigation.
 - **RAG Context**: Managed by `useAiContextStore` (Zustand). Debounces workspace changes and shares states with LLM prompt builders.
-- **Workspace State**: Managed by `useWorkspaceStore` and `WorkspaceRuntime`. Frontend tracks `currentWorkspace`, `workspaceRoot`, `workspaceName`, `workspaceId`, `recentWorkspaces`, and `isWorkspaceReady`.
+- **Workspace State**: Managed by `useWorkspaceStore` and `WorkspaceRuntime`. Frontend tracks `currentWorkspace`, `workspaceRoot`, `workspaceName`, `workspaceId`, `recentWorkspaces`, and `isWorkspaceReady`. Renders `WorkspaceGate` if no active workspace is selected, supporting standardized '← 返回集市' back-navigation to the Hub in both Project Board and Data Management views.
 - **Persistence Database**: Managed by the current workspace's `lamber.sqlite`. Project operations are blocked while no workspace is open.
 
 ## 6. Calculation engine map

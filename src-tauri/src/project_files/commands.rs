@@ -27,7 +27,12 @@ pub async fn bind_project_folder(
     folder_path: String,
     force_mode: Option<String>,
 ) -> Result<(), String> {
-    file_service_from_workspace(&runtime)?.bind_project_folder(&project_id, &folder_path, force_mode)
+    let file_service = file_service_from_workspace(&runtime)?;
+    file_service.bind_project_folder(&project_id, &folder_path, force_mode)?;
+    if let Ok(files) = file_service.get_project_files(&project_id) {
+        let _ = auto_import_excel_if_needed(&runtime, &project_id, &files);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -52,7 +57,10 @@ pub async fn scan_project_folder(
     project_id: String,
     recursive: Option<bool>,
 ) -> Result<Vec<ProjectFile>, String> {
-    file_service_from_workspace(&runtime)?.scan_project_folder(&project_id, recursive.unwrap_or(false))
+    let file_service = file_service_from_workspace(&runtime)?;
+    let files = file_service.scan_project_folder(&project_id, recursive.unwrap_or(false))?;
+    let _ = auto_import_excel_if_needed(&runtime, &project_id, &files);
+    Ok(files)
 }
 
 #[tauri::command]
@@ -236,5 +244,66 @@ pub async fn save_project_setting(
     use crate::benefit::repository::ProjectRepository;
     let project_repo = crate::benefit::repository::SqliteProjectRepository::new(runtime.require_db()?);
     project_repo.save_project_setting(&project_id, &key, &value)
+}
+
+pub fn auto_import_excel_if_needed(
+    runtime: &crate::workspace::WorkspaceRuntime,
+    project_id: &str,
+    files: &[ProjectFile],
+) -> Result<(), String> {
+    use std::path::Path;
+
+    let db = runtime.require_db()?;
+    let project_repo = crate::benefit::repository::SqliteProjectRepository::new(db.clone());
+    let project_service = crate::benefit::service::ProjectService::new(Box::new(project_repo));
+
+    // 1. Check if the project already has any schemes
+    let schemes = project_service.get_schemes(project_id)?;
+    if !schemes.is_empty() {
+        return Ok(());
+    }
+
+    // 2. Find files starting with "效益分析表" and ending with ".xlsx" or ".xls" (case-insensitive)
+    let mut matching_files: Vec<&ProjectFile> = files
+        .iter()
+        .filter(|f| {
+            let starts_with_pattern = f.file_name.starts_with("效益分析表");
+            let ext = f.extension.to_lowercase();
+            starts_with_pattern && (ext == "xlsx" || ext == "xls")
+        })
+        .collect();
+
+    if matching_files.is_empty() {
+        return Ok(());
+    }
+
+    // 3. Sort by modified_at descending (newest first)
+    matching_files.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+    let target_file = matching_files[0];
+
+    // 4. Resolve the file path against workspace root
+    let ws = runtime.require_workspace()?;
+    let ws_path = Path::new(&ws.workspace_root);
+    let file_path_buf = std::path::PathBuf::from(&target_file.file_path);
+    let resolved_path = if !file_path_buf.is_absolute() {
+        crate::workspace::resolve_workspace_path(ws_path, &target_file.file_path)
+    } else {
+        file_path_buf
+    };
+
+    if !resolved_path.exists() {
+        return Err(format!("匹配到的测算文件不存在: {:?}", resolved_path));
+    }
+
+    // 5. Parse and auto-import
+    let parsed_data = crate::benefit::excel::parse_benefit_excel_internal(&resolved_path)?;
+    crate::benefit::excel::auto_import_excel_calculation(
+        project_id,
+        &target_file.file_name,
+        parsed_data,
+        &project_service,
+    )?;
+
+    Ok(())
 }
 

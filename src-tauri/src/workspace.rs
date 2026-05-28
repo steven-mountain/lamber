@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 
-const MANIFEST_FILE: &str = "lamber.workspace.json";
-const DATABASE_FILE: &str = "lamber.sqlite";
+const MANIFEST_FILE: &str = ".lamber.workspace.json";
+const DATABASE_FILE: &str = ".lamber.sqlite";
 const WORKSPACE_VERSION: i32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,6 +191,71 @@ fn ensure_writable_dir(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn get_import_candidates(root: &Path) -> Result<Vec<String>, String> {
+    if !root.exists() || !root.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut candidates = Vec::new();
+    let entries = fs::read_dir(root)
+        .map_err(|e| workspace_error("PermissionDenied", format!("读取目录失败: {}", e)))?;
+    
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(name) = path.file_name() {
+                let name_str = name.to_string_lossy().to_string();
+                if name_str.starts_with('.') {
+                    continue;
+                }
+                match name_str.as_str() {
+                    "backups" | "exports" | "projects" | "node_modules" | "target" | "dist" | "build" | ".vscode" | ".idea" | "__pycache__" => {
+                        continue;
+                    }
+                    _ => {
+                        candidates.push(name_str);
+                    }
+                }
+            }
+        }
+    }
+    candidates.sort();
+    Ok(candidates)
+}
+
+fn migrate_legacy_workspace_files(root: &Path) {
+    // 1. Rename lamber.workspace.json -> .lamber.workspace.json
+    let old_manifest = root.join("lamber.workspace.json");
+    let new_manifest = root.join(".lamber.workspace.json");
+    if old_manifest.exists() && !new_manifest.exists() {
+        let _ = fs::rename(&old_manifest, &new_manifest);
+    }
+
+    // 2. Rename lamber.sqlite -> .lamber.sqlite
+    let old_db = root.join("lamber.sqlite");
+    let new_db = root.join(".lamber.sqlite");
+    if old_db.exists() && !new_db.exists() {
+        let _ = fs::rename(&old_db, &new_db);
+    }
+
+    // 3. Rename backups -> .backups
+    let old_backups = root.join("backups");
+    let new_backups = root.join(".backups");
+    if old_backups.exists() && old_backups.is_dir() && !new_backups.exists() {
+        let _ = fs::rename(&old_backups, &new_backups);
+    }
+
+    // 4. Rename exports -> .exports
+    let old_exports = root.join("exports");
+    let new_exports = root.join(".exports");
+    if old_exports.exists() && old_exports.is_dir() && !new_exports.exists() {
+        let _ = fs::rename(&old_exports, &new_exports);
+    }
+}
+
 fn inspect_path(root: &Path) -> Result<WorkspacePathStatus, String> {
     if !root.exists() {
         return Ok(WorkspacePathStatus {
@@ -201,6 +266,10 @@ fn inspect_path(root: &Path) -> Result<WorkspacePathStatus, String> {
     if !root.is_dir() {
         return Err(workspace_error("PermissionDenied", "选择的路径不是文件夹"));
     }
+
+    // 自动迁移可见的遗留系统文件/目录为隐藏版
+    migrate_legacy_workspace_files(root);
+
     if manifest_path(root).exists() {
         return Ok(WorkspacePathStatus {
             status: "workspace".to_string(),
@@ -210,9 +279,18 @@ fn inspect_path(root: &Path) -> Result<WorkspacePathStatus, String> {
     if db_path(root).exists() {
         return Ok(WorkspacePathStatus {
             status: "legacySuspected".to_string(),
-            message: Some("检测到 lamber.sqlite 但缺少 lamber.workspace.json，疑似旧版数据目录。本阶段不会覆盖或迁移。".to_string()),
+            message: Some("检测到 .lamber.sqlite 但缺少 .lamber.workspace.json，疑似旧版数据目录。本阶段不会覆盖或迁移。".to_string()),
         });
     }
+
+    let candidates = get_import_candidates(root)?;
+    if !candidates.is_empty() {
+        return Ok(WorkspacePathStatus {
+            status: "importablePlainDirectory".to_string(),
+            message: Some(serde_json::to_string(&candidates).unwrap_or_default()),
+        });
+    }
+
     let is_empty = fs::read_dir(root)
         .map_err(|e| workspace_error("PermissionDenied", format!("读取目录失败: {}", e)))?
         .next()
@@ -240,9 +318,12 @@ fn update_recent(app: &AppHandle, workspace: &CurrentWorkspace) -> Result<(), St
 }
 
 fn open_workspace_internal(app: &AppHandle, runtime: &WorkspaceRuntime, root: &Path) -> Result<CurrentWorkspace, String> {
+    // 自动迁移可见的遗留系统文件/目录为隐藏版
+    migrate_legacy_workspace_files(root);
+
     if !manifest_path(root).exists() {
         if db_path(root).exists() {
-            return Err(workspace_error("InvalidManifest", "疑似旧版 Lamber 数据目录：存在 lamber.sqlite 但缺少 lamber.workspace.json"));
+            return Err(workspace_error("InvalidManifest", "疑似旧版 Lamber 数据目录：存在 .lamber.sqlite 但缺少 .lamber.workspace.json"));
         }
         return Err(workspace_error("InvalidManifest", "该目录不是 Lamber 工作区"));
     }
@@ -397,11 +478,9 @@ pub async fn create_workspace(
         _ => {}
     }
 
-    fs::create_dir_all(root.join("projects"))
-        .map_err(|e| workspace_error("PermissionDenied", format!("创建 projects 目录失败: {}", e)))?;
-    fs::create_dir_all(root.join("backups"))
+    fs::create_dir_all(root.join(".backups"))
         .map_err(|e| workspace_error("PermissionDenied", format!("创建 backups 目录失败: {}", e)))?;
-    fs::create_dir_all(root.join("exports"))
+    fs::create_dir_all(root.join(".exports"))
         .map_err(|e| workspace_error("PermissionDenied", format!("创建 exports 目录失败: {}", e)))?;
 
     let now = Utc::now().to_rfc3339();
@@ -429,10 +508,306 @@ pub async fn open_workspace(
     open_workspace_internal(&app, &runtime, &PathBuf::from(path))
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InitializeWorkspaceOptions {
+    pub workspace_name: Option<String>,
+    pub selected_directories: Vec<String>,
+    pub create_project_json: Option<bool>,
+    pub create_sub_dirs: Option<bool>,
+}
+
+#[tauri::command]
+pub async fn initialize_workspace_from_existing_directory(
+    app: AppHandle,
+    runtime: State<'_, Arc<WorkspaceRuntime>>,
+    path: String,
+    options: InitializeWorkspaceOptions,
+) -> Result<CurrentWorkspace, String> {
+    let root = PathBuf::from(&path);
+    if !root.exists() {
+        return Err(workspace_error("NotFound", "指定的目录不存在"));
+    }
+    if !root.is_dir() {
+        return Err(workspace_error("PermissionDenied", "指定的路径不是文件夹"));
+    }
+
+    if manifest_path(&root).exists() && db_path(&root).exists() {
+        return Err(workspace_error("AlreadyWorkspace", "该目录下已存在 .lamber.workspace.json 且包含数据库"));
+    }
+    
+    // Clean up broken manifest if database is missing
+    if manifest_path(&root).exists() && !db_path(&root).exists() {
+        let _ = fs::remove_file(manifest_path(&root));
+    }
+
+    if db_path(&root).exists() && !manifest_path(&root).exists() {
+        return Err(workspace_error("LegacySuspected", "该目录下已存在 .lamber.sqlite，为防覆盖已中止"));
+    }
+
+    ensure_writable_dir(&root)?;
+
+    let created_manifest = !manifest_path(&root).exists();
+    let created_db = !db_path(&root).exists();
+
+    // Helper block to execute the steps and cleanup on error
+    let result = (|| -> Result<CurrentWorkspace, String> {
+        // 1. Create standard workspace directories
+        fs::create_dir_all(root.join(".backups"))
+            .map_err(|e| workspace_error("PermissionDenied", format!("创建 backups 目录失败: {}", e)))?;
+        fs::create_dir_all(root.join(".exports"))
+            .map_err(|e| workspace_error("PermissionDenied", format!("创建 exports 目录失败: {}", e)))?;
+
+        // 2. Create and write manifest
+        let now = Utc::now().to_rfc3339();
+        let workspace_name = options.workspace_name
+            .as_ref()
+            .filter(|n| !n.trim().is_empty())
+            .cloned()
+            .unwrap_or_else(|| root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Lamber Workspace".to_string()));
+        
+        let manifest = WorkspaceManifest {
+            app: "Lamber".to_string(),
+            workspace_version: WORKSPACE_VERSION,
+            workspace_id: uuid::Uuid::new_v4().to_string(),
+            name: workspace_name,
+            created_at: now.clone(),
+            last_opened_at: now,
+        };
+        write_manifest(&root, &manifest)?;
+
+        // 3. Open workspace to bind connection
+        let workspace = open_workspace_internal(&app, &runtime, &root)?;
+        let db_conn = runtime.require_db()?;
+        let mut conn_guard = db_conn.lock().map_err(|e| e.to_string())?;
+
+        // 4. Wrap database project inserts inside a transaction
+        let tx = conn_guard.transaction().map_err(|e| e.to_string())?;
+
+        let candidates = get_import_candidates(&root)?;
+        let create_project_json = options.create_project_json.unwrap_or(true);
+        let create_sub_dirs = options.create_sub_dirs.unwrap_or(true);
+
+        let mut imported_projects = Vec::new();
+
+        for subdir in candidates {
+            if !options.selected_directories.contains(&subdir) {
+                continue;
+            }
+
+            let project_dir = root.join(&subdir);
+            let project_json_path = project_dir.join("project.json");
+            let mut project_id = format!("id_{}", uuid::Uuid::new_v4().simple());
+            let mut name = subdir.clone();
+            let mut created_at = Utc::now().to_rfc3339();
+            let mut updated_at = Utc::now().to_rfc3339();
+            let mut existing_json: Option<serde_json::Value> = None;
+
+            if project_json_path.exists() {
+                if let Ok(content) = fs::read_to_string(&project_json_path) {
+                    if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(id_str) = json_val.get("projectId").and_then(|v| v.as_str()) {
+                            if !id_str.trim().is_empty() {
+                                project_id = id_str.to_string();
+                            }
+                        }
+                        if let Some(n_str) = json_val.get("name").and_then(|v| v.as_str()) {
+                            if !n_str.trim().is_empty() {
+                                name = n_str.to_string();
+                            }
+                        }
+                        if let Some(c_str) = json_val.get("createdAt").and_then(|v| v.as_str()) {
+                            if !c_str.trim().is_empty() {
+                                created_at = c_str.to_string();
+                            }
+                        }
+                        if let Some(u_str) = json_val.get("updatedAt").and_then(|v| v.as_str()) {
+                            if !u_str.trim().is_empty() {
+                                updated_at = u_str.to_string();
+                            }
+                        }
+                        existing_json = Some(json_val);
+                    }
+                }
+            }
+
+            // Check duplicates
+            let exists_by_id: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
+                [&project_id],
+                |row| row.get(0)
+            ).map_err(|e| e.to_string())?;
+
+            let exists_by_rel_path: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM projects WHERE relative_path = ?1 OR folder_path = ?1)",
+                [&subdir],
+                |row| row.get(0)
+            ).map_err(|e| e.to_string())?;
+
+            let exists_by_name: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM projects WHERE name = ?1)",
+                [&name],
+                |row| row.get(0)
+            ).map_err(|e| e.to_string())?;
+
+            if exists_by_id || exists_by_rel_path || exists_by_name {
+                continue;
+            }
+
+            // project.json
+            if create_project_json {
+                let mut json_val = existing_json.unwrap_or_else(|| serde_json::json!({}));
+                if json_val.get("projectId").is_none() {
+                    json_val["projectId"] = serde_json::Value::String(project_id.clone());
+                }
+                if json_val.get("name").is_none() {
+                    json_val["name"] = serde_json::Value::String(name.clone());
+                }
+                if json_val.get("folderName").is_none() {
+                    json_val["folderName"] = serde_json::Value::String(subdir.clone());
+                }
+                if json_val.get("relativePath").is_none() {
+                    json_val["relativePath"] = serde_json::Value::String(subdir.clone());
+                }
+                if json_val.get("createdAt").is_none() {
+                    json_val["createdAt"] = serde_json::Value::String(created_at.clone());
+                }
+                if json_val.get("updatedAt").is_none() {
+                    json_val["updatedAt"] = serde_json::Value::String(updated_at.clone());
+                }
+                if json_val.get("source").is_none() {
+                    json_val["source"] = serde_json::Value::String("importedPlainDirectory".to_string());
+                }
+                let updated_content = serde_json::to_string_pretty(&json_val)
+                    .map_err(|e| format!("序列化 project.json 失败: {}", e))?;
+                fs::write(&project_json_path, updated_content)
+                    .map_err(|e| format!("写入 project.json 失败: {}", e))?;
+            }
+
+            // Subdirectories
+            if create_sub_dirs {
+                fs::create_dir_all(project_dir.join("assets"))
+                    .map_err(|e| format!("无法创建 assets 目录: {}", e))?;
+                fs::create_dir_all(project_dir.join("documents"))
+                    .map_err(|e| format!("无法创建 documents 目录: {}", e))?;
+                fs::create_dir_all(project_dir.join("analyses"))
+                    .map_err(|e| format!("无法创建 analyses 目录: {}", e))?;
+            }
+
+            // Insert
+            tx.execute(
+                "INSERT INTO projects (
+                    id, name, customer_name, status, benefit_status, total_revenue_incl, total_cost_incl, project_years, discount_rate, cashflow_model, created_at, updated_at, folder_path, logs, folder_name, relative_path, progress, linked_folder_type, linked_folder_relative_path
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+                rusqlite::params![
+                    project_id,
+                    name,
+                    "CMCC",
+                    "需求导入",
+                    "not_started",
+                    0.0,
+                    0.0,
+                    1,
+                    0.055,
+                    "model_a",
+                    created_at,
+                    updated_at,
+                    subdir, // folder_path
+                    "[]",   // logs
+                    subdir, // folder_name
+                    subdir, // relative_path
+                    0.0,    // progress
+                    "internal", // linked_folder_type
+                    subdir, // linked_folder_relative_path
+                ]
+            ).map_err(|e| format!("写入项目数据库失败: {}", e))?;
+
+            imported_projects.push((project_id, subdir));
+        }
+
+        tx.commit().map_err(|e| format!("提交事务失败: {}", e))?;
+
+        // 5. Scan folders and auto-import calculation if available
+        let db_conn = runtime.require_db()?;
+        let file_repo = std::sync::Arc::new(crate::project_files::repository::SqliteProjectFileRepository::new(db_conn.clone()));
+        let file_service = crate::project_files::service::ProjectFileService::new(file_repo, root.clone());
+
+        for (p_id, _subdir) in &imported_projects {
+            if let Ok(files) = file_service.scan_project_folder(p_id, false) {
+                let _ = crate::project_files::commands::auto_import_excel_if_needed(&runtime, p_id, &files);
+            }
+        }
+
+        Ok(workspace)
+    })();
+
+    if let Err(_err) = &result {
+        if created_manifest {
+            let _ = fs::remove_file(manifest_path(&root));
+        }
+        if created_db {
+            let _ = fs::remove_file(db_path(&root));
+        }
+        runtime.clear_workspace();
+    }
+
+    result
+}
+
 #[tauri::command]
 pub async fn clear_workspace(runtime: State<'_, Arc<WorkspaceRuntime>>) -> Result<(), String> {
     runtime.clear_workspace();
     Ok(())
+}
+
+#[tauri::command]
+pub async fn scan_and_import_all_workspace_calculations(
+    runtime: State<'_, Arc<WorkspaceRuntime>>,
+) -> Result<usize, String> {
+    let ws = runtime.require_workspace()?;
+    let db_conn = runtime.require_db()?;
+    
+    let projects: Vec<String> = {
+        let conn_guard = db_conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn_guard
+            .prepare("SELECT id FROM projects")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        
+        let mut list = Vec::new();
+        for r in rows {
+            if let Ok(id) = r {
+                list.push(id);
+            }
+        }
+        list
+    };
+
+    let root_path = std::path::PathBuf::from(&ws.workspace_root);
+    let file_repo = std::sync::Arc::new(crate::project_files::repository::SqliteProjectFileRepository::new(db_conn.clone()));
+    let file_service = crate::project_files::service::ProjectFileService::new(file_repo, root_path);
+
+    let mut import_count = 0;
+    for p_id in projects {
+        let project_repo = crate::benefit::repository::SqliteProjectRepository::new(db_conn.clone());
+        let project_service = crate::benefit::service::ProjectService::new(Box::new(project_repo));
+        
+        let schemes_before = project_service.get_schemes(&p_id).map(|s| s.len()).unwrap_or(0);
+        if schemes_before == 0 {
+            if let Ok(files) = file_service.scan_project_folder(&p_id, false) {
+                if let Ok(_) = crate::project_files::commands::auto_import_excel_if_needed(&runtime, &p_id, &files) {
+                    let schemes_after = project_service.get_schemes(&p_id).map(|s| s.len()).unwrap_or(0);
+                    if schemes_after > 0 {
+                        import_count += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(import_count)
 }
 
 use crate::benefit::models::Project;
@@ -517,7 +892,7 @@ pub fn sanitize_folder_name(name: &str) -> String {
 
 // Ensures all required directories exist for a project: assets/, documents/, analyses/
 pub fn ensure_project_dirs(workspace_root: &Path, folder_name: &str) -> Result<(), String> {
-    let project_dir = workspace_root.join("projects").join(folder_name);
+    let project_dir = workspace_root.join(folder_name);
     fs::create_dir_all(&project_dir).map_err(|e| format!("无法创建项目目录: {}", e))?;
     fs::create_dir_all(project_dir.join("assets")).map_err(|e| format!("无法创建 assets 目录: {}", e))?;
     fs::create_dir_all(project_dir.join("documents")).map_err(|e| format!("无法创建 documents 目录: {}", e))?;

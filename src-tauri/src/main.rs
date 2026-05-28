@@ -151,6 +151,8 @@ fn main() {
             workspace::create_workspace,
             workspace::open_workspace,
             workspace::clear_workspace,
+            workspace::initialize_workspace_from_existing_directory,
+            workspace::scan_and_import_all_workspace_calculations,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

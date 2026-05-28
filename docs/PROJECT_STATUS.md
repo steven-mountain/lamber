@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md
 
-Last updated: 2026-05-28
+Last updated: 2026-05-28 (Updated Workspace Structure)
 
 ## 1. Project summary
 
@@ -11,11 +11,11 @@ Lamber is a lightweight sales support and project management desktop tool design
 - **Frontend**: Vite + React 18 + TypeScript + Zustand
 - **Desktop runtime**: Tauri v2 + Rust
 - **State management**:
-  - Global navigation: `useNavigationStore` (Zustand + local storage)
+  - Global navigation: `useNavigationStore` (Zustand + local storage, always defaulting to "hub" view on application startup)
   - AI Context: `useAiContextStore` (Zustand + local storage + Tauri events)
   - Layout & view modes: Local storage (`lamber_project_board_view_mode`, etc.)
 - **Database/Persistence**: SQLite (via `rusqlite` with `bundled` feature) for structured relational tables, alongside dynamic `projects_store.json` backward compatibility
-- **Workspace Runtime**: Business data is now scoped to an explicit Lamber Workspace root containing `lamber.workspace.json`, `lamber.sqlite`, `projects/`, `backups/`, and `exports/`. The app remembers `recentWorkspaces` and `lastOpenedWorkspacePath` in local AppConfig, not in the workspace manifest.
+- **Workspace Runtime**: Business data is now scoped to an explicit Lamber Workspace root containing hidden system files `.lamber.workspace.json`, `.lamber.sqlite`, `.backups/`, and `.exports/`. Project folders (e.g. `项目A`, `项目B`) are placed directly inside the workspace root without an intermediate `projects/` layer. The app remembers `recentWorkspaces` and `lastOpenedWorkspacePath` in local AppConfig. It supports initializing an existing general project root directory as a Lamber Workspace and bulk importing eligible first-level subdirectories as workspace internal projects (with automatic creation of `project.json` and assets/documents/analyses folders). Accessing workspace-backed features without a workspace redirects to `WorkspaceGate` with matching headers, which now provides a standardized '← 返回集市' back button to return to the Hub (across all entry views including Project Board and Data Management, both when workspace is active or inactive).
 - **Styling**: Tailwind CSS + Shadcn/UI (Radix UI) + HSL-based design system
 - **AI integration**: Local SSE streaming client (Ollama / OpenAI standard endpoint) with semantic Markdown context serialization
 - **File handling**:
@@ -30,7 +30,7 @@ Lamber is a lightweight sales support and project management desktop tool design
 
 **Status**: Active (Fully Implemented)
 
-- **Current behavior**: Displays projects scoped to the active Lamber Workspace root. It fetches project details from the current workspace SQLite database (`lamber.sqlite`). New projects are automatically created under `workspaceRoot/projects/{safeProjectName}/` with standard assets, documents, and analyses subdirectories and a redundant `project.json` manifest. Cards indicate directory health, flagging missing directories in the UI. Binding works with relative workspace paths for internal folders, and warns users when folders are external. Disconnecting folder links clears database records but keeps real disk files intact.
+- **Current behavior**: Displays projects scoped to the active Lamber Workspace root. It fetches project details from the current workspace SQLite database (`.lamber.sqlite`). New projects are automatically created under `workspaceRoot/{safeProjectName}/` with standard assets, documents, and analyses subdirectories and a redundant `project.json` manifest. Cards indicate directory health, flagging missing directories in the UI. Binding works with relative workspace paths for internal folders, and warns users when folders are external. Disconnecting folder links clears database records but keeps real disk files intact.
 - **Known requirements**: Maintain independent rendering from ICT Lifecycle view and persist UI selections in local storage.
 - **Known issues**: Large note sizes might slightly lag during immediate auto-save.
 - **Related files**:
@@ -75,7 +75,7 @@ Lamber is a lightweight sales support and project management desktop tool design
 
 **Status**: Active (Fully Implemented)
 
-- **Current behavior**: Scans directories for docx/xlsx files. Back-fills form fields (from `TemplateForms.tsx`) into files via Rust backend. Word templates are generated via `docx-template`. Excels can be filled or parsed back (via `parse_benefit_excel`) to overwrite project states. Supports sandbox "copied" files or raw disk "linked" files. Template forms (`TemplateForms.tsx`) and embedded image resources are persisted separately: lightweight forms/table settings are saved in `project_settings` (under key `template_form_data::<template_name>`), while pasted/dropped images are uploaded instantly to project assets sandboxes (bound project folder under `{project_name}-图片/assets/` if linked, otherwise falling back to `{app_data_dir}/projects/{project_id}/assets/`) and tracked in the `project_template_assets` metadata table. Document generation reads binary contents directly from sandbox files via backend validation.
+- **Current behavior**: Scans directories for docx/xlsx files. Back-fills form fields (from `TemplateForms.tsx`) into files via Rust backend. Word templates are generated via `docx-template`. Excels can be filled or parsed back (via `parse_benefit_excel`, which resolves workspace-relative paths against the active workspace root) to overwrite project states. Supports sandbox "copied" files or raw disk "linked" files. Template forms (`TemplateForms.tsx`) and embedded image resources are persisted separately: lightweight forms/table settings are saved in `project_settings` (under key `template_form_data::<template_name>`), while pasted/dropped images are uploaded instantly to project assets sandboxes (bound project folder under `{project_name}-图片/assets/` if linked, otherwise falling back to `{app_data_dir}/projects/{project_id}/assets/`) and tracked in the `project_template_assets` metadata table. Document generation reads binary contents directly from sandbox files via backend validation. Automatically imports Excel calculations: when a folder scan is triggered (manually, via folder binding, or during workspace project bulk initialization), if the project has 0 schemes, it filters for Excel files whose names start with "效益分析表" and end with ".xlsx"/".xls", chooses the newest one by modification date, parses its economic parameters, and saves it as the default scheme "Excel导入测算方案".
 - **Known requirements**: Scan timestamps are updated without modifying physical files.
 - **Known issues**: Cell coordinates mapping in Excel template is fragile if the spreadsheet structure changes.
 - **Related files**:

@@ -165,7 +165,7 @@ pub async fn create_project_in_workspace(
 
     let folder_name = crate::workspace::sanitize_folder_name(&name);
     let ws_root = std::path::Path::new(&ws.workspace_root);
-    let project_dir = ws_root.join("projects").join(&folder_name);
+    let project_dir = ws_root.join(&folder_name);
 
     if project_dir.exists() {
         return Err("项目目录已存在，请更换项目名称".to_string());
@@ -188,7 +188,7 @@ pub async fn create_project_in_workspace(
         updated_at: String,
     }
 
-    let relative_path = format!("projects/{}", folder_name);
+    let relative_path = folder_name.clone();
     let project_json = ProjectJson {
         project_id: project_id.clone(),
         name: name.clone(),
@@ -282,15 +282,10 @@ pub async fn inspect_workspace_projects(
     let ws = runtime.require_workspace()?;
     let conn = runtime.require_db()?;
     let ws_root = std::path::Path::new(&ws.workspace_root);
-    let projects_dir = ws_root.join("projects");
     
     let mut unregistered = Vec::new();
-    if !projects_dir.exists() || !projects_dir.is_dir() {
-        return Ok(unregistered);
-    }
-    
-    let entries = std::fs::read_dir(projects_dir)
-        .map_err(|e| format!("无法读取 projects 目录: {}", e))?;
+    let entries = std::fs::read_dir(ws_root)
+        .map_err(|e| format!("无法读取工作区目录: {}", e))?;
         
     for entry in entries {
         let entry = match entry {
@@ -299,6 +294,19 @@ pub async fn inspect_workspace_projects(
         };
         let path = entry.path();
         if path.is_dir() {
+            if let Some(name) = path.file_name() {
+                let name_str = name.to_string_lossy().to_string();
+                if name_str.starts_with('.') {
+                    continue;
+                }
+                match name_str.as_str() {
+                    "node_modules" | "target" | "dist" | "build" | ".vscode" | ".idea" | "__pycache__" => {
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+            
             let project_json_path = path.join("project.json");
             if project_json_path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&project_json_path) {
