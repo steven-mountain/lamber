@@ -151,6 +151,86 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
     )?;
 
     conn.execute(
+        "CREATE TABLE IF NOT EXISTS project_template_assets (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            template_name TEXT NOT NULL,
+            template_id TEXT,
+            asset_type TEXT NOT NULL,
+            usage TEXT,
+            original_file_name TEXT,
+            stored_file_name TEXT NOT NULL,
+            relative_path TEXT NOT NULL,
+            absolute_path_snapshot TEXT NOT NULL,
+            mime_type TEXT,
+            file_size INTEGER NOT NULL,
+            width INTEGER,
+            height INTEGER,
+            file_hash TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            deleted_at TEXT,
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS project_lifecycle_states (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL UNIQUE,
+            lifecycle_version INTEGER NOT NULL DEFAULT 1,
+            profile_json TEXT NOT NULL DEFAULT '{}',
+            parameters_json TEXT NOT NULL DEFAULT '{}',
+            background_json TEXT NOT NULL DEFAULT '{}',
+            input_payload_json TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS project_cashflow_states (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL UNIQUE,
+            cashflow_version INTEGER NOT NULL DEFAULT 1,
+            cashflow_model TEXT,
+            payment_model_json TEXT NOT NULL DEFAULT '{}',
+            yearly_cashflow_json TEXT NOT NULL DEFAULT '{}',
+            sector_cashflow_json TEXT NOT NULL DEFAULT '{}',
+            assumptions_json TEXT NOT NULL DEFAULT '{}',
+            metrics_json TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS project_template_states (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            template_id TEXT NOT NULL,
+            template_name TEXT,
+            template_type TEXT,
+            template_version INTEGER NOT NULL DEFAULT 1,
+            template_path TEXT,
+            template_path_type TEXT,
+            filled_data_json TEXT NOT NULL DEFAULT '{}',
+            field_mapping_json TEXT NOT NULL DEFAULT '{}',
+            output_config_json TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(project_id, template_id),
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );",
+        [],
+    )?;
+
+    conn.execute(
         "CREATE TABLE IF NOT EXISTS ict_templates (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -207,6 +287,11 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
         [],
     )?;
 
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_project_lifecycle_project_id ON project_lifecycle_states(project_id);", [])?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_project_cashflow_project_id ON project_cashflow_states(project_id);", [])?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_project_template_states_project_id ON project_template_states(project_id);", [])?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_project_template_assets_project_template ON project_template_assets(project_id, template_name);", [])?;
+
     // Set schema_version = 2 if not exists
     {
         let mut stmt = conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
@@ -229,7 +314,7 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
                 found
             };
 
-            let initial_version = if has_folder_name { "4" } else { "2" };
+            let initial_version = if has_folder_name { "5" } else { "2" };
             conn.execute(
                 "INSERT INTO app_settings (key, value, updated_at) VALUES ('schema_version', ?1, ?2)",
                 [initial_version, &now],
@@ -383,6 +468,128 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
             let now = chrono::Utc::now().to_rfc3339();
             tx.execute(
                 "UPDATE app_settings SET value = '4', updated_at = ?1 WHERE key = 'schema_version'",
+                [now],
+            )?;
+            tx.commit()?;
+        }
+    }
+
+    // Run migration checks from Version 4 to 5
+    {
+        let version = {
+            let mut stmt = conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
+            let mut rows = stmt.query([])?;
+            if let Some(row) = rows.next()? {
+                let val_str: String = row.get(0)?;
+                val_str.parse::<i32>().unwrap_or(1)
+            } else {
+                1
+            }
+        };
+        if version < 5 {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "CREATE TABLE IF NOT EXISTS project_template_assets (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    template_name TEXT NOT NULL,
+                    template_id TEXT,
+                    asset_type TEXT NOT NULL,
+                    usage TEXT,
+                    original_file_name TEXT,
+                    stored_file_name TEXT NOT NULL,
+                    relative_path TEXT NOT NULL,
+                    absolute_path_snapshot TEXT NOT NULL,
+                    mime_type TEXT,
+                    file_size INTEGER NOT NULL,
+                    width INTEGER,
+                    height INTEGER,
+                    file_hash TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    deleted_at TEXT,
+                    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );",
+                [],
+            )?;
+
+            let asset_columns: Vec<String> = {
+                let mut col_stmt = tx.prepare("PRAGMA table_info(project_template_assets)")?;
+                let col_iter = col_stmt.query_map([], |r| {
+                    let col_name: String = r.get(1)?;
+                    Ok(col_name)
+                })?;
+                let mut cols = Vec::new();
+                for col in col_iter {
+                    cols.push(col?);
+                }
+                cols
+            };
+            if !asset_columns.contains(&"template_id".to_string()) {
+                tx.execute("ALTER TABLE project_template_assets ADD COLUMN template_id TEXT;", [])?;
+            }
+
+            tx.execute(
+                "CREATE TABLE IF NOT EXISTS project_lifecycle_states (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL UNIQUE,
+                    lifecycle_version INTEGER NOT NULL DEFAULT 1,
+                    profile_json TEXT NOT NULL DEFAULT '{}',
+                    parameters_json TEXT NOT NULL DEFAULT '{}',
+                    background_json TEXT NOT NULL DEFAULT '{}',
+                    input_payload_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );",
+                [],
+            )?;
+            tx.execute(
+                "CREATE TABLE IF NOT EXISTS project_cashflow_states (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL UNIQUE,
+                    cashflow_version INTEGER NOT NULL DEFAULT 1,
+                    cashflow_model TEXT,
+                    payment_model_json TEXT NOT NULL DEFAULT '{}',
+                    yearly_cashflow_json TEXT NOT NULL DEFAULT '{}',
+                    sector_cashflow_json TEXT NOT NULL DEFAULT '{}',
+                    assumptions_json TEXT NOT NULL DEFAULT '{}',
+                    metrics_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );",
+                [],
+            )?;
+            tx.execute(
+                "CREATE TABLE IF NOT EXISTS project_template_states (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    template_id TEXT NOT NULL,
+                    template_name TEXT,
+                    template_type TEXT,
+                    template_version INTEGER NOT NULL DEFAULT 1,
+                    template_path TEXT,
+                    template_path_type TEXT,
+                    filled_data_json TEXT NOT NULL DEFAULT '{}',
+                    field_mapping_json TEXT NOT NULL DEFAULT '{}',
+                    output_config_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(project_id, template_id),
+                    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );",
+                [],
+            )?;
+
+            tx.execute("CREATE INDEX IF NOT EXISTS idx_project_lifecycle_project_id ON project_lifecycle_states(project_id);", [])?;
+            tx.execute("CREATE INDEX IF NOT EXISTS idx_project_cashflow_project_id ON project_cashflow_states(project_id);", [])?;
+            tx.execute("CREATE INDEX IF NOT EXISTS idx_project_template_states_project_id ON project_template_states(project_id);", [])?;
+            tx.execute("CREATE INDEX IF NOT EXISTS idx_project_template_assets_project_template ON project_template_assets(project_id, template_name);", [])?;
+
+            let now = chrono::Utc::now().to_rfc3339();
+            tx.execute(
+                "UPDATE app_settings SET value = '5', updated_at = ?1 WHERE key = 'schema_version'",
                 [now],
             )?;
             tx.commit()?;

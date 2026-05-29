@@ -4,6 +4,33 @@ This changelog records structural modifications, business rules, and context cha
 
 ## 2026-05-28
 
+### Workspace Refactoring Phase 3: Domain Save Boundaries and Dirty State
+
+Created:
+- [project_state/mod.rs](../src-tauri/src/project_state/mod.rs): Workspace-scoped project state commands for project detail, lifecycle state, cashflow state, benefit analysis, template states, template assets listing, and full project state loading.
+- [useSaveStore.ts](../src-ui/src/store/useSaveStore.ts): Global dirty scope store with registered save handlers, context checks, partial failure handling, and Ctrl/Command+S integration.
+- [domainSaveService.ts](../src-ui/src/services/domainSaveService.ts): Frontend domain service wrapping project detail, lifecycle, cashflow, benefit analysis, template state, and full-state commands.
+- [GlobalSaveButton.tsx](../src-ui/src/components/GlobalSaveButton.tsx), [useGlobalSaveShortcut.ts](../src-ui/src/hooks/useGlobalSaveShortcut.ts), and [useUnsavedChangesGuard.ts](../src-ui/src/hooks/useUnsavedChangesGuard.ts).
+
+Modified:
+- [db.rs](../src-tauri/src/db.rs): Added schema version 5 with `project_lifecycle_states`, `project_cashflow_states`, and `project_template_states`; normalized `project_template_assets` creation for fresh databases and added `template_id` compatibility.
+- [main.rs](../src-tauri/src/main.rs): Registered project-state Tauri commands.
+- [service.rs](../src-tauri/src/benefit/service.rs): Prevented `update_project` from inserting a missing project into the current workspace database.
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Registered lifecycle and cashflow save handlers, loaded new project full state with legacy snapshot fallback, displayed unsaved status, and guarded project/template navigation.
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Routed template form persistence through the template domain state while preserving legacy fallback and asset references.
+- [ProjectBoard.tsx](../src-ui/src/views/ProjectBoard.tsx), [WorkspaceGate.tsx](../src-ui/src/components/workspace/WorkspaceGate.tsx), and [WorkspaceHeader.tsx](../src-ui/src/components/WorkspaceHeader.tsx): Integrated global save, project/workspace switching guards, and project-detail dirty handling.
+
+Decisions:
+- Current ICT editing state no longer depends on `benefit_snapshots` as its only persistence boundary.
+- Benefit方案 buttons still save schemes and snapshots, but global save / Ctrl+S save current editor state through domain handlers.
+- Template field values and template assets remain separate from lifecycle/cashflow state; legacy `project_settings` template payloads remain readable and are kept as compatibility mirrors during saves.
+
+Phase 3B updates:
+- `useSaveStore` save handlers now return explicit `savedScopes`; missing handlers, partial failures, and workspace/project switches no longer clear unrelated dirty state.
+- `TemplateForms` propagates template save failures to the global save handler so `template-forms` cannot be marked saved unless `saveTemplateState` succeeds.
+- ICT lifecycle header shows project status and save status globally, while project, workspace, and template switches are guarded before navigation.
+- ICT lifecycle project loading now prefers `project_lifecycle_states` current editor state over benefit scheme snapshots even when a default scheme id is present; snapshots remain a fallback for old projects.
+
 ### Workspace Structure Flattening, Hidden System Files, and Auto Migration
 
 Modified:

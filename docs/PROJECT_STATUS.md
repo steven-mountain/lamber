@@ -1,6 +1,14 @@
 # PROJECT_STATUS.md
 
-Last updated: 2026-05-28 (Updated Workspace Structure)
+Last updated: 2026-05-28 (Workspace Save Boundaries)
+
+## 0. Latest persistence update
+
+Workspace refactoring phase 3 separates current project editing state from scheme snapshots. Project detail updates remain in `projects`; ICT lifecycle editor state is saved in `project_lifecycle_states`; funding models, assumptions, cashflow tables, sector cashflows, and metrics are saved in `project_cashflow_states`; benefit方案 history remains in `benefit_schemes` / `benefit_snapshots`; template field values, mappings, and output configuration are saved in `project_template_states` with compatibility fallback to legacy `project_settings` keys. Template binary/image assets continue to use `project_template_assets` and file-backed storage.
+
+The frontend now has `useSaveStore`, a domain save service, a global save button, Ctrl/Command+S handling, and unsaved-change guards. Dirty scopes are cleared only after their registered domain save handler returns the scopes it actually persisted for the same workspace and project context. Template form saving must propagate failures to `useSaveStore`; autosave may be silent, but global save must keep `template-forms` dirty if `saveTemplateState` fails.
+
+Opening an ICT project now restores current lifecycle editor state from `project_lifecycle_states` before reading benefit scheme snapshots, even when navigation includes a default scheme id. Scheme snapshots remain historical/fallback data, not the primary source for current project background or lifecycle edits.
 
 ## 1. Project summary
 

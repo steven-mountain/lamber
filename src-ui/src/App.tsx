@@ -12,6 +12,8 @@ import WorkspaceGate from "./components/workspace/WorkspaceGate";
 import { useAiContextStore } from "./store/useAiContextStore";
 import { useNavigationStore } from "./store/useNavigationStore";
 import { useWorkspaceStore } from "./store/useWorkspaceStore";
+import { useGlobalSaveShortcut } from "./hooks/useGlobalSaveShortcut";
+import { useUnsavedChangesGuard } from "./hooks/useUnsavedChangesGuard";
 
 const AI_ASSISTANT_LABEL = "ai-assistant";
 const AI_CURRENT_VIEW_KEY = "lamber_ai_current_view";
@@ -34,6 +36,8 @@ export default function App() {
   const setActiveModule = useAiContextStore(state => state.setActiveModule);
   const { isWorkspaceReady, refreshWorkspaceState } = useWorkspaceStore();
   const aiAssistantView = getAiAssistantView();
+  useGlobalSaveShortcut();
+  useUnsavedChangesGuard();
 
   useEffect(() => {
     if (aiAssistantView) return;

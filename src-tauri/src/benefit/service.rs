@@ -189,6 +189,9 @@ impl ProjectService {
         }
 
         let original_project_opt = self.repository.get_project(&project.id)?;
+        if original_project_opt.is_none() {
+            return Err(format!("ProjectNotFoundInCurrentWorkspace::{}", project.id));
+        }
 
         // Calculate/verify status based on fingerprint mismatch
         if let Some(default_scheme_id) = &project.default_scheme_id {

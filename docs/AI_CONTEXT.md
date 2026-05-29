@@ -29,6 +29,10 @@ Workspace selection is part of the Project Board workflow: entering Project Boar
 
 Workspace switching should present a workspace overview similar to the project list, backed by locally recorded `recentWorkspaces`. Users choose a recorded workspace card first; opening another folder is an explicit secondary action.
 
+Current project editing state is split by domain. Project detail fields are stored in `projects`; ICT lifecycle state is stored in `project_lifecycle_states`; funding model and cashflow state are stored in `project_cashflow_states`; benefit方案 history is stored in `benefit_schemes` and `benefit_snapshots`; template form state is stored in `project_template_states` with legacy `project_settings` fallback; template assets are stored as files plus `project_template_assets` metadata. The frontend `useSaveStore` tracks dirty scopes and only clears a scope after its registered domain handler returns the scopes it actually saved for the same workspace/project context. Template form failures must propagate to the global save handler; otherwise `template-forms` remains dirty.
+
+When opening an ICT project, the frontend must restore `project_lifecycle_states` current editor state before falling back to benefit scheme snapshots. This keeps global save / Ctrl+S edits, such as project background, independent from the older scheme snapshot history.
+
 On application launch, the view always defaults to the HubView (`"hub"`) to guarantee the user starts at the central tool selection panel, rather than automatically restoring the last active view. The `WorkspaceGate` component and view headers now support a standardized `← 返回集市` back-navigation to the Hub (across all entry views including Project Board and Data Management, in both active and inactive workspace states).
 
 ## Read order for new AI sessions

@@ -8,6 +8,10 @@ import { invoke } from "@tauri-apps/api/core";
 import WorkspaceGate from "../components/workspace/WorkspaceGate";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
 import { useProjectStore } from "../store/useProjectStore";
+import { useSaveStore } from "../store/useSaveStore";
+import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
+import { domainSaveService } from "../services/domainSaveService";
+import GlobalSaveButton from "../components/GlobalSaveButton";
 
 interface CandidateFile {
   name: string;
@@ -77,6 +81,11 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     selectAndCreateWorkspace,
     scanAndImportAllWorkspaceCalculations,
   } = useWorkspaceStore();
+  const markDirty = useSaveStore(state => state.markDirty);
+  const clearDirty = useSaveStore(state => state.clearDirty);
+  const registerSaveHandler = useSaveStore(state => state.registerSaveHandler);
+  const unregisterSaveHandler = useSaveStore(state => state.unregisterSaveHandler);
+  const { confirmOrSave } = useUnsavedChangesGuard();
   const [showWorkspaceOverview, setShowWorkspaceOverview] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
@@ -160,6 +169,47 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       setProjectStageFilter("全部");
     }
   }, [projectStageFilter, statusOptions]);
+
+  useEffect(() => {
+    if (!selectedProject?.id) {
+      unregisterSaveHandler("project-detail");
+      return;
+    }
+
+    registerSaveHandler("project-detail", async (context) => {
+      if (context.projectId !== selectedProject.id) {
+        throw new Error("项目已切换");
+      }
+      const result = await domainSaveService.saveProjectDetail(selectedProject.id, {
+        name: editingProjectName,
+        customerName: editingCustomerName,
+        status: editingStatus,
+        progress: selectedProject.progress || 0,
+        deadline: selectedProject.deadline || null,
+        note: noteDrafts[selectedProject.id] ?? selectedProject.note ?? null,
+      });
+      const projWithExists = { ...result, directoryExists: selectedProject.directoryExists };
+      setSelectedProject(projWithExists);
+      useProjectStore.getState().setCurrentProject(projWithExists);
+      setProjects(prev => prev.map(p => p.id === result.id ? projWithExists : p));
+      setStatusOptions(prev => {
+        const next = mergeStatusOptions(prev, [result]);
+        persistStatusOptions(next);
+        return next;
+      });
+      return { success: true, savedScopes: ["project-detail"] };
+    });
+
+    return () => unregisterSaveHandler("project-detail");
+  }, [
+    selectedProject,
+    editingProjectName,
+    editingCustomerName,
+    editingStatus,
+    noteDrafts,
+    registerSaveHandler,
+    unregisterSaveHandler,
+  ]);
 
   const handleToggleViewMode = (mode: "list" | "grid") => {
     setViewMode(mode);
@@ -352,6 +402,10 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   };
 
   const handleOpenDetails = async (project: Project) => {
+    if (selectedProject?.id && selectedProject.id !== project.id) {
+      const canProceed = await confirmOrSave();
+      if (!canProceed) return;
+    }
     setSelectedProject(project);
     useProjectStore.getState().setCurrentProject(project);
     setDetailTab('info');
@@ -411,11 +465,19 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     };
 
     try {
-      const result = await projectService.updateProject(updated);
+      const result = await domainSaveService.saveProjectDetail(updated.id, {
+        name: updated.name,
+        customerName: updated.customer_name,
+        status: updated.status,
+        progress: updated.progress || 0,
+        deadline: updated.deadline || null,
+        note: updated.note || null,
+      });
       const projWithExists = { ...result, directoryExists: selectedProject.directoryExists };
       setSelectedProject(projWithExists);
       useProjectStore.getState().setCurrentProject(projWithExists);
       setProjects(prev => prev.map(p => p.id === result.id ? projWithExists : p));
+      clearDirty("project-detail");
       setStatusOptions(prev => {
         const next = mergeStatusOptions(prev, [result]);
         persistStatusOptions(next);
@@ -586,6 +648,8 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       setIsNewSchemeModalOpen(false);
       const nameToUse = newSchemeName;
       setNewSchemeName("");
+      const canProceed = await confirmOrSave();
+      if (!canProceed) return;
       // Launch calculator with this project, and null schemeId, but passing the scheme name so it creates a new one!
       // To pass the new scheme name, we can store it in local storage or pass it.
       localStorage.setItem("lamber_new_scheme_name", nameToUse);
@@ -598,6 +662,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
 
   const handleProjectNoteChange = (projectId: string, value: string) => {
     setNoteDrafts(prev => ({ ...prev, [projectId]: value }));
+    markDirty("project-detail");
   };
 
   const handleProjectNoteBlur = async (project: Project) => {
@@ -605,16 +670,15 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     if ((project.note || "") === nextNote) return;
 
     try {
-      const updatedProject = await projectService.updateProject({
-        ...project,
+      const updatedProject = await domainSaveService.saveProjectDetail(project.id, {
         note: nextNote,
-        updated_at: new Date().toISOString(),
       });
       setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
       setNoteDrafts(prev => ({ ...prev, [updatedProject.id]: updatedProject.note || "" }));
       if (selectedProject?.id === updatedProject.id) {
         setSelectedProject(updatedProject);
       }
+      clearDirty("project-detail");
     } catch (err) {
       console.error("保存项目备注失败", err);
       alert("保存项目备注失败: " + err);
@@ -636,7 +700,6 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
         <textarea
           value={noteDrafts[project.id] ?? project.note ?? ""}
           onChange={(e) => handleProjectNoteChange(project.id, e.target.value)}
-          onBlur={() => handleProjectNoteBlur(project)}
           rows={compact ? 2 : 3}
           placeholder="填写客户背景、推进风险、下一步动作..."
           className={`mt-1 block w-full resize-none rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-200 focus:bg-white focus:ring-2 focus:ring-blue-100 ${
@@ -830,8 +893,10 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   const renderOpenCalcButton = (project: Project, id: string, compact = false) => (
     <button
       id={id}
-      onClick={(e) => {
+      onClick={async (e) => {
         e.stopPropagation();
+        const canProceed = await confirmOrSave();
+        if (!canProceed) return;
         onOpenCalc(project.id, project.default_scheme_id || null);
       }}
       className={`${compact ? "px-3 py-1.5" : "px-4 py-2"} group inline-flex shrink-0 items-center justify-center rounded-xl bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white dark:bg-blue-950/30 dark:text-blue-400 dark:hover:bg-blue-600 dark:hover:text-white border border-blue-100 dark:border-blue-900/40 text-xs font-bold shadow-sm transition-all active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200`}
@@ -973,6 +1038,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
         </div>
 
         <div className="flex items-center gap-2">
+          <GlobalSaveButton />
           <button
             onClick={handleOpenImportScanner}
             className="inline-flex items-center gap-1.5 bg-secondary hover:bg-muted text-secondary-foreground border border-input font-bold px-4 py-2 rounded-lg text-sm transition-all shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
@@ -1019,7 +1085,10 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
             <button
               type="button"
               disabled={workspaceLoading}
-              onClick={() => setShowWorkspaceOverview(true)}
+              onClick={async () => {
+                const canProceed = await confirmOrSave();
+                if (canProceed) setShowWorkspaceOverview(true);
+              }}
               className="rounded-md bg-card px-3 py-2 text-xs font-bold text-foreground shadow-sm disabled:opacity-50 hover:bg-muted transition-all duration-200"
             >
               切换工作区
@@ -1027,7 +1096,10 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
             <button
               type="button"
               disabled={workspaceLoading}
-              onClick={selectAndCreateWorkspace}
+              onClick={async () => {
+                const canProceed = await confirmOrSave();
+                if (canProceed) selectAndCreateWorkspace();
+              }}
               className="rounded-md bg-primary px-3 py-2 text-xs font-bold text-primary-foreground shadow-sm disabled:opacity-50 transition-all duration-200"
             >
               新建工作区
@@ -1829,7 +1901,10 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                       <input
                         type="text"
                         value={editingProjectName}
-                        onChange={(e) => setEditingProjectName(e.target.value)}
+                        onChange={(e) => {
+                          setEditingProjectName(e.target.value);
+                          markDirty("project-detail");
+                        }}
                         className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring"
                       />
                     </div>
@@ -1838,7 +1913,10 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                       <input
                         type="text"
                         value={editingCustomerName}
-                        onChange={(e) => setEditingCustomerName(e.target.value)}
+                        onChange={(e) => {
+                          setEditingCustomerName(e.target.value);
+                          markDirty("project-detail");
+                        }}
                         className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring"
                       />
                     </div>
@@ -1855,7 +1933,10 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                       </div>
                       <select
                         value={editingStatus}
-                        onChange={(e) => setEditingStatus(e.target.value)}
+                        onChange={(e) => {
+                          setEditingStatus(e.target.value);
+                          markDirty("project-detail");
+                        }}
                         className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring"
                       >
                         {!statusOptions.includes(editingStatus) && editingStatus && (
@@ -1953,7 +2034,11 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                           方案 「{selectedScheme.name}」 的历史测算快照 ({snapshots.length} 个版本)
                         </span>
                         <button
-                          onClick={() => onOpenCalc(selectedProject.id, selectedScheme.id)}
+                          onClick={async () => {
+                            const canProceed = await confirmOrSave();
+                            if (!canProceed) return;
+                            onOpenCalc(selectedProject.id, selectedScheme.id);
+                          }}
                           className="text-xs text-primary font-bold flex items-center gap-1 hover:underline"
                         >
                           <AppIcon name="calculator" size={12} /> 开展测算
@@ -1983,7 +2068,11 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                                 </div>
                               </div>
                               <button
-                                onClick={() => onOpenCalc(selectedProject.id, selectedScheme.id)}
+                                onClick={async () => {
+                                  const canProceed = await confirmOrSave();
+                                  if (!canProceed) return;
+                                  onOpenCalc(selectedProject.id, selectedScheme.id);
+                                }}
                                 className="self-end md:self-auto bg-secondary hover:bg-primary hover:text-primary-foreground font-bold px-3 py-1.5 rounded-lg border border-border/50 hover:border-transparent text-xs transition-all flex items-center gap-1"
                               >
                                 <AppIcon name="calculator" size={12} /> 加载并打开

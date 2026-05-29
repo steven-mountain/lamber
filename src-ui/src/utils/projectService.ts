@@ -186,7 +186,7 @@ export const projectService = {
     outputMetrics: any,
     isSaveAsNew: boolean
   ): Promise<Project> {
-    return invoke<Project>("save_benefit_scheme", {
+    return invoke<Project>("save_benefit_analysis", {
       projectId,
       schemeIdOpt,
       schemeName,

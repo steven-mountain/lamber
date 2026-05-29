@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import WorkspaceHeader from "../components/WorkspaceHeader";
+import { useRef } from "react";
 import AppIcon from "../components/icons/AppIcon";
 import TemplateForms from "./TemplateForms";
 import { useNavigationStore } from "../store/useNavigationStore";
@@ -19,13 +20,26 @@ import {
 } from "../utils/projectService";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
 import { useProjectStore } from "../store/useProjectStore";
+import { useSaveStore } from "../store/useSaveStore";
+import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
+import { domainSaveService } from "../services/domainSaveService";
 
 
 export default function IctLifecycle() {
   const { activeProjectId, activeSchemeId, entrySource, navigateTo } = useNavigationStore();
   const isWorkspaceReady = useWorkspaceStore(state => state.isWorkspaceReady);
+  const workspaceId = useWorkspaceStore(state => state.workspaceId);
   const state = useIctState();
   const calculations = useIctCalculations(state);
+  const markDirty = useSaveStore(saveState => saveState.markDirty);
+  const clearDirty = useSaveStore(saveState => saveState.clearDirty);
+  const registerSaveHandler = useSaveStore(saveState => saveState.registerSaveHandler);
+  const unregisterSaveHandler = useSaveStore(saveState => saveState.unregisterSaveHandler);
+  const dirtyScopes = useSaveStore(saveState => saveState.dirtyScopes);
+  const isSaving = useSaveStore(saveState => saveState.isSaving);
+  const lastSaveError = useSaveStore(saveState => saveState.lastSaveError);
+  const { confirmOrSave } = useUnsavedChangesGuard();
+  const isHydratingRef = useRef(false);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
@@ -172,17 +186,26 @@ export default function IctLifecycle() {
         setActiveScheme(null);
         setActiveSnapshot(null);
 
+        isHydratingRef.current = true;
         state.setProjName(project.name);
         state.setCustomerName(project.customer_name);
         if (project.discount_rate > 0) state.setDiscountRate(project.discount_rate);
         if (project.project_years > 0) state.setProjectYears(project.project_years);
         if (project.cashflow_model) state.setCashflowModel(project.cashflow_model as any);
+        setTimeout(() => {
+          isHydratingRef.current = false;
+          useSaveStore.getState().clearDirtyScopes(["lifecycle", "cashflow", "benefit-analysis"]);
+        }, 0);
         return;
       }
 
       setPendingNewSchemeName(null);
 
-      const projectSchemes = await projectService.getSchemes(project.id);
+      const fullState = await domainSaveService.loadProjectFullState(project.id).catch(error => {
+        console.warn("Failed to load project full state, fallback to legacy chain:", error);
+        return null;
+      });
+      const projectSchemes = fullState?.schemes || await projectService.getSchemes(project.id);
       let schemeToSelect: BenefitAnalysisScheme | null = null;
       if (targetSchemeId) {
         schemeToSelect = projectSchemes.find(s => s.id === targetSchemeId) || null;
@@ -191,31 +214,63 @@ export default function IctLifecycle() {
         schemeToSelect = projectSchemes.find(s => s.id === project.default_scheme_id) || projectSchemes[0] || null;
       }
 
+      const currentLifecycleInput = fullState?.lifecycleState?.inputPayloadJson;
+      const preferCurrentState = Boolean(currentLifecycleInput);
+
       if (schemeToSelect) {
         setActiveScheme(schemeToSelect);
         localStorage.setItem("lamber_active_scheme_id", schemeToSelect.id);
 
         const snapshots = await projectService.getSnapshots(schemeToSelect.id);
-        if (snapshots.length > 0) {
+        if (preferCurrentState) {
+          setActiveSnapshot(snapshots[0] || null);
+          isHydratingRef.current = true;
+          fillCalculatorState(currentLifecycleInput);
+          setTimeout(() => {
+            isHydratingRef.current = false;
+            useSaveStore.getState().clearDirtyScopes(["lifecycle", "cashflow", "benefit-analysis"]);
+          }, 0);
+        } else if (snapshots.length > 0) {
           const latestSnap = snapshots.reduce((latest, current) => current.version > latest.version ? current : latest, snapshots[0]);
           setActiveSnapshot(latestSnap);
+          isHydratingRef.current = true;
           fillCalculatorState(latestSnap.input_params);
+          setTimeout(() => {
+            isHydratingRef.current = false;
+            useSaveStore.getState().clearDirtyScopes(["lifecycle", "cashflow", "benefit-analysis"]);
+          }, 0);
         } else {
           setActiveSnapshot(null);
+          isHydratingRef.current = true;
+          state.setProjName(project.name);
+          state.setCustomerName(project.customer_name);
+          if (project.discount_rate > 0) state.setDiscountRate(project.discount_rate);
+          if (project.project_years > 0) state.setProjectYears(project.project_years);
+          if (project.cashflow_model) state.setCashflowModel(project.cashflow_model as any);
+          setTimeout(() => {
+            isHydratingRef.current = false;
+            useSaveStore.getState().clearDirtyScopes(["lifecycle", "cashflow", "benefit-analysis"]);
+          }, 0);
+        }
+      } else {
+        setActiveScheme(null);
+        setActiveSnapshot(null);
+        isHydratingRef.current = true;
+        if (currentLifecycleInput) {
+          fillCalculatorState(currentLifecycleInput);
+        } else if (fullState?.legacyLifecycleInput) {
+          fillCalculatorState(fullState.legacyLifecycleInput);
+        } else {
           state.setProjName(project.name);
           state.setCustomerName(project.customer_name);
           if (project.discount_rate > 0) state.setDiscountRate(project.discount_rate);
           if (project.project_years > 0) state.setProjectYears(project.project_years);
           if (project.cashflow_model) state.setCashflowModel(project.cashflow_model as any);
         }
-      } else {
-        setActiveScheme(null);
-        setActiveSnapshot(null);
-        state.setProjName(project.name);
-        state.setCustomerName(project.customer_name);
-        if (project.discount_rate > 0) state.setDiscountRate(project.discount_rate);
-        if (project.project_years > 0) state.setProjectYears(project.project_years);
-        if (project.cashflow_model) state.setCashflowModel(project.cashflow_model as any);
+        setTimeout(() => {
+          isHydratingRef.current = false;
+          useSaveStore.getState().clearDirtyScopes(["lifecycle", "cashflow", "benefit-analysis"]);
+        }, 0);
       }
     } catch (err) {
       console.error("Failed to load project context:", err);
@@ -237,7 +292,7 @@ export default function IctLifecycle() {
       const project = projects.find(p => p.id === targetProjectId);
       const schemeName = project ? `${project.name}_首次测算` : "测算方案";
 
-      const updatedProj = await projectService.saveBenefitScheme(
+      const updatedProj = await domainSaveService.saveBenefitAnalysis(
         targetProjectId,
         null,
         schemeName,
@@ -248,6 +303,7 @@ export default function IctLifecycle() {
 
       setPendingNewSchemeName(null);
       const newSchemeId = updatedProj.default_scheme_id || null;
+      clearDirty("benefit-analysis");
       navigateTo("ict_lifecycle", targetProjectId, newSchemeId);
       alert("保存测算成功！已关联到项目并生成方案。");
     } catch (error) {
@@ -268,7 +324,7 @@ export default function IctLifecycle() {
     try {
       const payload = calculations.buildInputDataPayload();
 
-      const updatedProj = await projectService.saveBenefitScheme(
+      const updatedProj = await domainSaveService.saveBenefitAnalysis(
         activeProject.id,
         schemeId,
         schemeName,
@@ -279,6 +335,7 @@ export default function IctLifecycle() {
 
       setPendingNewSchemeName(null);
       const newSchemeId = updatedProj.default_scheme_id || null;
+      clearDirty("benefit-analysis");
       await loadProjectContext(activeProject.id, newSchemeId);
       alert("保存测算成功！已更新项目指标并生成历史记录。");
     } catch (error) {
@@ -297,7 +354,7 @@ export default function IctLifecycle() {
 
     try {
       const payload = calculations.buildInputDataPayload();
-      const updatedProj = await projectService.saveBenefitScheme(
+      const updatedProj = await domainSaveService.saveBenefitAnalysis(
         activeProject.id,
         null,
         saveAsSchemeName.trim(),
@@ -311,6 +368,7 @@ export default function IctLifecycle() {
       setPendingNewSchemeName(null);
 
       const newSchemeId = updatedProj.default_scheme_id || null;
+      clearDirty("benefit-analysis");
       await loadProjectContext(activeProject.id, newSchemeId);
       alert("另存为新方案成功！");
     } catch (error) {
@@ -368,7 +426,143 @@ export default function IctLifecycle() {
     setActiveModule('ict');
   }, [setActiveModule]);
 
-  const handleTabSwitch = (tab: string, templateName?: string, forceIgnore = false) => {
+  useEffect(() => {
+    if (!activeProject?.id || !workspaceId) return;
+
+    registerSaveHandler("lifecycle", async (context) => {
+      if (context.workspaceId !== workspaceId || context.projectId !== activeProject.id) {
+        throw new Error("项目或工作区已切换");
+      }
+      const inputPayload = calculations.buildInputDataPayload();
+      await domainSaveService.saveLifecycleState(activeProject.id, {
+        profileJson: {
+          projectName: state.projName,
+          customerName: state.customerName,
+          propertyRights: state.propertyRights,
+        },
+        parametersJson: {
+          projectYears: state.projectYears,
+          discountRate: state.discountRate,
+          ignoreTailDifference: state.ignoredTailValue !== null,
+          tailDifferenceValue: state.ignoredTailValue,
+        },
+        backgroundJson: {
+          projectBackground: state.projectBackground,
+        },
+        inputPayloadJson: inputPayload,
+      });
+      return { success: true, savedScopes: ["lifecycle"] };
+    });
+
+    registerSaveHandler("cashflow", async (context) => {
+      if (context.workspaceId !== workspaceId || context.projectId !== activeProject.id) {
+        throw new Error("项目或工作区已切换");
+      }
+      await domainSaveService.saveCashflowState(activeProject.id, {
+        cashflowModel: state.cashflowModel,
+        paymentModelJson: {
+          cashflowModel: state.cashflowModel,
+          revDistribution: state.distRev,
+          costDistribution: state.distCost,
+          segmentValueMode: state.segmentValueMode,
+        },
+        yearlyCashflowJson: {
+          cashflowTable: calculations.cashflowTable,
+          directSegmentCashflow: calculations.directSegmentCashflow,
+        },
+        sectorCashflowJson: {
+          cashflowSegments: state.cashflowSegments,
+        },
+        assumptionsJson: {
+          projectYears: state.projectYears,
+          discountRate: state.discountRate,
+          revIt: state.revIt,
+          revCt: state.revCt,
+          revNonItCt: state.revNonItCt,
+          costIt: state.costIt,
+          costCt: state.costCt,
+          costMix: state.costMix,
+        },
+        metricsJson: calculations.metrics,
+      });
+      return { success: true, savedScopes: ["cashflow"] };
+    });
+
+    registerSaveHandler("benefit-analysis", async (context) => {
+      if (context.workspaceId !== workspaceId || context.projectId !== activeProject.id) {
+        throw new Error("项目或工作区已切换");
+      }
+      const inputPayload = calculations.buildInputDataPayload();
+      const schemeId = pendingNewSchemeName ? null : (activeScheme?.id || activeProject.default_scheme_id || null);
+      const schemeName = pendingNewSchemeName || activeScheme?.name || activeProject.name || "默认测算方案";
+      const updatedProject = await domainSaveService.saveBenefitAnalysis(
+        activeProject.id,
+        schemeId,
+        schemeName,
+        inputPayload,
+        calculations.metrics,
+        !!pendingNewSchemeName,
+      );
+      if (useProjectStore.getState().currentProject?.id === activeProject.id) {
+        useProjectStore.getState().setCurrentProject(updatedProject);
+      }
+      setActiveProject(updatedProject);
+      setProjects(prev => prev.map(project => project.id === updatedProject.id ? updatedProject : project));
+      setPendingNewSchemeName(null);
+      return { success: true, savedScopes: ["benefit-analysis"] };
+    });
+
+    return () => {
+      unregisterSaveHandler("lifecycle");
+      unregisterSaveHandler("cashflow");
+      unregisterSaveHandler("benefit-analysis");
+    };
+  }, [
+    activeProject?.id,
+    activeProject?.default_scheme_id,
+    activeProject?.name,
+    activeScheme?.id,
+    activeScheme?.name,
+    pendingNewSchemeName,
+    workspaceId,
+    registerSaveHandler,
+    unregisterSaveHandler,
+    calculations,
+    state,
+  ]);
+
+  useEffect(() => {
+    if (isHydratingRef.current || !activeProject?.id) return;
+    markDirty("lifecycle");
+  }, [activeProject?.id, markDirty, state.projName, state.customerName, state.propertyRights, state.projectBackground]);
+
+  useEffect(() => {
+    if (isHydratingRef.current || !activeProject?.id) return;
+    markDirty("cashflow");
+  }, [
+    activeProject?.id,
+    markDirty,
+    state.discountRate,
+    state.projectYears,
+    state.cashflowModel,
+    state.distRev,
+    state.distCost,
+    state.segmentValueMode,
+    state.cashflowSegments,
+    state.revIt,
+    state.revCt,
+    state.revNonItCt,
+    state.costIt,
+    state.costCt,
+    state.costMix,
+  ]);
+
+  const handleTabSwitch = async (tab: string, templateName?: string, forceIgnore = false) => {
+    if (templateName && templateName !== selectedTemplate && dirtyScopes.includes("template-forms")) {
+      const canProceed = await confirmOrSave();
+      if (!canProceed) return;
+    }
+
     const currentHash = JSON.stringify({ revIt, revCt, revNonItCt, costIt, costCt, costMix });
 
     if ((tab === 'cashflow' || tab === 'generate') && !forceIgnore) {
@@ -423,12 +617,23 @@ export default function IctLifecycle() {
     </div>
   );
 
+  const pageDirty = dirtyScopes.some(scope => ["lifecycle", "cashflow", "benefit-analysis", "template-forms"].includes(scope));
+  const saveStatusLabel = isSaving
+    ? "保存中..."
+    : lastSaveError
+      ? "保存失败，请重试"
+      : pageDirty
+        ? "● 未保存"
+        : "已保存";
+
   return (
     <div className="flex flex-col flex-1 animate-in fade-in duration-300 h-full overflow-hidden">
       <WorkspaceHeader
         moduleId="ict_lifecycle"
         title="ICT项目全生命周期"
-        onBack={() => {
+        onBack={async () => {
+          const canProceed = await confirmOrSave();
+          if (!canProceed) return;
           if (entrySource === "project_board") {
             navigateTo("project_board", activeProjectId, activeSchemeId);
           } else {
@@ -436,6 +641,38 @@ export default function IctLifecycle() {
           }
         }}
         onPathChange={() => loadTemplates()}
+        contextContent={
+          <div className="flex min-w-0 items-center gap-2 text-xs">
+            {activeProject ? (
+              <>
+                <span className="truncate font-extrabold text-foreground max-w-[180px]">{activeProject.name}</span>
+                <span className="truncate text-secondary-foreground max-w-[140px]">({activeProject.customer_name})</span>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                  activeProject.benefit_status === "normal"
+                    ? "bg-emerald-50 text-emerald-700"
+                    : activeProject.benefit_status === "outdated"
+                      ? "bg-amber-50 text-amber-700"
+                      : "bg-slate-100 text-slate-700"
+                }`}>
+                  效益状态: {activeProject.benefit_status === "normal" ? "最新" : activeProject.benefit_status === "outdated" ? "已失效" : "未测算"}
+                </span>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                  lastSaveError ? "bg-amber-50 text-amber-700" : pageDirty ? "bg-orange-50 text-orange-700" : "bg-emerald-50 text-emerald-700"
+                }`}>
+                  {saveStatusLabel}
+                </span>
+                <span className="min-w-0 truncate text-secondary-foreground">
+                  当前方案: <span className="font-semibold text-primary">{pendingNewSchemeName || activeScheme?.name || "默认方案"}</span>
+                  {activeSnapshot ? ` (v${activeSnapshot.version})` : ""}
+                </span>
+              </>
+            ) : (
+              <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold text-secondary-foreground">
+                自由测算模式
+              </span>
+            )}
+          </div>
+        }
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -502,8 +739,10 @@ export default function IctLifecycle() {
               </div>
               <div className="flex flex-wrap items-center gap-2.5 self-end lg:self-auto shrink-0">
                 <select
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const pid = e.target.value;
+                    const canProceed = await confirmOrSave();
+                    if (!canProceed) return;
                     if (pid === "free") {
                       navigateTo("ict_lifecycle", null, null);
                     } else {
@@ -554,9 +793,11 @@ export default function IctLifecycle() {
               </div>
               <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
                 <select
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const pid = e.target.value;
                     if (pid) {
+                      const canProceed = await confirmOrSave();
+                      if (!canProceed) return;
                       navigateTo("ict_lifecycle", pid, null);
                     }
                   }}
@@ -874,7 +1115,10 @@ export default function IctLifecycle() {
                 required
                 placeholder="例如：方案 B、第二轮测算"
                 value={saveAsSchemeName}
-                onChange={(e) => setSaveAsSchemeName(e.target.value)}
+                onChange={(e) => {
+                  setSaveAsSchemeName(e.target.value);
+                  markDirty("benefit-analysis");
+                }}
                 className="bg-card border border-input px-3 py-2 rounded-lg text-xs outline-none focus:border-ring w-full"
               />
             </div>

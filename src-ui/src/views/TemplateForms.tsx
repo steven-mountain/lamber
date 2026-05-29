@@ -6,6 +6,9 @@ import { useAiContextStore } from "../store/useAiContextStore"
 import { buildAiContextKey } from "../utils/aiContextKeys"
 import { projectFileService } from "../services/projectFileService"
 import { projectService } from "../utils/projectService"
+import { domainSaveService } from "../services/domainSaveService"
+import { useSaveStore } from "../store/useSaveStore"
+import { useWorkspaceStore } from "../store/useWorkspaceStore"
 
 interface Props {
   selectedTemplate: string;
@@ -95,6 +98,11 @@ export default function TemplateForms({
   onGenerated
 }: Props) {
   const formRef = useRef<HTMLFormElement>(null)
+  const markDirty = useSaveStore(state => state.markDirty)
+  const clearDirty = useSaveStore(state => state.clearDirty)
+  const registerSaveHandler = useSaveStore(state => state.registerSaveHandler)
+  const unregisterSaveHandler = useSaveStore(state => state.unregisterSaveHandler)
+  const workspaceId = useWorkspaceStore(state => state.workspaceId)
 
   // Specific state for dynamic toggles
   const [projectScale, setProjectScale] = useState<ProjectScale>("large")
@@ -188,6 +196,7 @@ export default function TemplateForms({
     const target = e.target;
     if (target && target.name && target.name.startsWith('gen_')) {
       formDataRef.current[target.name] = target.value;
+      setFormData({ ...formDataRef.current });
       if (target.name === 'gen_project_scale') {
         setProjectScale(normalizeProjectScale(target.value));
       }
@@ -248,6 +257,7 @@ export default function TemplateForms({
     setAttach1Images([]);
     setAttach2Images([]);
     formDataRef.current = {};
+    setFormData({});
     if (formRef.current) {
       formRef.current.reset();
     }
@@ -265,9 +275,9 @@ export default function TemplateForms({
     }
     isLoadingRef.current = true;
     try {
-      const rawVal = await projectService.getProjectSetting(projectId, "template_form_data::" + selectedTemplate);
-      if (rawVal) {
-        const parsed = JSON.parse(rawVal);
+      const savedState = await domainSaveService.loadTemplateState(projectId, selectedTemplate);
+      if (savedState?.filledDataJson) {
+        const parsed = savedState.filledDataJson as any;
         if (parsed.itContent !== undefined) setItContent(parsed.itContent);
         if (parsed.ctContent !== undefined) setCtContent(parsed.ctContent);
         if (parsed.midThreeCode !== undefined) setMidThreeCode(parsed.midThreeCode);
@@ -290,6 +300,7 @@ export default function TemplateForms({
         
         if (parsed.formData) {
           formDataRef.current = { ...parsed.formData };
+          setFormData({ ...parsed.formData });
           if (formRef.current) {
             setTimeout(() => {
               if (formRef.current) {
@@ -304,6 +315,7 @@ export default function TemplateForms({
           }
         } else {
           formDataRef.current = {};
+          setFormData({});
         }
 
         if (parsed.inqVendors) {
@@ -344,16 +356,14 @@ export default function TemplateForms({
     return Promise.all(imagesList.map(async (img) => {
       if (!img.assetId && img.data && img.data.startsWith("data:image/")) {
         try {
-          const assetId = await projectService.saveTemplateAsset(
-            projectId,
-            selectedTemplate,
-            "image",
-            typeName,
-            "migrated_image",
-            img.data,
-            img.width || null,
-            img.height || null
-          );
+          const assetId = await domainSaveService.saveTemplateAsset(projectId, selectedTemplate, {
+            assetType: "image",
+            usage: typeName,
+            originalFileName: "migrated_image",
+            base64Data: img.data,
+            width: img.width || null,
+            height: img.height || null,
+          });
           return {
             assetId,
             data: img.data,
@@ -369,8 +379,11 @@ export default function TemplateForms({
     }));
   };
 
-  const autoSaveFormSettings = async () => {
-    if (!projectId || !selectedTemplate || isLoadingRef.current) return;
+  const autoSaveFormSettings = async (options: { throwOnError?: boolean } = {}) => {
+    if (!projectId || !selectedTemplate || isLoadingRef.current) {
+      if (options.throwOnError) throw new Error("模板表单尚未准备好，无法保存");
+      return false;
+    }
 
     const migratedAttach1 = await ensureAllImagesMigrated(attach1Images, "attach1");
     const migratedAttach2 = await ensureAllImagesMigrated(attach2Images, "attach2");
@@ -444,11 +457,76 @@ export default function TemplateForms({
     };
 
     try {
-      await projectService.saveProjectSetting(projectId, "template_form_data::" + selectedTemplate, JSON.stringify(payload));
+      await domainSaveService.saveTemplateState(projectId, selectedTemplate, {
+        templateName: selectedTemplate,
+        templateType: selectedTemplate.endsWith(".xlsx") ? "excel" : "word",
+        templatePath: selectedTemplate,
+        templatePathType: "module",
+        filledDataJson: payload,
+        fieldMappingJson: {},
+        outputConfigJson: { outputDir: outputDir || null },
+      });
+      clearDirty("template-forms");
+      return true;
     } catch (err) {
       console.error("Failed to auto-save template settings", err);
+      if (options.throwOnError) {
+        throw err;
+      }
+      return false;
     }
   };
+
+  useEffect(() => {
+    if (!projectId || !selectedTemplate) return;
+    const registeredWorkspaceId = workspaceId;
+    const registeredProjectId = projectId;
+    const registeredTemplate = selectedTemplate;
+    registerSaveHandler("template-forms", async (context) => {
+      if (context.workspaceId !== registeredWorkspaceId || context.projectId !== registeredProjectId || selectedTemplate !== registeredTemplate) {
+        throw new Error("模板、项目或工作区已切换");
+      }
+      await autoSaveFormSettings({ throwOnError: true });
+      return { success: true, savedScopes: ["template-forms"] };
+    });
+    return () => unregisterSaveHandler("template-forms");
+  }, [
+    projectId,
+    selectedTemplate,
+    workspaceId,
+    registerSaveHandler,
+    unregisterSaveHandler,
+    autoSaveFormSettings,
+  ]);
+
+  useEffect(() => {
+    if (!projectId || !selectedTemplate || isLoadingRef.current) return;
+    markDirty("template-forms");
+  }, [
+    projectId,
+    selectedTemplate,
+    markDirty,
+    itContent,
+    ctContent,
+    midThreeCode,
+    midThreeName,
+    itBusMode,
+    itFundSrc,
+    revCollection,
+    expPayment,
+    selfThreeValue,
+    projectScale,
+    hasMidThree,
+    hasSingleSource,
+    procurementMethod,
+    hasPublicUrl,
+    hasSecurity,
+    techItems,
+    inqVendors,
+    attach1Images,
+    attach2Images,
+    syncTrigger
+  ]);
 
   useEffect(() => {
     if (!projectId || !selectedTemplate || isLoadingRef.current) return;
@@ -668,16 +746,14 @@ export default function TemplateForms({
           
           if (projectId) {
             try {
-              const assetId = await projectService.saveTemplateAsset(
-                projectId,
-                selectedTemplate,
-                "image",
-                typeName,
-                file.name || "pasted_image",
+              const assetId = await domainSaveService.saveTemplateAsset(projectId, selectedTemplate, {
+                assetType: "image",
+                usage: typeName,
+                originalFileName: file.name || "pasted_image",
                 base64Data,
-                w,
-                h
-              );
+                width: w,
+                height: h,
+              });
               setImages((prev: any) => [...prev, {
                 assetId,
                 data: base64Data,

@@ -3,6 +3,7 @@ import { Clock3, Database, FolderOpen, X } from "lucide-react";
 import { useWorkspaceStore } from "../../store/useWorkspaceStore";
 import { useProjectStore } from "../../store/useProjectStore";
 import { workspaceService, parseWorkspaceError } from "../../utils/workspaceService";
+import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
 
 interface WorkspaceGateProps {
   compact?: boolean;
@@ -39,6 +40,7 @@ export default function WorkspaceGate({
 
   const [localError, setLocalError] = useState<string | null>(null);
   const [localLoading, setLocalLoading] = useState(false);
+  const { confirmOrSave } = useUnsavedChangesGuard();
 
   const error = localError || storeError;
   const isLoading = localLoading || storeLoading;
@@ -48,6 +50,8 @@ export default function WorkspaceGate({
       onCurrentWorkspaceSelected?.();
       return;
     }
+    const canProceed = await confirmOrSave();
+    if (!canProceed) return;
     setLocalError(null);
     try {
       await openRecentWorkspace(path);
@@ -60,6 +64,8 @@ export default function WorkspaceGate({
   const handleSelectFolder = async () => {
     setLocalError(null);
     try {
+      const canProceed = await confirmOrSave();
+      if (!canProceed) return;
       const path = await workspaceService.selectFolder();
       if (!path) return;
 
@@ -125,6 +131,8 @@ export default function WorkspaceGate({
   };
 
   const handleConfirmImport = async (importProjects: boolean) => {
+    const canProceed = await confirmOrSave();
+    if (!canProceed) return;
     setLocalLoading(true);
     setLocalError(null);
     try {

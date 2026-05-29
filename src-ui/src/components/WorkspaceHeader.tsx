@@ -1,14 +1,17 @@
+import type { ReactNode } from "react";
 import { useModulePath } from "../hooks/useModulePath";
 import AppIcon from "./icons/AppIcon";
+import GlobalSaveButton from "./GlobalSaveButton";
 
 interface WorkspaceHeaderProps {
   moduleId: string;
   title: string;
   onBack: () => void;
   onPathChange?: (newPath: string) => void;
+  contextContent?: ReactNode;
 }
 
-export default function WorkspaceHeader({ moduleId, title, onBack, onPathChange }: WorkspaceHeaderProps) {
+export default function WorkspaceHeader({ moduleId, title, onBack, onPathChange, contextContent }: WorkspaceHeaderProps) {
   const { path, isLoading, updatePath } = useModulePath(moduleId);
 
   const handleUpdate = async () => {
@@ -28,6 +31,14 @@ export default function WorkspaceHeader({ moduleId, title, onBack, onPathChange 
           <span>←</span> 返回集市
         </button>
         <h2 className="m-0 text-lg font-bold text-foreground border-l-2 border-border pl-4">{title}</h2>
+        {contextContent && (
+          <div className="min-w-0 flex-1 px-4">
+            {contextContent}
+          </div>
+        )}
+        <div className="ml-auto">
+          <GlobalSaveButton />
+        </div>
       </div>
 
       <div className="px-8 py-4 bg-secondary/30 border-b border-border flex items-center justify-between animate-in slide-in-from-top duration-300">

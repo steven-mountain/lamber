@@ -1,6 +1,6 @@
 # ARCHITECTURE_MAP.md
 
-Last updated: 2026-05-28 (Updated Workspace Structure)
+Last updated: 2026-05-28 (Workspace Save Boundaries)
 
 ## 1. Repository overview
 
@@ -70,6 +70,21 @@ graph TD
 
 ## 4. Core data flows
 
+### 4.0 Domain save boundaries
+
+Phase 3 introduces explicit project-state save domains:
+
+- `projects`: project identity, board metadata, folder links, and summary metrics.
+- `project_lifecycle_states`: current ICT lifecycle editor profile, parameters, background, and structured input payload.
+- `project_cashflow_states`: current funding model, payment model, yearly cashflow, sector cashflow, assumptions, and metrics.
+- `benefit_schemes` / `benefit_snapshots`: named benefit方案 metadata and historical calculation snapshots.
+- `project_template_states`: template form field values, field mappings, template binding metadata, and output configuration.
+- `project_template_assets`: file-backed template images/attachments and metadata.
+
+Frontend global save goes through `domainSaveService` and `useSaveStore` registered handlers. The save store does not read business component state directly; each mounted page registers the handler responsible for serializing its current local state.
+
+Each save handler returns the dirty scopes it actually persisted. `useSaveStore.saveCurrentProject()` snapshots workspace/project/dirty scopes at save start, rejects unregistered scopes, keeps failed scopes dirty, and re-checks workspace/project before clearing anything. Template forms use the same store: ordinary autosave may clear `template-forms` after success, while Ctrl/Command+S and the global save button must receive a failing handler result if template state or asset-reference persistence fails.
+
 ### 4.1 Project Board data flow
 1. User creates a new project or edits a card on the board.
 2. React invokes Tauri commands (`create_project_in_workspace` for creation, `update_project` for updates).
@@ -79,7 +94,7 @@ graph TD
 ### 4.2 Project to Benefit Analysis flow
 1. A project is associated with multiple `BenefitAnalysisScheme` records.
 2. Each scheme has multiple versioned `BenefitAnalysisSnapshot` records (retaining the full JSON structure of inputs and outputs).
-3. The latest snapshot's `inputParams` (containing core cashflow models, tax options, and project background) are serialized and back-filled into React states when launching the calculator.
+3. When launching the calculator, current editor state from `project_lifecycle_states` is preferred over scheme snapshots so global save / Ctrl+S changes are restored even when a default scheme id is present. If no current lifecycle state exists, the latest snapshot's `inputParams` is used as compatibility fallback.
 4. The project's root record caches `summary_metrics` (margins, NPV, risk level) from the selected default scheme.
 
 ### 4.3 Funding model to Cashflow flow

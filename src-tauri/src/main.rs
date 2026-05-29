@@ -5,6 +5,7 @@ mod config_manager;
 mod db;
 mod docfill;
 mod migration;
+mod project_state;
 mod project_files;
 mod workspace;
 
@@ -145,6 +146,19 @@ fn main() {
             project_files::commands::cleanup_orphan_template_assets,
             project_files::commands::get_project_setting,
             project_files::commands::save_project_setting,
+            project_state::save_project_detail,
+            project_state::get_project_detail,
+            project_state::save_lifecycle_state,
+            project_state::get_lifecycle_state,
+            project_state::save_cashflow_state,
+            project_state::get_cashflow_state,
+            project_state::save_benefit_analysis,
+            project_state::get_benefit_schemes,
+            project_state::save_template_state,
+            project_state::get_template_state,
+            project_state::list_template_states,
+            project_state::list_template_assets,
+            project_state::get_project_full_state,
             workspace::get_workspace_state,
             workspace::inspect_workspace_path,
             workspace::select_workspace_folder,
