@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Clock3, Database, FolderOpen, X } from "lucide-react";
 import { useWorkspaceStore } from "../../store/useWorkspaceStore";
 import { useProjectStore } from "../../store/useProjectStore";
 import { workspaceService, parseWorkspaceError } from "../../utils/workspaceService";
 import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
+import { workspaceMaintenanceService } from "../../services/workspaceMaintenanceService";
 
 interface WorkspaceGateProps {
   compact?: boolean;
@@ -114,6 +116,31 @@ export default function WorkspaceGate({
     }
   };
 
+  const handleImportArchive = async () => {
+    setLocalError(null);
+    try {
+      const canProceed = await confirmOrSave();
+      if (!canProceed) return;
+      const zipPath = await invoke<string | null>("select_local_file", {
+        title: "选择 .lamber.zip 工作区压缩包",
+        extensions: ["zip", "lamber.zip"],
+      });
+      if (!zipPath) return;
+      const targetDir = await workspaceService.selectFolder();
+      if (!targetDir) return;
+
+      setLocalLoading(true);
+      useProjectStore.getState().clearCurrentProject();
+      await workspaceMaintenanceService.importWorkspace(zipPath, targetDir, true, "rename");
+      await useWorkspaceStore.getState().refreshWorkspaceState();
+      onWorkspaceChanged?.();
+    } catch (err) {
+      setLocalError(parseWorkspaceError(err).message);
+    } finally {
+      setLocalLoading(false);
+    }
+  };
+
   const handleToggleCandidate = (candidate: string) => {
     setSelectedCandidates(prev =>
       prev.includes(candidate)
@@ -184,6 +211,15 @@ export default function WorkspaceGate({
             >
               <FolderOpen className="h-4 w-4" />
               打开目录 / 初始化工作区
+            </button>
+            <button
+              type="button"
+              disabled={isLoading}
+              onClick={handleImportArchive}
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              <Database className="h-4 w-4" />
+              导入 .lamber.zip
             </button>
           </div>
         </div>

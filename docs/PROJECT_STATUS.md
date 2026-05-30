@@ -1,8 +1,66 @@
 # PROJECT_STATUS.md
 
-Last updated: 2026-05-28 (Workspace Save Boundaries)
+Last updated: 2026-05-31 (Workspace Management UI Separation)
 
-## 0. Latest persistence update
+## 0. Latest global workspace management
+
+The Data Management Center now includes a global "associated workspaces" list backed by local `recentWorkspaces`. Users can open, reveal, or unlink any remembered Workspace from this list. Unlinking only removes the local association from `config.json`; it never deletes the Workspace folder, `.lamber.sqlite`, or project files on disk.
+
+If the unlinked Workspace is currently open, the frontend runs the unsaved-change guard first, then the backend clears the active `WorkspaceRuntime` and database connection and removes `lastOpenedWorkspacePath`. Non-current Workspace unlinking only updates the recent list.
+
+The associated Workspace list is now separated into its own "Workspace Management" tab in Data Management and uses the same card-based visual pattern as the Project Board workspace picker. Current-workspace maintenance actions remain in the separate "Workspace Maintenance" tab.
+
+Workspace Management cards behave as local selection targets: clicking a card only highlights it and must not open the Workspace or reorder the recent Workspace list. Opening, revealing, and unlinking remain explicit inline button actions. The inline "open" action enters the selected Workspace's Project Board after the Workspace is active.
+
+## 0.1 Latest workspace import argument guard
+
+Workspace archive import now calls the frontend maintenance service with explicit arguments (`zipPath`, `targetDir`, `openAfterImport`, `conflictStrategy`, `destinationName`) instead of passing an options object through call sites. The Rust command also receives `openAfterImport` as JSON and normalizes either a boolean or an accidentally nested map before constructing `ImportWorkspaceOptions`; missing or malformed nested booleans default to `false` so import is not blocked before archive validation runs.
+
+## 0.2 Latest workspace export reveal target
+
+After a Workspace export completes, the Data Management Center opens the exported archive's containing directory instead of sending the archive path directly as the folder target. The backend file-manager reveal command also uses a simpler Windows Explorer `/select,PATH` argument format for file selection, avoiding failures that can fall back to the desktop or computer root view.
+
+## 0.3 Latest Windows workspace system hidden attributes
+
+Workspace system files and directories now use Windows Hidden file attributes in addition to dot-prefixed names. Opening, creating, initializing, importing, backing up, exporting, repairing, or creating `.projects` asset storage marks `.lamber.workspace.json`, `.lamber.sqlite`, `.backups`, `.exports`, and `.projects` as hidden on Windows, while keeping macOS/Linux behavior based on dot prefixes.
+
+## 0.4 Latest workspace initialization nonblocking scan
+
+Initializing an existing plain directory as a Workspace now commits project rows, releases the SQLite transaction lock, and returns the opened Workspace before project folder scanning and automatic Excel calculation import run in a background task. This prevents the initialization dialog and recent workspace cards from staying disabled when folder scanning or Excel parsing touches large user files.
+
+## 0.5 Latest workspace import flat arguments
+
+Workspace archive import now uses flat Tauri IPC arguments: `openAfterImport`, `conflictStrategy`, and `destinationName`. The frontend no longer sends a nested `options` object, and the backend no longer keeps the legacy boolean `options` compatibility path because the app has not been publicly released.
+
+The selected import folder is treated as the parent destination. By default, importing creates `{selectedFolder}/{workspaceName}` and then handles conflicts using the configured strategy, rather than extracting `.lamber.workspace.json` and `.lamber.sqlite` directly into the selected folder.
+
+## 0.6 Latest workspace backup cleanup UI
+
+The Data Management Center backup list now supports deleting a single SQLite backup and clearing all backups currently shown in the list. These actions call the existing workspace backup deletion command and only remove backup files under the workspace backup area; they do not modify the active `.lamber.sqlite` database.
+
+## 0.7 Latest standalone module cleanup
+
+The Hub no longer exposes the standalone "Investment Benefit Analysis" and "Document Material Production" modules. Their dedicated frontend views, navigation routes, AI active scopes, quick actions, and standalone Tauri commands were removed.
+
+The shared ICT lifecycle calculation engine, project-board Excel import path, template-form document generation path, `parse_benefit_excel`, `generate_lifecycle_docs`, and `get_available_templates` remain active because they are used by Project Board and ICT Lifecycle workflows.
+
+Legacy app-level module path records for retired `benefit_tool` and `docfill_tool` modules are ignored by workspace external-path reporting so stale paths do not appear as repairable workspace health issues.
+
+## 0.8 Latest workspace portability update
+
+Workspace refactoring phase 4 adds local portability maintenance for flat Lamber Workspace roots. A workspace remains copyable as a folder: project directories live directly under `workspaceRoot/{safeProjectName}/`, while system entries use reserved names such as `.lamber.workspace.json`, `.lamber.sqlite`, `.backups`, `.exports`, `.projects`, `backups`, `exports`, and `projects`. New project creation and workspace health checks must reject or flag project folders that collide with those reserved entries.
+
+The backend now includes workspace maintenance commands for daily/manual SQLite backups, safe backup restore, read-only health checks, repair actions, external path inspection, dry-run path conversion, `.lamber.zip` export, `.lamber.zip` validation/import, and file-manager reveal. Export archives use the workspace root as the zip root, preserve `workspaceId`, include `.lamber.workspace.json`, a consistent `.lamber.sqlite` copy, `.projects/`, project folders, and `export-manifest.json`, and exclude `.backups` / `.exports` by default unless explicitly requested. Import preserves `workspaceId` as a migration/restore of the same workspace and supports both direct-root archives and archives with one top-level wrapper directory.
+
+Health checking is read-only. It reports missing system/project directories, reserved-name conflicts, absolute internal paths, external paths, missing template assets, unregistered project manifests, database integrity/schema issues, and orphan or malformed records across `project_lifecycle_states`, `project_cashflow_states`, `project_template_states`, `project_template_assets`, `benefit_schemes`, and `benefit_snapshots`. Repair commands are separate, require explicit user action, and create a database backup before modifying files or data.
+
+Project manifest repair uses the same directory resolution fallback as health checking: `relative_path`, `linked_folder_relative_path`, `folder_path`, then `folder_name`. This keeps older or imported flat workspace projects repairable even when `relative_path` has not been backfilled yet.
+
+Module workspace paths (`module_path:*`) that point outside the active Workspace are repairable by resetting the module base directory to `.projects/modules/{moduleId}` inside the current Workspace and creating `templates/` and `output/`. This repair changes the app-level module configuration but does not move or delete files from the old external directory.
+
+Template asset storage now resolves current workspace-relative paths first. New internal project assets are written inside the active workspace, with `.projects/{projectId}/assets` used as the fallback for external project folders. Legacy AppData asset lookup is kept only as a read fallback, not as the preferred write location.
+
+## 0.9 Latest persistence update
 
 Workspace refactoring phase 3 separates current project editing state from scheme snapshots. Project detail updates remain in `projects`; ICT lifecycle editor state is saved in `project_lifecycle_states`; funding models, assumptions, cashflow tables, sector cashflows, and metrics are saved in `project_cashflow_states`; benefit方案 history remains in `benefit_schemes` / `benefit_snapshots`; template field values, mappings, and output configuration are saved in `project_template_states` with compatibility fallback to legacy `project_settings` keys. Template binary/image assets continue to use `project_template_assets` and file-backed storage.
 
@@ -12,7 +70,7 @@ Opening an ICT project now restores current lifecycle editor state from `project
 
 ## 1. Project summary
 
-Lamber is a lightweight sales support and project management desktop tool designed for client managers and solution experts in the 5G/ICT domains. It addresses the inefficiencies of manual financial calculations, document generation, and project folder tracking by consolidating ICT project lifecycle assessment, benefit calculator, contract template filling (Word), economic evaluation sheets (Excel), and local files scanning into a single Tauri-based application.
+Lamber is a lightweight sales support and project management desktop tool designed for client managers and solution experts in the 5G/ICT domains. It addresses the inefficiencies of manual financial calculations, document generation, and project folder tracking by consolidating project board management, ICT lifecycle and cashflow assessment, workspace-backed template filling, Excel parsing/import, and local file scanning into a single Tauri-based application.
 
 ## 2. Tech stack
 
@@ -23,12 +81,12 @@ Lamber is a lightweight sales support and project management desktop tool design
   - AI Context: `useAiContextStore` (Zustand + local storage + Tauri events)
   - Layout & view modes: Local storage (`lamber_project_board_view_mode`, etc.)
 - **Database/Persistence**: SQLite (via `rusqlite` with `bundled` feature) for structured relational tables, alongside dynamic `projects_store.json` backward compatibility
-- **Workspace Runtime**: Business data is now scoped to an explicit Lamber Workspace root containing hidden system files `.lamber.workspace.json`, `.lamber.sqlite`, `.backups/`, and `.exports/`. Project folders (e.g. `项目A`, `项目B`) are placed directly inside the workspace root without an intermediate `projects/` layer. The app remembers `recentWorkspaces` and `lastOpenedWorkspacePath` in local AppConfig. It supports initializing an existing general project root directory as a Lamber Workspace and bulk importing eligible first-level subdirectories as workspace internal projects (with automatic creation of `project.json` and assets/documents/analyses folders). Accessing workspace-backed features without a workspace redirects to `WorkspaceGate` with matching headers, which now provides a standardized '← 返回集市' back button to return to the Hub (across all entry views including Project Board and Data Management, both when workspace is active or inactive).
+- **Workspace Runtime**: Business data is now scoped to an explicit Lamber Workspace root containing hidden system files `.lamber.workspace.json`, `.lamber.sqlite`, `.backups/`, `.exports/`, and `.projects/`. Project folders (e.g. `项目A`, `项目B`) are placed directly inside the workspace root without an intermediate `projects/` layer. The app remembers `recentWorkspaces` and `lastOpenedWorkspacePath` in local AppConfig, with recent workspace records deduplicated primarily by path. Data Management exposes this local association list so users can open, reveal, or unlink remembered workspaces without deleting the physical workspace folders. It supports initializing an existing general project root directory as a Lamber Workspace and bulk importing eligible first-level subdirectories as workspace internal projects (with automatic creation of `project.json` and assets/documents/analyses folders). Accessing workspace-backed features without a workspace redirects to `WorkspaceGate` with matching headers, which now provides a standardized '← 返回集市' back button to return to the Hub (across all entry views including Project Board and Data Management, both when workspace is active or inactive).
 - **Styling**: Tailwind CSS + Shadcn/UI (Radix UI) + HSL-based design system
 - **AI integration**: Local SSE streaming client (Ollama / OpenAI standard endpoint) with semantic Markdown context serialization
 - **File handling**:
   - Word variable replacement: Backend Rust `docx-template`
-  - Excel template filling/parsing: Backend Rust `calamine` + `umya-spreadsheet` + `rust_xlsxwriter`
+  - Excel template filling/parsing: Backend Rust `calamine` + `umya-spreadsheet`
   - Local directory opening: Native OS process spawning (`explorer` on Windows, `open` on macOS)
 - **Build tools**: npm + cargo (Tauri CLI)
 
@@ -56,18 +114,7 @@ Lamber is a lightweight sales support and project management desktop tool design
   - [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx)
   - [calculator.rs](../src-tauri/src/benefit/calculator.rs)
 
-### 3.3 Investment Benefit Analysis (项目效益分析)
-
-**Status**: Active (Fully Implemented)
-
-- **Current behavior**: Standalone benefit tool `BenefitTool.tsx` allowing single-item custom parameter calculations and batch Excel files processing using `process_excel_batch`.
-- **Known requirements**: Excel batch processing outputs files into the workspace `output/` directory.
-- **Known issues**: Batch processor requires Excel headers to match exact templates.
-- **Related files**:
-  - [BenefitTool.tsx](../src-ui/src/views/BenefitTool.tsx)
-  - [excel.rs](../src-tauri/src/benefit/excel.rs)
-
-### 3.4 AI Assistant (Lamber 智能顾问)
+### 3.3 AI Assistant (Lamber 智能顾问)
 
 **Status**: Active (Fully Implemented)
 
@@ -79,11 +126,11 @@ Lamber is a lightweight sales support and project management desktop tool design
   - [useAiContextStore.ts](../src-ui/src/store/useAiContextStore.ts)
   - [AiRuntime.ts](../src-ui/src/ai/AiRuntime.ts)
 
-### 3.5 File / Excel / Word Integration (文件及模板集成)
+### 3.4 File / Excel / Word Integration (文件及模板集成)
 
 **Status**: Active (Fully Implemented)
 
-- **Current behavior**: Scans directories for docx/xlsx files. Back-fills form fields (from `TemplateForms.tsx`) into files via Rust backend. Word templates are generated via `docx-template`. Excels can be filled or parsed back (via `parse_benefit_excel`, which resolves workspace-relative paths against the active workspace root) to overwrite project states. Supports sandbox "copied" files or raw disk "linked" files. Template forms (`TemplateForms.tsx`) and embedded image resources are persisted separately: lightweight forms/table settings are saved in `project_settings` (under key `template_form_data::<template_name>`), while pasted/dropped images are uploaded instantly to project assets sandboxes (bound project folder under `{project_name}-图片/assets/` if linked, otherwise falling back to `{app_data_dir}/projects/{project_id}/assets/`) and tracked in the `project_template_assets` metadata table. Document generation reads binary contents directly from sandbox files via backend validation. Automatically imports Excel calculations: when a folder scan is triggered (manually, via folder binding, or during workspace project bulk initialization), if the project has 0 schemes, it filters for Excel files whose names start with "效益分析表" and end with ".xlsx"/".xls", chooses the newest one by modification date, parses its economic parameters, and saves it as the default scheme "Excel导入测算方案".
+- **Current behavior**: Scans directories for docx/xlsx files. Back-fills form fields (from `TemplateForms.tsx`) into files via Rust backend. Word templates are generated via `docx-template`. Excels can be filled or parsed back (via `parse_benefit_excel`, which resolves workspace-relative paths against the active workspace root) to overwrite project states. Supports sandbox "copied" files or raw disk "linked" files. Template forms (`TemplateForms.tsx`) and embedded image resources are persisted separately: lightweight forms/table settings are saved in `project_settings` (under key `template_form_data::<template_name>`), while pasted/dropped images are uploaded instantly to project assets sandboxes (bound project folder under `{project_name}-图片/assets/` if linked, otherwise falling back to `.projects/{project_id}/assets/` inside the active workspace) and tracked in the `project_template_assets` metadata table. Document generation reads binary contents directly from sandbox files via backend validation. Automatically imports Excel calculations: when a folder scan is triggered (manually, via folder binding, or during workspace project bulk initialization), if the project has 0 schemes, it filters for Excel files whose names start with "效益分析表" and end with ".xlsx"/".xls", chooses the newest one by modification date, parses its economic parameters, and saves it as the default scheme "Excel导入测算方案".
 - **Known requirements**: Scan timestamps are updated without modifying physical files.
 - **Known issues**: Cell coordinates mapping in Excel template is fragile if the spreadsheet structure changes.
 - **Related files**:
@@ -91,11 +138,11 @@ Lamber is a lightweight sales support and project management desktop tool design
   - [docfill.rs](../src-tauri/src/docfill.rs)
   - [project_files/service.rs](../src-tauri/src/project_files/service.rs)
 
-### 3.6 Data Management Center & Path Resilience (数据管理中心与路径韧性)
+### 3.5 Data Management Center & Path Resilience (数据管理中心与路径韧性)
 
-**Status**: Active (Fully Implemented in Phase 2)
+**Status**: Active (Workspace Maintenance extended in Phase 4)
 
-- **Current behavior**: Avoids hardcoded absolute paths by employing global project roots (`project_roots`), relative paths (`project_directories`), and file fingerprints (`size:modified_at:first_8kb_hash`). Supports global project roots CRUD, folder binding warning triggers (offering auto-parent folder registration as root with relative project subpaths, or absolute-only paths), a Health Checks Dashboard showing file links health metrics and self-healing reports, bulk path relocation (relocating directories across volumes with previews), and candidate scanner to import folders as new projects (auto-identifying file roles and resolving naming conflicts via merge/new/skip options). Allows scanning and syncing of rootless project directories safely without triggering foreign key constraint failures.
+- **Current behavior**: Avoids hardcoded absolute paths by employing global project roots (`project_roots`), relative paths (`project_directories`), and file fingerprints (`size:modified_at:first_8kb_hash`). Supports global project roots CRUD, folder binding warning triggers (offering auto-parent folder registration as root with relative project subpaths, or absolute-only paths), a file-link Health Checks Dashboard, bulk path relocation, and candidate scanner to import folders as new projects. Phase 4 adds a card-based Workspace Management tab for associated Workspace records, plus a separate Workspace Maintenance tab for current workspace information, manual SQLite backup, backup listing/restore, `.lamber.zip` export/import, read-only workspace health checks, repairable issue actions, external path listing, and dry-run conversion of internal absolute paths to workspace-relative paths. Allows scanning and syncing of rootless project directories safely without triggering foreign key constraint failures.
 - **Related files**:
   - [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx)
   - [ProjectFilesTab.tsx](../src-ui/src/components/project/ProjectFilesTab.tsx)
@@ -104,6 +151,7 @@ Lamber is a lightweight sales support and project management desktop tool design
   - [project_files/health.rs](../src-tauri/src/project_files/health.rs)
   - [project_files/relocation.rs](../src-tauri/src/project_files/relocation.rs)
   - [project_files/import_scanner.rs](../src-tauri/src/project_files/import_scanner.rs)
+  - [workspace_maintenance.rs](../src-tauri/src/workspace_maintenance.rs)
 
 ## 4. Important business rules
 
@@ -120,6 +168,11 @@ Lamber is a lightweight sales support and project management desktop tool design
 - **Decision**: Introduce a Lamber Workspace root as the owner of the primary SQLite database. Project, file, roots, relocation, import, template asset, and document image resolution commands must require an opened workspace and obtain the active `lamber.sqlite` through `WorkspaceRuntime`.
 - **Reason**: Avoid scattering the primary database in the OS AppData directory and prepare the app for portable project workspaces.
 - **Impact**: Startup no longer initializes `AppData/projects_store.db`. If last workspace auto-restore fails, the app shows a WorkspaceGate and does not create an empty database or fall back to AppData. Legacy AppData/JSON migration is deferred to a compatibility phase.
+
+### ADR-007: Workspace Portability Maintenance
+- **Decision**: Treat direct folder copy as the primary migration path and `.lamber.zip` export/import as a convenience format. Workspace archives preserve the same `workspaceId` by default, use the workspace root as the archive root, and keep internal paths relative to the active workspace wherever possible.
+- **Reason**: Users should be able to copy a workspace folder to another machine and open it directly without AppData dependencies or path rebinding.
+- **Impact**: Health checks must surface absolute internal paths, external references, reserved-name conflicts, missing files, and orphan state rows without writing to the database. Repair actions are explicit and backup-protected. Backup restore must release the active SQLite connection before replacing `.lamber.sqlite`, especially on Windows.
 
 ### ADR-001: File-based JSON Database Repository
 - **Decision**: Store projects and files in `projects_store.json` using atomic loading, modifying, and saving operations. (Superceded by SQLite in Phase 1 upgrade).
@@ -165,6 +218,7 @@ Lamber is a lightweight sales support and project management desktop tool design
 - **No solid borders theme**: Do not add solid grey or black borders separating card contents. Use shifts in shades of blue/grey.
 - **No direct AI database updates**: Never write backend file-writing commands triggered directly by AI agents without intermediate form confirmation.
 - **No-physical file deletion in scans**: Directory scans must only toggle the `exists` flag on linked files, never delete files physically.
+- **Health check read-only boundary**: `run_workspace_health_check` must never mutate database rows or filesystem structure; only explicit repair commands may write, and they must create a database backup first.
 
 ## 9. Open questions
 

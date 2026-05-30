@@ -1,4 +1,7 @@
-use crate::benefit::models::{BenefitAnalysisScheme, BenefitAnalysisSnapshot, IctInput, IctResult, Project, ProjectLog, SummaryMetrics};
+use crate::benefit::models::{
+    BenefitAnalysisScheme, BenefitAnalysisSnapshot, IctInput, IctResult, Project, ProjectLog,
+    SummaryMetrics,
+};
 use crate::benefit::service::compute_fingerprint;
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -75,7 +78,10 @@ fn row_to_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
     })
 }
 
-fn get_project_locked(conn: &rusqlite::Connection, project_id: &str) -> Result<Option<Project>, String> {
+fn get_project_locked(
+    conn: &rusqlite::Connection,
+    project_id: &str,
+) -> Result<Option<Project>, String> {
     conn.query_row(
         "SELECT id, name, customer_name, status, benefit_status, default_scheme_id, created_at, updated_at,
             total_revenue_incl, total_cost_incl, project_years, discount_rate, cashflow_model, summary_metrics,
@@ -222,7 +228,10 @@ fn parse_json_column(raw: String) -> Value {
     serde_json::from_str(&raw).unwrap_or(Value::Object(Default::default()))
 }
 
-fn get_lifecycle_state_locked(conn: &rusqlite::Connection, project_id: &str) -> Result<Option<StoredLifecycleState>, String> {
+fn get_lifecycle_state_locked(
+    conn: &rusqlite::Connection,
+    project_id: &str,
+) -> Result<Option<StoredLifecycleState>, String> {
     conn.query_row(
         "SELECT id, project_id, lifecycle_version, profile_json, parameters_json, background_json, input_payload_json, created_at, updated_at
          FROM project_lifecycle_states WHERE project_id = ?1",
@@ -245,7 +254,10 @@ fn get_lifecycle_state_locked(conn: &rusqlite::Connection, project_id: &str) -> 
     .map_err(|e| e.to_string())
 }
 
-fn get_cashflow_state_locked(conn: &rusqlite::Connection, project_id: &str) -> Result<Option<StoredCashflowState>, String> {
+fn get_cashflow_state_locked(
+    conn: &rusqlite::Connection,
+    project_id: &str,
+) -> Result<Option<StoredCashflowState>, String> {
     conn.query_row(
         "SELECT id, project_id, cashflow_version, cashflow_model, payment_model_json, yearly_cashflow_json,
             sector_cashflow_json, assumptions_json, metrics_json, created_at, updated_at
@@ -339,7 +351,10 @@ fn get_template_state_locked(
     }))
 }
 
-fn list_template_states_locked(conn: &rusqlite::Connection, project_id: &str) -> Result<Vec<StoredTemplateState>, String> {
+fn list_template_states_locked(
+    conn: &rusqlite::Connection,
+    project_id: &str,
+) -> Result<Vec<StoredTemplateState>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT id, project_id, template_id, template_name, template_type, template_version, template_path,
@@ -490,7 +505,8 @@ pub async fn save_project_detail(
     let db = runtime.require_db()?;
     let mut conn = db.lock().map_err(|e| e.to_string())?;
     ensure_project_exists(&conn, &project_id)?;
-    let mut project = get_project_locked(&conn, &project_id)?.ok_or_else(|| format!("ProjectNotFoundInCurrentWorkspace::{}", project_id))?;
+    let mut project = get_project_locked(&conn, &project_id)?
+        .ok_or_else(|| format!("ProjectNotFoundInCurrentWorkspace::{}", project_id))?;
 
     if let Some(name) = patch.name {
         let trimmed = name.trim();
@@ -511,7 +527,11 @@ pub async fn save_project_detail(
     }
     if let Some(customer_name) = patch.customer_name {
         let trimmed = customer_name.trim();
-        project.customer_name = if trimmed.is_empty() { "未知客户".to_string() } else { trimmed.to_string() };
+        project.customer_name = if trimmed.is_empty() {
+            "未知客户".to_string()
+        } else {
+            trimmed.to_string()
+        };
     }
     if let Some(status) = patch.status {
         let trimmed = status.trim();
@@ -595,7 +615,8 @@ pub async fn get_project_detail(
     runtime.require_workspace()?;
     let db = runtime.require_db()?;
     let conn = db.lock().map_err(|e| e.to_string())?;
-    get_project_locked(&conn, &project_id)?.ok_or_else(|| format!("ProjectNotFoundInCurrentWorkspace::{}", project_id))
+    get_project_locked(&conn, &project_id)?
+        .ok_or_else(|| format!("ProjectNotFoundInCurrentWorkspace::{}", project_id))
 }
 
 #[tauri::command]
@@ -610,7 +631,11 @@ pub async fn save_lifecycle_state(
     ensure_project_exists(&conn, &project_id)?;
     let now = now_iso();
     let existing_id: Option<String> = conn
-        .query_row("SELECT id FROM project_lifecycle_states WHERE project_id = ?1", [&project_id], |row| row.get(0))
+        .query_row(
+            "SELECT id FROM project_lifecycle_states WHERE project_id = ?1",
+            [&project_id],
+            |row| row.get(0),
+        )
         .optional()
         .map_err(|e| e.to_string())?;
     let id = existing_id.unwrap_or_else(|| generate_id("lifecycle"));
@@ -638,7 +663,8 @@ pub async fn save_lifecycle_state(
         ],
     )
     .map_err(|e| e.to_string())?;
-    get_lifecycle_state_locked(&conn, &project_id)?.ok_or_else(|| "LifecycleStateSaveFailed".to_string())
+    get_lifecycle_state_locked(&conn, &project_id)?
+        .ok_or_else(|| "LifecycleStateSaveFailed".to_string())
 }
 
 #[tauri::command]
@@ -665,7 +691,11 @@ pub async fn save_cashflow_state(
     ensure_project_exists(&conn, &project_id)?;
     let now = now_iso();
     let existing_id: Option<String> = conn
-        .query_row("SELECT id FROM project_cashflow_states WHERE project_id = ?1", [&project_id], |row| row.get(0))
+        .query_row(
+            "SELECT id FROM project_cashflow_states WHERE project_id = ?1",
+            [&project_id],
+            |row| row.get(0),
+        )
         .optional()
         .map_err(|e| e.to_string())?;
     let id = existing_id.unwrap_or_else(|| generate_id("cashflow"));
@@ -697,7 +727,8 @@ pub async fn save_cashflow_state(
         ],
     )
     .map_err(|e| e.to_string())?;
-    get_cashflow_state_locked(&conn, &project_id)?.ok_or_else(|| "CashflowStateSaveFailed".to_string())
+    get_cashflow_state_locked(&conn, &project_id)?
+        .ok_or_else(|| "CashflowStateSaveFailed".to_string())
 }
 
 #[tauri::command]
@@ -734,7 +765,10 @@ pub async fn save_template_state(
         .optional()
         .map_err(|e| e.to_string())?;
     let id = existing_id.unwrap_or_else(|| generate_id("template"));
-    let template_name = template_state.template_name.clone().unwrap_or_else(|| template_id.clone());
+    let template_name = template_state
+        .template_name
+        .clone()
+        .unwrap_or_else(|| template_id.clone());
     tx.execute(
         "INSERT INTO project_template_states (
             id, project_id, template_id, template_name, template_type, template_version, template_path,
@@ -780,7 +814,8 @@ pub async fn save_template_state(
     .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
 
-    get_template_state_locked(&conn, &project_id, &template_id)?.ok_or_else(|| "TemplateStateSaveFailed".to_string())
+    get_template_state_locked(&conn, &project_id, &template_id)?
+        .ok_or_else(|| "TemplateStateSaveFailed".to_string())
 }
 
 #[tauri::command]
@@ -836,7 +871,8 @@ pub async fn save_benefit_analysis(
     let mut conn = db.lock().map_err(|e| e.to_string())?;
     ensure_project_exists(&conn, &project_id)?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    let mut project = get_project_locked(&tx, &project_id)?.ok_or_else(|| format!("ProjectNotFoundInCurrentWorkspace::{}", project_id))?;
+    let mut project = get_project_locked(&tx, &project_id)?
+        .ok_or_else(|| format!("ProjectNotFoundInCurrentWorkspace::{}", project_id))?;
     let timestamp = now_iso();
 
     let mut stmt = tx
@@ -909,10 +945,26 @@ pub async fn save_benefit_analysis(
 
     let risk_level = {
         let npv_val = output_metrics.npv.parse::<f64>().unwrap_or(0.0);
-        let margin_val = output_metrics.margin_rate.trim_end_matches('%').parse::<f64>().unwrap_or(0.0)
-            / if output_metrics.margin_rate.contains('%') { 100.0 } else { 1.0 };
-        let npv_rate_val = output_metrics.npv_rate.trim_end_matches('%').parse::<f64>().unwrap_or(0.0)
-            / if output_metrics.npv_rate.contains('%') { 100.0 } else { 1.0 };
+        let margin_val = output_metrics
+            .margin_rate
+            .trim_end_matches('%')
+            .parse::<f64>()
+            .unwrap_or(0.0)
+            / if output_metrics.margin_rate.contains('%') {
+                100.0
+            } else {
+                1.0
+            };
+        let npv_rate_val = output_metrics
+            .npv_rate
+            .trim_end_matches('%')
+            .parse::<f64>()
+            .unwrap_or(0.0)
+            / if output_metrics.npv_rate.contains('%') {
+                100.0
+            } else {
+                1.0
+            };
         if npv_val < 0.0 || margin_val < 0.0 {
             "高风险".to_string()
         } else if margin_val < 0.08 || npv_rate_val < 0.04 {
@@ -971,7 +1023,10 @@ pub async fn save_benefit_analysis(
     .sum();
     project.project_years = input_params.project_years.unwrap_or(1);
     project.discount_rate = input_params.discount_rate.parse::<f64>().unwrap_or(0.055);
-    project.cashflow_model = input_params.cashflow_model.clone().unwrap_or_else(|| "model_a".to_string());
+    project.cashflow_model = input_params
+        .cashflow_model
+        .clone()
+        .unwrap_or_else(|| "model_a".to_string());
     project.updated_at = timestamp.clone();
     project.logs.push(ProjectLog {
         id: generate_id("log"),
@@ -1042,7 +1097,8 @@ pub async fn get_project_full_state(
     runtime.require_workspace()?;
     let db = runtime.require_db()?;
     let conn = db.lock().map_err(|e| e.to_string())?;
-    let project = get_project_locked(&conn, &project_id)?.ok_or_else(|| format!("ProjectNotFoundInCurrentWorkspace::{}", project_id))?;
+    let project = get_project_locked(&conn, &project_id)?
+        .ok_or_else(|| format!("ProjectNotFoundInCurrentWorkspace::{}", project_id))?;
     let lifecycle_state = get_lifecycle_state_locked(&conn, &project_id)?;
     let cashflow_state = get_cashflow_state_locked(&conn, &project_id)?;
     let latest_snapshot = latest_snapshot_locked(&conn, &project_id)?;
@@ -1072,8 +1128,12 @@ pub async fn get_project_full_state(
         lifecycle_state,
         cashflow_state,
         schemes,
-        legacy_lifecycle_input: latest_snapshot.as_ref().map(|snap| snap.input_params.clone()),
-        legacy_cashflow_metrics: latest_snapshot.as_ref().map(|snap| snap.output_metrics.clone()),
+        legacy_lifecycle_input: latest_snapshot
+            .as_ref()
+            .map(|snap| snap.input_params.clone()),
+        legacy_cashflow_metrics: latest_snapshot
+            .as_ref()
+            .map(|snap| snap.output_metrics.clone()),
         latest_snapshot,
         template_states: list_template_states_locked(&conn, &project_id)?,
         template_assets: list_template_assets_locked(&conn, &project_id, None)?,

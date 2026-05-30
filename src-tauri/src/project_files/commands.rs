@@ -1,7 +1,8 @@
 use super::models::ProjectFile;
 use super::repository::SqliteProjectFileRepository;
 use super::service::ProjectFileService;
-use std::sync::Arc;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, State};
 
 fn file_service_from_workspace(
@@ -9,7 +10,10 @@ fn file_service_from_workspace(
 ) -> Result<ProjectFileService, String> {
     let ws = runtime.require_workspace()?;
     let repo = Arc::new(SqliteProjectFileRepository::new(runtime.require_db()?));
-    Ok(ProjectFileService::new(repo, std::path::PathBuf::from(ws.workspace_root)))
+    Ok(ProjectFileService::new(
+        repo,
+        std::path::PathBuf::from(ws.workspace_root),
+    ))
 }
 
 #[tauri::command]
@@ -72,7 +76,13 @@ pub async fn add_project_file(
     storage_mode: String,
 ) -> Result<ProjectFile, String> {
     let workspace = runtime.require_workspace()?;
-    file_service_from_workspace(&runtime)?.add_project_file(&app, &workspace.workspace_root, &project_id, &src_path, &storage_mode)
+    file_service_from_workspace(&runtime)?.add_project_file(
+        &app,
+        &workspace.workspace_root,
+        &project_id,
+        &src_path,
+        &storage_mode,
+    )
 }
 
 #[tauri::command]
@@ -198,7 +208,12 @@ pub async fn get_template_asset_path(
     let workspace = runtime.require_workspace()?;
     let db = runtime.require_db()?;
     let conn = db.lock().map_err(|e| e.to_string())?;
-    super::assets::get_template_asset_path_internal(&app, &conn, &workspace.workspace_root, &asset_id)
+    super::assets::get_template_asset_path_internal(
+        &app,
+        &conn,
+        &workspace.workspace_root,
+        &asset_id,
+    )
 }
 
 #[tauri::command]
@@ -220,7 +235,12 @@ pub async fn cleanup_orphan_template_assets(
     let workspace = runtime.require_workspace()?;
     let db = runtime.require_db()?;
     let conn = db.lock().map_err(|e| e.to_string())?;
-    super::assets::cleanup_orphan_template_assets_internal(&app, &conn, &workspace.workspace_root, &project_id)
+    super::assets::cleanup_orphan_template_assets_internal(
+        &app,
+        &conn,
+        &workspace.workspace_root,
+        &project_id,
+    )
 }
 
 #[tauri::command]
@@ -230,7 +250,8 @@ pub async fn get_project_setting(
     key: String,
 ) -> Result<Option<String>, String> {
     use crate::benefit::repository::ProjectRepository;
-    let project_repo = crate::benefit::repository::SqliteProjectRepository::new(runtime.require_db()?);
+    let project_repo =
+        crate::benefit::repository::SqliteProjectRepository::new(runtime.require_db()?);
     project_repo.get_project_setting(&project_id, &key)
 }
 
@@ -242,7 +263,8 @@ pub async fn save_project_setting(
     value: String,
 ) -> Result<(), String> {
     use crate::benefit::repository::ProjectRepository;
-    let project_repo = crate::benefit::repository::SqliteProjectRepository::new(runtime.require_db()?);
+    let project_repo =
+        crate::benefit::repository::SqliteProjectRepository::new(runtime.require_db()?);
     project_repo.save_project_setting(&project_id, &key, &value)
 }
 
@@ -251,9 +273,17 @@ pub fn auto_import_excel_if_needed(
     project_id: &str,
     files: &[ProjectFile],
 ) -> Result<(), String> {
-    use std::path::Path;
-
     let db = runtime.require_db()?;
+    let ws = runtime.require_workspace()?;
+    auto_import_excel_if_needed_with_context(db, Path::new(&ws.workspace_root), project_id, files)
+}
+
+pub(crate) fn auto_import_excel_if_needed_with_context(
+    db: Arc<Mutex<rusqlite::Connection>>,
+    workspace_root: &Path,
+    project_id: &str,
+    files: &[ProjectFile],
+) -> Result<(), String> {
     let project_repo = crate::benefit::repository::SqliteProjectRepository::new(db.clone());
     let project_service = crate::benefit::service::ProjectService::new(Box::new(project_repo));
 
@@ -282,11 +312,9 @@ pub fn auto_import_excel_if_needed(
     let target_file = matching_files[0];
 
     // 4. Resolve the file path against workspace root
-    let ws = runtime.require_workspace()?;
-    let ws_path = Path::new(&ws.workspace_root);
     let file_path_buf = std::path::PathBuf::from(&target_file.file_path);
     let resolved_path = if !file_path_buf.is_absolute() {
-        crate::workspace::resolve_workspace_path(ws_path, &target_file.file_path)
+        crate::workspace::resolve_workspace_path(workspace_root, &target_file.file_path)
     } else {
         file_path_buf
     };
@@ -306,4 +334,3 @@ pub fn auto_import_excel_if_needed(
 
     Ok(())
 }
-

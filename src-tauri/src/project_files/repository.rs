@@ -24,7 +24,14 @@ pub trait ProjectFileRepository {
     fn get_project_folder(&self, project_id: &str) -> Result<Option<String>, String>;
     fn get_project_folder_name(&self, project_id: &str) -> Result<Option<String>, String>;
     fn find_matching_root(&self, path: &str) -> Result<Option<(String, String)>, String>;
-    fn save_project_directory(&self, id: &str, project_id: &str, root_id: &str, relative_path: &str, name: &str) -> Result<(), String>;
+    fn save_project_directory(
+        &self,
+        id: &str,
+        project_id: &str,
+        root_id: &str,
+        relative_path: &str,
+        name: &str,
+    ) -> Result<(), String>;
     fn delete_project_directory(&self, project_id: &str) -> Result<(), String>;
     fn get_root_path(&self, root_id: &str) -> Result<Option<String>, String>;
     fn get_all_roots(&self) -> Result<Vec<(String, String)>, String>;
@@ -225,7 +232,14 @@ impl ProjectFileRepository for JsonProjectFileRepository {
         Ok(None)
     }
 
-    fn save_project_directory(&self, _id: &str, _project_id: &str, _root_id: &str, _relative_path: &str, _name: &str) -> Result<(), String> {
+    fn save_project_directory(
+        &self,
+        _id: &str,
+        _project_id: &str,
+        _root_id: &str,
+        _relative_path: &str,
+        _name: &str,
+    ) -> Result<(), String> {
         Ok(())
     }
 
@@ -271,7 +285,7 @@ fn row_to_project_file(row: &rusqlite::Row) -> Result<ProjectFile, rusqlite::Err
     let exists_int: i32 = row.get(9)?;
     let is_main_doc_int: i32 = row.get(13)?;
     let is_main_budget_int: i32 = row.get(14)?;
-    
+
     Ok(ProjectFile {
         id: row.get(0)?,
         project_id: row.get(1)?,
@@ -306,8 +320,10 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
         let mut stmt = conn
             .prepare("SELECT id, project_id, file_name, file_path, original_path, managed_path, file_type, extension, size, \"exists\", last_scanned_at, modified_at, storage_mode, is_main_document, is_main_budget_file, note, created_at, updated_at, root_id, directory_id, relative_path, absolute_path_snapshot, file_hash, file_role FROM project_files WHERE project_id = ?1")
             .map_err(|e| e.to_string())?;
-        
-        let file_iter = stmt.query_map([project_id], row_to_project_file).map_err(|e| e.to_string())?;
+
+        let file_iter = stmt
+            .query_map([project_id], row_to_project_file)
+            .map_err(|e| e.to_string())?;
 
         let mut list = Vec::new();
         for f in file_iter {
@@ -321,7 +337,7 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
         let mut stmt = conn
             .prepare("SELECT id, project_id, file_name, file_path, original_path, managed_path, file_type, extension, size, \"exists\", last_scanned_at, modified_at, storage_mode, is_main_document, is_main_budget_file, note, created_at, updated_at, root_id, directory_id, relative_path, absolute_path_snapshot, file_hash, file_role FROM project_files WHERE id = ?1")
             .map_err(|e| e.to_string())?;
-        
+
         let mut rows = stmt.query([id]).map_err(|e| e.to_string())?;
         if let Some(row) = rows.next().map_err(|e| e.to_string())? {
             let file = row_to_project_file(row).map_err(|e| e.to_string())?;
@@ -433,7 +449,7 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
         linked_folder_external_path: Option<String>,
     ) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        
+
         let mut query = String::from("UPDATE projects SET ");
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
         let mut updates = Vec::new();
@@ -493,7 +509,10 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
         }
 
         if let Some(lf_rel) = linked_folder_relative_path {
-            updates.push(format!("linked_folder_relative_path = ?{}", updates.len() + 1));
+            updates.push(format!(
+                "linked_folder_relative_path = ?{}",
+                updates.len() + 1
+            ));
             if lf_rel.is_empty() {
                 params.push(Box::new(Option::<String>::None));
             } else {
@@ -502,7 +521,10 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
         }
 
         if let Some(lf_ext) = linked_folder_external_path {
-            updates.push(format!("linked_folder_external_path = ?{}", updates.len() + 1));
+            updates.push(format!(
+                "linked_folder_external_path = ?{}",
+                updates.len() + 1
+            ));
             if lf_ext.is_empty() {
                 params.push(Box::new(Option::<String>::None));
             } else {
@@ -530,7 +552,7 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
         let mut stmt = conn
             .prepare("SELECT folder_path FROM projects WHERE id = ?1")
             .map_err(|e| e.to_string())?;
-        
+
         let mut rows = stmt.query([project_id]).map_err(|e| e.to_string())?;
         if let Some(row) = rows.next().map_err(|e| e.to_string())? {
             Ok(row.get(0).map_err(|e| e.to_string())?)
@@ -544,7 +566,7 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
         let mut stmt = conn
             .prepare("SELECT folder_name FROM projects WHERE id = ?1")
             .map_err(|e| e.to_string())?;
-        
+
         let mut rows = stmt.query([project_id]).map_err(|e| e.to_string())?;
         if let Some(row) = rows.next().map_err(|e| e.to_string())? {
             Ok(row.get(0).map_err(|e| e.to_string())?)
@@ -558,12 +580,14 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
         let mut stmt = conn
             .prepare("SELECT id, root_path FROM project_roots")
             .map_err(|e| e.to_string())?;
-        
-        let root_iter = stmt.query_map([], |r| {
-            let id: String = r.get(0)?;
-            let root_path: String = r.get(1)?;
-            Ok((id, root_path))
-        }).map_err(|e| e.to_string())?;
+
+        let root_iter = stmt
+            .query_map([], |r| {
+                let id: String = r.get(0)?;
+                let root_path: String = r.get(1)?;
+                Ok((id, root_path))
+            })
+            .map_err(|e| e.to_string())?;
 
         // Normalize target path
         let target = path.replace("\\", "/").to_lowercase();
@@ -574,15 +598,18 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
         for r in root_iter {
             let (id, root_path) = r.map_err(|e| e.to_string())?;
             let root_norm = root_path.replace("\\", "/").to_lowercase();
-            
+
             // Check if target starts with root_norm
             if target.starts_with(&root_norm) {
                 if root_norm.len() > longest_match_len {
                     longest_match_len = root_norm.len();
-                    
+
                     // Compute relative path
                     let rel = &path[root_path.len()..];
-                    let rel_clean = rel.trim_start_matches('\\').trim_start_matches('/').to_string();
+                    let rel_clean = rel
+                        .trim_start_matches('\\')
+                        .trim_start_matches('/')
+                        .to_string();
                     matched = Some((id, rel_clean));
                 }
             }
@@ -590,7 +617,14 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
         Ok(matched)
     }
 
-    fn save_project_directory(&self, id: &str, project_id: &str, root_id: &str, relative_path: &str, name: &str) -> Result<(), String> {
+    fn save_project_directory(
+        &self,
+        id: &str,
+        project_id: &str,
+        root_id: &str,
+        relative_path: &str,
+        name: &str,
+    ) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let now = chrono::Utc::now().to_rfc3339();
         conn.execute(
@@ -602,8 +636,11 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
 
     fn delete_project_directory(&self, project_id: &str) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM project_directories WHERE project_id = ?1", [project_id])
-            .map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM project_directories WHERE project_id = ?1",
+            [project_id],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -625,9 +662,9 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
         let mut stmt = conn
             .prepare("SELECT id, root_path FROM project_roots")
             .map_err(|e| e.to_string())?;
-        let iter = stmt.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-        }).map_err(|e| e.to_string())?;
+        let iter = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
         let mut list = Vec::new();
         for item in iter {
             list.push(item.map_err(|e| e.to_string())?);
@@ -653,7 +690,10 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
             .map_err(|e| e.to_string())?;
         let mut rows = stmt.query([project_id]).map_err(|e| e.to_string())?;
         if let Some(row) = rows.next().map_err(|e| e.to_string())? {
-            Ok(Some((row.get(0).map_err(|e| e.to_string())?, row.get(1).map_err(|e| e.to_string())?)))
+            Ok(Some((
+                row.get(0).map_err(|e| e.to_string())?,
+                row.get(1).map_err(|e| e.to_string())?,
+            )))
         } else {
             Ok(None)
         }
@@ -664,7 +704,9 @@ impl ProjectFileRepository for SqliteProjectFileRepository {
         let mut stmt = conn
             .prepare("SELECT id, project_id, file_name, file_path, original_path, managed_path, file_type, extension, size, \"exists\", last_scanned_at, modified_at, storage_mode, is_main_document, is_main_budget_file, note, created_at, updated_at, root_id, directory_id, relative_path, absolute_path_snapshot, file_hash, file_role FROM project_files")
             .map_err(|e| e.to_string())?;
-        let file_iter = stmt.query_map([], row_to_project_file).map_err(|e| e.to_string())?;
+        let file_iter = stmt
+            .query_map([], row_to_project_file)
+            .map_err(|e| e.to_string())?;
         let mut list = Vec::new();
         for f in file_iter {
             list.push(f.map_err(|e| e.to_string())?);
@@ -791,10 +833,21 @@ impl ProjectFileRepository for DualProjectFileRepository {
         }
     }
 
-    fn save_project_directory(&self, id: &str, project_id: &str, root_id: &str, relative_path: &str, name: &str) -> Result<(), String> {
+    fn save_project_directory(
+        &self,
+        id: &str,
+        project_id: &str,
+        root_id: &str,
+        relative_path: &str,
+        name: &str,
+    ) -> Result<(), String> {
         match &*self.backend.read().unwrap() {
-            FileRepoBackend::Json(r) => r.save_project_directory(id, project_id, root_id, relative_path, name),
-            FileRepoBackend::Sqlite(r) => r.save_project_directory(id, project_id, root_id, relative_path, name),
+            FileRepoBackend::Json(r) => {
+                r.save_project_directory(id, project_id, root_id, relative_path, name)
+            }
+            FileRepoBackend::Sqlite(r) => {
+                r.save_project_directory(id, project_id, root_id, relative_path, name)
+            }
         }
     }
 

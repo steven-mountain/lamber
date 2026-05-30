@@ -1,11 +1,11 @@
-use std::sync::{Arc, Mutex};
-use std::path::Path;
-use std::fs;
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
-use tauri::State;
+use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
+use std::fs;
 use std::hash::{Hash, Hasher};
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+use tauri::State;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -40,16 +40,21 @@ impl ImportScanner {
         Self { conn }
     }
 
-    pub fn scan_import_candidates(&self, parent_path: &str) -> Result<Vec<ImportCandidate>, String> {
+    pub fn scan_import_candidates(
+        &self,
+        parent_path: &str,
+    ) -> Result<Vec<ImportCandidate>, String> {
         let mut candidates = scan_for_candidates(parent_path)?;
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        
+
         for mut c in &mut candidates {
-            let count: usize = conn.query_row(
-                "SELECT COUNT(*) FROM projects WHERE name = ?1",
-                [&c.folder_name],
-                |r| r.get(0)
-            ).map_err(|e| e.to_string())?;
+            let count: usize = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM projects WHERE name = ?1",
+                    [&c.folder_name],
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
             c.exists_conflict = count > 0;
         }
 
@@ -66,38 +71,56 @@ impl ImportScanner {
                 continue;
             }
 
-            let folder_name = folder_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let folder_name = folder_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             let mut final_name = folder_name.clone();
-            
-            let count: usize = tx.query_row(
-                "SELECT COUNT(*) FROM projects WHERE name = ?1",
-                [&final_name],
-                |r| r.get(0)
-            ).map_err(|e| e.to_string())?;
+
+            let count: usize = tx
+                .query_row(
+                    "SELECT COUNT(*) FROM projects WHERE name = ?1",
+                    [&final_name],
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
 
             let mut should_insert = true;
-            let mut project_id = format!("proj_{}_{}", chrono::Utc::now().timestamp_millis(), calculate_hash(&sel.folder_path));
+            let mut project_id = format!(
+                "proj_{}_{}",
+                chrono::Utc::now().timestamp_millis(),
+                calculate_hash(&sel.folder_path)
+            );
 
             if count > 0 {
                 match sel.conflict_action.as_str() {
                     "merge" => {
-                        let existing_id: String = tx.query_row(
-                            "SELECT id FROM projects WHERE name = ?1",
-                            [&final_name],
-                            |r| r.get(0)
-                        ).map_err(|e| e.to_string())?;
+                        let existing_id: String = tx
+                            .query_row(
+                                "SELECT id FROM projects WHERE name = ?1",
+                                [&final_name],
+                                |r| r.get(0),
+                            )
+                            .map_err(|e| e.to_string())?;
                         project_id = existing_id;
                         should_insert = false;
-                        
+
                         tx.execute(
                             "UPDATE projects SET folder_path = ?1, updated_at = ?2 WHERE id = ?3",
-                            rusqlite::params![sel.folder_path, chrono::Utc::now().to_rfc3339(), project_id],
-                        ).map_err(|e| e.to_string())?;
+                            rusqlite::params![
+                                sel.folder_path,
+                                chrono::Utc::now().to_rfc3339(),
+                                project_id
+                            ],
+                        )
+                        .map_err(|e| e.to_string())?;
 
                         tx.execute(
                             "DELETE FROM project_directories WHERE project_id = ?1",
                             rusqlite::params![project_id],
-                        ).map_err(|e| e.to_string())?;
+                        )
+                        .map_err(|e| e.to_string())?;
 
                         tx.execute(
                             "DELETE FROM project_files WHERE project_id = ?1 AND storage_mode = 'linked'",
@@ -111,11 +134,13 @@ impl ImportScanner {
                         let mut suffix = 1;
                         loop {
                             let candidate_name = format!("{}_{}", folder_name, suffix);
-                            let sub_count: usize = tx.query_row(
-                                "SELECT COUNT(*) FROM projects WHERE name = ?1",
-                                [&candidate_name],
-                                |r| r.get(0)
-                            ).map_err(|e| e.to_string())?;
+                            let sub_count: usize = tx
+                                .query_row(
+                                    "SELECT COUNT(*) FROM projects WHERE name = ?1",
+                                    [&candidate_name],
+                                    |r| r.get(0),
+                                )
+                                .map_err(|e| e.to_string())?;
                             if sub_count == 0 {
                                 final_name = candidate_name;
                                 break;
@@ -152,12 +177,14 @@ impl ImportScanner {
 
             // Find matching root
             let root_opt: Option<(String, String)> = {
-                let mut stmt = tx.prepare("SELECT id, root_path FROM project_roots").map_err(|e| e.to_string())?;
-                let root_iter = stmt.query_map([], |r| {
-                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-                }).map_err(|e| e.to_string())?;
+                let mut stmt = tx
+                    .prepare("SELECT id, root_path FROM project_roots")
+                    .map_err(|e| e.to_string())?;
+                let root_iter = stmt
+                    .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+                    .map_err(|e| e.to_string())?;
                 let target_norm = sel.folder_path.replace("\\", "/").to_lowercase();
-                
+
                 let mut matched = None;
                 let mut longest_match_len = 0;
                 for r in root_iter {
@@ -166,7 +193,10 @@ impl ImportScanner {
                     if target_norm.starts_with(&root_norm) && root_norm.len() > longest_match_len {
                         longest_match_len = root_norm.len();
                         let rel = &sel.folder_path[root_path.len()..];
-                        let rel_clean = rel.trim_start_matches('\\').trim_start_matches('/').to_string();
+                        let rel_clean = rel
+                            .trim_start_matches('\\')
+                            .trim_start_matches('/')
+                            .to_string();
                         matched = Some((id, rel_clean));
                     }
                 }
@@ -179,7 +209,10 @@ impl ImportScanner {
             };
 
             if let (Some(rid), Some(rel)) = (&root_id, &relative_path) {
-                let dir_id = format!("dir_{}", calculate_hash(&(project_id.clone(), &sel.folder_path)));
+                let dir_id = format!(
+                    "dir_{}",
+                    calculate_hash(&(project_id.clone(), &sel.folder_path))
+                );
                 let now = chrono::Utc::now().to_rfc3339();
                 tx.execute(
                     "INSERT OR REPLACE INTO project_directories (id, project_id, root_id, relative_path, dir_name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -189,18 +222,23 @@ impl ImportScanner {
 
             let candidate_files = get_candidate_files(folder_path)?;
             let dir_id = if root_id.is_some() {
-                Some(format!("dir_{}", calculate_hash(&(project_id.clone(), &sel.folder_path))))
+                Some(format!(
+                    "dir_{}",
+                    calculate_hash(&(project_id.clone(), &sel.folder_path))
+                ))
             } else {
                 None
             };
-            
+
             for file in candidate_files {
                 let now = chrono::Utc::now().to_rfc3339();
                 let file_path_norm = file.path.replace("\\", "/");
                 let folder_path_norm = sel.folder_path.replace("\\", "/");
                 let file_rel = if file_path_norm.starts_with(&folder_path_norm) {
                     let sub = &file.path[sel.folder_path.len()..];
-                    sub.trim_start_matches('\\').trim_start_matches('/').to_string()
+                    sub.trim_start_matches('\\')
+                        .trim_start_matches('/')
+                        .to_string()
                 } else {
                     "".to_string()
                 };
@@ -217,7 +255,8 @@ impl ImportScanner {
 
                 let (size, modified_time) = if let Ok(meta) = fs::metadata(&file.path) {
                     let size = meta.len();
-                    let modified: DateTime<Utc> = meta.modified()
+                    let modified: DateTime<Utc> = meta
+                        .modified()
                         .map(DateTime::from)
                         .unwrap_or_else(|_| Utc::now());
                     (size, modified.to_rfc3339())
@@ -232,7 +271,11 @@ impl ImportScanner {
 
                 let hash_val = calculate_hash(&(project_id.clone(), &file.path));
                 let file_id = format!("{}-{:x}", project_id, hash_val);
-                let ext = Path::new(&file.path).extension().unwrap_or_default().to_string_lossy().to_string();
+                let ext = Path::new(&file.path)
+                    .extension()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
 
                 let file_type = match ext.to_lowercase().as_str() {
                     "doc" | "docx" => "word",
@@ -288,7 +331,7 @@ fn scan_for_candidates(parent_path: &str) -> Result<Vec<ImportCandidate>, String
 
     let mut candidates = Vec::new();
     let entries = fs::read_dir(parent).map_err(|e| e.to_string())?;
-    
+
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
@@ -297,7 +340,7 @@ fn scan_for_candidates(parent_path: &str) -> Result<Vec<ImportCandidate>, String
                 if name_str.starts_with('.') {
                     continue;
                 }
-                
+
                 let candidate_files = get_candidate_files(&path)?;
                 if !candidate_files.is_empty() {
                     candidates.push(ImportCandidate {
@@ -342,11 +385,19 @@ fn get_candidate_files(dir: &Path) -> Result<Vec<CandidateFile>, String> {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_file() {
-            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             if name.starts_with("~$") || name.starts_with('.') {
                 continue;
             }
-            let ext = path.extension().unwrap_or_default().to_string_lossy().to_lowercase();
+            let ext = path
+                .extension()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_lowercase();
             if ext == "docx" || ext == "xlsx" || ext == "pdf" || ext == "pptx" {
                 let file_role = detect_file_role(&name);
                 files.push(CandidateFile {
@@ -364,9 +415,17 @@ fn detect_file_role(file_name: &str) -> String {
     let lower = file_name.to_lowercase();
     if lower.contains("效益分析") || lower.contains("效益") || lower.contains("benefit") {
         "benefit_scheme".to_string()
-    } else if lower.contains("预算") || lower.contains("报价") || lower.contains("budget") || lower.contains("cost") {
+    } else if lower.contains("预算")
+        || lower.contains("报价")
+        || lower.contains("budget")
+        || lower.contains("cost")
+    {
         "budget".to_string()
-    } else if lower.contains("方案") || lower.contains("规划") || lower.contains("proposal") || lower.contains("design") {
+    } else if lower.contains("方案")
+        || lower.contains("规划")
+        || lower.contains("proposal")
+        || lower.contains("design")
+    {
         "proposal".to_string()
     } else {
         "other".to_string()
@@ -378,15 +437,20 @@ fn calculate_lightweight_hash(path_str: &str) -> Result<String, std::io::Error> 
     let path = Path::new(path_str);
     let metadata = fs::metadata(path)?;
     let size = metadata.len();
-    
-    let modified = metadata.modified()
-        .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
+
+    let modified = metadata
+        .modified()
+        .map(|t| {
+            t.duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+        })
         .unwrap_or(0);
 
     let mut file = fs::File::open(path)?;
     let mut buffer = [0u8; 8192];
     let bytes_read = file.read(&mut buffer)?;
-    
+
     let mut hasher = DefaultHasher::new();
     hasher.write(&buffer[..bytes_read]);
     let content_hash = hasher.finish();

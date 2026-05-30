@@ -1,8 +1,8 @@
+use chrono::Utc;
+use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::State;
-use rusqlite::params;
-use chrono::Utc;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -55,7 +55,7 @@ impl ProjectRootRepository for SqliteProjectRootRepository {
         let mut stmt = conn
             .prepare("SELECT id, name, root_path, root_alias, is_default, created_at, updated_at FROM project_roots ORDER BY created_at DESC")
             .map_err(|e| e.to_string())?;
-        
+
         let root_iter = stmt.query_map([], row_to_root).map_err(|e| e.to_string())?;
         let mut list = Vec::new();
         for r in root_iter {
@@ -69,7 +69,7 @@ impl ProjectRootRepository for SqliteProjectRootRepository {
         let mut stmt = conn
             .prepare("SELECT id, name, root_path, root_alias, is_default, created_at, updated_at FROM project_roots WHERE id = ?1")
             .map_err(|e| e.to_string())?;
-        
+
         let mut rows = stmt.query([id]).map_err(|e| e.to_string())?;
         if let Some(row) = rows.next().map_err(|e| e.to_string())? {
             let root = row_to_root(row).map_err(|e| e.to_string())?;
@@ -108,7 +108,7 @@ impl ProjectRootRepository for SqliteProjectRootRepository {
         let mut stmt = conn
             .prepare("SELECT id, name, root_path, root_alias, is_default, created_at, updated_at FROM project_roots WHERE is_default = 1")
             .map_err(|e| e.to_string())?;
-        
+
         let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
         if let Some(row) = rows.next().map_err(|e| e.to_string())? {
             let root = row_to_root(row).map_err(|e| e.to_string())?;
@@ -127,18 +127,22 @@ impl ProjectRootRepository for SqliteProjectRootRepository {
 
     fn check_references(&self, root_id: &str) -> Result<(usize, usize), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        
-        let dirs_count: usize = conn.query_row(
-            "SELECT COUNT(*) FROM project_directories WHERE root_id = ?1",
-            [root_id],
-            |r| r.get(0),
-        ).map_err(|e| e.to_string())?;
 
-        let files_count: usize = conn.query_row(
-            "SELECT COUNT(*) FROM project_files WHERE root_id = ?1",
-            [root_id],
-            |r| r.get(0),
-        ).map_err(|e| e.to_string())?;
+        let dirs_count: usize = conn
+            .query_row(
+                "SELECT COUNT(*) FROM project_directories WHERE root_id = ?1",
+                [root_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+
+        let files_count: usize = conn
+            .query_row(
+                "SELECT COUNT(*) FROM project_files WHERE root_id = ?1",
+                [root_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
 
         Ok((dirs_count, files_count))
     }
@@ -183,7 +187,10 @@ impl ProjectRootService {
 
         // Check if root path already exists
         let existing = self.repository.get_roots()?;
-        if existing.iter().any(|r| r.root_path.replace("\\", "/") == normalized_path) {
+        if existing
+            .iter()
+            .any(|r| r.root_path.replace("\\", "/") == normalized_path)
+        {
             return Err("该物理路径已被登记为项目根目录".to_string());
         }
 
@@ -226,7 +233,10 @@ impl ProjectRootService {
 
         let normalized_path = root.root_path.replace("\\", "/");
         let existing = self.repository.get_roots()?;
-        if existing.iter().any(|r| r.id != root.id && r.root_path.replace("\\", "/") == normalized_path) {
+        if existing
+            .iter()
+            .any(|r| r.id != root.id && r.root_path.replace("\\", "/") == normalized_path)
+        {
             return Err("另一个根目录已登记了相同的物理路径".to_string());
         }
 

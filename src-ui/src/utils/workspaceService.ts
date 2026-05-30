@@ -71,6 +71,12 @@ export const workspaceService = {
   open(path: string) {
     return invoke<WorkspaceInfo>("open_workspace", { path });
   },
+  forget(path: string) {
+    return invoke<WorkspaceStateDto>("forget_workspace", { path });
+  },
+  closeCurrent() {
+    return invoke<WorkspaceStateDto>("close_current_workspace");
+  },
   initializeFromExisting(path: string, options: InitializeWorkspaceOptions) {
     return invoke<WorkspaceInfo>("initialize_workspace_from_existing_directory", { path, options });
   },

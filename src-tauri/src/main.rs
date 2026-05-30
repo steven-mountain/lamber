@@ -5,9 +5,10 @@ mod config_manager;
 mod db;
 mod docfill;
 mod migration;
-mod project_state;
 mod project_files;
+mod project_state;
 mod workspace;
+mod workspace_maintenance;
 
 use config_manager::{AppConfig, ConfigManager};
 use std::sync::Mutex;
@@ -83,17 +84,11 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            benefit::calculate_benefit,
             benefit::calculate_ict_benefit,
             benefit::reverse_calc_ict_target,
             benefit::reverse_calc_ict_revenue_target,
-            benefit::process_excel_batch,
-            benefit::generate_excel_template,
             benefit::calculate_selection_fee,
             benefit::reverse_calculate_selection_fee,
-            docfill::extract_docx_variables,
-            docfill::generate_docx,
-            docfill::batch_generate_docx_from_excel,
             docfill::generate_lifecycle_docs,
             open_file,
             docfill::get_available_templates,
@@ -164,9 +159,25 @@ fn main() {
             workspace::select_workspace_folder,
             workspace::create_workspace,
             workspace::open_workspace,
+            workspace::forget_workspace,
+            workspace::close_current_workspace,
             workspace::clear_workspace,
             workspace::initialize_workspace_from_existing_directory,
             workspace::scan_and_import_all_workspace_calculations,
+            workspace_maintenance::export_workspace,
+            workspace_maintenance::import_workspace,
+            workspace_maintenance::validate_workspace_archive,
+            workspace_maintenance::reveal_in_file_manager,
+            workspace_maintenance::create_workspace_backup,
+            workspace_maintenance::list_workspace_backups,
+            workspace_maintenance::restore_workspace_backup,
+            workspace_maintenance::delete_workspace_backup,
+            workspace_maintenance::run_workspace_health_check,
+            workspace_maintenance::repair_workspace_issue,
+            workspace_maintenance::repair_workspace_issues,
+            workspace_maintenance::inspect_workspace_paths,
+            workspace_maintenance::list_external_paths,
+            workspace_maintenance::convert_internal_absolute_paths_to_relative,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

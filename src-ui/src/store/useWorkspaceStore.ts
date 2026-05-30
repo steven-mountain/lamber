@@ -15,6 +15,8 @@ interface WorkspaceStore {
   selectAndOpenWorkspace: () => Promise<void>;
   selectAndCreateWorkspace: () => Promise<void>;
   openRecentWorkspace: (path: string) => Promise<void>;
+  forgetWorkspace: (path: string) => Promise<void>;
+  closeCurrentWorkspace: () => Promise<void>;
   initializeWorkspaceFromExisting: (path: string, options: import("../utils/workspaceService").InitializeWorkspaceOptions) => Promise<void>;
   scanAndImportAllWorkspaceCalculations: () => Promise<number>;
 }
@@ -114,6 +116,43 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       set({ ...applyWorkspace(workspace), isLoading: false });
     } catch (error) {
       set({ error: parseWorkspaceError(error).message, isLoading: false });
+    }
+  },
+
+  forgetWorkspace: async (path: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      const prevWorkspace = get().currentWorkspace;
+      const state = await workspaceService.forget(path);
+      if (!state.currentWorkspace || (prevWorkspace && prevWorkspace.workspaceId !== state.currentWorkspace.workspaceId)) {
+        useProjectStore.getState().clearCurrentProject();
+      }
+      set({
+        ...applyWorkspace(state.currentWorkspace),
+        recentWorkspaces: state.recentWorkspaces,
+        error: state.startupError?.message || null,
+        isLoading: false,
+      });
+    } catch (error) {
+      set({ error: parseWorkspaceError(error).message, isLoading: false });
+      throw error;
+    }
+  },
+
+  closeCurrentWorkspace: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const state = await workspaceService.closeCurrent();
+      useProjectStore.getState().clearCurrentProject();
+      set({
+        ...applyWorkspace(state.currentWorkspace),
+        recentWorkspaces: state.recentWorkspaces,
+        error: state.startupError?.message || null,
+        isLoading: false,
+      });
+    } catch (error) {
+      set({ error: parseWorkspaceError(error).message, isLoading: false });
+      throw error;
     }
   },
 

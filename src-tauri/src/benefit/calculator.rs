@@ -1,16 +1,6 @@
-use super::models::{
-    CalcInput, CalcResult, IctCashflowRow, IctInput, IctItem, IctResult, SelectionFeeResult,
-};
+use super::models::{IctCashflowRow, IctInput, IctItem, IctResult, SelectionFeeResult};
 use rust_decimal::prelude::*;
 use std::str::FromStr;
-
-fn round_2(val: Decimal) -> Decimal {
-    val.round_dp(2)
-}
-
-fn round_4(val: Decimal) -> Decimal {
-    val.round_dp(4)
-}
 
 fn get_excl(item: &IctItem) -> Decimal {
     let incl = Decimal::from_str(&item.incl_tax).unwrap_or(Decimal::ZERO);
@@ -328,121 +318,6 @@ pub fn reverse_calc_ict_revenue_target(
     }
 
     Ok(best_mid.round_dp(2).to_string())
-}
-
-#[tauri::command]
-pub fn calculate_benefit(input: CalcInput) -> Result<CalcResult, String> {
-    let d1 = Decimal::ONE;
-    let d72 = Decimal::new(72, 0);
-    let d0_01 = Decimal::new(1, 2);
-
-    let tax_rate_it = Decimal::from_str(&input.tax_rate_it).unwrap_or(Decimal::new(6, 2));
-    let tax_rate_ct = Decimal::from_str(&input.tax_rate_ct).unwrap_or(Decimal::new(6, 2));
-    let total_income_incl =
-        Decimal::from_str(&input.total_income_incl).map_err(|e| e.to_string())?;
-    let target_value = Decimal::from_str(&input.target_value).map_err(|e| e.to_string())?;
-
-    // --- 第一步：含税盘子分配 ---
-    let ct_income_incl = if let Some(ct_str) = &input.ct_income_incl_opt {
-        if ct_str.trim().is_empty() {
-            let ct_income_incl_min = round_2(total_income_incl * d0_01);
-            let ceil_multiplier = (ct_income_incl_min / d72).ceil();
-            round_2(ceil_multiplier * d72)
-        } else {
-            Decimal::from_str(ct_str).unwrap_or_else(|_| {
-                let ct_income_incl_min = round_2(total_income_incl * d0_01);
-                let ceil_multiplier = (ct_income_incl_min / d72).ceil();
-                round_2(ceil_multiplier * d72)
-            })
-        }
-    } else {
-        let ct_income_incl_min = round_2(total_income_incl * d0_01);
-        let ceil_multiplier = (ct_income_incl_min / d72).ceil();
-        round_2(ceil_multiplier * d72)
-    };
-
-    let ct_cost_incl = ct_income_incl;
-    let it_income_incl = round_2(total_income_incl - ct_income_incl);
-
-    // --- 第二步：价税分离 ---
-    let it_income_excl = round_2(it_income_incl / (d1 + tax_rate_it));
-    let ct_income_excl = round_2(ct_income_incl / (d1 + tax_rate_ct));
-    let total_income_excl = it_income_excl + ct_income_excl;
-    let ct_cost_excl = round_2(ct_cost_incl / (d1 + tax_rate_ct));
-
-    // --- 第三步：测算投入 ---
-    let total_cost_excl;
-    let it_cost_excl;
-    let it_cost_incl;
-    let total_cost_incl;
-
-    if input.calc_mode == "margin" {
-        total_cost_excl = round_2(total_income_excl * (d1 - target_value));
-        it_cost_excl = total_cost_excl - ct_cost_excl;
-        it_cost_incl = round_2(it_cost_excl * (d1 + tax_rate_it));
-        total_cost_incl = it_cost_incl + ct_cost_incl;
-    } else if input.calc_mode == "npv" {
-        total_cost_excl = round_2(total_income_excl / (d1 + target_value));
-        it_cost_excl = total_cost_excl - ct_cost_excl;
-        it_cost_incl = round_2(it_cost_excl * (d1 + tax_rate_it));
-        total_cost_incl = it_cost_incl + ct_cost_incl;
-    } else if input.calc_mode == "total_cost" {
-        total_cost_incl = target_value;
-        it_cost_incl = total_cost_incl - ct_cost_incl;
-        it_cost_excl = round_2(it_cost_incl / (d1 + tax_rate_it));
-        total_cost_excl = it_cost_excl + ct_cost_excl;
-    } else {
-        return Err("未知的计算模式".to_string());
-    }
-
-    // --- 第四步：效益指标核算 ---
-    let margin_rate = if total_income_excl.is_zero() {
-        Decimal::ZERO
-    } else {
-        round_4((total_income_excl - total_cost_excl) / total_income_excl)
-    };
-
-    let npv_rate = if total_cost_excl.is_zero() {
-        Decimal::ZERO
-    } else {
-        round_4((total_income_excl - total_cost_excl) / total_cost_excl)
-    };
-
-    let it_npv_rate = if it_cost_excl.is_zero() {
-        Decimal::ZERO
-    } else {
-        round_4((it_income_excl - it_cost_excl) / it_cost_excl)
-    };
-
-    let mut warnings = Vec::new();
-    if it_cost_incl < Decimal::ZERO || it_cost_excl < Decimal::ZERO {
-        warnings.push("目标太高或投入太低，IT投入已被穿透为负数".to_string());
-    }
-
-    let warning_message = if warnings.is_empty() {
-        None
-    } else {
-        Some(warnings.join(" | "))
-    };
-
-    Ok(CalcResult {
-        it_income_incl: it_income_incl.to_string(),
-        ct_income_incl: ct_income_incl.to_string(),
-        total_income_incl: total_income_incl.to_string(),
-        it_income_excl: it_income_excl.to_string(),
-        ct_income_excl: ct_income_excl.to_string(),
-        total_income_excl: total_income_excl.to_string(),
-        it_cost_incl: it_cost_incl.to_string(),
-        ct_cost_incl: ct_cost_incl.to_string(),
-        total_cost_incl: total_cost_incl.to_string(),
-        it_cost_excl: it_cost_excl.to_string(),
-        ct_cost_excl: ct_cost_excl.to_string(),
-        total_cost_excl: total_cost_excl.to_string(),
-        margin_rate: margin_rate.to_string(),
-        npv_rate: npv_rate.to_string(),
-        it_npv_rate: it_npv_rate.to_string(),
-        warning_message,
-    })
 }
 
 #[tauri::command]

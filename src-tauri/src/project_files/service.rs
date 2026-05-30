@@ -55,34 +55,35 @@ impl ProjectFileService {
 
         let (root_id, relative_path) = match matched {
             Some((rid, rel)) => (Some(rid), Some(rel)),
-            None => {
-                match force_mode.as_deref() {
-                    Some("create_root") => {
-                        let (root_path_str, root_name_str, rel_path_str) = if let Some(parent) = path.parent() {
+            None => match force_mode.as_deref() {
+                Some("create_root") => {
+                    let (root_path_str, root_name_str, rel_path_str) =
+                        if let Some(parent) = path.parent() {
                             let p_str = parent.to_string_lossy().to_string();
-                            let p_name = parent.file_name()
+                            let p_name = parent
+                                .file_name()
                                 .map(|n| n.to_string_lossy().to_string())
                                 .unwrap_or_else(|| p_str.clone());
                             (p_str, p_name, folder_name.clone())
                         } else {
                             (folder_path.to_string(), folder_name.clone(), "".to_string())
                         };
-                        let new_rid = self.repository.create_root_direct(&root_name_str, &root_path_str)?;
-                        (Some(new_rid), Some(rel_path_str))
-                    }
-                    Some("absolute_only") => {
-                        (None, None)
-                    }
-                    _ => {
-                        return Err("NOT_IN_ROOT".to_string());
-                    }
+                    let new_rid = self
+                        .repository
+                        .create_root_direct(&root_name_str, &root_path_str)?;
+                    (Some(new_rid), Some(rel_path_str))
                 }
-            }
+                Some("absolute_only") => (None, None),
+                _ => {
+                    return Err("NOT_IN_ROOT".to_string());
+                }
+            },
         };
 
         if let (Some(rid), Some(rel)) = (&root_id, &relative_path) {
             let dir_id = format!("dir_{}", calculate_hash(&(project_id, folder_path)));
-            self.repository.save_project_directory(&dir_id, project_id, rid, rel, &folder_name)?;
+            self.repository
+                .save_project_directory(&dir_id, project_id, rid, rel, &folder_name)?;
         }
 
         let is_internal = crate::workspace::is_inside_workspace(&self.workspace_root, path);
@@ -92,9 +93,21 @@ impl ProjectFileService {
             folder_path.to_string()
         };
 
-        let linked_folder_type = if is_internal { "internal".to_string() } else { "external".to_string() };
-        let linked_folder_relative_path = if is_internal { Some(stored_folder_path.clone()) } else { None };
-        let linked_folder_external_path = if is_internal { None } else { Some(folder_path.to_string()) };
+        let linked_folder_type = if is_internal {
+            "internal".to_string()
+        } else {
+            "external".to_string()
+        };
+        let linked_folder_relative_path = if is_internal {
+            Some(stored_folder_path.clone())
+        } else {
+            None
+        };
+        let linked_folder_external_path = if is_internal {
+            None
+        } else {
+            Some(folder_path.to_string())
+        };
         let stored_relative_path = stored_folder_path.clone();
 
         // Update project folder path in repository
@@ -188,7 +201,8 @@ impl ProjectFileService {
         };
 
         // Resolve relative path to absolute
-        let resolved_folder_path = crate::workspace::resolve_workspace_path(&self.workspace_root, &folder_path);
+        let resolved_folder_path =
+            crate::workspace::resolve_workspace_path(&self.workspace_root, &folder_path);
         let folder_path_str = resolved_folder_path.to_string_lossy().to_string();
 
         // Determine if there is a project root and relative path matching the folder
@@ -206,7 +220,13 @@ impl ProjectFileService {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
-            self.repository.save_project_directory(&dir_id, project_id, rid, base_rel, &folder_name)?;
+            self.repository.save_project_directory(
+                &dir_id,
+                project_id,
+                rid,
+                base_rel,
+                &folder_name,
+            )?;
         }
 
         let scanned_files = scanner::scan_directory(project_id, &folder_path_str, recursive)?;
@@ -218,7 +238,7 @@ impl ProjectFileService {
         // 1. Process scanned files
         for mut scanned in scanned_files {
             scanned.absolute_path_snapshot = Some(scanned.file_path.clone());
-            
+
             // Calculate relative path for this file
             if let (Some(ref rid), Some(ref base_rel)) = (&root_id, &base_relative_path) {
                 scanned.root_id = Some(rid.clone());
@@ -239,19 +259,30 @@ impl ProjectFileService {
             }
 
             if root_id.is_some() {
-                scanned.directory_id = Some(format!("dir_{}", calculate_hash(&(project_id, &folder_path_str))));
+                scanned.directory_id = Some(format!(
+                    "dir_{}",
+                    calculate_hash(&(project_id, &folder_path_str))
+                ));
             } else {
                 scanned.directory_id = None;
             }
 
             // Path relative to workspace root if inside workspace
-            let is_in_ws = crate::workspace::is_inside_workspace(&self.workspace_root, Path::new(&scanned.file_path));
+            let is_in_ws = crate::workspace::is_inside_workspace(
+                &self.workspace_root,
+                Path::new(&scanned.file_path),
+            );
             if is_in_ws {
-                scanned.file_path = crate::workspace::to_relative_workspace_path(&self.workspace_root, Path::new(&scanned.file_path));
+                scanned.file_path = crate::workspace::to_relative_workspace_path(
+                    &self.workspace_root,
+                    Path::new(&scanned.file_path),
+                );
             }
 
             // Generate lightweight file hash
-            scanned.file_hash = match calculate_lightweight_hash(scanned.absolute_path_snapshot.as_ref().unwrap()) {
+            scanned.file_hash = match calculate_lightweight_hash(
+                scanned.absolute_path_snapshot.as_ref().unwrap(),
+            ) {
                 Ok(h) => Some(h),
                 Err(_) => None,
             };
@@ -259,10 +290,10 @@ impl ProjectFileService {
             // Detect file role
             scanned.file_role = Some(detect_file_role(&scanned.file_name));
 
-            if let Some(existing_idx) = existing_files
-                .iter()
-                .position(|f| f.file_path == scanned.file_path || f.absolute_path_snapshot.as_ref() == scanned.absolute_path_snapshot.as_ref())
-            {
+            if let Some(existing_idx) = existing_files.iter().position(|f| {
+                f.file_path == scanned.file_path
+                    || f.absolute_path_snapshot.as_ref() == scanned.absolute_path_snapshot.as_ref()
+            }) {
                 // Update existing record
                 let mut existing = existing_files.remove(existing_idx);
                 existing.size = scanned.size;
@@ -270,7 +301,7 @@ impl ProjectFileService {
                 existing.exists = true;
                 existing.last_scanned_at = Some(now.clone());
                 existing.updated_at = now.clone();
-                
+
                 // Copy Phase 2 fields
                 existing.root_id = scanned.root_id;
                 existing.directory_id = scanned.directory_id;
@@ -418,7 +449,9 @@ impl ProjectFileService {
         };
 
         if storage_mode == "copied" {
-            let folder_name = self.repository.get_project_folder_name(project_id)?
+            let folder_name = self
+                .repository
+                .get_project_folder_name(project_id)?
                 .unwrap_or_else(|| crate::workspace::sanitize_folder_name(project_id));
             let dest_dir = Path::new(workspace_root)
                 .join(&folder_name)
@@ -433,13 +466,18 @@ impl ProjectFileService {
                 .map_err(|e| format!("复制托管文件失败: {}", e))?;
 
             // Save path as relative workspace path
-            let relative_file_path = format!("{}/documents/{}", folder_name, file_name).replace("\\", "/");
+            let relative_file_path =
+                format!("{}/documents/{}", folder_name, file_name).replace("\\", "/");
             project_file.file_path = relative_file_path.clone();
             project_file.managed_path = Some(relative_file_path);
         } else {
-            let is_in_ws = crate::workspace::is_inside_workspace(&self.workspace_root, Path::new(src_path));
+            let is_in_ws =
+                crate::workspace::is_inside_workspace(&self.workspace_root, Path::new(src_path));
             if is_in_ws {
-                project_file.file_path = crate::workspace::to_relative_workspace_path(&self.workspace_root, Path::new(src_path));
+                project_file.file_path = crate::workspace::to_relative_workspace_path(
+                    &self.workspace_root,
+                    Path::new(src_path),
+                );
             } else {
                 project_file.file_path = src_path.to_string();
             }
@@ -448,7 +486,8 @@ impl ProjectFileService {
                 project_file.relative_path = Some(rel);
             }
             if let Ok(Some(folder_path)) = self.get_project_folder_path(project_id) {
-                let abs_folder = crate::workspace::resolve_workspace_path(&self.workspace_root, &folder_path);
+                let abs_folder =
+                    crate::workspace::resolve_workspace_path(&self.workspace_root, &folder_path);
                 let abs_folder_str = abs_folder.to_string_lossy().to_string();
                 if let Ok(Some((rid, rel))) = self.repository.find_matching_root(&abs_folder_str) {
                     let dir_id = format!("dir_{}", calculate_hash(&(project_id, &abs_folder_str)));
@@ -457,7 +496,13 @@ impl ProjectFileService {
                         .unwrap_or_default()
                         .to_string_lossy()
                         .to_string();
-                    let _ = self.repository.save_project_directory(&dir_id, project_id, &rid, &rel, &folder_name);
+                    let _ = self.repository.save_project_directory(
+                        &dir_id,
+                        project_id,
+                        &rid,
+                        &rel,
+                        &folder_name,
+                    );
                     project_file.directory_id = Some(dir_id);
                 } else {
                     project_file.directory_id = None;
@@ -490,12 +535,30 @@ impl ProjectFileService {
 
         // Check if this was a main document or main budget file and clear those flags in the project
         if file.is_main_document {
-            self.repository
-                .update_project_fields(project_id, None, Some("".to_string()), None, None, None, None, None, None)?;
+            self.repository.update_project_fields(
+                project_id,
+                None,
+                Some("".to_string()),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )?;
         }
         if file.is_main_budget_file {
-            self.repository
-                .update_project_fields(project_id, None, None, Some("".to_string()), None, None, None, None, None)?;
+            self.repository.update_project_fields(
+                project_id,
+                None,
+                None,
+                Some("".to_string()),
+                None,
+                None,
+                None,
+                None,
+                None,
+            )?;
         }
 
         self.repository.delete_file(file_id)
@@ -518,7 +581,8 @@ impl ProjectFileService {
 
         // Delete physical file if it was copied/managed
         if file.storage_mode == "copied" {
-            let abs_path = crate::workspace::resolve_workspace_path(&self.workspace_root, &file.file_path);
+            let abs_path =
+                crate::workspace::resolve_workspace_path(&self.workspace_root, &file.file_path);
             if abs_path.exists() {
                 fs::remove_file(abs_path).map_err(|e| format!("物理删除托管文件失败: {}", e))?;
             }
@@ -526,12 +590,30 @@ impl ProjectFileService {
 
         // Clear main indicators if necessary
         if file.is_main_document {
-            self.repository
-                .update_project_fields(project_id, None, Some("".to_string()), None, None, None, None, None, None)?;
+            self.repository.update_project_fields(
+                project_id,
+                None,
+                Some("".to_string()),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )?;
         }
         if file.is_main_budget_file {
-            self.repository
-                .update_project_fields(project_id, None, None, Some("".to_string()), None, None, None, None, None)?;
+            self.repository.update_project_fields(
+                project_id,
+                None,
+                None,
+                Some("".to_string()),
+                None,
+                None,
+                None,
+                None,
+                None,
+            )?;
         }
 
         self.repository.delete_file(file_id)
@@ -697,7 +779,12 @@ impl ProjectFileService {
         }
 
         // Priority 3 & 4: Search across all registered project roots
-        if let Some(found_path) = self.search_in_roots(&file.file_name, file.size, &file.modified_at, file.file_hash.as_deref()) {
+        if let Some(found_path) = self.search_in_roots(
+            &file.file_name,
+            file.size,
+            &file.modified_at,
+            file.file_hash.as_deref(),
+        ) {
             return Ok(found_path);
         }
 
@@ -715,12 +802,15 @@ impl ProjectFileService {
         }
 
         // Try to resolve folder path using bound project directory
-        if let Ok(Some((root_id, relative_path))) = self.repository.get_project_directory(project_id) {
+        if let Ok(Some((root_id, relative_path))) =
+            self.repository.get_project_directory(project_id)
+        {
             if let Ok(Some(root_path)) = self.repository.get_root_path(&root_id) {
                 let path = Path::new(&root_path).join(&relative_path);
                 if path.exists() {
                     let path_str = path.to_string_lossy().to_string();
-                    let is_internal = crate::workspace::is_inside_workspace(&self.workspace_root, &path);
+                    let is_internal =
+                        crate::workspace::is_inside_workspace(&self.workspace_root, &path);
                     let stored_folder = if is_internal {
                         crate::workspace::to_relative_workspace_path(&self.workspace_root, &path)
                     } else {
@@ -745,12 +835,25 @@ impl ProjectFileService {
         Ok(folder_opt)
     }
 
-    fn search_in_roots(&self, target_name: &str, target_size: u64, target_modified: &str, target_hash: Option<&str>) -> Option<String> {
+    fn search_in_roots(
+        &self,
+        target_name: &str,
+        target_size: u64,
+        target_modified: &str,
+        target_hash: Option<&str>,
+    ) -> Option<String> {
         let roots = self.repository.get_all_roots().ok()?;
         for root in roots {
             let root_path = Path::new(&root.1);
             if root_path.exists() && root_path.is_dir() {
-                if let Some(path) = search_dir_for_match(root_path, target_name, target_size, target_modified, target_hash, 0) {
+                if let Some(path) = search_dir_for_match(
+                    root_path,
+                    target_name,
+                    target_size,
+                    target_modified,
+                    target_hash,
+                    0,
+                ) {
                     return Some(path);
                 }
             }
@@ -831,15 +934,20 @@ fn calculate_lightweight_hash(path_str: &str) -> Result<String, std::io::Error> 
     let path = Path::new(path_str);
     let metadata = fs::metadata(path)?;
     let size = metadata.len();
-    
-    let modified = metadata.modified()
-        .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
+
+    let modified = metadata
+        .modified()
+        .map(|t| {
+            t.duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+        })
         .unwrap_or(0);
 
     let mut file = fs::File::open(path)?;
     let mut buffer = [0u8; 8192];
     let bytes_read = file.read(&mut buffer)?;
-    
+
     let mut hasher = DefaultHasher::new();
     hasher.write(&buffer[..bytes_read]);
     let content_hash = hasher.finish();
@@ -851,9 +959,17 @@ fn detect_file_role(file_name: &str) -> String {
     let lower = file_name.to_lowercase();
     if lower.contains("效益分析") || lower.contains("效益") || lower.contains("benefit") {
         "benefit_scheme".to_string()
-    } else if lower.contains("预算") || lower.contains("报价") || lower.contains("budget") || lower.contains("cost") {
+    } else if lower.contains("预算")
+        || lower.contains("报价")
+        || lower.contains("budget")
+        || lower.contains("cost")
+    {
         "budget".to_string()
-    } else if lower.contains("方案") || lower.contains("规划") || lower.contains("proposal") || lower.contains("design") {
+    } else if lower.contains("方案")
+        || lower.contains("规划")
+        || lower.contains("proposal")
+        || lower.contains("design")
+    {
         "proposal".to_string()
     } else {
         "other".to_string()
@@ -882,14 +998,17 @@ fn search_dir_for_match(
                     if let Ok(meta) = path.metadata() {
                         let size = meta.len();
                         if size == target_size {
-                            let modified: DateTime<Utc> = meta.modified()
+                            let modified: DateTime<Utc> = meta
+                                .modified()
                                 .map(DateTime::from)
                                 .unwrap_or_else(|_| Utc::now());
                             if modified.to_rfc3339() == target_modified {
                                 return Some(path.to_string_lossy().to_string());
                             }
                             if let Some(h) = target_hash {
-                                if let Ok(computed_h) = calculate_lightweight_hash(&path.to_string_lossy()) {
+                                if let Ok(computed_h) =
+                                    calculate_lightweight_hash(&path.to_string_lossy())
+                                {
                                     if computed_h == h {
                                         return Some(path.to_string_lossy().to_string());
                                     }
@@ -909,7 +1028,14 @@ fn search_dir_for_match(
     }
 
     for subdir in subdirs {
-        if let Some(found) = search_dir_for_match(&subdir, target_name, target_size, target_modified, target_hash, depth + 1) {
+        if let Some(found) = search_dir_for_match(
+            &subdir,
+            target_name,
+            target_size,
+            target_modified,
+            target_hash,
+            depth + 1,
+        ) {
             return Some(found);
         }
     }

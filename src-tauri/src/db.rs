@@ -3,10 +3,10 @@ use std::path::Path;
 
 pub fn init_db(db_path: &Path) -> Result<Connection> {
     let mut conn = Connection::open(db_path)?;
-    
+
     // Enable foreign keys support
     conn.execute("PRAGMA foreign_keys = ON;", [])?;
-    
+
     // Create tables (Version 4 structure)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS projects (
@@ -294,11 +294,12 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
 
     // Set schema_version = 2 if not exists
     {
-        let mut stmt = conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
+        let mut stmt =
+            conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
         let version_exists = stmt.exists([])?;
         if !version_exists {
             let now = chrono::Utc::now().to_rfc3339();
-            
+
             // Check if projects table already has version 4 columns (fresh database check)
             let has_folder_name: bool = {
                 let mut col_stmt = conn.prepare("PRAGMA table_info(projects)")?;
@@ -324,7 +325,8 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
 
     // Run migration checks from Version 1 to 2
     {
-        let mut stmt = conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
+        let mut stmt =
+            conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
         let mut rows = stmt.query([])?;
         if let Some(row) = rows.next()? {
             let val_str: String = row.get(0)?;
@@ -360,7 +362,10 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
                 };
 
                 if !columns.contains(&"directory_id".to_string()) {
-                    conn.execute("ALTER TABLE project_files ADD COLUMN directory_id TEXT;", [])?;
+                    conn.execute(
+                        "ALTER TABLE project_files ADD COLUMN directory_id TEXT;",
+                        [],
+                    )?;
                 }
                 if !columns.contains(&"file_hash".to_string()) {
                     conn.execute("ALTER TABLE project_files ADD COLUMN file_hash TEXT;", [])?;
@@ -399,7 +404,8 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
     // Run migration checks from Version 2 to 3
     {
         let version = {
-            let mut stmt = conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
+            let mut stmt =
+                conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
             let mut rows = stmt.query([])?;
             if let Some(row) = rows.next()? {
                 let val_str: String = row.get(0)?;
@@ -446,7 +452,8 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
     // Run migration checks from Version 3 to 4
     {
         let version = {
-            let mut stmt = conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
+            let mut stmt =
+                conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
             let mut rows = stmt.query([])?;
             if let Some(row) = rows.next()? {
                 let val_str: String = row.get(0)?;
@@ -459,11 +466,23 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
             let tx = conn.transaction()?;
             tx.execute("ALTER TABLE projects ADD COLUMN folder_name TEXT;", [])?;
             tx.execute("ALTER TABLE projects ADD COLUMN relative_path TEXT;", [])?;
-            tx.execute("ALTER TABLE projects ADD COLUMN progress REAL DEFAULT 0.0;", [])?;
+            tx.execute(
+                "ALTER TABLE projects ADD COLUMN progress REAL DEFAULT 0.0;",
+                [],
+            )?;
             tx.execute("ALTER TABLE projects ADD COLUMN deadline TEXT;", [])?;
-            tx.execute("ALTER TABLE projects ADD COLUMN linked_folder_type TEXT DEFAULT 'none';", [])?;
-            tx.execute("ALTER TABLE projects ADD COLUMN linked_folder_relative_path TEXT;", [])?;
-            tx.execute("ALTER TABLE projects ADD COLUMN linked_folder_external_path TEXT;", [])?;
+            tx.execute(
+                "ALTER TABLE projects ADD COLUMN linked_folder_type TEXT DEFAULT 'none';",
+                [],
+            )?;
+            tx.execute(
+                "ALTER TABLE projects ADD COLUMN linked_folder_relative_path TEXT;",
+                [],
+            )?;
+            tx.execute(
+                "ALTER TABLE projects ADD COLUMN linked_folder_external_path TEXT;",
+                [],
+            )?;
 
             let now = chrono::Utc::now().to_rfc3339();
             tx.execute(
@@ -477,7 +496,8 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
     // Run migration checks from Version 4 to 5
     {
         let version = {
-            let mut stmt = conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
+            let mut stmt =
+                conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
             let mut rows = stmt.query([])?;
             if let Some(row) = rows.next()? {
                 let val_str: String = row.get(0)?;
@@ -526,7 +546,10 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
                 cols
             };
             if !asset_columns.contains(&"template_id".to_string()) {
-                tx.execute("ALTER TABLE project_template_assets ADD COLUMN template_id TEXT;", [])?;
+                tx.execute(
+                    "ALTER TABLE project_template_assets ADD COLUMN template_id TEXT;",
+                    [],
+                )?;
             }
 
             tx.execute(

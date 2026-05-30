@@ -10,7 +10,7 @@ export function serializeAiContext(module: string, data: any): string {
 
   if (module === 'ict') {
     markdown += serializeIctModule(data);
-  } else if (module.startsWith('docfill.template.') || module.startsWith('ict.template.')) {
+  } else if (module.startsWith('ict.template.')) {
     markdown += serializeTemplateData(data);
   } else {
     // Generic fallback for other modules in Phase 1
@@ -30,7 +30,7 @@ function serializeTemplateData(data: any): string {
   lines.push(`\n**[表单填报内容]**`);
 
   // Recursively or flatly extract non-empty values from the template payload
-  // Typically docfill data is a flat object of fieldKey: value
+  // Template data is usually a flat object of fieldKey: value.
   Object.entries(data).forEach(([key, value]) => {
     // Skip internal structures like 'basic', 'revenue', 'cost' as they are handled by ict module
     if (['basic', 'revenue', 'cost', 'metrics', 'techItems', 'inqVendors'].includes(key)) return;

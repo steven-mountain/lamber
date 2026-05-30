@@ -1,7 +1,7 @@
 use crate::config_manager;
 use base64::Engine;
 use regex::Regex;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
 use zip::{write::SimpleFileOptions, ZipArchive, ZipWriter};
@@ -9,62 +9,6 @@ use zip::{write::SimpleFileOptions, ZipArchive, ZipWriter};
 /// Attempts to parse out `{variable}` placeholders.
 /// In raw XML, tags might be fragmented like `<w:t>{</w:t> ... <w:t>name</w:t>`.
 /// To handle this, we do a purely text-based extraction by stripping XML tags first.
-#[tauri::command]
-pub fn extract_docx_variables(path: String) -> Result<Vec<String>, String> {
-    let file = File::open(&path).map_err(|e| format!("Failed to open file: {}", e))?;
-    let mut archive = ZipArchive::new(file).map_err(|e| format!("Failed to read zip: {}", e))?;
-
-    let mut doc_xml = String::new();
-
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i).unwrap();
-        if file.name().ends_with(".xml") {
-            let mut content = String::new();
-            if file.read_to_string(&mut content).is_ok() {
-                doc_xml.push_str(&content);
-            }
-        }
-    }
-
-    if doc_xml.is_empty() {
-        return Err("Could not find any xml files in the provided archive.".into());
-    }
-
-    // Strip all XML tags to find pure text content
-    let tag_re = Regex::new(r"<[^>]+>").unwrap();
-    let pure_text = tag_re.replace_all(&doc_xml, "");
-
-    // Find all {var_name}
-    let var_re = Regex::new(r"\{([a-zA-Z0-9_\u4e00-\u9fa5（）]+)\}").unwrap();
-    let mut vars = HashSet::new();
-
-    for cap in var_re.captures_iter(&pure_text) {
-        if let Some(matched) = cap.get(1) {
-            vars.insert(matched.as_str().to_string());
-        }
-    }
-
-    let mut result: Vec<String> = vars.into_iter().collect();
-    result.sort();
-    Ok(result)
-}
-
-/// Generates the docx by replacing variables in the xml files.
-#[tauri::command]
-pub fn generate_docx(
-    app: tauri::AppHandle,
-    runtime: tauri::State<'_, std::sync::Arc<crate::workspace::WorkspaceRuntime>>,
-    template_path: String,
-    output_path: String,
-    variables: HashMap<String, String>,
-) -> Result<(), String> {
-    let workspace = runtime.require_workspace()?;
-    let db = runtime.require_db()?;
-    let conn = db.lock().map_err(|e| e.to_string())?;
-    internal_generate_docx(Some(&app), Some(&conn), Some(&workspace.workspace_root), &template_path, &output_path, &variables)
-}
-
-
 fn internal_generate_docx(
     app_handle: Option<&tauri::AppHandle>,
     db_conn: Option<&rusqlite::Connection>,
@@ -149,19 +93,28 @@ fn internal_generate_docx(
             // Single assetId directly
             if let (Some(app), Some(conn)) = (app_handle, db_conn) {
                 if let Some(root) = workspace_root {
-                    if let Ok(physical_path) = crate::project_files::assets::get_template_asset_path_internal(app, conn, root, val) {
-                    if let Ok(bytes) = std::fs::read(&physical_path) {
-                        let path = std::path::Path::new(&physical_path);
-                        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("png").to_string();
-                        let ct = if ext == "png" {
-                            "image/png"
-                        } else if ext == "jpg" || ext == "jpeg" {
-                            "image/jpeg"
-                        } else {
-                            "image/webp"
-                        }.to_string();
-                        processed.push((bytes, ext, ct, 0, 0, "".to_string()));
-                    }
+                    if let Ok(physical_path) =
+                        crate::project_files::assets::get_template_asset_path_internal(
+                            app, conn, root, val,
+                        )
+                    {
+                        if let Ok(bytes) = std::fs::read(&physical_path) {
+                            let path = std::path::Path::new(&physical_path);
+                            let ext = path
+                                .extension()
+                                .and_then(|e| e.to_str())
+                                .unwrap_or("png")
+                                .to_string();
+                            let ct = if ext == "png" {
+                                "image/png"
+                            } else if ext == "jpg" || ext == "jpeg" {
+                                "image/jpeg"
+                            } else {
+                                "image/webp"
+                            }
+                            .to_string();
+                            processed.push((bytes, ext, ct, 0, 0, "".to_string()));
+                        }
                     }
                 }
             }
@@ -190,7 +143,6 @@ fn internal_generate_docx(
             image_map.insert(k.to_string(), processed);
         }
     }
-
 
     let mut rels_additions: Vec<(String, String)> = Vec::new();
     let mut media_additions: Vec<(String, Vec<u8>)> = Vec::new();
@@ -649,128 +601,6 @@ pub fn generate_lifecycle_docs(
     }
 
     Ok(output_dir.to_string_lossy().to_string())
-}
-
-#[tauri::command]
-pub fn batch_generate_docx_from_excel(
-    state: tauri::State<'_, std::sync::Mutex<config_manager::AppConfig>>,
-    module_id: String,
-    excel_path: String,
-    template_path: String,
-) -> Result<String, String> {
-    use calamine::{open_workbook, Reader, Xlsx};
-    use chrono::Local;
-
-    let mut workbook: Xlsx<_> =
-        open_workbook(&excel_path).map_err(|e| format!("打开Excel异常: {}", e))?;
-    let sheet_names = workbook.sheet_names().to_owned();
-    let sheet_name = sheet_names.first().ok_or("找不到工作表")?.clone();
-    let range = workbook
-        .worksheet_range(&sheet_name)
-        .map_err(|e| format!("读取工作表异常: {}", e))?;
-
-    // Create output directory from module config
-    let config = state.lock().unwrap();
-    let module_path = config
-        .module_paths
-        .get(&module_id)
-        .ok_or("未设置工作目录")?;
-    let output_dir = std::path::Path::new(module_path).join("output");
-
-    if !output_dir.exists() {
-        std::fs::create_dir_all(&output_dir).map_err(|e| format!("创建输出目录失败: {}", e))?;
-    }
-
-    let mut headers = HashMap::new();
-    let mut rows = range.rows();
-    if let Some(header_row) = rows.next() {
-        for (i, cell) in header_row.iter().enumerate() {
-            let h = cell.to_string().trim().to_string();
-            headers.insert(h, i);
-        }
-    }
-
-    println!(
-        "Found Excel Headers: {:?}",
-        headers.keys().collect::<Vec<_>>()
-    );
-
-    // Mapping: Excel Header Label -> Docx Placeholder Name
-    let mapping = [
-        ("项目名称", "PROJECT_NAME"),
-        ("CT产品名", "CT_PRODUCT_NAME"),
-        ("项目总投入(不含税)", "TOTAL_PROJECT_INVESTMENT"),
-        ("IT投入(不含税)", "IT_INVESTMENT"),
-        ("CT投入(不含税)", "CT_INVESTMENT"),
-        ("项目总收入(不含税)", "TOTAL_PROJECT_REVENUE"),
-        ("IT收入(不含税)", "IT_REVENUE"),
-        ("CT收入(不含税)", "CT_REVENUE"),
-        ("项目净现值率", "NET_PRESENT_VALUE_RATE"),
-        ("项目毛利率", "PROJECT_GROSS_PROFIT_MARGIN"),
-        ("IT净现值率", "IT_NET_PRESENT_VALUE_RATE"),
-        ("项目周期", "CONTRACT_DURATION"),
-        ("收款方式", "REV_COLLECTION"),
-        ("付款方式", "EXP_PAYMENT"),
-    ];
-
-    let curr_date = Local::now().format("%Y年%m月%d日").to_string();
-    let mut count = 0;
-
-    for row in rows {
-        let mut vars = HashMap::new();
-        vars.insert("CURR_DATE".to_string(), curr_date.clone());
-
-        // Add default values for new dynamic subjects to ensure batch generation doesn't leave un-replaced placeholders
-        vars.insert("SUBJECT_IT_COST".to_string(), "IT集成".to_string());
-        vars.insert("SUBJECT_CT_COST".to_string(), "CT-专线及产品".to_string());
-        vars.insert(
-            "SUBJECT_IT_REV".to_string(),
-            "小微ICT业务-IoT-集成".to_string(),
-        );
-        vars.insert("SUBJECT_CT_REV".to_string(), "CT-专线及产品".to_string());
-        vars.insert("PROJECT_BACKGROUND".to_string(), "".to_string());
-
-        for (ch_key, en_key) in mapping {
-            if let Some(&idx) = headers.get(ch_key) {
-                if idx < row.len() {
-                    let mut val = row[idx].to_string();
-
-                    // Format percentage rates
-                    if en_key.contains("RATE") || en_key.contains("MARGIN") {
-                        if let Ok(num) = val.parse::<f64>() {
-                            val = format!("{:.2}%", num * 100.0);
-                        }
-                    }
-
-                    vars.insert(en_key.to_string(), val);
-                }
-            }
-        }
-
-        if count == 0 {
-            println!("Sample Variables for first row: {:?}", vars);
-        }
-
-        let proj_name = vars
-            .get("PROJECT_NAME")
-            .cloned()
-            .unwrap_or_else(|| format!("未命名_{}", count));
-        let safe_proj_name = proj_name
-            .chars()
-            .filter(|c| !r#"\/:*?"<>|"#.contains(*c))
-            .collect::<String>();
-        let target_name = format!("立项签批表-{}.docx", safe_proj_name);
-        let target_path = output_dir.join(target_name);
-
-        internal_generate_docx(None, None, None, &template_path, target_path.to_str().unwrap(), &vars)?;
-        count += 1;
-    }
-
-    Ok(format!(
-        "成功生成 {} 份签批表，保存在目录：\n{}",
-        count,
-        output_dir.display()
-    ))
 }
 
 fn internal_generate_xlsx(

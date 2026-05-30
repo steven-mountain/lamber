@@ -24,8 +24,6 @@ function isTauriRuntime() {
 
 function getCoreContextKey(view: string) {
   if (view === 'ict') return AI_CONTEXT_KEY.ICT_CORE;
-  if (view === 'benefit') return AI_CONTEXT_KEY.BENEFIT_CORE;
-  if (view === 'docfill') return AI_CONTEXT_KEY.DOCFILL_CORE;
   return view;
 }
 
@@ -341,7 +339,6 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
   const quickActionItems = [
     { label: '分析当前项目效益', icon: 'ai', view: 'ict' },
     { label: '推荐合适产品', icon: 'aiThinking' },
-    { label: '生成立项摘要', icon: 'document', view: 'docfill' },
   ] satisfies Array<{ label: string; icon: AppIconName; view?: string }>;
   const quickActions = quickActionItems.filter(action => !action.view || action.view === quickActionView);
   const quickActionContextKey = quickActionView === 'hub' ? '' : getCoreContextKey(quickActionView);

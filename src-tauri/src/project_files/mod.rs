@@ -1,10 +1,10 @@
+pub mod assets;
 pub mod commands;
+pub mod health;
+pub mod import_scanner;
 pub mod models;
+pub mod relocation;
 pub mod repository;
+pub mod roots;
 pub mod scanner;
 pub mod service;
-pub mod roots;
-pub mod health;
-pub mod relocation;
-pub mod import_scanner;
-pub mod assets;

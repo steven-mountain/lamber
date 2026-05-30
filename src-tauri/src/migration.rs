@@ -1,9 +1,9 @@
 use crate::benefit::models::StoreData;
 use chrono::Utc;
+use serde::Serialize;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use serde::Serialize;
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -29,10 +29,11 @@ pub fn check_migration_needed(conn: &rusqlite::Connection, json_path: &Path) -> 
         return false;
     }
 
-    let mut stmt = match conn.prepare("SELECT value FROM app_settings WHERE key = 'migration_status'") {
-        Ok(s) => s,
-        Err(_) => return false,
-    };
+    let mut stmt =
+        match conn.prepare("SELECT value FROM app_settings WHERE key = 'migration_status'") {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
 
     let mut rows = match stmt.query([]) {
         Ok(r) => r,
@@ -47,7 +48,10 @@ pub fn check_migration_needed(conn: &rusqlite::Connection, json_path: &Path) -> 
     true
 }
 
-pub fn run_migration(conn: &mut rusqlite::Connection, json_path: &Path) -> Result<MigrationReport, String> {
+pub fn run_migration(
+    conn: &mut rusqlite::Connection,
+    json_path: &Path,
+) -> Result<MigrationReport, String> {
     if !json_path.exists() {
         return Err("旧数据文件 projects_store.json 不存在".to_string());
     }
@@ -61,17 +65,16 @@ pub fn run_migration(conn: &mut rusqlite::Connection, json_path: &Path) -> Resul
         backup_path.set_extension(format!("backup_{}.json", timestamp));
     }
 
-    fs::copy(json_path, &backup_path)
-        .map_err(|e| format!("备份旧 JSON 文件失败: {}", e))?;
+    fs::copy(json_path, &backup_path).map_err(|e| format!("备份旧 JSON 文件失败: {}", e))?;
 
     let backup_path_str = backup_path.to_string_lossy().to_string();
 
     // 2. Read and parse the JSON file
-    let content = fs::read_to_string(json_path)
-        .map_err(|e| format!("读取旧 JSON 文件失败: {}", e))?;
-    
-    let store: StoreData = serde_json::from_str(&content)
-        .map_err(|e| format!("解析旧数据失败: {}", e))?;
+    let content =
+        fs::read_to_string(json_path).map_err(|e| format!("读取旧 JSON 文件失败: {}", e))?;
+
+    let store: StoreData =
+        serde_json::from_str(&content).map_err(|e| format!("解析旧数据失败: {}", e))?;
 
     let projects_count = store.projects.len();
     let schemes_count = store.schemes.len();
@@ -79,11 +82,15 @@ pub fn run_migration(conn: &mut rusqlite::Connection, json_path: &Path) -> Resul
     let files_count = store.project_files.len();
 
     // 3. Start a database transaction
-    let tx = conn.transaction().map_err(|e| format!("开启数据库事务失败: {}", e))?;
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("开启数据库事务失败: {}", e))?;
 
     // 4. Insert projects
     for project in &store.projects {
-        let summary_metrics_str = project.summary_metrics.as_ref()
+        let summary_metrics_str = project
+            .summary_metrics
+            .as_ref()
             .and_then(|m| serde_json::to_string(m).ok());
         let logs_str = serde_json::to_string(&project.logs).unwrap_or_default();
 
@@ -192,7 +199,8 @@ pub fn run_migration(conn: &mut rusqlite::Connection, json_path: &Path) -> Resul
     ).map_err(|e| format!("更新迁移状态失败: {}", e))?;
 
     // 9. Commit transaction
-    tx.commit().map_err(|e| format!("提交迁移事务失败: {}", e))?;
+    tx.commit()
+        .map_err(|e| format!("提交迁移事务失败: {}", e))?;
 
     Ok(MigrationReport {
         success: true,
@@ -214,8 +222,8 @@ pub fn skip_migration(conn: &rusqlite::Connection) -> Result<(), String> {
     Ok(())
 }
 
-use tauri::{AppHandle, State, Manager};
 use std::sync::Mutex;
+use tauri::{AppHandle, Manager, State};
 
 #[tauri::command]
 pub async fn check_db_migration(
@@ -243,14 +251,15 @@ pub async fn run_db_migration(
         .app_data_dir()
         .map_err(|e| format!("无法获取 App 数据目录: {}", e))?;
     let store_path = app_data_dir.join("projects_store.json");
-    
+
     let mut db_conn = conn.lock().map_err(|e| e.to_string())?;
     let report = run_migration(&mut db_conn, &store_path)?;
 
     // Switch to SQLite backend
     let sqlite_p = crate::benefit::repository::SqliteProjectRepository::new(conn.inner().clone());
-    let sqlite_f = crate::project_files::repository::SqliteProjectFileRepository::new(conn.inner().clone());
-    
+    let sqlite_f =
+        crate::project_files::repository::SqliteProjectFileRepository::new(conn.inner().clone());
+
     project_repo.switch_to_sqlite(sqlite_p);
     file_repo.switch_to_sqlite(sqlite_f);
 
@@ -268,8 +277,9 @@ pub async fn skip_db_migration(
 
     // Switch to SQLite backend
     let sqlite_p = crate::benefit::repository::SqliteProjectRepository::new(conn.inner().clone());
-    let sqlite_f = crate::project_files::repository::SqliteProjectFileRepository::new(conn.inner().clone());
-    
+    let sqlite_f =
+        crate::project_files::repository::SqliteProjectFileRepository::new(conn.inner().clone());
+
     project_repo.switch_to_sqlite(sqlite_p);
     file_repo.switch_to_sqlite(sqlite_f);
 

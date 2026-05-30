@@ -1,375 +1,7 @@
-use super::calculator::calculate_benefit;
-use super::models::{CalcInput, IctInput, IctItem};
-use crate::config_manager;
+use super::models::{IctInput, IctItem};
 use calamine::{open_workbook, Reader, Xlsx};
-use rust_xlsxwriter::{Format, Workbook};
 use std::collections::HashMap;
 use std::path::Path;
-
-#[tauri::command]
-pub async fn process_excel_batch(
-    state: tauri::State<'_, std::sync::Mutex<config_manager::AppConfig>>,
-    module_id: String,
-    file_path: String,
-) -> Result<String, String> {
-    let module_path = {
-        let config = state.lock().unwrap();
-        config
-            .module_paths
-            .get(&module_id)
-            .ok_or_else(|| "未设置工作目录".to_string())?
-            .clone()
-    };
-
-    tauri::async_runtime::spawn_blocking(move || {
-        let path = Path::new(&file_path);
-
-        if !path.exists() {
-            return Err("文件不存在".to_string());
-        }
-
-        let output_dir = std::path::Path::new(&module_path).join("output");
-
-        if !output_dir.exists() {
-            std::fs::create_dir_all(&output_dir).map_err(|e| format!("创建输出目录失败: {}", e))?;
-        }
-
-        let file_name = path.file_name().unwrap().to_string_lossy().to_string();
-        let out_name = file_name.replace(".xlsx", "_批处理结果.xlsx");
-        let out_path = output_dir.join(out_name);
-        let out_path_str = out_path.to_string_lossy().to_string();
-
-        let mut workbook: Xlsx<_> =
-            open_workbook(&file_path).map_err(|e| format!("打开Excel异常: {}", e))?;
-        let sheet_names = workbook.sheet_names().to_owned();
-        let sheet_name = sheet_names.first().ok_or("找不到工作表")?.clone();
-
-        let range = workbook
-            .worksheet_range(&sheet_name)
-            .map_err(|e| format!("读取工作表异常: {}", e))?;
-
-        let mut out_wb = Workbook::new();
-        let out_sheet = out_wb.add_worksheet();
-
-        let mut row_idx = 0;
-
-        let mut headers = vec![];
-        let mut has_headers = false;
-
-        let mut inc_col = None;
-        let mut cost_col = None;
-        let mut margin_col = None;
-        let mut npv_col = None;
-        let mut ct_amt_col = None;
-        let mut it_tax_col = None;
-        let mut ct_tax_col = None;
-
-        let percent_format = Format::new().set_num_format("0.00%");
-
-        for row in range.rows() {
-            if !has_headers {
-                for (c_idx, cell) in row.iter().enumerate() {
-                    let h_str = cell.to_string();
-                    headers.push(h_str.clone());
-                    match h_str.trim() {
-                        "项目总收入" | "含税总收入" => inc_col = Some(c_idx),
-                        "项目总投入" | "含税总投入" => cost_col = Some(c_idx),
-                        "目标利润率" => margin_col = Some(c_idx),
-                        "目标净现值率" => npv_col = Some(c_idx),
-                        "CT产品含税总额" | "CT产品名" | "CT产品" => {
-                            ct_amt_col = Some(c_idx)
-                        }
-                        "IT税率" => it_tax_col = Some(c_idx),
-                        "CT税率" => ct_tax_col = Some(c_idx),
-                        _ => {}
-                    }
-                    out_sheet
-                        .write_string(row_idx, c_idx as u16, &h_str)
-                        .unwrap();
-                }
-
-                let ext_idx = headers.len() as u16;
-                out_sheet
-                    .write_string(row_idx, ext_idx, "项目总收入(含税)")
-                    .unwrap();
-                out_sheet
-                    .write_string(row_idx, ext_idx + 1, "项目总收入(不含税)")
-                    .unwrap();
-                out_sheet
-                    .write_string(row_idx, ext_idx + 2, "IT收入(不含税)")
-                    .unwrap();
-                out_sheet
-                    .write_string(row_idx, ext_idx + 3, "CT收入(不含税)")
-                    .unwrap();
-                out_sheet
-                    .write_string(row_idx, ext_idx + 4, "项目总投入(含税)")
-                    .unwrap();
-                out_sheet
-                    .write_string(row_idx, ext_idx + 5, "项目总投入(不含税)")
-                    .unwrap();
-                out_sheet
-                    .write_string(row_idx, ext_idx + 6, "IT投入(不含税)")
-                    .unwrap();
-                out_sheet
-                    .write_string(row_idx, ext_idx + 7, "CT投入(不含税)")
-                    .unwrap();
-                out_sheet
-                    .write_string(row_idx, ext_idx + 8, "项目毛利率")
-                    .unwrap();
-                out_sheet
-                    .write_string(row_idx, ext_idx + 9, "项目净现值率")
-                    .unwrap();
-                out_sheet
-                    .write_string(row_idx, ext_idx + 10, "IT净现值率")
-                    .unwrap();
-                out_sheet
-                    .write_string(row_idx, ext_idx + 11, "算账明细/警告")
-                    .unwrap();
-
-                has_headers = true;
-                row_idx += 1;
-                continue;
-            }
-
-            // Write original data
-            for (c_idx, cell) in row.iter().enumerate() {
-                let val = cell.to_string();
-                if let Ok(num) = val.parse::<f64>() {
-                    out_sheet.write_number(row_idx, c_idx as u16, num).unwrap();
-                } else {
-                    out_sheet.write_string(row_idx, c_idx as u16, &val).unwrap();
-                }
-            }
-
-            let ext_idx = headers.len() as u16;
-
-            let get_val = |opt_col: Option<usize>| -> String {
-                if let Some(col) = opt_col {
-                    if col < row.len() {
-                        return row[col].to_string().trim().to_string();
-                    }
-                }
-                "".to_string()
-            };
-
-            let inc_val = get_val(inc_col);
-            let cost_val = get_val(cost_col);
-            let margin_val = get_val(margin_col);
-            let npv_val = get_val(npv_col);
-            let ct_amt_val = get_val(ct_amt_col);
-            let mut it_tax_val = get_val(it_tax_col);
-            let mut ct_tax_val = get_val(ct_tax_col);
-
-            if it_tax_val.is_empty() {
-                it_tax_val = "0.06".to_string();
-            }
-            if ct_tax_val.is_empty() {
-                ct_tax_val = "0.06".to_string();
-            }
-
-            let ct_amt_opt = if ct_amt_val.is_empty() {
-                None
-            } else {
-                Some(ct_amt_val)
-            };
-
-            let mut calc_mode = "";
-            let mut target_val = "".to_string();
-
-            if !cost_val.is_empty() {
-                calc_mode = "total_cost";
-                target_val = cost_val;
-            } else if !margin_val.is_empty() {
-                calc_mode = "margin";
-                target_val = margin_val;
-            } else if !npv_val.is_empty() {
-                calc_mode = "npv";
-                target_val = npv_val;
-            }
-
-            if inc_val.is_empty() || target_val.is_empty() {
-                out_sheet
-                    .write_string(row_idx, ext_idx + 3, "跳过：缺少关键参数")
-                    .unwrap();
-                row_idx += 1;
-                continue;
-            }
-
-            let input = CalcInput {
-                tax_rate_it: it_tax_val,
-                tax_rate_ct: ct_tax_val,
-                total_income_incl: inc_val,
-                calc_mode: calc_mode.to_string(),
-                target_value: target_val,
-                ct_income_incl_opt: ct_amt_opt,
-            };
-
-            match calculate_benefit(input) {
-                Ok(res) => {
-                    // Backfill inferred values into empty columns
-                    if get_val(ct_amt_col).is_empty() {
-                        if let Some(col) = ct_amt_col {
-                            if let Ok(c) = res.ct_income_incl.parse::<f64>() {
-                                out_sheet.write_number(row_idx, col as u16, c).unwrap();
-                            }
-                        }
-                    }
-                    if get_val(it_tax_col).is_empty() {
-                        if let Some(col) = it_tax_col {
-                            out_sheet.write_number(row_idx, col as u16, 0.06).unwrap();
-                        }
-                    }
-                    if get_val(ct_tax_col).is_empty() {
-                        if let Some(col) = ct_tax_col {
-                            out_sheet.write_number(row_idx, col as u16, 0.06).unwrap();
-                        }
-                    }
-
-                    if get_val(cost_col).is_empty() {
-                        if let Some(col) = cost_col {
-                            if let Ok(c) = res.total_cost_incl.parse::<f64>() {
-                                out_sheet.write_number(row_idx, col as u16, c).unwrap();
-                            }
-                        }
-                    }
-                    if get_val(margin_col).is_empty() {
-                        if let Some(col) = margin_col {
-                            if let Ok(m) = res.margin_rate.parse::<f64>() {
-                                out_sheet
-                                    .write_number_with_format(
-                                        row_idx,
-                                        col as u16,
-                                        m,
-                                        &percent_format,
-                                    )
-                                    .unwrap();
-                            }
-                        }
-                    }
-                    if get_val(npv_col).is_empty() {
-                        if let Some(col) = npv_col {
-                            if let Ok(n) = res.npv_rate.parse::<f64>() {
-                                out_sheet
-                                    .write_number_with_format(
-                                        row_idx,
-                                        col as u16,
-                                        n,
-                                        &percent_format,
-                                    )
-                                    .unwrap();
-                            }
-                        }
-                    }
-
-                    let ext_idx = headers.len() as u16;
-
-                    if let Ok(val) = res.total_income_incl.parse::<f64>() {
-                        out_sheet.write_number(row_idx, ext_idx, val).unwrap();
-                    }
-                    if let Ok(val) = res.total_income_excl.parse::<f64>() {
-                        out_sheet.write_number(row_idx, ext_idx + 1, val).unwrap();
-                    }
-                    if let Ok(val) = res.it_income_excl.parse::<f64>() {
-                        out_sheet.write_number(row_idx, ext_idx + 2, val).unwrap();
-                    }
-                    if let Ok(val) = res.ct_income_excl.parse::<f64>() {
-                        out_sheet.write_number(row_idx, ext_idx + 3, val).unwrap();
-                    }
-
-                    if let Ok(val) = res.total_cost_incl.parse::<f64>() {
-                        out_sheet.write_number(row_idx, ext_idx + 4, val).unwrap();
-                    }
-                    if let Ok(val) = res.total_cost_excl.parse::<f64>() {
-                        out_sheet.write_number(row_idx, ext_idx + 5, val).unwrap();
-                    }
-                    if let Ok(val) = res.it_cost_excl.parse::<f64>() {
-                        out_sheet.write_number(row_idx, ext_idx + 6, val).unwrap();
-                    }
-                    if let Ok(val) = res.ct_cost_excl.parse::<f64>() {
-                        out_sheet.write_number(row_idx, ext_idx + 7, val).unwrap();
-                    }
-
-                    if let Ok(m) = res.margin_rate.parse::<f64>() {
-                        out_sheet
-                            .write_number_with_format(row_idx, ext_idx + 8, m, &percent_format)
-                            .unwrap();
-                    }
-                    if let Ok(n) = res.npv_rate.parse::<f64>() {
-                        out_sheet
-                            .write_number_with_format(row_idx, ext_idx + 9, n, &percent_format)
-                            .unwrap();
-                    }
-                    if let Ok(it_n) = res.it_npv_rate.parse::<f64>() {
-                        out_sheet
-                            .write_number_with_format(row_idx, ext_idx + 10, it_n, &percent_format)
-                            .unwrap();
-                    }
-                    let warn = res.warning_message.unwrap_or_else(|| "正常".to_string());
-                    out_sheet
-                        .write_string(row_idx, ext_idx + 11, &warn)
-                        .unwrap();
-                }
-                Err(e) => {
-                    let ext_idx = headers.len() as u16;
-                    out_sheet
-                        .write_string(row_idx, ext_idx + 11, &format!("错误: {}", e))
-                        .unwrap();
-                }
-            }
-
-            row_idx += 1;
-        }
-
-        out_wb
-            .save(&out_path_str)
-            .map_err(|e| format!("保存文件失败: {}", e))?;
-        Ok(out_path_str)
-    })
-    .await
-    .map_err(|e| format!("异步执行异常: {}", e))?
-}
-
-#[tauri::command]
-pub fn generate_excel_template(path: String) -> Result<(), String> {
-    let mut workbook = Workbook::new();
-    let worksheet = workbook.add_worksheet();
-
-    let headers = [
-        "项目名称",
-        "含税总收入",
-        "含税总投入",
-        "目标利润率",
-        "目标净现值率",
-        "项目周期",
-        "CT产品名",
-        "CT产品含税总额",
-        "IT税率",
-        "CT税率",
-        "收款方式",
-        "付款方式",
-    ];
-    for (col, header) in headers.iter().enumerate() {
-        worksheet.write_string(0, col as u16, *header).unwrap();
-    }
-
-    worksheet.write_string(1, 0, "示例项目A").unwrap();
-    worksheet.write_number(1, 1, 1000000.0).unwrap();
-    worksheet.write_number(1, 2, 800000.0).unwrap();
-    worksheet.write_string(1, 3, "").unwrap();
-    worksheet.write_string(1, 4, "").unwrap();
-    worksheet.write_string(1, 5, "1").unwrap();
-    worksheet.write_string(1, 6, "示例产品").unwrap();
-    worksheet.write_string(1, 7, "").unwrap();
-    worksheet.write_number(1, 8, 0.06).unwrap();
-    worksheet.write_number(1, 9, 0.06).unwrap();
-    worksheet.write_string(1, 10, "合同签订后支付XX%").unwrap();
-    worksheet.write_string(1, 11, "背靠背支付").unwrap();
-
-    workbook
-        .save(&path)
-        .map_err(|e| format!("写入模板失败: {}", e))?;
-    Ok(())
-}
 
 #[derive(serde::Serialize, Clone)]
 pub struct ExcelParsedTaxItem {
@@ -405,7 +37,8 @@ fn parse_cell_f64(cell: &calamine::Data) -> f64 {
             let s_trimmed = s
                 .trim()
                 .replace(",", "")
-                .replace("，", "")
+                .replace("（", "")
+                .replace("）", "")
                 .replace("元", "")
                 .replace("%", "");
             if let Ok(num) = s_trimmed.parse::<f64>() {
@@ -698,7 +331,7 @@ pub fn parse_benefit_excel_internal(resolved_path: &Path) -> Result<ExcelParsedD
     let resolved_path_str = resolved_path.to_string_lossy().to_string();
 
     let mut workbook: Xlsx<_> =
-        open_workbook(&resolved_path_str).map_err(|e| format!("打开Excel异常: {}", e))?;
+        open_workbook(&resolved_path_str).map_err(|e| format!("打开 Excel 异常: {}", e))?;
     if let Some(parsed) = parse_lifecycle_benefit_excel(&mut workbook)? {
         return Ok(parsed);
     }
@@ -710,7 +343,7 @@ pub fn parse_benefit_excel_internal(resolved_path: &Path) -> Result<ExcelParsedD
         .map_err(|e| format!("读取工作表异常: {}", e))?;
 
     let mut rows = range.rows();
-    let headers_row = rows.next().ok_or("Excel表为空")?;
+    let headers_row = rows.next().ok_or("Excel 表为空")?;
 
     let mut proj_name_col = None;
     let mut inc_col = None;
@@ -734,7 +367,7 @@ pub fn parse_benefit_excel_internal(resolved_path: &Path) -> Result<ExcelParsedD
             "目标利润率" => margin_col = Some(c_idx),
             "目标净现值率" => npv_col = Some(c_idx),
             "项目周期" | "周期" => years_col = Some(c_idx),
-            "CT产品名" | "CT产品" => ct_name_col = Some(c_idx),
+            "CT产品名称" | "CT产品" => ct_name_col = Some(c_idx),
             "CT产品含税总额" => ct_amt_col = Some(c_idx),
             "IT税率" => it_tax_col = Some(c_idx),
             "CT税率" => ct_tax_col = Some(c_idx),
@@ -814,9 +447,10 @@ pub fn auto_import_excel_calculation(
     let it_tax = to_tax_percent(parsed_data.it_tax, 6.0);
     let ct_tax = to_tax_percent(parsed_data.ct_tax, 6.0);
 
-    let has_detailed_items = parsed_data.items.values().any(|item| {
-        item.incl_tax.abs() > 0.0 || item.excl_tax.abs() > 0.0
-    });
+    let has_detailed_items = parsed_data
+        .items
+        .values()
+        .any(|item| item.incl_tax.abs() > 0.0 || item.excl_tax.abs() > 0.0);
 
     let make_item = |incl: f64, tax: f64| -> IctItem {
         IctItem {
@@ -836,7 +470,14 @@ pub fn auto_import_excel_calculation(
             }
             return make_item(0.0, tax);
         }
-        make_item(if has_detailed_items { 0.0 } else { fallback_incl }, default_tax)
+        make_item(
+            if has_detailed_items {
+                0.0
+            } else {
+                fallback_incl
+            },
+            default_tax,
+        )
     };
 
     let payload = IctInput {
@@ -847,8 +488,19 @@ pub fn auto_import_excel_calculation(
         },
         customer_name: Some("CMCC".to_string()),
         property_rights: "客户".to_string(),
-        discount_rate: format!("{:.4}", if parsed_data.discount_rate > 0.0 { parsed_data.discount_rate } else { 0.055 }),
-        project_years: Some(if parsed_data.project_years > 0 { parsed_data.project_years } else { 1 }),
+        discount_rate: format!(
+            "{:.4}",
+            if parsed_data.discount_rate > 0.0 {
+                parsed_data.discount_rate
+            } else {
+                0.055
+            }
+        ),
+        project_years: Some(if parsed_data.project_years > 0 {
+            parsed_data.project_years
+        } else {
+            1
+        }),
         cashflow_model: Some("model_a".to_string()),
         cashflow_segment_value_mode: Some("ratio".to_string()),
         cashflow_segments: Some(vec![]),

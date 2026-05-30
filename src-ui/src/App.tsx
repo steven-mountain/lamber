@@ -1,7 +1,5 @@
 import { useEffect } from "react";
 import { emitTo } from "@tauri-apps/api/event";
-import BenefitTool from "./views/BenefitTool";
-import DocfillTool from "./views/DocfillTool";
 import IctLifecycle from "./views/IctLifecycle";
 import ProjectBoard from "./views/ProjectBoard";
 import DataManagement from "./views/DataManagement";
@@ -70,10 +68,6 @@ export default function App() {
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
       {currentView === "hub" ? (
         <HubView onOpenTool={(view) => navigateTo(view as any)} />
-      ) : currentView === "benefit" ? (
-        <BenefitTool onBack={() => navigateTo("hub")} />
-      ) : currentView === "docfill" ? (
-        <DocfillTool onBack={() => navigateTo("hub")} />
       ) : currentView === "project_board" ? (
         <ProjectBoard
           onBack={() => navigateTo("hub")}
@@ -127,38 +121,24 @@ function HubView({ onOpenTool }: { onOpenTool: (view: string) => void }) {
       </div>
       <div className="grid w-full max-w-5xl grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-6 pb-8">
         <HubCard
-          icon="calculator"
-          title="投资效益测算"
-          description="测算项目经济效益"
-          delay=""
-          onClick={() => onOpenTool("benefit")}
-        />
-        <HubCard
-          icon="document"
-          title="申报材料制作"
-          description="快速生成项目申报方案"
-          delay="delay-75"
-          onClick={() => onOpenTool("docfill")}
-        />
-        <HubCard
           icon="project"
           title="项目看板"
           description="先选择项目工作区，再管理项目生命周期"
-          delay="delay-150"
+          delay=""
           onClick={() => onOpenTool("project_board")}
         />
         <HubCard
           icon="cashflow"
           title="ICT项目全生命周期"
           description="测算、现金流推演与智能反算"
-          delay="delay-200"
+          delay="delay-75"
           onClick={() => onOpenTool("ict_lifecycle")}
         />
         <HubCard
           icon="settings"
           title="数据管理中心"
           description="配置根目录、重定位与健康自愈"
-          delay="delay-300"
+          delay="delay-150"
           onClick={() => onOpenTool("data_management")}
         />
       </div>

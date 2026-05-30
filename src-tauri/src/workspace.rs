@@ -8,9 +8,9 @@ use std::sync::{Arc, Mutex, RwLock};
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 
-const MANIFEST_FILE: &str = ".lamber.workspace.json";
-const DATABASE_FILE: &str = ".lamber.sqlite";
-const WORKSPACE_VERSION: i32 = 1;
+pub(crate) const MANIFEST_FILE: &str = ".lamber.workspace.json";
+pub(crate) const DATABASE_FILE: &str = ".lamber.sqlite";
+pub(crate) const WORKSPACE_VERSION: i32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -108,11 +108,16 @@ impl WorkspaceRuntime {
             .map_err(|e| e.to_string())?
             .clone()
             .ok_or_else(|| {
-                WorkspaceErrorPayload::new("NotReady", "当前未打开工作区，无法执行数据库操作").as_string()
+                WorkspaceErrorPayload::new("NotReady", "当前未打开工作区，无法执行数据库操作")
+                    .as_string()
             })
     }
 
-    pub fn switch_workspace(&self, workspace: CurrentWorkspace, conn: rusqlite::Connection) -> Result<(), String> {
+    pub fn switch_workspace(
+        &self,
+        workspace: CurrentWorkspace,
+        conn: rusqlite::Connection,
+    ) -> Result<(), String> {
         *self.current.write().map_err(|e| e.to_string())? = Some(workspace);
         *self.db.write().map_err(|e| e.to_string())? = Some(Arc::new(Mutex::new(conn)));
         *self.startup_error.write().map_err(|e| e.to_string())? = None;
@@ -128,6 +133,11 @@ impl WorkspaceRuntime {
         }
     }
 
+    pub fn close_database(&self) -> Result<(), String> {
+        *self.db.write().map_err(|e| e.to_string())? = None;
+        Ok(())
+    }
+
     fn set_startup_error(&self, err: WorkspaceErrorPayload) {
         self.clear_workspace();
         if let Ok(mut startup_error) = self.startup_error.write() {
@@ -140,12 +150,49 @@ impl WorkspaceRuntime {
     }
 }
 
-fn manifest_path(root: &Path) -> PathBuf {
+pub(crate) fn manifest_path(root: &Path) -> PathBuf {
     root.join(MANIFEST_FILE)
 }
 
-fn db_path(root: &Path) -> PathBuf {
+pub(crate) fn db_path(root: &Path) -> PathBuf {
     root.join(DATABASE_FILE)
+}
+
+pub(crate) fn mark_path_hidden_if_supported(path: &Path) {
+    #[cfg(windows)]
+    {
+        if !path.exists() {
+            return;
+        }
+        if let Err(err) = std::process::Command::new("attrib")
+            .arg("+h")
+            .arg(path)
+            .status()
+        {
+            eprintln!(
+                "Failed to mark path hidden on Windows: {} ({})",
+                path.display(),
+                err
+            );
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+    }
+}
+
+pub(crate) fn ensure_workspace_system_entries_hidden(root: &Path) {
+    for name in [
+        MANIFEST_FILE,
+        DATABASE_FILE,
+        ".backups",
+        ".exports",
+        ".projects",
+    ] {
+        mark_path_hidden_if_supported(&root.join(name));
+    }
 }
 
 fn workspace_error(code: &str, message: impl Into<String>) -> String {
@@ -155,15 +202,22 @@ fn workspace_error(code: &str, message: impl Into<String>) -> String {
 fn read_manifest(root: &Path) -> Result<WorkspaceManifest, String> {
     let content = fs::read_to_string(manifest_path(root))
         .map_err(|e| workspace_error("InvalidManifest", format!("读取工作区标识失败: {}", e)))?;
-    let manifest: WorkspaceManifest = serde_json::from_str(&content)
-        .map_err(|e| workspace_error("InvalidManifest", format!("工作区标识文件格式无效: {}", e)))?;
+    let manifest: WorkspaceManifest = serde_json::from_str(&content).map_err(|e| {
+        workspace_error("InvalidManifest", format!("工作区标识文件格式无效: {}", e))
+    })?;
     if manifest.app != "Lamber" {
-        return Err(workspace_error("InvalidManifest", "该目录不是 Lamber 工作区"));
+        return Err(workspace_error(
+            "InvalidManifest",
+            "该目录不是 Lamber 工作区",
+        ));
     }
     if manifest.workspace_version > WORKSPACE_VERSION {
         return Err(workspace_error(
             "UnsupportedVersion",
-            format!("工作区版本 {} 高于当前应用支持版本 {}", manifest.workspace_version, WORKSPACE_VERSION),
+            format!(
+                "工作区版本 {} 高于当前应用支持版本 {}",
+                manifest.workspace_version, WORKSPACE_VERSION
+            ),
         ));
     }
     Ok(manifest)
@@ -172,8 +226,11 @@ fn read_manifest(root: &Path) -> Result<WorkspaceManifest, String> {
 fn write_manifest(root: &Path, manifest: &WorkspaceManifest) -> Result<(), String> {
     let content = serde_json::to_string_pretty(manifest)
         .map_err(|e| workspace_error("InvalidManifest", format!("序列化工作区标识失败: {}", e)))?;
-    fs::write(manifest_path(root), content)
-        .map_err(|e| workspace_error("PermissionDenied", format!("写入工作区标识失败: {}", e)))
+    let path = manifest_path(root);
+    fs::write(&path, content)
+        .map_err(|e| workspace_error("PermissionDenied", format!("写入工作区标识失败: {}", e)))?;
+    mark_path_hidden_if_supported(&path);
+    Ok(())
 }
 
 fn ensure_writable_dir(root: &Path) -> Result<(), String> {
@@ -198,7 +255,7 @@ fn get_import_candidates(root: &Path) -> Result<Vec<String>, String> {
     let mut candidates = Vec::new();
     let entries = fs::read_dir(root)
         .map_err(|e| workspace_error("PermissionDenied", format!("读取目录失败: {}", e)))?;
-    
+
     for entry in entries {
         let entry = match entry {
             Ok(e) => e,
@@ -211,14 +268,21 @@ fn get_import_candidates(root: &Path) -> Result<Vec<String>, String> {
                 if name_str.starts_with('.') {
                     continue;
                 }
-                match name_str.as_str() {
-                    "backups" | "exports" | "projects" | "node_modules" | "target" | "dist" | "build" | ".vscode" | ".idea" | "__pycache__" => {
-                        continue;
-                    }
-                    _ => {
-                        candidates.push(name_str);
-                    }
+                if is_reserved_workspace_entry_name(&name_str)
+                    || matches!(
+                        name_str.as_str(),
+                        "node_modules"
+                            | "target"
+                            | "dist"
+                            | "build"
+                            | ".vscode"
+                            | ".idea"
+                            | "__pycache__"
+                    )
+                {
+                    continue;
                 }
+                candidates.push(name_str);
             }
         }
     }
@@ -269,6 +333,7 @@ fn inspect_path(root: &Path) -> Result<WorkspacePathStatus, String> {
 
     // 自动迁移可见的遗留系统文件/目录为隐藏版
     migrate_legacy_workspace_files(root);
+    ensure_workspace_system_entries_hidden(root);
 
     if manifest_path(root).exists() {
         return Ok(WorkspacePathStatus {
@@ -296,12 +361,21 @@ fn inspect_path(root: &Path) -> Result<WorkspacePathStatus, String> {
         .next()
         .is_none();
     Ok(WorkspacePathStatus {
-        status: if is_empty { "emptyOrInitializable" } else { "nonEmptyNonWorkspace" }.to_string(),
+        status: if is_empty {
+            "emptyOrInitializable"
+        } else {
+            "nonEmptyNonWorkspace"
+        }
+        .to_string(),
         message: None,
     })
 }
 
-fn update_recent(app: &AppHandle, workspace: &CurrentWorkspace) -> Result<(), String> {
+pub(crate) fn update_recent(
+    app: &AppHandle,
+    workspace: &CurrentWorkspace,
+    set_last_opened: bool,
+) -> Result<(), String> {
     let manager = ConfigManager::new(app);
     let mut config = manager.load();
     let recent = RecentWorkspace {
@@ -310,22 +384,62 @@ fn update_recent(app: &AppHandle, workspace: &CurrentWorkspace) -> Result<(), St
         workspace_id: workspace.workspace_id.clone(),
         last_opened_at: workspace.manifest.last_opened_at.clone(),
     };
-    config.recent_workspaces.retain(|item| item.path != recent.path);
+    config
+        .recent_workspaces
+        .retain(|item| item.path != recent.path);
     config.recent_workspaces.insert(0, recent);
     config.recent_workspaces.truncate(10);
-    config.last_opened_workspace_path = Some(workspace.workspace_root.clone());
+    if set_last_opened {
+        config.last_opened_workspace_path = Some(workspace.workspace_root.clone());
+    }
     manager.save(&config)
 }
 
-fn open_workspace_internal(app: &AppHandle, runtime: &WorkspaceRuntime, root: &Path) -> Result<CurrentWorkspace, String> {
+fn workspace_path_key(path: &str) -> String {
+    let normalized = path
+        .trim()
+        .trim_end_matches(|c| c == '\\' || c == '/')
+        .replace('\\', "/");
+    #[cfg(windows)]
+    {
+        normalized.to_ascii_lowercase()
+    }
+    #[cfg(not(windows))]
+    {
+        normalized
+    }
+}
+
+fn workspace_paths_match(a: &str, b: &str) -> bool {
+    if workspace_path_key(a) == workspace_path_key(b) {
+        return true;
+    }
+    match (fs::canonicalize(a), fs::canonicalize(b)) {
+        (Ok(a_path), Ok(b_path)) => a_path == b_path,
+        _ => false,
+    }
+}
+
+pub(crate) fn open_workspace_internal(
+    app: &AppHandle,
+    runtime: &WorkspaceRuntime,
+    root: &Path,
+) -> Result<CurrentWorkspace, String> {
     // 自动迁移可见的遗留系统文件/目录为隐藏版
     migrate_legacy_workspace_files(root);
+    ensure_workspace_system_entries_hidden(root);
 
     if !manifest_path(root).exists() {
         if db_path(root).exists() {
-            return Err(workspace_error("InvalidManifest", "疑似旧版 Lamber 数据目录：存在 .lamber.sqlite 但缺少 .lamber.workspace.json"));
+            return Err(workspace_error(
+                "InvalidManifest",
+                "疑似旧版 Lamber 数据目录：存在 .lamber.sqlite 但缺少 .lamber.workspace.json",
+            ));
         }
-        return Err(workspace_error("InvalidManifest", "该目录不是 Lamber 工作区"));
+        return Err(workspace_error(
+            "InvalidManifest",
+            "该目录不是 Lamber 工作区",
+        ));
     }
     let mut manifest = read_manifest(root)?;
     manifest.last_opened_at = Utc::now().to_rfc3339();
@@ -334,13 +448,23 @@ fn open_workspace_internal(app: &AppHandle, runtime: &WorkspaceRuntime, root: &P
     let db_file = db_path(root);
     let conn = db::init_db(&db_file).map_err(|e| {
         let msg = e.to_string();
-        if msg.to_ascii_lowercase().contains("database disk image is malformed") {
+        if msg
+            .to_ascii_lowercase()
+            .contains("database disk image is malformed")
+        {
             workspace_error("DatabaseCorrupted", format!("工作区数据库损坏: {}", msg))
         } else {
-            workspace_error("DatabaseOpenFailed", format!("打开工作区数据库失败: {}", msg))
+            workspace_error(
+                "DatabaseOpenFailed",
+                format!("打开工作区数据库失败: {}", msg),
+            )
         }
     })?;
     ensure_workspace_root_registered(&conn, root)?;
+    if let Err(err) = crate::workspace_maintenance::ensure_daily_workspace_backup(root, &conn) {
+        eprintln!("Workspace auto backup failed: {}", err);
+    }
+    ensure_workspace_system_entries_hidden(root);
 
     let workspace = CurrentWorkspace {
         workspace_root: root.to_string_lossy().to_string(),
@@ -349,13 +473,16 @@ fn open_workspace_internal(app: &AppHandle, runtime: &WorkspaceRuntime, root: &P
         manifest,
     };
     runtime.switch_workspace(workspace.clone(), conn)?;
-    update_recent(app, &workspace)?;
+    update_recent(app, &workspace, true)?;
     Ok(workspace)
 }
 
-fn ensure_workspace_root_registered(conn: &rusqlite::Connection, root: &Path) -> Result<(), String> {
+fn ensure_workspace_root_registered(
+    conn: &rusqlite::Connection,
+    root: &Path,
+) -> Result<(), String> {
     let root_path = root.to_string_lossy().to_string();
-    
+
     // Check if there is an existing workspace root record (id starting with "workspace_root_")
     let existing_ws_root: Option<(String, String)> = match conn.query_row(
         "SELECT id, root_path FROM project_roots WHERE id LIKE 'workspace_root_%' LIMIT 1",
@@ -364,11 +491,16 @@ fn ensure_workspace_root_registered(conn: &rusqlite::Connection, root: &Path) ->
     ) {
         Ok(val) => Some(val),
         Err(rusqlite::Error::QueryReturnedNoRows) => None,
-        Err(e) => return Err(workspace_error("DatabaseOpenFailed", format!("检查工作区根目录失败: {}", e))),
+        Err(e) => {
+            return Err(workspace_error(
+                "DatabaseOpenFailed",
+                format!("检查工作区根目录失败: {}", e),
+            ))
+        }
     };
 
     let now = Utc::now().to_rfc3339();
-    
+
     if let Some((id, old_path)) = existing_ws_root {
         if old_path != root_path {
             // Path has changed (workspace was moved), update the root_path!
@@ -376,7 +508,9 @@ fn ensure_workspace_root_registered(conn: &rusqlite::Connection, root: &Path) ->
                 "UPDATE project_roots SET root_path = ?1, updated_at = ?2 WHERE id = ?3",
                 rusqlite::params![root_path, now, id],
             )
-            .map_err(|e| workspace_error("DatabaseOpenFailed", format!("更新工作区根目录失败: {}", e)))?;
+            .map_err(|e| {
+                workspace_error("DatabaseOpenFailed", format!("更新工作区根目录失败: {}", e))
+            })?;
         }
     } else {
         // No workspace root registered yet, check if root_path exists under any ID
@@ -386,12 +520,20 @@ fn ensure_workspace_root_registered(conn: &rusqlite::Connection, root: &Path) ->
                 [&root_path],
                 |row| row.get(0),
             )
-            .map_err(|e| workspace_error("DatabaseOpenFailed", format!("检查工作区根目录失败: {}", e)))?;
+            .map_err(|e| {
+                workspace_error("DatabaseOpenFailed", format!("检查工作区根目录失败: {}", e))
+            })?;
 
         if existing_count == 0 {
             let any_default: i64 = conn
-                .query_row("SELECT COUNT(*) FROM project_roots WHERE is_default = 1", [], |row| row.get(0))
-                .map_err(|e| workspace_error("DatabaseOpenFailed", format!("检查默认根目录失败: {}", e)))?;
+                .query_row(
+                    "SELECT COUNT(*) FROM project_roots WHERE is_default = 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|e| {
+                    workspace_error("DatabaseOpenFailed", format!("检查默认根目录失败: {}", e))
+                })?;
             conn.execute(
                 "INSERT INTO project_roots (id, name, root_path, root_alias, is_default, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -440,6 +582,66 @@ pub async fn get_workspace_state(
 }
 
 #[tauri::command]
+pub async fn forget_workspace(
+    app: AppHandle,
+    runtime: State<'_, Arc<WorkspaceRuntime>>,
+    path: String,
+) -> Result<WorkspaceState, String> {
+    let manager = ConfigManager::new(&app);
+    let mut config = manager.load();
+    let current = runtime.get_current_workspace();
+    let is_current = current
+        .as_ref()
+        .map(|workspace| workspace_paths_match(&workspace.workspace_root, &path))
+        .unwrap_or(false);
+
+    config
+        .recent_workspaces
+        .retain(|item| !workspace_paths_match(&item.path, &path));
+
+    if is_current {
+        runtime.clear_workspace();
+        config.last_opened_workspace_path = None;
+    } else if config
+        .last_opened_workspace_path
+        .as_ref()
+        .map(|last_path| workspace_paths_match(last_path, &path))
+        .unwrap_or(false)
+    {
+        config.last_opened_workspace_path = None;
+    }
+
+    manager.save(&config)?;
+
+    let current = runtime.get_current_workspace();
+    Ok(WorkspaceState {
+        is_workspace_ready: current.is_some(),
+        current_workspace: current,
+        recent_workspaces: config.recent_workspaces,
+        startup_error: runtime.startup_error(),
+    })
+}
+
+#[tauri::command]
+pub async fn close_current_workspace(
+    app: AppHandle,
+    runtime: State<'_, Arc<WorkspaceRuntime>>,
+) -> Result<WorkspaceState, String> {
+    runtime.clear_workspace();
+    let manager = ConfigManager::new(&app);
+    let mut config = manager.load();
+    config.last_opened_workspace_path = None;
+    manager.save(&config)?;
+
+    Ok(WorkspaceState {
+        is_workspace_ready: false,
+        current_workspace: None,
+        recent_workspaces: config.recent_workspaces,
+        startup_error: runtime.startup_error(),
+    })
+}
+
+#[tauri::command]
 pub async fn inspect_workspace_path(path: String) -> Result<WorkspacePathStatus, String> {
     inspect_path(Path::new(&path))
 }
@@ -466,7 +668,9 @@ pub async fn create_workspace(
         "legacySuspected" => {
             return Err(workspace_error(
                 "InvalidManifest",
-                status.message.unwrap_or_else(|| "疑似旧版数据目录，本阶段不会覆盖".to_string()),
+                status
+                    .message
+                    .unwrap_or_else(|| "疑似旧版数据目录，本阶段不会覆盖".to_string()),
             ));
         }
         "nonEmptyNonWorkspace" if !allow_non_empty.unwrap_or(false) => {
@@ -478,15 +682,19 @@ pub async fn create_workspace(
         _ => {}
     }
 
-    fs::create_dir_all(root.join(".backups"))
-        .map_err(|e| workspace_error("PermissionDenied", format!("创建 backups 目录失败: {}", e)))?;
-    fs::create_dir_all(root.join(".exports"))
-        .map_err(|e| workspace_error("PermissionDenied", format!("创建 exports 目录失败: {}", e)))?;
+    fs::create_dir_all(root.join(".backups")).map_err(|e| {
+        workspace_error("PermissionDenied", format!("创建 backups 目录失败: {}", e))
+    })?;
+    fs::create_dir_all(root.join(".exports")).map_err(|e| {
+        workspace_error("PermissionDenied", format!("创建 exports 目录失败: {}", e))
+    })?;
 
     let now = Utc::now().to_rfc3339();
-    let workspace_name = name
-        .filter(|n| !n.trim().is_empty())
-        .unwrap_or_else(|| root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Lamber Workspace".to_string()));
+    let workspace_name = name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| {
+        root.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Lamber Workspace".to_string())
+    });
     let manifest = WorkspaceManifest {
         app: "Lamber".to_string(),
         workspace_version: WORKSPACE_VERSION,
@@ -533,16 +741,22 @@ pub async fn initialize_workspace_from_existing_directory(
     }
 
     if manifest_path(&root).exists() && db_path(&root).exists() {
-        return Err(workspace_error("AlreadyWorkspace", "该目录下已存在 .lamber.workspace.json 且包含数据库"));
+        return Err(workspace_error(
+            "AlreadyWorkspace",
+            "该目录下已存在 .lamber.workspace.json 且包含数据库",
+        ));
     }
-    
+
     // Clean up broken manifest if database is missing
     if manifest_path(&root).exists() && !db_path(&root).exists() {
         let _ = fs::remove_file(manifest_path(&root));
     }
 
     if db_path(&root).exists() && !manifest_path(&root).exists() {
-        return Err(workspace_error("LegacySuspected", "该目录下已存在 .lamber.sqlite，为防覆盖已中止"));
+        return Err(workspace_error(
+            "LegacySuspected",
+            "该目录下已存在 .lamber.sqlite，为防覆盖已中止",
+        ));
     }
 
     ensure_writable_dir(&root)?;
@@ -553,19 +767,26 @@ pub async fn initialize_workspace_from_existing_directory(
     // Helper block to execute the steps and cleanup on error
     let result = (|| -> Result<CurrentWorkspace, String> {
         // 1. Create standard workspace directories
-        fs::create_dir_all(root.join(".backups"))
-            .map_err(|e| workspace_error("PermissionDenied", format!("创建 backups 目录失败: {}", e)))?;
-        fs::create_dir_all(root.join(".exports"))
-            .map_err(|e| workspace_error("PermissionDenied", format!("创建 exports 目录失败: {}", e)))?;
+        fs::create_dir_all(root.join(".backups")).map_err(|e| {
+            workspace_error("PermissionDenied", format!("创建 backups 目录失败: {}", e))
+        })?;
+        fs::create_dir_all(root.join(".exports")).map_err(|e| {
+            workspace_error("PermissionDenied", format!("创建 exports 目录失败: {}", e))
+        })?;
 
         // 2. Create and write manifest
         let now = Utc::now().to_rfc3339();
-        let workspace_name = options.workspace_name
+        let workspace_name = options
+            .workspace_name
             .as_ref()
             .filter(|n| !n.trim().is_empty())
             .cloned()
-            .unwrap_or_else(|| root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Lamber Workspace".to_string()));
-        
+            .unwrap_or_else(|| {
+                root.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "Lamber Workspace".to_string())
+            });
+
         let manifest = WorkspaceManifest {
             app: "Lamber".to_string(),
             workspace_version: WORKSPACE_VERSION,
@@ -632,11 +853,13 @@ pub async fn initialize_workspace_from_existing_directory(
             }
 
             // Check duplicates
-            let exists_by_id: bool = tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
-                [&project_id],
-                |row| row.get(0)
-            ).map_err(|e| e.to_string())?;
+            let exists_by_id: bool = tx
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
+                    [&project_id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?;
 
             let exists_by_rel_path: bool = tx.query_row(
                 "SELECT EXISTS(SELECT 1 FROM projects WHERE relative_path = ?1 OR folder_path = ?1)",
@@ -644,11 +867,13 @@ pub async fn initialize_workspace_from_existing_directory(
                 |row| row.get(0)
             ).map_err(|e| e.to_string())?;
 
-            let exists_by_name: bool = tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM projects WHERE name = ?1)",
-                [&name],
-                |row| row.get(0)
-            ).map_err(|e| e.to_string())?;
+            let exists_by_name: bool = tx
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM projects WHERE name = ?1)",
+                    [&name],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?;
 
             if exists_by_id || exists_by_rel_path || exists_by_name {
                 continue;
@@ -676,7 +901,8 @@ pub async fn initialize_workspace_from_existing_directory(
                     json_val["updatedAt"] = serde_json::Value::String(updated_at.clone());
                 }
                 if json_val.get("source").is_none() {
-                    json_val["source"] = serde_json::Value::String("importedPlainDirectory".to_string());
+                    json_val["source"] =
+                        serde_json::Value::String("importedPlainDirectory".to_string());
                 }
                 let updated_content = serde_json::to_string_pretty(&json_val)
                     .map_err(|e| format!("序列化 project.json 失败: {}", e))?;
@@ -726,16 +952,46 @@ pub async fn initialize_workspace_from_existing_directory(
         }
 
         tx.commit().map_err(|e| format!("提交事务失败: {}", e))?;
+        // Project folder scanning uses repositories backed by the same SQLite mutex.
+        // Release the initialization transaction lock before starting scans.
+        drop(conn_guard);
 
-        // 5. Scan folders and auto-import calculation if available
-        let db_conn = runtime.require_db()?;
-        let file_repo = std::sync::Arc::new(crate::project_files::repository::SqliteProjectFileRepository::new(db_conn.clone()));
-        let file_service = crate::project_files::service::ProjectFileService::new(file_repo, root.clone());
+        // 5. Scan folders and auto-import calculation in the background.
+        // Initialization must return quickly; scanning/parsing can touch large user files.
+        if !imported_projects.is_empty() {
+            let scan_db = db_conn.clone();
+            let scan_root = root.clone();
+            let scan_projects = imported_projects;
+            tauri::async_runtime::spawn_blocking(move || {
+                let file_repo = std::sync::Arc::new(
+                    crate::project_files::repository::SqliteProjectFileRepository::new(
+                        scan_db.clone(),
+                    ),
+                );
+                let file_service = crate::project_files::service::ProjectFileService::new(
+                    file_repo,
+                    scan_root.clone(),
+                );
 
-        for (p_id, _subdir) in &imported_projects {
-            if let Ok(files) = file_service.scan_project_folder(p_id, false) {
-                let _ = crate::project_files::commands::auto_import_excel_if_needed(&runtime, p_id, &files);
-            }
+                for (p_id, _subdir) in scan_projects {
+                    match file_service.scan_project_folder(&p_id, false) {
+                        Ok(files) => {
+                            let _ = crate::project_files::commands::auto_import_excel_if_needed_with_context(
+                                scan_db.clone(),
+                                &scan_root,
+                                &p_id,
+                                &files,
+                            );
+                        }
+                        Err(err) => {
+                            eprintln!(
+                                "Workspace initialization background scan failed for {}: {}",
+                                p_id, err
+                            );
+                        }
+                    }
+                }
+            });
         }
 
         Ok(workspace)
@@ -766,7 +1022,7 @@ pub async fn scan_and_import_all_workspace_calculations(
 ) -> Result<usize, String> {
     let ws = runtime.require_workspace()?;
     let db_conn = runtime.require_db()?;
-    
+
     let projects: Vec<String> = {
         let conn_guard = db_conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn_guard
@@ -775,7 +1031,7 @@ pub async fn scan_and_import_all_workspace_calculations(
         let rows = stmt
             .query_map([], |row| row.get::<_, String>(0))
             .map_err(|e| e.to_string())?;
-        
+
         let mut list = Vec::new();
         for r in rows {
             if let Ok(id) = r {
@@ -786,19 +1042,30 @@ pub async fn scan_and_import_all_workspace_calculations(
     };
 
     let root_path = std::path::PathBuf::from(&ws.workspace_root);
-    let file_repo = std::sync::Arc::new(crate::project_files::repository::SqliteProjectFileRepository::new(db_conn.clone()));
+    let file_repo = std::sync::Arc::new(
+        crate::project_files::repository::SqliteProjectFileRepository::new(db_conn.clone()),
+    );
     let file_service = crate::project_files::service::ProjectFileService::new(file_repo, root_path);
 
     let mut import_count = 0;
     for p_id in projects {
-        let project_repo = crate::benefit::repository::SqliteProjectRepository::new(db_conn.clone());
+        let project_repo =
+            crate::benefit::repository::SqliteProjectRepository::new(db_conn.clone());
         let project_service = crate::benefit::service::ProjectService::new(Box::new(project_repo));
-        
-        let schemes_before = project_service.get_schemes(&p_id).map(|s| s.len()).unwrap_or(0);
+
+        let schemes_before = project_service
+            .get_schemes(&p_id)
+            .map(|s| s.len())
+            .unwrap_or(0);
         if schemes_before == 0 {
             if let Ok(files) = file_service.scan_project_folder(&p_id, false) {
-                if let Ok(_) = crate::project_files::commands::auto_import_excel_if_needed(&runtime, &p_id, &files) {
-                    let schemes_after = project_service.get_schemes(&p_id).map(|s| s.len()).unwrap_or(0);
+                if let Ok(_) = crate::project_files::commands::auto_import_excel_if_needed(
+                    &runtime, &p_id, &files,
+                ) {
+                    let schemes_after = project_service
+                        .get_schemes(&p_id)
+                        .map(|s| s.len())
+                        .unwrap_or(0);
                     if schemes_after > 0 {
                         import_count += 1;
                     }
@@ -814,10 +1081,14 @@ use crate::benefit::models::Project;
 
 // Checks if `path` is inside `workspace_root`
 pub fn is_inside_workspace(workspace_root: &Path, path: &Path) -> bool {
-    if let (Ok(ws_canon), Ok(p_canon)) = (fs::canonicalize(workspace_root), fs::canonicalize(path)) {
+    if let (Ok(ws_canon), Ok(p_canon)) = (fs::canonicalize(workspace_root), fs::canonicalize(path))
+    {
         p_canon.starts_with(ws_canon)
     } else {
-        let ws_str = workspace_root.to_string_lossy().to_string().replace("\\", "/");
+        let ws_str = workspace_root
+            .to_string_lossy()
+            .to_string()
+            .replace("\\", "/");
         let p_str = path.to_string_lossy().to_string().replace("\\", "/");
         p_str.starts_with(&ws_str)
     }
@@ -830,7 +1101,7 @@ pub fn to_relative_workspace_path(workspace_root: &Path, absolute_path: &Path) -
     } else {
         fs::canonicalize(workspace_root).unwrap_or_else(|_| workspace_root.to_path_buf())
     };
-    
+
     let target_abs = if absolute_path.is_absolute() {
         absolute_path.to_path_buf()
     } else {
@@ -847,7 +1118,10 @@ pub fn to_relative_workspace_path(workspace_root: &Path, absolute_path: &Path) -
             rel = rel.trim_start_matches('/');
             rel.to_string()
         } else {
-            absolute_path.to_string_lossy().to_string().replace("\\", "/")
+            absolute_path
+                .to_string_lossy()
+                .to_string()
+                .replace("\\", "/")
         }
     }
 }
@@ -868,16 +1142,24 @@ pub fn sanitize_folder_name(name: &str) -> String {
     if trimmed.is_empty() {
         return "unnamed_project".to_string();
     }
-    
+
     let mut sanitized = String::new();
     for c in trimmed.chars() {
-        if c.is_alphanumeric() || c == '_' || c == '-' || c == '.' || c == '(' || c == ')' || c == '[' || c == ']' {
+        if c.is_alphanumeric()
+            || c == '_'
+            || c == '-'
+            || c == '.'
+            || c == '('
+            || c == ')'
+            || c == '['
+            || c == ']'
+        {
             sanitized.push(c);
         } else {
             sanitized.push('_');
         }
     }
-    
+
     let mut cleaned = sanitized.replace("__", "_");
     while cleaned.contains("__") {
         cleaned = cleaned.replace("__", "_");
@@ -886,17 +1168,38 @@ pub fn sanitize_folder_name(name: &str) -> String {
     if cleaned.is_empty() {
         cleaned = "project".to_string();
     }
-    
+
     cleaned
+}
+
+pub fn is_reserved_workspace_entry_name(name: &str) -> bool {
+    let normalized = name.trim().replace("\\", "/").to_ascii_lowercase();
+    if normalized.is_empty() || normalized.contains('/') {
+        return true;
+    }
+    matches!(
+        normalized.as_str(),
+        ".lamber.workspace.json"
+            | ".lamber.sqlite"
+            | ".backups"
+            | ".exports"
+            | ".projects"
+            | "backups"
+            | "exports"
+            | "projects"
+    )
 }
 
 // Ensures all required directories exist for a project: assets/, documents/, analyses/
 pub fn ensure_project_dirs(workspace_root: &Path, folder_name: &str) -> Result<(), String> {
     let project_dir = workspace_root.join(folder_name);
     fs::create_dir_all(&project_dir).map_err(|e| format!("无法创建项目目录: {}", e))?;
-    fs::create_dir_all(project_dir.join("assets")).map_err(|e| format!("无法创建 assets 目录: {}", e))?;
-    fs::create_dir_all(project_dir.join("documents")).map_err(|e| format!("无法创建 documents 目录: {}", e))?;
-    fs::create_dir_all(project_dir.join("analyses")).map_err(|e| format!("无法创建 analyses 目录: {}", e))?;
+    fs::create_dir_all(project_dir.join("assets"))
+        .map_err(|e| format!("无法创建 assets 目录: {}", e))?;
+    fs::create_dir_all(project_dir.join("documents"))
+        .map_err(|e| format!("无法创建 documents 目录: {}", e))?;
+    fs::create_dir_all(project_dir.join("analyses"))
+        .map_err(|e| format!("无法创建 analyses 目录: {}", e))?;
     Ok(())
 }
 

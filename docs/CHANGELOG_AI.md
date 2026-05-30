@@ -2,6 +2,147 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-05-31
+
+### Workspace Management Card Interaction Fix
+
+Modified:
+- [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): Made associated Workspace cards locally selectable without opening the Workspace, isolated inline open/reveal/unlink button events, and routes the explicit open action into the Project Board after the Workspace is active.
+
+Decision:
+- The Workspace Management tab should not reorder cards on plain selection. Card clicks only highlight the chosen record; opening a Workspace remains an explicit button action.
+- The Workspace Management open action is an entry action, not just a background switch; successful opening should land in the Workspace's project board.
+
+### Workspace Management UI Separation
+
+Modified:
+- [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): Moved associated Workspace records into a dedicated "Workspace Management" tab and restyled them as card-based workspace selectors matching the Project Board workspace picker.
+
+Decision:
+- Global Workspace association management should be visually and logically separate from current Workspace backup/health maintenance. The management tab handles local association records; the maintenance tab handles operations on the active Workspace.
+
+## 2026-05-30
+
+### Global Workspace Management
+
+Modified:
+- [workspace.rs](../src-tauri/src/workspace.rs): Added commands to unlink a remembered Workspace from local config and to close the current Workspace while clearing `lastOpenedWorkspacePath`.
+- [main.rs](../src-tauri/src/main.rs): Registered the new Workspace management commands.
+- [workspaceService.ts](../src-ui/src/utils/workspaceService.ts) and [useWorkspaceStore.ts](../src-ui/src/store/useWorkspaceStore.ts): Added frontend wrappers/store actions for unlinking and closing Workspaces.
+- [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): Added an associated Workspace list with open, reveal, and unlink actions.
+
+Decision:
+- Workspace unlinking is a local association operation only. It removes the app's recent-workspace reference but never deletes the physical Workspace folder, database, or project files. If unlinking the active Workspace, the UI must run the dirty guard first and the backend must release the active runtime/database connection.
+
+### Workspace Import Argument Guard
+
+Modified:
+- [workspaceMaintenanceService.ts](../src-ui/src/services/workspaceMaintenanceService.ts): Changed `importWorkspace` to accept explicit arguments instead of an options object.
+- [WorkspaceGate.tsx](../src-ui/src/components/workspace/WorkspaceGate.tsx) and [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): Updated import calls to pass `openAfterImport` and `conflictStrategy` directly.
+- [workspace_maintenance.rs](../src-tauri/src/workspace_maintenance.rs): Parses `openAfterImport` as JSON and normalizes boolean or nested-object payloads before building import options. Missing or malformed nested booleans now default to `false`.
+
+Decision:
+- Import should not fail at the Tauri argument decoding layer when a stale or malformed frontend payload passes an object where a boolean is expected. The command now reaches backend validation and returns controlled errors.
+
+### Workspace Export Reveal Target
+
+Modified:
+- [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): After Workspace export, opens the generated archive's containing directory rather than passing the archive file path as the folder target.
+- [workspace_maintenance.rs](../src-tauri/src/workspace_maintenance.rs): Adjusted Windows Explorer file reveal arguments to use `/select,PATH` without embedded quote characters.
+
+Decision:
+- Export completion should take users directly to the `.lamber.zip` output directory. File selection remains a backend capability, but the export action itself only needs to open the containing folder.
+
+### Windows Workspace System Hidden Attributes
+
+Modified:
+- [workspace.rs](../src-tauri/src/workspace.rs): Added Windows hidden-attribute helpers and applies them to Workspace system entries when workspaces are inspected, opened, created, initialized, or imported.
+- [workspace_maintenance.rs](../src-tauri/src/workspace_maintenance.rs): Marks `.backups`, `.exports`, and `.projects` hidden when maintenance flows create or repair those directories.
+- [assets.rs](../src-tauri/src/project_files/assets.rs): Marks `.projects` hidden when template asset storage creates the internal asset sandbox.
+
+Decision:
+- Dot-prefixed names remain the portable workspace format, but Windows Explorer needs the Hidden attribute to hide those files when hidden items are disabled.
+
+### Workspace Initialization Nonblocking Scan
+
+Modified:
+- [workspace.rs](../src-tauri/src/workspace.rs): Existing-folder Workspace initialization now drops the SQLite transaction guard and spawns project folder scanning / automatic Excel import as a background task after the Workspace is opened.
+- [commands.rs](../src-tauri/src/project_files/commands.rs): Added a workspace-root/database-context helper for automatic Excel import so background initialization scans do not need to re-read the current runtime workspace.
+
+Decision:
+- Initialization must not block the modal on file scanning or Excel parsing. The Workspace opens after project records are created; scan/import remains best-effort and runs separately.
+
+### Workspace Import Flat Arguments
+
+Modified:
+- [workspace_maintenance.rs](../src-tauri/src/workspace_maintenance.rs): `import_workspace` now accepts flat Tauri IPC arguments (`openAfterImport`, `conflictStrategy`, `destinationName`) and no longer parses a nested `options` value.
+- [workspaceMaintenanceService.ts](../src-ui/src/services/workspaceMaintenanceService.ts): Flattens import options before invoking the backend command instead of sending an `options` object.
+- [workspace_maintenance.rs](../src-tauri/src/workspace_maintenance.rs): Import destination resolution now treats the selected folder as the parent directory and creates `{selectedFolder}/{workspaceName}` by default.
+
+Decision:
+- The target folder selected during import is not the workspace root itself unless explicitly named through `destinationName`; it is the directory into which the imported workspace folder is created.
+- Because Lamber has not been publicly released, old import IPC compatibility is intentionally removed to keep the command contract simple.
+
+### Workspace Backup List Cleanup UI
+
+Modified:
+- [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): Added single-backup deletion and full-list clear actions to the Workspace backup list, backed by the existing `delete_workspace_backup` command.
+
+Decision:
+- Backup cleanup is a file-level maintenance action for `.backups` entries only. It does not modify or compact the active Workspace database.
+
+### Standalone Hub Module Cleanup
+
+Removed:
+- [BenefitTool.tsx](../src-ui/src/views/BenefitTool.tsx): Removed the standalone Investment Benefit Analysis view.
+- [DocfillTool.tsx](../src-ui/src/views/DocfillTool.tsx): Removed the standalone Document Material Production view.
+
+Modified:
+- [App.tsx](../src-ui/src/App.tsx): Removed Hub cards and routes for the retired standalone modules.
+- [useNavigationStore.ts](../src-ui/src/store/useNavigationStore.ts): Reduced `ViewType` to `hub`, `project_board`, `ict_lifecycle`, and `data_management`.
+- [aiContextKeys.ts](../src-ui/src/utils/aiContextKeys.ts), [aiContextSerializer.ts](../src-ui/src/utils/aiContextSerializer.ts), and [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx): Removed active AI scopes and quick actions for the retired modules while filtering legacy stored scopes.
+- [main.rs](../src-tauri/src/main.rs): Unregistered standalone benefit batch/template and document-generation commands.
+- [calculator.rs](../src-tauri/src/benefit/calculator.rs), [excel.rs](../src-tauri/src/benefit/excel.rs), [models.rs](../src-tauri/src/benefit/models.rs), and [docfill.rs](../src-tauri/src/docfill.rs): Removed code used only by the standalone modules while keeping shared ICT lifecycle calculation, Excel import, template listing, and lifecycle document generation code.
+- [workspace_maintenance.rs](../src-tauri/src/workspace_maintenance.rs): Ignores stale app-level module paths for retired `benefit_tool` and `docfill_tool` when listing external workspace paths.
+- [Cargo.toml](../src-tauri/Cargo.toml): Removed the no-longer-used `rust_xlsxwriter` dependency.
+
+Decision:
+- Retire only the two Hub modules requested by the user. Project Board, ICT Lifecycle, Data Management, template forms, Excel import, benefit schemes/snapshots, and shared document generation remain in scope and active.
+
+### Workspace Health Repair Path Fallback Fix
+
+Modified:
+- [workspace_maintenance.rs](../src-tauri/src/workspace_maintenance.rs): Regenerating missing `project.json` now resolves the project directory using `relative_path`, `linked_folder_relative_path`, `folder_path`, then `folder_name`, matching the health-check path resolution used to report the missing manifest.
+- [workspace_maintenance.rs](../src-tauri/src/workspace_maintenance.rs): External `module_path:*` health items are now repairable by resetting the module base path to `.projects/modules/{moduleId}` inside the current Workspace and updating the app-level module config.
+
+Decision:
+- Older or imported flat workspace projects that only have `folder_path` should remain repairable without requiring a separate path-conversion step first.
+- Repairing a module path does not move or delete files from the old external path; it only changes where the module reads/writes templates and output going forward.
+
+## 2026-05-29
+
+### Workspace Refactoring Phase 4: Local Portability, Backup, Restore, and Health
+
+Created:
+- [workspace_maintenance.rs](../src-tauri/src/workspace_maintenance.rs): Workspace maintenance commands for daily/manual SQLite backups, backup listing/deletion/restore, `.lamber.zip` export/import/validation, read-only workspace health checks, repairable issue execution, external path listing, dry-run internal absolute path conversion, and file-manager reveal.
+- [workspaceMaintenanceService.ts](../src-ui/src/services/workspaceMaintenanceService.ts): Frontend service wrapper for workspace maintenance IPC commands.
+
+Modified:
+- [workspace.rs](../src-tauri/src/workspace.rs): Exposed workspace manifest/database path helpers for maintenance flows, added reserved workspace entry detection, added safe database connection closing for restore, changed recent workspace updates to support import-without-open, and triggers a best-effort daily SQLite backup when a workspace opens.
+- [commands.rs](../src-tauri/src/benefit/commands.rs): Rejects new flat workspace project folders that collide with reserved workspace entries and skips reserved entries during root-level workspace inspection.
+- [assets.rs](../src-tauri/src/project_files/assets.rs): Resolves project folders relative to the active workspace for template asset storage and retrieval, writes new internal assets inside the current workspace, and keeps AppData lookup only as a legacy read fallback.
+- [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): Added a Workspace Maintenance tab for current workspace metadata, manual backup, backup restore, export/import, health check results, repair buttons, external path listing, and internal path conversion.
+- [WorkspaceGate.tsx](../src-ui/src/components/workspace/WorkspaceGate.tsx): Added `.lamber.zip` import entry when no workspace is active.
+- [main.rs](../src-tauri/src/main.rs): Registered workspace maintenance commands.
+
+Decisions:
+- Direct folder copy remains the primary workspace migration path. Export/import is a convenience layer and preserves `workspaceId` by default.
+- `.lamber.zip` archives use the workspace root as the archive root and include `export-manifest.json`; no random top-level folder is added. Import still accepts archives with one wrapper folder for compatibility.
+- `.backups` and `.exports` are excluded from export by default. The pre-export database backup protects the live workspace and is not itself included unless backups are explicitly selected.
+- `run_workspace_health_check` is read-only. Repairs and internal absolute path conversion are explicit user actions and create a database backup before modification.
+- Backup restore releases the active SQLite connection before replacing `.lamber.sqlite`, then reopens the workspace and attempts rollback/reopen if replacement fails.
+- `project_roots` representing external roots are only checked and reported; automatic path conversion does not rewrite them.
+
 ## 2026-05-28
 
 ### Workspace Refactoring Phase 3: Domain Save Boundaries and Dirty State
@@ -109,7 +250,7 @@ Modified:
 - [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Synced global project state store context and added support for saving free calculations into any existing workspace project.
 
 Decisions:
-- Standardized project folders creation inside `workspaceRoot/projects/{safeProjectName}/` with `assets/`, `documents/`, `analyses/` subfolders and a backup `project.json` manifest.
+- Standardized project folders creation inside `workspaceRoot/{safeProjectName}/` with `assets/`, `documents/`, `analyses/` subfolders and a backup `project.json` manifest.
 - SQLite remains the primary source of truth, with `project.json` serving as redundant metadata.
 - Internal folders bound to projects are stored as relative workspace paths to guarantee portable workspaces, while external folders trigger visual alerts warning users of non-portable linkages.
 - Unbinding local folders clears metadata and scanner references in the DB, but keeps actual disk files untouched.

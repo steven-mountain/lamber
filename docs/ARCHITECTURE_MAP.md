@@ -1,6 +1,6 @@
 # ARCHITECTURE_MAP.md
 
-Last updated: 2026-05-28 (Workspace Save Boundaries)
+Last updated: 2026-05-31 (Workspace Management UI Separation)
 
 ## 1. Repository overview
 
@@ -13,8 +13,10 @@ graph TD
     Tauri -->|Word Variable filling| Doc[Docfill Engine / docfill.rs]
     Tauri -->|Directory scanning| Scan[Scanner / project_files]
     Tauri -->|Workspace Runtime| WS[WorkspaceRuntime]
+    Tauri -->|Workspace maintenance| WM[workspace_maintenance.rs]
     WS -->|Current workspace root| DB[(.lamber.sqlite)]
     WS -->|Local app config| CFG[(config.json recentWorkspaces)]
+    WM -->|Backups / Exports / Health| WSF[(Workspace folder)]
 ```
 
 ## 2. Directory map
@@ -22,13 +24,14 @@ graph TD
 ### `src-tauri/...` (Rust Backend)
 - **`src/main.rs`**: Entry point. Sets up plugins (dialog, http), initializes state managers, and registers Tauri command handlers.
 - **`src/config_manager.rs`**: Manages the application workspace configurations.
-- **`src/workspace.rs`**: Manages Lamber Workspace manifests, recent workspaces, last workspace restore, workspace readiness checks, the active SQLite connection, and workspace initialization from existing plain directories with candidate subdirectories import.
+- **`src/workspace.rs`**: Manages Lamber Workspace manifests, recent workspaces, last workspace restore, workspace readiness checks, associated workspace unlinking, the active SQLite connection, and workspace initialization from existing plain directories with candidate subdirectories import.
+- **`src/workspace_maintenance.rs`**: Provides workspace portability commands: daily/manual SQLite backup, backup restore with database connection release/reopen, `.lamber.zip` export/import/validation, read-only workspace health checks, repairable issue execution, external path listing, dry-run internal absolute path conversion, and native file-manager reveal.
 - **`src/db.rs`**: SQLite initialization, table creation, and schema version management.
 - **`src/migration.rs`**: JSON-to-SQLite transactional database migration service and Tauri commands.
-- **`src/docfill.rs`**: Extract variables from Word `.docx` zip packages and fills templates.
+- **`src/docfill.rs`**: Fills Word/Excel lifecycle templates for workspace-backed document generation.
 - **`src/benefit/`**: Benefit analysis engine.
   - [calculator.rs](../src-tauri/src/benefit/calculator.rs): Computes 10-year cashflows, NPV, NPV rates, and margin rates.
-  - [excel.rs](../src-tauri/src/benefit/excel.rs): Generates template Excels and parses imported sheets.
+  - [excel.rs](../src-tauri/src/benefit/excel.rs): Parses imported economic evaluation sheets and maps them into ICT lifecycle data.
   - [service.rs](../src-tauri/src/benefit/service.rs): Manages Project lifecycle actions, risk levels, Schemes, and Snapshots.
   - [repository.rs](../src-tauri/src/benefit/repository.rs): Handles JSON reads/writes and SQLite queries via dynamic repository backend.
   - [models.rs](../src-tauri/src/benefit/models.rs): Rust data structures corresponding to frontend types.
@@ -49,8 +52,8 @@ graph TD
   - [ProjectBoard.tsx](../src-ui/src/views/ProjectBoard.tsx): Kanban lists, detail drawers, and candidate batch importer.
   - [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): The main calculator workspace tabs.
   - [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Variable mapping and document filling triggers.
-  - [BenefitTool.tsx](../src-ui/src/views/BenefitTool.tsx): Standalone economic evaluation panel.
   - [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): Data Management view containing Roots, Health Checker, and Relocator.
+- **`src/services/workspaceMaintenanceService.ts`**: Frontend IPC wrapper for workspace backup/restore/export/import/health/path maintenance commands.
 - **`src/store/`**: Zustand state management.
   - [useNavigationStore.ts](../src-ui/src/store/useNavigationStore.ts): Navigation routing and tracking origin.
   - [useAiContextStore.ts](../src-ui/src/store/useAiContextStore.ts): Local RAG workspace synchronization.
@@ -84,6 +87,24 @@ Phase 3 introduces explicit project-state save domains:
 Frontend global save goes through `domainSaveService` and `useSaveStore` registered handlers. The save store does not read business component state directly; each mounted page registers the handler responsible for serializing its current local state.
 
 Each save handler returns the dirty scopes it actually persisted. `useSaveStore.saveCurrentProject()` snapshots workspace/project/dirty scopes at save start, rejects unregistered scopes, keeps failed scopes dirty, and re-checks workspace/project before clearing anything. Template forms use the same store: ordinary autosave may clear `template-forms` after success, while Ctrl/Command+S and the global save button must receive a failing handler result if template state or asset-reference persistence fails.
+
+### 4.0.1 Workspace portability maintenance flow
+
+- Opening a workspace registers the active workspace root if needed and attempts one daily SQLite backup at `.backups/lamber-YYYY-MM-DD.sqlite`; backup failure is surfaced as a warning and must not block workspace opening.
+- Manual backup runs `VACUUM INTO` to create `.backups/lamber-YYYY-MM-DD-HH-MM-SS.sqlite` and does not modify the live database.
+- Backup list cleanup in `DataManagement.tsx` can delete individual backup files or clear the currently listed backups through `delete_workspace_backup`; it does not touch the live `.lamber.sqlite` database.
+- Backup restore validates the selected SQLite backup, creates a pre-restore backup, closes the active `WorkspaceRuntime` database connection, replaces `.lamber.sqlite`, and reopens the current workspace. If replacement or reopen fails, it attempts to restore the original database and reopen it.
+- Workspace export first creates a consistent SQLite backup copy, runs a lightweight health check, then writes a `.lamber.zip` whose root entries mirror the workspace root: `.lamber.workspace.json`, `.lamber.sqlite`, `.projects/`, project directories, and `export-manifest.json`. `.backups` and `.exports` are excluded by default.
+- After export, the UI opens the archive's containing directory. Backend reveal still supports file selection, but Windows Explorer receives `/select,PATH` without embedded quotes to avoid falling back to the desktop when parsing the target path fails.
+- Workspace import validates zip structure and zip-slip safety, supports direct-root archives and one-top-level wrapper archives, treats the user-selected folder as the parent destination, extracts into `{selectedFolder}/{workspaceName}` by default, preserves `workspaceId`, adds the imported path to recent workspaces, and optionally opens it immediately. Import IPC uses flat arguments (`openAfterImport`, `conflictStrategy`, `destinationName`) rather than a nested `options` payload. Frontend call sites pass explicit service arguments, and the backend normalizes `openAfterImport` from JSON; absent or malformed nested values default to `false` instead of aborting import.
+- Data Management shows the local `recentWorkspaces` association list in a dedicated Workspace Management tab, using the same card-based selection pattern as the Project Board workspace picker. Users can open, reveal, or unlink remembered Workspaces. Unlinking removes only the local config entry; if the target is currently open, the frontend runs the dirty guard first and the backend clears the active Workspace runtime plus `lastOpenedWorkspacePath`.
+- Workspace Management cards are local selection targets only. Clicking a card highlights it without opening the Workspace or updating `lastOpenedAt`; inline buttons perform explicit open/reveal/unlink actions and must stop propagation. The open action switches to the target Workspace and then navigates to the Project Board.
+- `run_workspace_health_check` is read-only. File or database changes are restricted to explicit repair commands that create a database backup first.
+- Existing-folder Workspace initialization commits project inserts, releases the SQLite lock, and returns the opened Workspace before project folder scans or automatic Excel import run in a background task. The background task captures the initialized workspace root and database handle so it does not depend on a later current-workspace lookup.
+- Windows requires explicit Hidden file attributes for Workspace system entries. Backend workspace maintenance marks `.lamber.workspace.json`, `.lamber.sqlite`, `.backups`, `.exports`, and `.projects` hidden when those entries are created, imported, repaired, or opened.
+- Project manifest repair regenerates `project.json` using the same project directory fallback that health checks use: `relative_path`, `linked_folder_relative_path`, `folder_path`, then `folder_name`.
+- External module paths (`module_path:*`) can be repaired by resetting the module base directory to `.projects/modules/{moduleId}` inside the active Workspace. This updates app config and creates `templates/` / `output/`, but does not copy or delete files from the previous external location.
+- Internal absolute path conversion is a dry-run by default. Applying conversion is a separate user-confirmed operation and does not rewrite external roots.
 
 ### 4.1 Project Board data flow
 1. User creates a new project or edits a card on the board.
@@ -119,12 +140,13 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 ## 5. State management map
 
 - **Global View & Routing**: Managed by `useNavigationStore` (Zustand). Tracks:
-  - `currentView`: (`hub`, `benefit`, `docfill`, `project_board`, `ict_lifecycle`).
+  - `currentView`: (`hub`, `project_board`, `ict_lifecycle`, `data_management`).
   - `activeProjectId` / `activeSchemeId`: The focused project context.
   - `entrySource`: Remembers the previous view (Hub vs Project Board) to handle back-navigation.
 - **RAG Context**: Managed by `useAiContextStore` (Zustand). Debounces workspace changes and shares states with LLM prompt builders.
-- **Workspace State**: Managed by `useWorkspaceStore` and `WorkspaceRuntime`. Frontend tracks `currentWorkspace`, `workspaceRoot`, `workspaceName`, `workspaceId`, `recentWorkspaces`, and `isWorkspaceReady`. Renders `WorkspaceGate` if no active workspace is selected, supporting standardized '← 返回集市' back-navigation to the Hub in both Project Board and Data Management views.
+- **Workspace State**: Managed by `useWorkspaceStore` and `WorkspaceRuntime`. Frontend tracks `currentWorkspace`, `workspaceRoot`, `workspaceName`, `workspaceId`, `recentWorkspaces`, and `isWorkspaceReady`, and exposes open/unlink/close actions for locally associated Workspaces. Renders `WorkspaceGate` if no active workspace is selected, supporting standardized '← 返回集市' back-navigation to the Hub in both Project Board and Data Management views.
 - **Persistence Database**: Managed by the current workspace's `lamber.sqlite`. Project operations are blocked while no workspace is open.
+- **Workspace Maintenance UI**: `DataManagement.tsx` exposes associated workspace list management as a separate card-based tab, and exposes current workspace info, backup/restore/delete/clear, export/import, health check, repair actions, external paths, and internal path conversion in the maintenance tab. `WorkspaceGate.tsx` also provides `.lamber.zip` import when no workspace is active.
 
 ## 6. Calculation engine map
 
@@ -154,3 +176,5 @@ Following "The Architectural Ledger" specs in `DESIGN.md`:
 - **Excel Cell Coordinates mapping**: Cell offsets in `excel.rs` are strict. Ensure any changes in template design are reflected in Rust cell coordinates index mapping.
 - **SQLite directory_id Foreign Key constraints**: If a project folder has no registered project root (running in absolute-only mode), its files' `directory_id` field must remain `NULL` (i.e. `None`). Only set `directory_id` to a valid directory ID if the folder is matched with a root, and ensure the corresponding row exists in `project_directories` to prevent `FOREIGN KEY constraint failed` database errors.
 - **SQLite cascade deletes on INSERT OR REPLACE**: Avoid calling `INSERT OR REPLACE` to update existing records in parent tables (e.g. `projects` table) where child tables have `ON DELETE CASCADE` constraints (e.g. `project_directories`, `project_files`, `benefit_schemes`, `benefit_snapshots`). SQLite implements `REPLACE` as a delete-and-reinsert, which triggers cascades that delete all associated child rows. Use an existence check (`SELECT EXISTS`) followed by an `UPDATE` or `INSERT` instead.
+- **Workspace archive safety**: `.lamber.zip` extraction must reject absolute paths, `..` path components, and extracted paths that do not remain under the selected target directory.
+- **Flat workspace reserved names**: Project folder names must not collide with `.lamber.workspace.json`, `.lamber.sqlite`, `.backups`, `.exports`, `.projects`, `backups`, `exports`, or `projects`.

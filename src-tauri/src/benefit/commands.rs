@@ -1,5 +1,5 @@
 use super::models::{BenefitAnalysisScheme, BenefitAnalysisSnapshot, IctInput, IctResult, Project};
-use super::repository::{SqliteProjectRepository, ProjectRepository};
+use super::repository::{ProjectRepository, SqliteProjectRepository};
 use super::service::ProjectService;
 use std::sync::Arc;
 use tauri::State;
@@ -8,11 +8,15 @@ fn service_from_workspace(
     runtime: &crate::workspace::WorkspaceRuntime,
 ) -> Result<ProjectService, String> {
     let conn = runtime.require_db()?;
-    Ok(ProjectService::new(Box::new(SqliteProjectRepository::new(conn))))
+    Ok(ProjectService::new(Box::new(SqliteProjectRepository::new(
+        conn,
+    ))))
 }
 
 #[tauri::command]
-pub async fn get_projects(runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>) -> Result<Vec<Project>, String> {
+pub async fn get_projects(
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
+) -> Result<Vec<Project>, String> {
     let service = service_from_workspace(&runtime)?;
     service.get_projects()
 }
@@ -148,7 +152,7 @@ pub async fn create_project_in_workspace(
 ) -> Result<Project, String> {
     let ws = runtime.require_workspace()?;
     let conn = runtime.require_db()?;
-    
+
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err("项目名称不能为空".to_string());
@@ -164,6 +168,9 @@ pub async fn create_project_in_workspace(
     };
 
     let folder_name = crate::workspace::sanitize_folder_name(&name);
+    if crate::workspace::is_reserved_workspace_entry_name(&folder_name) {
+        return Err("项目目录名与 Lamber 工作区系统文件或保留目录冲突，请更换项目名称".to_string());
+    }
     let ws_root = std::path::Path::new(&ws.workspace_root);
     let project_dir = ws_root.join(&folder_name);
 
@@ -177,7 +184,7 @@ pub async fn create_project_in_workspace(
     // 2. Write project.json
     let timestamp = chrono::Utc::now().to_rfc3339();
     let project_id = format!("id_{}", uuid::Uuid::new_v4().simple());
-    
+
     #[derive(serde::Serialize)]
     #[serde(rename_all = "camelCase")]
     struct ProjectJson {
@@ -197,11 +204,10 @@ pub async fn create_project_in_workspace(
         updated_at: timestamp.clone(),
     };
 
-    let project_json_str = serde_json::to_string_pretty(&project_json)
-        .map_err(|e| {
-            let _ = std::fs::remove_dir_all(&project_dir);
-            format!("序列化 project.json 失败: {}", e)
-        })?;
+    let project_json_str = serde_json::to_string_pretty(&project_json).map_err(|e| {
+        let _ = std::fs::remove_dir_all(&project_dir);
+        format!("序列化 project.json 失败: {}", e)
+    })?;
 
     if let Err(e) = std::fs::write(project_dir.join("project.json"), project_json_str) {
         let _ = std::fs::remove_dir_all(&project_dir);
@@ -255,18 +261,18 @@ pub async fn list_workspace_projects(
     let repo = SqliteProjectRepository::new(runtime.require_db()?);
     let projects = repo.get_projects()?;
     let ws_root = std::path::Path::new(&ws.workspace_root);
-    
+
     let mut list = Vec::new();
     for mut p in projects {
         crate::workspace::normalize_project_paths(ws_root, &mut p);
-        
+
         let directory_exists = if let Some(ref folder_path) = p.folder_path {
             let path = crate::workspace::resolve_workspace_path(ws_root, folder_path);
             path.exists() && path.is_dir()
         } else {
             false
         };
-        
+
         list.push(WorkspaceProjectInfo {
             project: p,
             directory_exists,
@@ -282,11 +288,10 @@ pub async fn inspect_workspace_projects(
     let ws = runtime.require_workspace()?;
     let conn = runtime.require_db()?;
     let ws_root = std::path::Path::new(&ws.workspace_root);
-    
+
     let mut unregistered = Vec::new();
-    let entries = std::fs::read_dir(ws_root)
-        .map_err(|e| format!("无法读取工作区目录: {}", e))?;
-        
+    let entries = std::fs::read_dir(ws_root).map_err(|e| format!("无法读取工作区目录: {}", e))?;
+
     for entry in entries {
         let entry = match entry {
             Ok(e) => e,
@@ -299,14 +304,18 @@ pub async fn inspect_workspace_projects(
                 if name_str.starts_with('.') {
                     continue;
                 }
+                if crate::workspace::is_reserved_workspace_entry_name(&name_str) {
+                    continue;
+                }
                 match name_str.as_str() {
-                    "node_modules" | "target" | "dist" | "build" | ".vscode" | ".idea" | "__pycache__" => {
+                    "node_modules" | "target" | "dist" | "build" | ".vscode" | ".idea"
+                    | "__pycache__" => {
                         continue;
                     }
                     _ => {}
                 }
             }
-            
+
             let project_json_path = path.join("project.json");
             if project_json_path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&project_json_path) {
@@ -318,7 +327,8 @@ pub async fn inspect_workspace_projects(
                         relative_path: String,
                     }
                     if let Ok(json) = serde_json::from_str::<MiniProjectJson>(&content) {
-                        let exists: bool = conn.lock()
+                        let exists: bool = conn
+                            .lock()
                             .map_err(|e| e.to_string())?
                             .query_row(
                                 "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
@@ -326,9 +336,10 @@ pub async fn inspect_workspace_projects(
                                 |row| row.get(0),
                             )
                             .unwrap_or(false);
-                            
+
                         if !exists {
-                            let folder_name = path.file_name()
+                            let folder_name = path
+                                .file_name()
                                 .map(|n| n.to_string_lossy().to_string())
                                 .unwrap_or_default();
                             unregistered.push(UnregisteredProject {
@@ -343,6 +354,6 @@ pub async fn inspect_workspace_projects(
             }
         }
     }
-    
+
     Ok(unregistered)
 }

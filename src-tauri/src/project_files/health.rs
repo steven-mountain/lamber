@@ -1,10 +1,10 @@
-use std::sync::Arc;
-use std::path::Path;
-use serde::{Deserialize, Serialize};
-use tauri::State;
-use super::service::ProjectFileService;
 use super::repository::ProjectFileRepository;
 use super::repository::SqliteProjectFileRepository;
+use super::service::ProjectFileService;
+use serde::{Deserialize, Serialize};
+use std::path::Path;
+use std::sync::Arc;
+use tauri::State;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -120,7 +120,10 @@ pub async fn run_file_health_check(
 ) -> Result<HealthReport, String> {
     let ws = runtime.require_workspace()?;
     let repo = Arc::new(SqliteProjectFileRepository::new(runtime.require_db()?));
-    let file_service = Arc::new(ProjectFileService::new(repo.clone(), std::path::PathBuf::from(ws.workspace_root)));
+    let file_service = Arc::new(ProjectFileService::new(
+        repo.clone(),
+        std::path::PathBuf::from(ws.workspace_root),
+    ));
     let service = FileLinkHealthService::new(file_service, repo);
     service.run_health_check()
 }

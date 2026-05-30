@@ -1,35 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Clone)]
-pub struct CalcInput {
-    pub tax_rate_it: String,
-    pub tax_rate_ct: String,
-    pub total_income_incl: String,
-    pub calc_mode: String, // "margin", "npv", or "total_cost"
-    pub target_value: String,
-    pub ct_income_incl_opt: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct CalcResult {
-    pub it_income_incl: String,
-    pub ct_income_incl: String,
-    pub total_income_incl: String,
-    pub it_income_excl: String,
-    pub ct_income_excl: String,
-    pub total_income_excl: String,
-    pub it_cost_incl: String,
-    pub ct_cost_incl: String,
-    pub total_cost_incl: String,
-    pub it_cost_excl: String,
-    pub ct_cost_excl: String,
-    pub total_cost_excl: String,
-    pub margin_rate: String,
-    pub npv_rate: String,
-    pub it_npv_rate: String,
-    pub warning_message: Option<String>,
-}
-
 #[derive(Deserialize, Serialize, Clone)]
 pub struct IctItem {
     pub incl_tax: String,

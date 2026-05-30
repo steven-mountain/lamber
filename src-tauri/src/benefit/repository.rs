@@ -152,7 +152,12 @@ impl ProjectRepository for JsonProjectRepository {
         Ok(None)
     }
 
-    fn save_project_setting(&self, _project_id: &str, _key: &str, _value: &str) -> Result<(), String> {
+    fn save_project_setting(
+        &self,
+        _project_id: &str,
+        _key: &str,
+        _value: &str,
+    ) -> Result<(), String> {
         Ok(())
     }
 }
@@ -171,9 +176,8 @@ impl SqliteProjectRepository {
 
 fn row_to_project(row: &rusqlite::Row) -> Result<Project, rusqlite::Error> {
     let summary_metrics_str: Option<String> = row.get(13)?;
-    let summary_metrics = summary_metrics_str
-        .and_then(|s| serde_json::from_str(&s).ok());
-    
+    let summary_metrics = summary_metrics_str.and_then(|s| serde_json::from_str(&s).ok());
+
     let logs_str: Option<String> = row.get(18)?;
     let logs = logs_str
         .and_then(|s| serde_json::from_str(&s).ok())
@@ -215,8 +219,10 @@ impl ProjectRepository for SqliteProjectRepository {
         let mut stmt = conn
             .prepare("SELECT id, name, customer_name, status, benefit_status, default_scheme_id, created_at, updated_at, total_revenue_incl, total_cost_incl, project_years, discount_rate, cashflow_model, summary_metrics, folder_path, main_document_path, main_budget_file_path, note, logs, folder_name, relative_path, progress, deadline, linked_folder_type, linked_folder_relative_path, linked_folder_external_path FROM projects")
             .map_err(|e| e.to_string())?;
-        
-        let project_iter = stmt.query_map([], row_to_project).map_err(|e| e.to_string())?;
+
+        let project_iter = stmt
+            .query_map([], row_to_project)
+            .map_err(|e| e.to_string())?;
 
         let mut list = Vec::new();
         for p in project_iter {
@@ -230,7 +236,7 @@ impl ProjectRepository for SqliteProjectRepository {
         let mut stmt = conn
             .prepare("SELECT id, name, customer_name, status, benefit_status, default_scheme_id, created_at, updated_at, total_revenue_incl, total_cost_incl, project_years, discount_rate, cashflow_model, summary_metrics, folder_path, main_document_path, main_budget_file_path, note, logs, folder_name, relative_path, progress, deadline, linked_folder_type, linked_folder_relative_path, linked_folder_external_path FROM projects WHERE id = ?1")
             .map_err(|e| e.to_string())?;
-        
+
         let mut rows = stmt.query([id]).map_err(|e| e.to_string())?;
         if let Some(row) = rows.next().map_err(|e| e.to_string())? {
             let p = row_to_project(row).map_err(|e| e.to_string())?;
@@ -242,15 +248,19 @@ impl ProjectRepository for SqliteProjectRepository {
 
     fn save_project(&self, project: &Project) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let summary_metrics_str = project.summary_metrics.as_ref()
+        let summary_metrics_str = project
+            .summary_metrics
+            .as_ref()
             .and_then(|m| serde_json::to_string(m).ok());
         let logs_str = serde_json::to_string(&project.logs).unwrap_or_default();
 
-        let exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
-            [&project.id],
-            |row| row.get(0),
-        ).map_err(|e| e.to_string())?;
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
+                [&project.id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
 
         if exists {
             conn.execute(
@@ -345,16 +355,18 @@ impl ProjectRepository for SqliteProjectRepository {
         let mut stmt = conn
             .prepare("SELECT id, project_id, name, created_at, updated_at FROM benefit_schemes WHERE project_id = ?1")
             .map_err(|e| e.to_string())?;
-        
-        let scheme_iter = stmt.query_map([project_id], |row| {
-            Ok(BenefitAnalysisScheme {
-                id: row.get(0)?,
-                project_id: row.get(1)?,
-                name: row.get(2)?,
-                created_at: row.get(3)?,
-                updated_at: row.get(4)?,
+
+        let scheme_iter = stmt
+            .query_map([project_id], |row| {
+                Ok(BenefitAnalysisScheme {
+                    id: row.get(0)?,
+                    project_id: row.get(1)?,
+                    name: row.get(2)?,
+                    created_at: row.get(3)?,
+                    updated_at: row.get(4)?,
+                })
             })
-        }).map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
         let mut list = Vec::new();
         for s in scheme_iter {
@@ -383,7 +395,8 @@ impl ProjectRepository for SqliteProjectRepository {
         conn.execute(
             "DELETE FROM benefit_schemes WHERE project_id = ?1 AND id = ?2",
             [project_id, scheme_id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -392,27 +405,39 @@ impl ProjectRepository for SqliteProjectRepository {
         let mut stmt = conn
             .prepare("SELECT id, scheme_id, project_id, version, input_params, output_metrics, fingerprint, created_at FROM benefit_snapshots WHERE scheme_id = ?1")
             .map_err(|e| e.to_string())?;
-        
-        let snap_iter = stmt.query_map([scheme_id], |row| {
-            let input_params_str: String = row.get(4)?;
-            let input_params = serde_json::from_str(&input_params_str)
-                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(4, rusqlite::types::Type::Text, Box::new(e)))?;
-            
-            let output_metrics_str: String = row.get(5)?;
-            let output_metrics = serde_json::from_str(&output_metrics_str)
-                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(5, rusqlite::types::Type::Text, Box::new(e)))?;
 
-            Ok(BenefitAnalysisSnapshot {
-                id: row.get(0)?,
-                scheme_id: row.get(1)?,
-                project_id: row.get(2)?,
-                version: row.get(3)?,
-                input_params,
-                output_metrics,
-                fingerprint: row.get(6)?,
-                created_at: row.get(7)?,
+        let snap_iter = stmt
+            .query_map([scheme_id], |row| {
+                let input_params_str: String = row.get(4)?;
+                let input_params = serde_json::from_str(&input_params_str).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        4,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    )
+                })?;
+
+                let output_metrics_str: String = row.get(5)?;
+                let output_metrics = serde_json::from_str(&output_metrics_str).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    )
+                })?;
+
+                Ok(BenefitAnalysisSnapshot {
+                    id: row.get(0)?,
+                    scheme_id: row.get(1)?,
+                    project_id: row.get(2)?,
+                    version: row.get(3)?,
+                    input_params,
+                    output_metrics,
+                    fingerprint: row.get(6)?,
+                    created_at: row.get(7)?,
+                })
             })
-        }).map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
         let mut list = Vec::new();
         for s in snap_iter {
@@ -424,8 +449,10 @@ impl ProjectRepository for SqliteProjectRepository {
 
     fn save_snapshot(&self, snapshot: &BenefitAnalysisSnapshot) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let input_params_str = serde_json::to_string(&snapshot.input_params).map_err(|e| e.to_string())?;
-        let output_metrics_str = serde_json::to_string(&snapshot.output_metrics).map_err(|e| e.to_string())?;
+        let input_params_str =
+            serde_json::to_string(&snapshot.input_params).map_err(|e| e.to_string())?;
+        let output_metrics_str =
+            serde_json::to_string(&snapshot.output_metrics).map_err(|e| e.to_string())?;
 
         conn.execute(
             "INSERT OR REPLACE INTO benefit_snapshots (id, scheme_id, project_id, version, input_params, output_metrics, fingerprint, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
