@@ -169,7 +169,7 @@ export class AiRuntime {
   }
 
   private buildUserContent(ast: PromptAST): UserMessageContent {
-    const images = ast.userIntent.images || [];
+    const images = (ast.userIntent.images || []).filter(image => Boolean(image.dataUrl));
     if (images.length === 0) {
       return ast.userIntent.raw;
     }
@@ -182,7 +182,7 @@ export class AiRuntime {
       ...images.map((image) => ({
         type: 'image_url' as const,
         image_url: {
-          url: image.dataUrl,
+          url: image.dataUrl as string,
         },
       })),
     ];

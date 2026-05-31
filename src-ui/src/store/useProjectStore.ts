@@ -1,5 +1,25 @@
 import { create } from "zustand";
-import { Project } from "../utils/projectService";
+import type { Project } from "../utils/projectService";
+
+export const PROJECT_STORAGE_KEY = "lamber_current_project";
+
+export function readStoredCurrentProject(): Project | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const saved = window.localStorage.getItem(PROJECT_STORAGE_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch (e) {
+    console.error("Failed to restore current project:", e);
+    return null;
+  }
+}
+
+function clearStoredActiveProjectKeys() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem("lamber_active_project_id");
+  window.localStorage.removeItem("lamber_active_scheme_id");
+}
 
 interface ProjectState {
   currentProject: Project | null;
@@ -8,30 +28,23 @@ interface ProjectState {
 }
 
 export const useProjectStore = create<ProjectState>((set) => {
-  // Try to restore project from localStorage
-  let initialProject: Project | null = null;
-  try {
-    const saved = localStorage.getItem("lamber_current_project");
-    if (saved) {
-      initialProject = JSON.parse(saved);
-    }
-  } catch (e) {
-    console.error("Failed to restore current project:", e);
-  }
+  const initialProject = readStoredCurrentProject();
 
   return {
     currentProject: initialProject,
     setCurrentProject: (project) => {
       set({ currentProject: project });
       if (project) {
-        localStorage.setItem("lamber_current_project", JSON.stringify(project));
+        localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(project));
       } else {
-        localStorage.removeItem("lamber_current_project");
+        localStorage.removeItem(PROJECT_STORAGE_KEY);
+        clearStoredActiveProjectKeys();
       }
     },
     clearCurrentProject: () => {
       set({ currentProject: null });
-      localStorage.removeItem("lamber_current_project");
+      localStorage.removeItem(PROJECT_STORAGE_KEY);
+      clearStoredActiveProjectKeys();
     },
   };
 });

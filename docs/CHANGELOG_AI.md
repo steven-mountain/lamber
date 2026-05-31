@@ -2,7 +2,88 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-06-01
+
+### AI Workspace Specified Project Context Routing
+
+Created:
+- [workspaceProjectRouter.ts](../src-ui/src/ai/context/workspaceProjectRouter.ts): Added deterministic Workspace project-name and template-name routing helpers for AI chat context composition.
+
+Modified:
+- [ai_context/dto.rs](../src-tauri/src/ai_context/dto.rs), [ai_context/service.rs](../src-tauri/src/ai_context/service.rs), and [ai_context/commands.rs](../src-tauri/src/ai_context/commands.rs): Added the read-only `list_ai_workspace_projects` command, returning lightweight current-Workspace project identity, saved-state existence flags, and saved template names without paths, file contents, image bytes, or full template JSON.
+- [main.rs](../src-tauri/src/main.rs): Registered `list_ai_workspace_projects`.
+- [aiProjectContextService.ts](../src-ui/src/services/aiProjectContextService.ts): Added typed frontend DTOs and invoke wrapper for the Workspace project index.
+- [buildAiChatContext.ts](../src-ui/src/ai/context/buildAiChatContext.ts) and [types.ts](../src-ui/src/ai/context/types.ts): Extended the composer to route explicitly named projects to real `projectId` reads, load at most two specified project contexts per turn, reuse `template_detail` for one uniquely resolved specified template, inject lightweight project index context for Workspace-level list questions, and keep current-page draft overlay scoped to its bound project.
+- [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx): Added system rules for specified project context, ambiguity handling, projectId-based official reads, multi-project separation, and draft isolation.
+
+Tests:
+- Added a Rust unit test covering the lightweight Workspace project index flags and saved template-name metadata.
+
+Decision:
+- Project names are only current-turn routing hints inside the active Workspace; official data reads continue to use real `projectId` values through `build_ai_project_context`.
+- The composer does not guess when project names are duplicate, ambiguous, or absent. It emits warnings and asks the model to request clarification rather than falling back to another project.
+- Broad Workspace questions use the lightweight index and do not trigger full project/template reads across all projects.
+- This phase does not add AI writes, RAG, embedding search, file full-text reads, automatic image loading, financial logic changes, or cross-Workspace queries.
+
 ## 2026-05-31
+
+### AI Template Detail Context and Controlled Vision Assets
+
+Created:
+- [templateAssetSelection.ts](../src-ui/src/ai/templateAssetSelection.ts): Added a lightweight cross-window bridge for explicit template image analysis selections, carrying only `projectId`, `templateId`, `assetId`, and field metadata.
+
+Modified:
+- [ai_context/dto.rs](../src-tauri/src/ai_context/dto.rs), [ai_context/service.rs](../src-tauri/src/ai_context/service.rs), and [ai_context/commands.rs](../src-tauri/src/ai_context/commands.rs): Added `template_detail` support to the read-only AI Project Context Service, including saved template field sanitization, asset metadata summaries, and `load_ai_template_asset` for controlled vision reads.
+- [main.rs](../src-tauri/src/main.rs): Registered the `load_ai_template_asset` command.
+- [aiProjectContextService.ts](../src-ui/src/services/aiProjectContextService.ts): Added frontend DTOs for template detail and controlled template asset image loading.
+- [buildAiChatContext.ts](../src-ui/src/ai/context/buildAiChatContext.ts): Requests `template_detail` only when the active ICT AI context is a template editing context, and keeps template saved detail separate from draft overlay.
+- [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx), [AiRuntime.ts](../src-ui/src/ai/AiRuntime.ts), [AiInputBox.tsx](../src-ui/src/components/ai/AiInputBox.tsx), [ImageAttachmentPreview.tsx](../src-ui/src/components/ai/ImageAttachmentPreview.tsx), and [MessageBubble.tsx](../src-ui/src/components/MessageBubble.tsx): Reused the existing `image_url` multimodal path for explicitly selected template assets, resolving asset bytes through the backend only at send time.
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Publishes current `projectId` and `selectedTemplate` into the template AI context payload and adds explicit AI analysis actions to template image thumbnails.
+
+Decision:
+- Template detail context is read on demand for the current specified template only; ordinary project questions continue to use template summaries.
+- Saved template content comes from Workspace SQLite (`project_template_states`, with `project_settings` fallback). Unsaved template edits remain a separate frontend draft overlay.
+- Template image contents are never auto-loaded. Only explicitly selected images become current-turn vision attachments after backend project/asset ownership validation.
+- The implementation does not add AI writes, auto-fill, RAG, embeddings, document full-text reads, unselected image reads, or financial calculation changes.
+
+### AI Project Context Chat Integration
+
+Created:
+- [src-ui/src/ai/context/buildAiChatContext.ts](../src-ui/src/ai/context/buildAiChatContext.ts), [buildDraftOverlay.ts](../src-ui/src/ai/context/buildDraftOverlay.ts), and [types.ts](../src-ui/src/ai/context/types.ts): Added a lightweight frontend context composer that loads saved official project context from the backend AI Project Context Service and conditionally builds an unsaved frontend draft overlay from dirty page state.
+
+Modified:
+- [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx): Calls the context composer on every message send and passes layered saved/draft/warning context nodes to the existing `PromptAST`/`AiRuntime` streaming path.
+- [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx): Resets the streaming parser before inserting a new assistant placeholder and overwrites the active placeholder from the current parser output, preventing the previous AI reply from appearing while a new response is still thinking.
+- [useWorkspaceStore.ts](../src-ui/src/store/useWorkspaceStore.ts): Clears workspace-scoped active project/scheme identity from project, navigation, and legacy ICT local storage state whenever the active workspace is cleared or changed.
+- [ProjectBoard.tsx](../src-ui/src/views/ProjectBoard.tsx) and [useAiContextStore.ts](../src-ui/src/store/useAiContextStore.ts): Project Board now replaces its AI context snapshot with the active workspace ID, project count, lightweight project card list, and selected project summary so AI can answer workspace-level board questions after switching workspaces.
+- [buildAiChatContext.ts](../src-ui/src/ai/context/buildAiChatContext.ts), [buildDraftOverlay.ts](../src-ui/src/ai/context/buildDraftOverlay.ts), [useNavigationStore.ts](../src-ui/src/store/useNavigationStore.ts), and [useProjectStore.ts](../src-ui/src/store/useProjectStore.ts): Refresh the latest persisted navigation/current-project/ICT active project identity at message-send time so a floating AI window opened before project selection can still call `build_ai_project_context` for the current ICT-bound project.
+- [PromptRenderer.ts](../src-ui/src/ai/PromptRenderer.ts): Renamed rendered context layers to distinguish Workspace SQLite official state from current unsaved draft overlay and loading notes.
+- [aiContextKeys.ts](../src-ui/src/utils/aiContextKeys.ts), [App.tsx](../src-ui/src/App.tsx), and [ProjectBoard.tsx](../src-ui/src/views/ProjectBoard.tsx): Added Project Board AI context key support so project-detail dirty edits can be treated as page-level draft state.
+- [useIctCalculations.ts](../src-ui/src/hooks/useIctCalculations.ts) and [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Added active `projectId` markers to frontend AI context payloads for draft/project consistency checks.
+- [calculator.rs](../src-tauri/src/benefit/calculator.rs): Updated existing Rust unit-test fixture construction with `project_background: None` so tests compile after the earlier model field addition. This does not change calculation logic.
+
+Decision:
+- AI chat now treats Workspace SQLite data as the only saved official project state. Zustand/localStorage page snapshots are used only as unsaved draft overlays when current dirty scopes match the current project/page.
+- Each chat turn owns a fresh streaming parser lifecycle; prior assistant text must remain only in its completed message and must not seed the new pending assistant bubble.
+- Workspace-level Project Board summaries are allowed as current page context for list/count questions, but they remain read-only prompt context and do not replace project-level official SQLite detail retrieval.
+- Active project identity may be refreshed from persisted frontend navigation/current-project selection at send time, but that identity is used only to request read-only Workspace SQLite context; local draft state is not promoted to saved official data.
+- Context loading failures degrade into prompt warnings and must not block chat streaming.
+- Draft overlays are sanitized to omit base64/data URL previews and absolute paths, truncate large content, and avoid reading any image/document binaries.
+- This phase remains read-only and does not implement AI writes, saves, patch application, RAG, embeddings, file full-text summaries, image analysis, scans, repairs, or financial recalculation.
+
+### AI Project Context Service
+
+Created:
+- [ai_context/mod.rs](../src-tauri/src/ai_context/mod.rs), [ai_context/dto.rs](../src-tauri/src/ai_context/dto.rs), [ai_context/service.rs](../src-tauri/src/ai_context/service.rs), and [ai_context/commands.rs](../src-tauri/src/ai_context/commands.rs): Added a read-only backend service and Tauri command `build_ai_project_context` for structured project-level AI context retrieval from the active Workspace SQLite database.
+- [aiProjectContextService.ts](../src-ui/src/services/aiProjectContextService.ts): Added typed frontend invoke wrapper for later AI integration.
+
+Modified:
+- [main.rs](../src-tauri/src/main.rs): Registered the new `build_ai_project_context` command.
+
+Decision:
+- AI project context is sourced only from persisted `.lamber.sqlite` state through `WorkspaceRuntime`, not from frontend draft state or user-supplied paths.
+- The service is strictly read-only: no database writes, folder scans, repairs, document full-text reads, image binary/base64 reads, or prompt injection are performed in this phase.
+- Template and file contexts are summaries/metadata only. Template image assets expose counts, not absolute paths or binary content.
 
 ### Project Background, Collection/Payment and IT/CT Content Sync in Template Forms
 

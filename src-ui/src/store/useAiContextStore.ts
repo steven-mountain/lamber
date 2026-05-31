@@ -15,6 +15,8 @@ interface AiContextState {
   // Actions
   setActiveModule: (module: string) => void;
   updateBusinessData: (module: string, data: any) => void;
+  replaceBusinessData: (module: string, data: any) => void;
+  clearBusinessData: (module: string) => void;
   hydrateFromStorage: () => void;
 }
 
@@ -183,6 +185,37 @@ export const useAiContextStore = create<AiContextState>((set, get) => {
       });
 
       // Schedule persistence and event emission in background
+      debouncedPublish();
+    },
+
+    replaceBusinessData: (module, data) => {
+      const nextModule = normalizeModuleKey(module);
+
+      set((state) => ({
+        businessData: {
+          ...state.businessData,
+          [nextModule]: data,
+        },
+        lastUpdated: {
+          ...state.lastUpdated,
+          [nextModule]: Date.now(),
+        },
+      }));
+
+      debouncedPublish();
+    },
+
+    clearBusinessData: (module) => {
+      const nextModule = normalizeModuleKey(module);
+
+      set((state) => {
+        const businessData = { ...state.businessData };
+        const lastUpdated = { ...state.lastUpdated };
+        delete businessData[nextModule];
+        delete lastUpdated[nextModule];
+        return { businessData, lastUpdated };
+      });
+
       debouncedPublish();
     },
 

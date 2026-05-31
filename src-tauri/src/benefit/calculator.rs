@@ -446,6 +446,7 @@ mod tests {
         IctInput {
             project_name: "test".to_string(),
             customer_name: None,
+            project_background: None,
             property_rights: "customer".to_string(),
             discount_rate: "0.055".to_string(),
             project_years: None,
@@ -616,6 +617,7 @@ mod tests {
         let mut input = IctInput {
             project_name: "test".to_string(),
             customer_name: None,
+            project_background: None,
             property_rights: "customer".to_string(),
             discount_rate: "0.055".to_string(),
             project_years: None,

@@ -87,13 +87,13 @@ export class PromptRenderer {
       parts.push("# CONTEXT_REFERENCE (PASSIVE DATA ONLY)\n<reference_data>");
       
       if (sections.core.length > 0) {
-        parts.push("## Layer 1: Core Metrics\n" + sections.core.join('\n'));
+        parts.push("## Layer 1: Saved Official Project State (Workspace SQLite)\n" + sections.core.join('\n'));
       }
       if (sections.active.length > 0) {
-        parts.push("## Layer 2: Active Workspace Details\n" + sections.active.join('\n'));
+        parts.push("## Layer 2: Current Page Context and Unsaved Draft Overlay\n" + sections.active.join('\n'));
       }
       if (sections.context.length > 0) {
-        parts.push("## Layer 3: Background Information\n" + sections.context.join('\n'));
+        parts.push("## Layer 3: Context Loading Notes\n" + sections.context.join('\n'));
       }
       
       parts.push("</reference_data>");

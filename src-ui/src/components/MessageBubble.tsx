@@ -203,16 +203,23 @@ const MessageBubble = ({ msg, idx, isStreaming, onCopy, copiedIdx }: MessageBubb
         {msg.images && msg.images.length > 0 && (
           <div className={clsx('mb-3 grid gap-2', msg.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>
             {msg.images.map((image) => (
-              <a
-                key={image.id}
-                href={image.dataUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="block overflow-hidden rounded-lg border border-primary-foreground/30 bg-black/10"
-                title={image.name}
-              >
-                <img src={image.dataUrl} alt={image.name} className="max-h-44 w-full object-cover" />
-              </a>
+              image.dataUrl ? (
+                <a
+                  key={image.id}
+                  href={image.dataUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block overflow-hidden rounded-lg border border-primary-foreground/30 bg-black/10"
+                  title={image.name}
+                >
+                  <img src={image.dataUrl} alt={image.name} className="max-h-44 w-full object-cover" />
+                </a>
+              ) : (
+                <div key={image.id} className="flex min-h-20 items-center gap-2 rounded-lg border border-primary-foreground/30 bg-black/10 px-3 py-2 text-xs font-semibold">
+                  <AppIcon name="imageUpload" size={16} />
+                  <span className="truncate">{image.name}</span>
+                </div>
+              )
             ))}
           </div>
         )}

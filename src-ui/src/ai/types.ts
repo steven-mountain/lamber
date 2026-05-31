@@ -28,7 +28,12 @@ export interface AiImageAttachment {
   name: string;
   mimeType: string;
   size: number;
-  dataUrl: string;
+  dataUrl?: string;
+  source?: 'user_upload' | 'template_asset';
+  projectId?: string;
+  templateId?: string;
+  assetId?: string;
+  fieldKey?: string;
 }
 
 export interface AiChatMessage {

@@ -1,9 +1,10 @@
-export type AiContextScope = 'hub' | 'ict';
+export type AiContextScope = 'hub' | 'ict' | 'project_board';
 export type AiContextKind = 'core' | 'template';
 
 export const AI_CONTEXT_KEY = {
   HUB: 'hub',
   ICT_CORE: 'ict.core',
+  PROJECT_BOARD_CORE: 'project_board.core',
 } as const;
 
 const TEMPLATE_SEPARATOR = '.template.';
@@ -29,6 +30,7 @@ export function buildAiContextKey(scope: AiContextScope, kind: AiContextKind = '
 export function getAiContextScope(key: string): AiContextScope | null {
   if (key === AI_CONTEXT_KEY.HUB) return 'hub';
   if (key === AI_CONTEXT_KEY.ICT_CORE || key.startsWith(`ict${TEMPLATE_SEPARATOR}`)) return 'ict';
+  if (key === AI_CONTEXT_KEY.PROJECT_BOARD_CORE) return 'project_board';
   return null;
 }
 
@@ -38,12 +40,16 @@ export function isAiContextKeyForView(key: string, view: string): boolean {
   if (view === 'ict') {
     return key === AI_CONTEXT_KEY.ICT_CORE || key.startsWith(`ict${TEMPLATE_SEPARATOR}`);
   }
+  if (view === 'project_board') {
+    return key === AI_CONTEXT_KEY.PROJECT_BOARD_CORE;
+  }
 
   return false;
 }
 
 export function getAiContextDisplayName(key: string): string {
   if (key === AI_CONTEXT_KEY.ICT_CORE) return 'ICT Lifecycle';
+  if (key === AI_CONTEXT_KEY.PROJECT_BOARD_CORE) return 'Project Board';
   if (key.startsWith(`ict${TEMPLATE_SEPARATOR}`)) {
     return `ICT Template: ${key.slice(`ict${TEMPLATE_SEPARATOR}`.length)}`;
   }

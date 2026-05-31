@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAiContextStore } from "../store/useAiContextStore";
+import { useProjectStore } from "../store/useProjectStore";
 import { AI_CONTEXT_KEY } from "../utils/aiContextKeys";
 import {
   type CashflowSegment,
@@ -151,6 +152,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   // --- AI Context Sync ---
   const buildAiContextPayload = useCallback((includeCalculated = false, overrides?: { metrics?: any; cashflow?: any[]; extra?: Record<string, any> }) => ({
     monetary_unit: '元',
+    projectId: useProjectStore.getState().currentProject?.id ?? null,
     currency: 'CNY',
     ...getInputDataPayload(),
     project_background: state.projectBackground,

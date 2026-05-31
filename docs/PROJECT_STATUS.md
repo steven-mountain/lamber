@@ -1,6 +1,48 @@
 # PROJECT_STATUS.md
 
-Last updated: 2026-05-31 (Project Background, Collection/Payment and IT/CT Content Sync in Template Forms)
+Last updated: 2026-06-01 (AI Workspace Specified Project Context Routing)
+
+## 0. AI Workspace Specified Project Context Routing
+
+The AI chat context composer can now resolve explicitly named projects from the currently opened Workspace before a message is sent. A new read-only Workspace project index command returns lightweight project identity and saved-state existence metadata from `.lamber.sqlite`, including project names, real `projectId` values, lifecycle/cashflow/template/benefit presence flags, and saved template names. It does not return project paths, file contents, image bytes, or full project/template JSON.
+
+Project names are used only as routing hints within the current Workspace. After a unique deterministic match, all official context reads reuse `build_ai_project_context` with the matched real `projectId`. If the user names a different project while another project is currently open, the explicitly named project wins. If the user compares two explicitly named projects, the composer loads at most two separated official project contexts. Ambiguous duplicate names, unresolved named-project references, and overly broad multi-project requests degrade into warnings instead of guessing.
+
+Specified project template reads reuse the existing `template_detail` path. The composer first loads a target project's saved summary, resolves an explicitly mentioned template name or known template alias such as "立项签批表", and only then requests that one saved template detail. Template image content remains protected: images are metadata-only unless the existing explicit template asset selection flow attaches a validated asset for the current turn.
+
+Workspace-level questions such as "哪些项目已经填写了立项签批表" can use the lightweight Workspace project index without deep-loading every project. Current unsaved frontend draft overlay is still injected only for its bound active project and is never attached to another specified project.
+
+## 0. AI Template Detail Context and Controlled Vision Assets
+
+The AI chat context composer now loads a specified template's saved detail only when the active ICT page is a template editing context. The detail source is the current Workspace SQLite database through `build_ai_project_context` with `requestedSources: ["template_detail"]` and `activeTemplateId`; ordinary project questions continue to use the summary bundle.
+
+Template detail context separates saved official content from unsaved draft overlay. Saved fields come from `project_template_states` with `project_settings` (`template_form_data::<templateId>`) as compatibility fallback. Current template-page edits remain an unsaved frontend draft overlay and must not be described as saved or written.
+
+Template detail sanitization strips data URLs, base64/preview fields, local absolute paths, and oversized nested payloads before prompt injection. Image fields expose only lightweight asset metadata by default.
+
+Template images can be sent to AI only through explicit user selection from a template image field. The frontend passes only `projectId`, `templateId`, and `assetId`; the backend `load_ai_template_asset` command validates that the asset belongs to the current project in the active Workspace, checks supported image MIME/size constraints, resolves only workspace-contained asset files, and returns a temporary data URL for the current vision request. The AI still cannot write template fields, auto-fill forms, run RAG/embedding, summarize project documents, or read unselected images.
+
+## 0. AI Project Context Chat Integration
+
+The AI chat send path now composes project context at message-send time. For active project-aware views, it reads the saved official project context through the backend `build_ai_project_context` command and injects it into the prompt as Workspace SQLite persisted state. The existing frontend AI context store remains in use only as a current-page unsaved draft overlay, and the overlay is injected only when matching dirty scopes exist for the current project/page.
+
+The message-send composer refreshes active project identity from the existing local navigation/current-project storage, including the ICT lifecycle active project key, before deciding whether to call `build_ai_project_context`. This keeps the separate floating AI window aligned when it was opened before an ICT project was selected or when the user switches projects while the AI window remains open. Only project identity is refreshed this way; saved official project state still comes from Workspace SQLite.
+
+Workspace switching now clears the workspace-scoped active project and scheme identity across the project store, navigation store, and legacy ICT local storage keys. This prevents a floating AI window from sending a stale project ID from the previous workspace to the current workspace's SQLite context command.
+
+Project Board also publishes a lightweight current-workspace board summary to the AI context store, including workspace identity, project count, and compact project cards. The chat composer injects this as current page context for Project Board questions such as workspace project counts, while project-level official detail still comes from `build_ai_project_context` only when a valid active project is selected.
+
+The prompt now separates saved official state from current unsaved changes. If backend project context loading fails, chat streaming still proceeds with a warning context node instead of pretending that the project has empty data. The integration remains read-only: it does not trigger saves, scans, repairs, document generation, financial recalculation, AI writes, patch application, RAG, embeddings, file full-text summaries, or image binary analysis.
+
+The chat streaming UI resets the parser state before each new assistant placeholder is inserted, and stream synchronization overwrites the active placeholder with the current parser output instead of falling back to previous content. This prevents the previous assistant response from flashing inside the new response while the model is thinking.
+
+Current context volume control uses the backend summary mode by default. Draft overlay data is scoped to the active project, sanitized to remove base64/data URL previews and absolute paths, and truncated for large arrays/objects/strings.
+
+## 0. AI Project Context Service
+
+The backend now exposes a read-only `build_ai_project_context` Tauri command for project-level AI context retrieval. It obtains the active SQLite connection only through `WorkspaceRuntime`, validates that the requested project exists in the current Workspace database, and returns a structured summary bundle for `overview`, `lifecycle`, `cashflow`, `benefit`, `templates`, and `files`.
+
+The service reads only persisted official state from `.lamber.sqlite`; it does not read frontend localStorage, Zustand draft state, or page-local unsaved data. It does not write database rows, scan folders, repair paths, read document full text, read image binaries, return absolute asset paths, perform RAG/embedding work, or inject the result into the chat prompt. Frontend support is currently limited to the typed `aiProjectContextService.ts` invoke wrapper for later integration.
 
 ## 0. Project Background, Collection/Payment and IT/CT Content Sync in Template Forms
 

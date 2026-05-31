@@ -11,21 +11,21 @@ interface NavigationState {
   clearContext: () => void;
 }
 
-const STORAGE_KEY = "lamber_navigation_state";
+export const NAVIGATION_STORAGE_KEY = "lamber_navigation_state";
 
-interface StoredNavigation {
+export interface StoredNavigation {
   currentView: ViewType;
   activeProjectId: string | null;
   activeSchemeId: string | null;
   entrySource: "hub" | "project_board" | null;
 }
 
-function getInitialState(): StoredNavigation {
+export function readStoredNavigationState(): StoredNavigation {
   if (typeof window === "undefined") {
     return { currentView: "hub", activeProjectId: null, activeSchemeId: null, entrySource: null };
   }
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(NAVIGATION_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
@@ -42,7 +42,7 @@ function getInitialState(): StoredNavigation {
 }
 
 export const useNavigationStore = create<NavigationState>((set) => {
-  const initial = getInitialState();
+  const initial = readStoredNavigationState();
 
   return {
     ...initial,
@@ -66,7 +66,7 @@ export const useNavigationStore = create<NavigationState>((set) => {
         };
 
         try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+          localStorage.setItem(NAVIGATION_STORAGE_KEY, JSON.stringify(newState));
         } catch (e) {
           console.warn("Failed to save navigation state to localStorage:", e);
         }
@@ -82,7 +82,7 @@ export const useNavigationStore = create<NavigationState>((set) => {
           activeSchemeId: null,
         };
         try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          localStorage.setItem(NAVIGATION_STORAGE_KEY, JSON.stringify({
             currentView: state.currentView,
             activeProjectId: null,
             activeSchemeId: null,

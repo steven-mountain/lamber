@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { parseWorkspaceError, workspaceService, type RecentWorkspace, type WorkspaceInfo } from "../utils/workspaceService";
+import { useNavigationStore } from "./useNavigationStore";
 import { useProjectStore } from "./useProjectStore";
 
 interface WorkspaceStore {
@@ -21,9 +22,20 @@ interface WorkspaceStore {
   scanAndImportAllWorkspaceCalculations: () => Promise<number>;
 }
 
+function clearWorkspaceScopedProjectContext() {
+  useProjectStore.getState().clearCurrentProject();
+  useNavigationStore.getState().clearContext();
+
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem("lamber_active_project_id");
+    window.localStorage.removeItem("lamber_active_scheme_id");
+    window.localStorage.removeItem("lamber_new_scheme_name");
+  }
+}
+
 function applyWorkspace(workspace: WorkspaceInfo | null) {
   if (!workspace) {
-    useProjectStore.getState().clearCurrentProject();
+    clearWorkspaceScopedProjectContext();
   }
   return {
     currentWorkspace: workspace,
@@ -52,7 +64,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       
       // If we are clearing or changing to a different workspace, clear project
       if (!state.currentWorkspace || (prevWorkspace && prevWorkspace.workspaceId !== state.currentWorkspace.workspaceId)) {
-        useProjectStore.getState().clearCurrentProject();
+        clearWorkspaceScopedProjectContext();
       }
       
       set({
@@ -62,7 +74,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         isLoading: false,
       });
     } catch (error) {
-      useProjectStore.getState().clearCurrentProject();
+      clearWorkspaceScopedProjectContext();
       set({ ...applyWorkspace(null), error: parseWorkspaceError(error).message, isLoading: false });
     }
   },
@@ -72,7 +84,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     if (!path) return;
     set({ isLoading: true, error: null });
     try {
-      useProjectStore.getState().clearCurrentProject();
+      clearWorkspaceScopedProjectContext();
       const workspace = await workspaceService.open(path);
       await get().refreshWorkspaceState();
       set({ ...applyWorkspace(workspace), isLoading: false });
@@ -98,7 +110,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         set({ isLoading: false });
         return;
       }
-      useProjectStore.getState().clearCurrentProject();
+      clearWorkspaceScopedProjectContext();
       const workspace = await workspaceService.create(path, undefined, allowNonEmpty);
       await get().refreshWorkspaceState();
       set({ ...applyWorkspace(workspace), isLoading: false });
@@ -110,7 +122,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   openRecentWorkspace: async (path: string) => {
     set({ isLoading: true, error: null });
     try {
-      useProjectStore.getState().clearCurrentProject();
+      clearWorkspaceScopedProjectContext();
       const workspace = await workspaceService.open(path);
       await get().refreshWorkspaceState();
       set({ ...applyWorkspace(workspace), isLoading: false });
@@ -125,7 +137,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       const prevWorkspace = get().currentWorkspace;
       const state = await workspaceService.forget(path);
       if (!state.currentWorkspace || (prevWorkspace && prevWorkspace.workspaceId !== state.currentWorkspace.workspaceId)) {
-        useProjectStore.getState().clearCurrentProject();
+        clearWorkspaceScopedProjectContext();
       }
       set({
         ...applyWorkspace(state.currentWorkspace),
@@ -143,7 +155,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const state = await workspaceService.closeCurrent();
-      useProjectStore.getState().clearCurrentProject();
+      clearWorkspaceScopedProjectContext();
       set({
         ...applyWorkspace(state.currentWorkspace),
         recentWorkspaces: state.recentWorkspaces,
@@ -159,7 +171,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   initializeWorkspaceFromExisting: async (path: string, options: import("../utils/workspaceService").InitializeWorkspaceOptions) => {
     set({ isLoading: true, error: null });
     try {
-      useProjectStore.getState().clearCurrentProject();
+      clearWorkspaceScopedProjectContext();
       const workspace = await workspaceService.initializeFromExisting(path, options);
       await get().refreshWorkspaceState();
       set({ ...applyWorkspace(workspace), isLoading: false });

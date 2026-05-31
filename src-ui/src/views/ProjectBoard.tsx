@@ -9,6 +9,7 @@ import WorkspaceGate from "../components/workspace/WorkspaceGate";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
 import { useProjectStore } from "../store/useProjectStore";
 import { useSaveStore } from "../store/useSaveStore";
+import { useAiContextStore } from "../store/useAiContextStore";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { domainSaveService } from "../services/domainSaveService";
 import GlobalSaveButton from "../components/GlobalSaveButton";
@@ -85,6 +86,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   const clearDirty = useSaveStore(state => state.clearDirty);
   const registerSaveHandler = useSaveStore(state => state.registerSaveHandler);
   const unregisterSaveHandler = useSaveStore(state => state.unregisterSaveHandler);
+  const replaceAiBusinessData = useAiContextStore(state => state.replaceBusinessData);
   const { confirmOrSave } = useUnsavedChangesGuard();
   const [showWorkspaceOverview, setShowWorkspaceOverview] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -155,11 +157,76 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   const [newSchemeName, setNewSchemeName] = useState("");
 
   useEffect(() => {
+    if (!isWorkspaceReady || !currentWorkspace) {
+      replaceAiBusinessData("project_board.core", {
+        workspaceReady: false,
+        workspaceId: null,
+        workspaceName: null,
+        projectCount: 0,
+        projects: [],
+        selectedProject: null,
+      });
+      return;
+    }
+
+    replaceAiBusinessData("project_board.core", {
+      workspaceReady: true,
+      workspaceId: currentWorkspace.workspaceId,
+      workspaceName: currentWorkspace.workspaceName,
+      projectCount: projects.length,
+      projects: projects.slice(0, 50).map(project => ({
+        id: project.id,
+        name: project.name,
+        customerName: project.customer_name,
+        status: project.status,
+        benefitStatus: project.benefit_status,
+        updatedAt: project.updated_at,
+        marginRate: project.summary_metrics?.margin_rate ?? null,
+        npv: project.summary_metrics?.npv ?? null,
+        npvRate: project.summary_metrics?.npv_rate ?? null,
+        riskLevel: project.summary_metrics?.risk_level ?? null,
+      })),
+      truncatedProjectCount: Math.max(projects.length - 50, 0),
+      selectedProject: selectedProject ? {
+        id: selectedProject.id,
+        name: editingProjectName || selectedProject.name,
+        customerName: editingCustomerName || selectedProject.customer_name,
+        status: editingStatus || selectedProject.status,
+        note: noteDrafts[selectedProject.id] ?? selectedProject.note ?? "",
+        progress: selectedProject.progress ?? 0,
+        deadline: selectedProject.deadline ?? null,
+      } : null,
+    });
+  }, [
+    isWorkspaceReady,
+    currentWorkspace?.workspaceId,
+    currentWorkspace?.workspaceName,
+    projects,
+    selectedProject?.id,
+    selectedProject?.note,
+    selectedProject?.progress,
+    selectedProject?.deadline,
+    editingProjectName,
+    editingCustomerName,
+    editingStatus,
+    noteDrafts,
+    replaceAiBusinessData,
+  ]);
+
+  useEffect(() => {
     if (isWorkspaceReady) {
       setShowWorkspaceOverview(false);
+      setSelectedProject(null);
+      setSelectedScheme(null);
+      setSchemes([]);
+      setSnapshots([]);
       fetchProjects();
     } else {
       setProjects([]);
+      setSelectedProject(null);
+      setSelectedScheme(null);
+      setSchemes([]);
+      setSnapshots([]);
       setLoading(false);
     }
   }, [isWorkspaceReady, currentWorkspace?.workspaceId]);

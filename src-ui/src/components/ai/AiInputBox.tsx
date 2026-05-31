@@ -91,6 +91,7 @@ export default function AiInputBox({
         mimeType: file.type,
         size: file.size,
         dataUrl: await fileToDataUrl(file),
+        source: 'user_upload' as const,
       }))
     );
 

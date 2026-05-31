@@ -9,6 +9,7 @@ import { projectService } from "../utils/projectService"
 import { domainSaveService } from "../services/domainSaveService"
 import { useSaveStore } from "../store/useSaveStore"
 import { useWorkspaceStore } from "../store/useWorkspaceStore"
+import { createTemplateAssetSelection, publishTemplateAssetSelection } from "../ai/templateAssetSelection"
 
 interface Props {
   selectedTemplate: string;
@@ -577,6 +578,8 @@ export default function TemplateForms({
     const nextMissingFees = getSelfThreeMissingFees(nextSelfThree.requirements, hasItIntegrationFee, hasItMaintenanceFee);
 
     return {
+      projectId: projectId || null,
+      selectedTemplate,
       ...formEntries,
       ...formDataRef.current,
       ...overrides,
@@ -787,6 +790,21 @@ export default function TemplateForms({
         console.warn("Soft delete of template asset failed:", err);
       }
     }
+  };
+
+  const handleSendImageToAi = async (img: any, fieldKey: string) => {
+    if (!projectId || !selectedTemplate || !img?.assetId) return;
+    await publishTemplateAssetSelection(createTemplateAssetSelection({
+      projectId,
+      templateId: selectedTemplate,
+      assetId: img.assetId,
+      fieldKey,
+      fileName: img.fileName || img.originalFileName || fieldKey,
+      mimeType: img.mimeType || null,
+      size: img.fileSize || null,
+      width: img.width || null,
+      height: img.height || null,
+    }));
   };
 
   const handleGenerate = async () => {
@@ -1490,6 +1508,16 @@ export default function TemplateForms({
                                   >
                                     <AppIcon name="close" size={12} strokeWidth={2} />
                                   </button>
+                                  {img.assetId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendImageToAi(img, `vendor_${i}`)}
+                                      className="absolute bottom-1 left-1 right-1 rounded bg-background/95 px-1 py-0.5 text-[10px] font-semibold text-primary opacity-0 shadow-sm transition-opacity hover:bg-primary hover:text-primary-foreground group-hover:opacity-100"
+                                      title="发送给 AI 分析"
+                                    >
+                                      AI 分析
+                                    </button>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -1756,6 +1784,11 @@ export default function TemplateForms({
                       <button type="button" onClick={() => handleRemoveImage(img, i, setAttach1Images)} className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm" title="移除图片">
                         <AppIcon name="close" size={12} strokeWidth={2} />
                       </button>
+                      {img.assetId && (
+                        <button type="button" onClick={() => handleSendImageToAi(img, "attach1")} className="absolute bottom-1 left-1 right-1 rounded bg-background/95 px-1 py-0.5 text-[10px] font-semibold text-primary opacity-0 shadow-sm transition-opacity hover:bg-primary hover:text-primary-foreground group-hover:opacity-100" title="发送给 AI 分析">
+                          AI 分析
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1791,6 +1824,11 @@ export default function TemplateForms({
                     {attach2Images.map((img, i) => (
                       <div key={i} className="relative w-24 h-24 border rounded overflow-hidden group">
                         <img src={img.data} className="w-full h-full object-cover" />
+                        {img.assetId && (
+                          <button type="button" onClick={() => handleSendImageToAi(img, "attach2")} className="absolute bottom-1 left-1 right-1 rounded bg-background/95 px-1 py-0.5 text-[10px] font-semibold text-primary opacity-0 shadow-sm transition-opacity hover:bg-primary hover:text-primary-foreground group-hover:opacity-100" title="发送给 AI 分析">
+                            AI 分析
+                          </button>
+                        )}
                         <button type="button" onClick={() => handleRemoveImage(img, i, setAttach2Images)} className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm" title="移除图片">
                           <AppIcon name="close" size={12} strokeWidth={2} />
                         </button>

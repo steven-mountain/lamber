@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod ai_context;
 mod benefit;
 mod config_manager;
 mod db;
@@ -85,6 +86,9 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             benefit::calculate_ict_benefit,
+            ai_context::commands::build_ai_project_context,
+            ai_context::commands::list_ai_workspace_projects,
+            ai_context::commands::load_ai_template_asset,
             benefit::reverse_calc_ict_target,
             benefit::reverse_calc_ict_revenue_target,
             benefit::calculate_selection_fee,

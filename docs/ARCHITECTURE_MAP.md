@@ -1,6 +1,6 @@
 # ARCHITECTURE_MAP.md
 
-Last updated: 2026-05-31 (Project Background, Collection/Payment and IT/CT Content Sync in Template Forms)
+Last updated: 2026-06-01 (AI Workspace Specified Project Context Routing)
 
 ## 1. Repository overview
 
@@ -10,6 +10,7 @@ Lamber is a desktop application powered by **Tauri** (version 2). The architectu
 graph TD
     UI[React Frontend / src-ui] -->|Tauri IPC Invoke| Tauri[Tauri Core / src-tauri]
     Tauri -->|Rust calculations| Calc[Benefit Calculator / benefit]
+    Tauri -->|Read-only project context| AIC[AI Context / ai_context]
     Tauri -->|Word Variable filling| Doc[Docfill Engine / docfill.rs]
     Tauri -->|Directory scanning| Scan[Scanner / project_files]
     Tauri -->|Workspace Runtime| WS[WorkspaceRuntime]
@@ -29,6 +30,9 @@ graph TD
 - **`src/db.rs`**: SQLite initialization, table creation, and schema version management.
 - **`src/migration.rs`**: JSON-to-SQLite transactional database migration service and Tauri commands.
 - **`src/docfill.rs`**: Fills Word/Excel lifecycle templates for workspace-backed document generation.
+- **`src/ai_context/`**: Read-only AI Project Context Service. It exposes `build_ai_project_context`, validates the project against the active workspace database, and summarizes persisted project overview, lifecycle, cashflow, benefit, template, and file metadata without writing data, reading full documents, or loading image binaries.
+- **`src/ai_context/` template detail extension**: `build_ai_project_context` can load `template_detail` for a specified `activeTemplateId`, reading one saved template from `project_template_states` with legacy `project_settings` fallback. `load_ai_template_asset` validates `projectId + assetId` ownership and returns a temporary vision data URL only for explicitly selected template images.
+- **`src/ai_context/` Workspace project index**: `list_ai_workspace_projects` returns a read-only lightweight index for the current Workspace, including project identity, status, updated time, saved lifecycle/cashflow/template/benefit existence flags, and saved template names. It never returns absolute paths, file contents, image bytes, or full template JSON.
 - **`src/benefit/`**: Benefit analysis engine.
   - [calculator.rs](../src-tauri/src/benefit/calculator.rs): Computes 10-year cashflows, NPV, NPV rates, and margin rates.
   - [excel.rs](../src-tauri/src/benefit/excel.rs): Parses imported economic evaluation sheets and maps them into ICT lifecycle data.
@@ -54,6 +58,10 @@ graph TD
   - [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Variable mapping and document filling triggers.
   - [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): Data Management view containing Roots, Health Checker, and Relocator.
 - **`src/services/workspaceMaintenanceService.ts`**: Frontend IPC wrapper for workspace backup/restore/export/import/health/path maintenance commands.
+- **`src/services/aiProjectContextService.ts`**: Typed frontend wrapper for `build_ai_project_context`, now used by the AI chat context composer during message send.
+- **`src/ai/context/`**: AI chat context composer. It builds the per-message context bundle by reading the active project ID, loading saved official context from Workspace SQLite through `aiProjectContextService.ts`, and filtering the current frontend state into an unsaved draft overlay only when dirty scopes match the active project/page.
+- **`src/ai/context/workspaceProjectRouter.ts`**: Deterministic Workspace project-name router used by the composer. It matches explicit project names against the current Workspace project index, limits deep official context loading to two specified projects per turn, resolves one specified template when uniquely named, and returns warnings for ambiguous or unresolved routing.
+- **`src/ai/templateAssetSelection.ts`**: Cross-window event bridge for explicit template image analysis requests. It carries only template asset metadata (`projectId`, `templateId`, `assetId`, field label) and never carries physical file paths or image base64.
 - **`src/store/`**: Zustand state management.
   - [useNavigationStore.ts](../src-ui/src/store/useNavigationStore.ts): Navigation routing and tracking origin.
   - [useAiContextStore.ts](../src-ui/src/store/useAiContextStore.ts): Local RAG workspace synchronization.
@@ -106,6 +114,40 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 - External module paths (`module_path:*`) can be repaired by resetting the module base directory to `.projects/modules/{moduleId}` inside the active Workspace. This updates app config and creates `templates/` / `output/`, but does not copy or delete files from the previous external location.
 - Internal absolute path conversion is a dry-run by default. Applying conversion is a separate user-confirmed operation and does not rewrite external roots.
 
+### 4.0.2 AI Project Context read flow
+
+- Frontend callers use `buildAiProjectContext(request)` from `aiProjectContextService.ts`, passing `projectId`, optional `requestedSources`, and optional `activeTemplateId`.
+- The Tauri command requires an active `WorkspaceRuntime` workspace and database connection. It never accepts workspace roots, database paths, or absolute asset paths from the frontend.
+- The Rust service validates `projectId` in the current workspace database before loading any child state.
+- The service performs only `SELECT` queries against `.lamber.sqlite`. Missing optional domain state returns `None` or warnings, while invalid JSON or database errors are returned as explicit failures.
+- Default calls return lightweight summaries. Explicit `requestedSources` can request detailed lifecycle/cashflow JSON and file metadata, but templates remain summarized and file/image/document contents are not read.
+
+### 4.0.3 AI chat composed context flow
+
+- `AiChatPanel` calls `buildAiChatContext()` every time a message is sent, not only when the AI window opens.
+- `buildAiChatContext()` derives the active project from existing navigation/project stores and refreshes the latest persisted navigation/current-project/ICT active project identity at send time so a separate AI window does not rely on stale in-memory Zustand state. If no active project-aware view/project exists, it does not call the project SQLite context command and emits only a lightweight warning node.
+- Before falling back to the active project, the composer asks `list_ai_workspace_projects` for the current Workspace's lightweight project index and deterministically checks whether the current user message explicitly names one or two projects. Unique matches are routed to `build_ai_project_context` by real `projectId`; project names are not used as persistent keys.
+- Explicitly named projects override the currently open project. Workspace-level list questions use the lightweight project index instead of defaulting to the active project. Named-project references that cannot be uniquely resolved do not fall back to another project.
+- For specified project template questions, the composer first loads the target project's template summary, resolves a unique template name or known alias, then reuses `build_ai_project_context` with `requestedSources: ["templates", "template_detail"]` and the matched `activeTemplateId`.
+- Workspace changes clear previous active project/scheme IDs from project, navigation, and legacy ICT local storage state before the new workspace is used for AI context lookup.
+- Saved official project state is injected as `Saved Official Project State (Workspace SQLite)`.
+- Specified project official state is injected as `Specified project saved official state (Workspace SQLite)` with the matched project name, real `projectId`, and resolution metadata. Multi-project comparison keeps each project's official context in a separate node.
+- Project Board publishes a compact current-workspace summary (`workspaceId`, project count, and lightweight project cards) as current page context so workspace-level questions do not require selecting a project.
+- Current frontend dirty page state is injected as `Current Unsaved Draft Overlay` only when `useSaveStore.dirtyScopes` contains scopes relevant to the current page and the draft payload is for the same project.
+- When the user explicitly queries another project, the current page draft overlay is omitted unless the dirty draft belongs to one of the explicitly loaded projects.
+- Draft overlay sanitation removes base64/data URL previews, omits absolute paths, truncates large strings/arrays/objects, and never reads image/document binaries.
+- Context loading failures degrade into prompt warnings and do not break streaming, image input, message history, or runtime provider calls.
+- Before a new assistant placeholder is inserted, `AiChatPanel` resets `useStreamingParser` and creates a fresh abort controller. During streaming, the last assistant message is overwritten from the parser's current `normalText` / `thinkText` values so old reply content cannot be carried into the new pending response.
+
+### 4.0.4 AI template detail and vision asset flow
+
+- `TemplateForms.tsx` publishes the current `selectedTemplate` and `projectId` into the template AI context payload, allowing the composer to identify the active template reliably after floating-window or template switching.
+- When the active module is an ICT template context, `buildAiChatContext()` requests `template_detail` with `activeTemplateId`. The backend loads only that template's saved fields from Workspace SQLite and sanitizes base64/data URLs, preview fields, absolute local paths, and oversized content before returning it.
+- Template dirty edits remain in `Current unsaved draft overlay`; they are not merged into saved official template detail.
+- Image assets in template detail are metadata-only by default. The template UI adds an explicit "AI analysis" action on image thumbnails. Selecting it broadcasts only `projectId + templateId + assetId` metadata to the AI window.
+- On send, `AiChatPanel` calls `load_ai_template_asset` for selected template-asset attachments. The command validates project ownership, supported image MIME type, size, and workspace-contained file resolution, then returns a temporary data URL for the existing `image_url` multimodal request path.
+- Conversation history stores only text and lightweight attachment metadata for template assets; selected image base64 is not written back to SQLite or injected automatically in later turns.
+
 ### 4.1 Project Board data flow
 1. User creates a new project or edits a card on the board.
 2. React invokes Tauri commands (`create_project_in_workspace` for creation, `update_project` for updates).
@@ -128,7 +170,7 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 1. User types in form fields or switches tabs.
 2. Frontend triggers debounced (300ms) updates to `useAiContextStore` via `updateBusinessData`.
 3. The store persists states to local storage and emits a Tauri event `lamber-ai-context-updated` to keep windows in sync.
-4. On sending a chat message, [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx) serializes active workspace scopes to Markdown, appends them to the system prompt, and pipes them to `AiRuntime.ts`.
+4. On sending a chat message, [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx) asks the AI context composer to load saved official project context from SQLite and optionally attach a dirty frontend draft overlay, then pipes the layered `PromptAST` to `AiRuntime.ts`.
 
 ### 4.5 File / Excel import flow
 1. User clicks "一键导入" (Import Excel) on a parsed spreadsheet list item.

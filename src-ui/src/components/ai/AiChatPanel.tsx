@@ -7,11 +7,19 @@ import {
   useAiContextStore,
 } from '../../store/useAiContextStore';
 import { AiRuntime } from '../../ai/AiRuntime';
-import type { AiChatMessage, AiImageAttachment, ContextNode, PromptAST, PromptRule } from '../../ai/types';
+import type { AiChatMessage, AiImageAttachment, PromptAST, PromptRule } from '../../ai/types';
+import { buildAiChatContext } from '../../ai/context/buildAiChatContext';
+import { loadAiTemplateAsset } from '../../services/aiProjectContextService';
+import {
+  AI_TEMPLATE_ASSET_SELECTED_EVENT,
+  AI_TEMPLATE_ASSET_SELECTED_STORAGE_KEY,
+  parseTemplateAssetSelection,
+  type AiTemplateAssetSelection,
+} from '../../ai/templateAssetSelection';
 import { useStreamingParser } from '../../hooks/useStreamingParser';
 import MessageBubble from '../MessageBubble';
 import AiInputBox from './AiInputBox';
-import { AI_CONTEXT_KEY, getAiContextDisplayName, getAiContextScope, isAiContextKeyForView } from '../../utils/aiContextKeys';
+import { AI_CONTEXT_KEY, getAiContextScope } from '../../utils/aiContextKeys';
 import AppIcon, { type AppIconName } from '../icons/AppIcon';
 
 interface AiChatPanelProps {
@@ -23,7 +31,12 @@ function isTauriRuntime() {
 }
 
 function getCoreContextKey(view: string) {
-  if (view === 'ict') return AI_CONTEXT_KEY.ICT_CORE;
+  if (view === 'ict' || view === 'ict_lifecycle') return AI_CONTEXT_KEY.ICT_CORE;
+  return view;
+}
+
+function getAiContextView(view: string) {
+  if (view === 'ict_lifecycle') return 'ict';
   return view;
 }
 
@@ -69,6 +82,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
   const activeModule = useAiContextStore(state => state.activeModule);
   const businessData = useAiContextStore(state => state.businessData);
   const lastUpdated = useAiContextStore(state => state.lastUpdated);
+  const handledTemplateAssetRequestsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const hydrateAiContext = () => {
@@ -120,6 +134,86 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
     }
   }, [visionEnabled]);
 
+  useEffect(() => {
+    const appendTemplateAsset = (selection: AiTemplateAssetSelection | null) => {
+      if (!selection || handledTemplateAssetRequestsRef.current.has(selection.requestId)) return;
+      handledTemplateAssetRequestsRef.current.add(selection.requestId);
+      setVisionEnabled(true);
+      setImages(prev => {
+        const withoutDuplicate = prev.filter(image => image.assetId !== selection.assetId);
+        const next: AiImageAttachment = {
+          id: selection.requestId,
+          name: selection.fileName || selection.fieldKey || selection.assetId,
+          mimeType: selection.mimeType || 'image/png',
+          size: selection.size || 0,
+          source: 'template_asset',
+          projectId: selection.projectId,
+          templateId: selection.templateId,
+          assetId: selection.assetId,
+          fieldKey: selection.fieldKey || undefined,
+        };
+        return [...withoutDuplicate, next].slice(-4);
+      });
+      if (!input.trim()) {
+        setInput('请分析这张模板图片的内容和明显问题。');
+      }
+    };
+
+    const handleWindowEvent = (event: Event) => {
+      appendTemplateAsset(parseTemplateAssetSelection((event as CustomEvent).detail));
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === AI_TEMPLATE_ASSET_SELECTED_STORAGE_KEY) {
+        appendTemplateAsset(parseTemplateAssetSelection(event.newValue));
+      }
+    };
+
+    window.addEventListener(AI_TEMPLATE_ASSET_SELECTED_EVENT, handleWindowEvent);
+    window.addEventListener('storage', handleStorage);
+    appendTemplateAsset(parseTemplateAssetSelection(localStorage.getItem(AI_TEMPLATE_ASSET_SELECTED_STORAGE_KEY)));
+
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    if (isTauriRuntime()) {
+      listen<AiTemplateAssetSelection>(AI_TEMPLATE_ASSET_SELECTED_EVENT, event => {
+        appendTemplateAsset(parseTemplateAssetSelection(event.payload));
+      }).then(handler => {
+        if (disposed) {
+          handler();
+          return;
+        }
+        unlisten = handler;
+      }).catch(error => {
+        console.warn('Failed to listen for template asset selections:', error);
+      });
+    }
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+      window.removeEventListener(AI_TEMPLATE_ASSET_SELECTED_EVENT, handleWindowEvent);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [input]);
+
+  const resolveImagesForSend = async (pendingImages: AiImageAttachment[]) => {
+    return Promise.all(pendingImages.map(async (image) => {
+      if (image.source !== 'template_asset' || image.dataUrl) return image;
+      if (!image.projectId || !image.assetId) {
+        throw new Error('模板图片附件缺少 projectId 或 assetId');
+      }
+      const loaded = await loadAiTemplateAsset(image.projectId, image.assetId);
+      return {
+        ...image,
+        id: image.id || loaded.id,
+        name: loaded.name || image.name,
+        mimeType: loaded.mimeType,
+        size: loaded.size,
+        dataUrl: loaded.dataUrl,
+      };
+    }));
+  };
+
   const handleScroll = () => {
     if (!chatContainerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
@@ -159,8 +253,8 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
 
         // Safety check: Only update if the last message is an assistant response
         if (lastMsg?.role === 'assistant') {
-          const nextContent = normalText || lastMsg.content;
-          const nextThink = thinkText || lastMsg.think;
+          const nextContent = normalText;
+          const nextThink = thinkText;
           if (lastMsg.content === nextContent && lastMsg.think === nextThink) {
             return prev;
           }
@@ -190,14 +284,17 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
       setImages([]);
     }
 
+    resetParser();
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    abortControllerRef.current = new AbortController();
+
     const updatedMessages: AiChatMessage[] = [
       ...messages,
       { role: 'user', content: userMessage, images: imagesToSend },
+      { role: 'assistant', content: '' },
     ];
     setMessages(updatedMessages);
     setIsTyping(true);
-
-    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
 
     // --- Enterprise LLM Infrastructure: AST Construction ---
     const systemRules: PromptRule[] = [
@@ -206,61 +303,76 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
       { id: 'code_priority', content: '优先根据 [产品编号] (如 A302600342) 在知识库中匹配产品。只有当编号缺失时，才根据名称进行模糊匹配。', priority: 85 },
       { id: 'currency_unit_policy', content: 'Currency unit policy: all financial amount fields from BUSINESS CONTEXT are CNY yuan (元) unless the context explicitly says otherwise. Never label those raw values as ten-thousand yuan / 万元. If the user explicitly asks for 万元, divide the yuan value by 10,000 and state that conversion.', priority: 84 },
       { id: 'data_awareness', content: 'ALWAYS check the BUSINESS CONTEXT before answering. If data is missing, state it clearly.', priority: 80 },
+      {
+        id: 'saved_vs_draft_boundary',
+        content: [
+          'Project context may contain two clearly separated sources.',
+          'Saved official state comes from the current Workspace SQLite database and represents persisted project data.',
+          'Unsaved draft overlay comes from the current editing page and only represents temporary changes that have not been saved.',
+          'When answering about current saved project status, prioritize saved official state.',
+          'If using draft overlay content, explicitly call it "current unsaved changes" and do not claim it has been saved, submitted, recalculated, or written to the project.',
+          'If saved state and draft overlay differ, point out the difference instead of silently merging them.',
+          'Do not trigger or imply project writes, template saves, file operations, recalculations, NPV/IRR/margin/tax-rule changes, or reverse-calculation changes.',
+        ].join('\n'),
+        priority: 88,
+      },
+      {
+        id: 'template_context_boundary',
+        content: [
+          'Template context rules:',
+          'Specified template saved content comes from the current Workspace SQLite database and represents official persisted template data.',
+          'Current template-page edits are unsaved draft overlay only; distinguish them from saved template content.',
+          'Template images are metadata-only by default. Only images explicitly selected by the user for this turn are provided as vision input.',
+          'Do not claim you modified, completed, saved, or generated template content.',
+          'Do not change project/template data based on image analysis unless the user performs an explicit app action outside chat.',
+        ].join('\n'),
+        priority: 87,
+      },
+      {
+        id: 'workspace_specified_project_boundary',
+        content: [
+          'Workspace specified project context rules:',
+          'When context is marked as "Specified project saved official state", it was resolved from an explicit project name in the current user message and loaded from the current Workspace SQLite database by real projectId.',
+          'If the user explicitly names a project, answer from that specified project context instead of defaulting to the currently opened project.',
+          'If multiple specified project contexts are provided, keep each project source separate and do not merge fields across projects.',
+          'If project matching is ambiguous or unavailable, do not guess project data; ask the user to specify the exact project.',
+          'Current unsaved draft overlay belongs only to its marked projectId and must not override or contaminate another specified project.',
+          'Project names are only routing hints for this turn; persisted reads must be treated as projectId-based Workspace SQLite reads.',
+        ].join('\n'),
+        priority: 89,
+      },
     ];
 
-    useAiContextStore.getState().hydrateFromStorage();
-    const latestState = useAiContextStore.getState();
-    const {
-      businessData: latestBusinessData,
-      activeModule: latestActiveModule,
-      lastUpdated: latestLastUpdated,
-    } = latestState;
-
     const contextView = currentView || 'hub';
-    const coreContextKey = contextView === 'hub' ? '' : getCoreContextKey(contextView);
-    const activeContextModule = latestActiveModule
-      && latestActiveModule !== AI_CONTEXT_KEY.HUB
-      && isAiContextKeyForView(latestActiveModule, contextView)
-      ? latestActiveModule
-      : '';
-    const shouldUseActiveContext = activeContextModule
-      && activeContextModule
-      && activeContextModule !== coreContextKey
-      && Boolean(latestBusinessData[activeContextModule]);
+    const composedContext = await buildAiChatContext({
+      currentView: contextView,
+      userMessage: promptText,
+    });
 
-    // Layer 1: Core (ICT Main Table). Never inject stale ICT data while the main window is on the hub.
-    const layer1Core: ContextNode[] = coreContextKey && latestBusinessData[coreContextKey] ? [{
-      type: 'json',
-      title: getAiContextDisplayName(coreContextKey),
-      content: latestBusinessData[coreContextKey],
-      metadata: { module: coreContextKey, updatedAt: latestLastUpdated[coreContextKey] },
-    }] : [];
-
-    // Layer 2: Active Workspace (Current template)
-    const layer2Active: ContextNode[] = shouldUseActiveContext ? [{
-      type: 'json',
-      title: getAiContextDisplayName(activeContextModule),
-      content: latestBusinessData[activeContextModule],
-      metadata: { module: activeContextModule, updatedAt: latestLastUpdated[activeContextModule] },
-    }] : [];
-
-    // Layer 3: Context (Other documents)
-    const layer3Context: ContextNode[] = Object.keys(latestBusinessData)
-      .filter(moduleKey => isAiContextKeyForView(moduleKey, contextView))
-      .filter(moduleKey => moduleKey !== coreContextKey && moduleKey !== activeContextModule)
-      .map(m => ({
-        type: 'json',
-        title: getAiContextDisplayName(m),
-        content: latestBusinessData[m],
-        metadata: { module: m, updatedAt: latestLastUpdated[m] },
-      }));
+    const resolvedImagesToSend = await resolveImagesForSend(imagesToSend);
+    const imageSourceNotes = resolvedImagesToSend
+      .filter(image => image.source === 'template_asset')
+      .map(image => `${image.name} (projectId=${image.projectId}, templateId=${image.templateId}, assetId=${image.assetId}, field=${image.fieldKey || '--'})`);
 
     const ast: PromptAST = {
       systemRules,
-      dynamicState: { layer1Core, layer2Active, layer3Context },
+      dynamicState: {
+        layer1Core: composedContext.contextNodes.savedOfficial,
+        layer2Active: [
+          ...composedContext.contextNodes.pageContext,
+          ...composedContext.contextNodes.draftOverlay,
+          ...(imageSourceNotes.length > 0 ? [{
+            type: 'summary' as const,
+            title: 'Explicit template image attachments for this turn',
+            content: imageSourceNotes.map(note => `- ${note}`).join('\n'),
+            metadata: { module: 'template_asset_vision_input' },
+          }] : []),
+        ],
+        layer3Context: composedContext.contextNodes.warnings,
+      },
       userIntent: {
         raw: promptText,
-        images: imagesToSend.length > 0 ? imagesToSend : undefined,
+        images: resolvedImagesToSend.length > 0 ? resolvedImagesToSend : undefined,
       },
     };
 
@@ -272,10 +384,6 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
     }, 1500);
 
     try {
-      resetParser();
-      if (abortControllerRef.current) abortControllerRef.current.abort();
-      abortControllerRef.current = new AbortController();
-
       await runtime.current.execute(
         ast,
         (chunk) => parseChunk(chunk),
@@ -335,7 +443,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
   };
 
   const contextView = currentView && currentView !== 'hub' ? currentView : 'hub';
-  const quickActionView = contextView;
+  const quickActionView = getAiContextView(contextView);
   const quickActionItems = [
     { label: '分析当前项目效益', icon: 'ai', view: 'ict' },
     { label: '推荐合适产品', icon: 'aiThinking' },
@@ -354,7 +462,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
       ? (businessData[quickActionContextKey] ? quickActionContextKey : quickActionView)
       : '';
   const connectedScope = connectedContextModule
-    ? getAiContextScope(connectedContextModule) ?? connectedContextModule
+    ? getAiContextScope(connectedContextModule) ?? quickActionView
     : '';
   const statusLastUpdated = connectedContextModule
     ? lastUpdated[connectedContextModule] ?? lastUpdated[quickActionView]

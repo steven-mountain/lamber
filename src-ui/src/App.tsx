@@ -48,7 +48,9 @@ export default function App() {
     localStorage.setItem(AI_CURRENT_VIEW_KEY, currentView);
     if (currentView === "hub") {
       setActiveModule("hub");
-    } else if (currentView === "project_board" || currentView === "ict_lifecycle") {
+    } else if (currentView === "project_board") {
+      setActiveModule("project_board.core");
+    } else if (currentView === "ict_lifecycle") {
       setActiveModule("ict");
     } else {
       setActiveModule(currentView);
