@@ -1,8 +1,12 @@
 # PROJECT_STATUS.md
 
-Last updated: 2026-05-31 (Workspace Management UI Separation)
+Last updated: 2026-05-31 (Project Background, Collection/Payment and IT/CT Content Sync in Template Forms)
 
-## 0. Latest global workspace management
+## 0. Project Background, Collection/Payment and IT/CT Content Sync in Template Forms
+
+The Project Background, Collection and Payment Methods, and IT/CT Service Content inputs have been added and synchronized inside the Project Sign-off Form template configuration (`TemplateForms.tsx`). The fields are reactively shared, showing editable default value placeholders, and are fully saved/persisted via template state handlers in the workspace database.
+
+## 0.00 Latest global workspace management
 
 The Data Management Center now includes a global "associated workspaces" list backed by local `recentWorkspaces`. Users can open, reveal, or unlink any remembered Workspace from this list. Unlinking only removes the local association from `config.json`; it never deletes the Workspace folder, `.lamber.sqlite`, or project files on disk.
 

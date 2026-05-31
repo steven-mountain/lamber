@@ -4,6 +4,33 @@ This changelog records structural modifications, business rules, and context cha
 
 ## 2026-05-31
 
+### Project Background, Collection/Payment and IT/CT Content Sync in Template Forms
+
+Modified:
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Added "IT服务内容" and "CT服务内容" textareas to the 《立项签批表》 (Project Approval/Sign-off Form) section. Handled variables resolution in `handleGenerate` to prioritize these overrides with fallback to original values.
+
+Decision:
+- Allow users to override IT and CT service contents in the Sign-off Form template configuration.
+- The input boxes display original default values when empty/unmodified and correctly fallback to defaults if cleared.
+
+### Project Background and Collection/Payment Methods Synchronization in Template Forms
+
+Modified:
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Added "项目背景" (project background), "收入侧收款方式" (revenue collection method) and "支出侧付款方式" (expenditure payment method) fields to the 《立项签批表》 (Project Approval/Sign-off Form) section. They are bound directly to the shared states.
+
+Decision:
+- Enable immediate, reactive dual-direction synchronization of the template form configuration parameters (Project Background, Collection & Payment methods) between the template configuration view and the global variables.
+- Changes are fully tracked and persisted in the database state upon saving.
+
+### Project Background Synchronization in Template Forms
+
+Modified:
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Added a "项目背景" (project background) textarea configuration field to the 《立项签批表》 (Project Approval/Sign-off Form) section. It is bound directly to the shared `projectBackground` state.
+
+Decision:
+- Enable immediate, reactive dual-direction synchronization of the Project Background content between the Project Parameters form page and the Sign-off Form template configuration. Modifying either updates the other in real time.
+- Changes are fully tracked and persisted in the database lifecycle state upon saving.
+
 ### Workspace Management Card Interaction Fix
 
 Modified:

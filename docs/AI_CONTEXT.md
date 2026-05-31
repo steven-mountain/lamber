@@ -1,6 +1,6 @@
 # AI_CONTEXT.md
 
-Last updated: 2026-05-31
+Last updated: 2026-05-31 (Project Background, Collection/Payment and IT/CT Content Sync in Template Forms)
 
 ## What this project is
 

@@ -1,6 +1,6 @@
 # ARCHITECTURE_MAP.md
 
-Last updated: 2026-05-31 (Workspace Management UI Separation)
+Last updated: 2026-05-31 (Project Background, Collection/Payment and IT/CT Content Sync in Template Forms)
 
 ## 1. Repository overview
 

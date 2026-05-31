@@ -826,11 +826,21 @@ export default function TemplateForms({
     }
     const branchName = get('gen_branch_name') || "XXXX"
     attendees += `${branchName}分公司（建设、维护、网络/信息安全员）：\n        ${get('gen_branch_attendees')}`
-
-    const ctContentStr = hasMidThree ? (ctContent ? ctContent.replace(/能力/g, '') : "详见清单") : "无"
+    const originalCtContent = hasMidThree ? (ctContent ? ctContent.replace(/能力/g, '') : "详见清单") : "无"
 
     const itCostInclForContent = (projectData.cost?.it?.integration?.incl || 0) + (projectData.cost?.it?.device?.incl || 0) + (projectData.cost?.it?.maintenance?.incl || 0)
-    const itContentStr = itCostInclForContent > 0 ? (itContent || "集成服务") : "无"
+    const originalItContent = itCostInclForContent > 0 ? (itContent || "集成服务") : "无"
+
+    const signItContent = get('gen_sign_it_content')
+    const signCtContent = get('gen_sign_ct_content')
+
+    const itContentStr = selectedTemplate.includes('立项签批表')
+      ? (signItContent.trim() !== "" ? signItContent : originalItContent)
+      : originalItContent
+
+    const ctContentStr = selectedTemplate.includes('立项签批表')
+      ? (signCtContent.trim() !== "" ? signCtContent : originalCtContent)
+      : originalCtContent
 
     const otherCost = projectData.cost?.ct?.other?.incl || 0
     const otherProductContent = otherCost > 0 ? "详见清单" : "无"
@@ -1119,6 +1129,9 @@ export default function TemplateForms({
       alert("生成失败：" + e)
     }
   }
+  const itCostInclForContent = (projectData.cost?.it?.integration?.incl || 0) + (projectData.cost?.it?.device?.incl || 0) + (projectData.cost?.it?.maintenance?.incl || 0)
+  const defaultSignItContent = itCostInclForContent > 0 ? (itContent || "集成服务") : "无"
+  const defaultSignCtContent = hasMidThree ? (ctContent ? ctContent.replace(/能力/g, '') : "详见清单") : "无"
 
   return (
     <div className="flex flex-col gap-6">
@@ -1560,6 +1573,65 @@ export default function TemplateForms({
                   <input type="checkbox" name="gen_is_advance" {...getBindCheckbox("gen_is_advance")} className="w-4 h-4" />
                   是否涉及垫资
                 </label>
+              </div>
+              <div className="flex flex-col gap-1 col-span-2">
+                <label className="text-sm font-semibold">项目背景</label>
+                <textarea
+                  name="gen_proj_bg"
+                  rows={3}
+                  value={projectBackground}
+                  onChange={e => setProjectBackground(e.target.value)}
+                  className="bg-card border border-input px-3 py-2 rounded-md"
+                  placeholder="请输入项目背景..."
+                />
+              </div>
+              <div className="flex flex-col gap-1 col-span-2">
+                <label className="text-sm font-semibold">收入侧收款方式</label>
+                <input
+                  type="text"
+                  name="gen_rev_collection"
+                  value={revCollection}
+                  onChange={e => setRevCollection(e.target.value)}
+                  className="bg-card border border-input px-3 py-2 rounded-md"
+                  placeholder="请输入收入侧收款方式..."
+                />
+              </div>
+              <div className="flex flex-col gap-1 col-span-2">
+                <label className="text-sm font-semibold">支出侧付款方式</label>
+                <input
+                  type="text"
+                  name="gen_exp_payment"
+                  value={expPayment}
+                  onChange={e => setExpPayment(e.target.value)}
+                  className="bg-card border border-input px-3 py-2 rounded-md"
+                  placeholder="请输入支出侧付款方式..."
+                />
+              </div>
+              <div className="flex flex-col gap-1 col-span-2">
+                <label className="text-sm font-semibold flex items-center justify-between">
+                  <span>IT服务内容</span>
+                  <span className="text-xs text-secondary-foreground font-normal">优先读取此项，为空则用系统默认</span>
+                </label>
+                <textarea
+                  name="gen_sign_it_content"
+                  rows={2}
+                  {...getBind("gen_sign_it_content", defaultSignItContent)}
+                  className="bg-card border border-input px-3 py-2 rounded-md"
+                  placeholder={defaultSignItContent}
+                />
+              </div>
+              <div className="flex flex-col gap-1 col-span-2">
+                <label className="text-sm font-semibold flex items-center justify-between">
+                  <span>CT服务内容</span>
+                  <span className="text-xs text-secondary-foreground font-normal">优先读取此项，为空则用系统默认</span>
+                </label>
+                <textarea
+                  name="gen_sign_ct_content"
+                  rows={2}
+                  {...getBind("gen_sign_ct_content", defaultSignCtContent)}
+                  className="bg-card border border-input px-3 py-2 rounded-md"
+                  placeholder={defaultSignCtContent}
+                />
               </div>
             </div>
           </div>
