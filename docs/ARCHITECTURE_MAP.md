@@ -1,6 +1,6 @@
 # ARCHITECTURE_MAP.md
 
-Last updated: 2026-06-01 (AI Workspace Specified Project Context Routing)
+Last updated: 2026-06-01 (Meeting Investment Subject Alignment Fix)
 
 ## 1. Repository overview
 
@@ -30,6 +30,8 @@ graph TD
 - **`src/db.rs`**: SQLite initialization, table creation, and schema version management.
 - **`src/migration.rs`**: JSON-to-SQLite transactional database migration service and Tauri commands.
 - **`src/docfill.rs`**: Fills Word/Excel lifecycle templates for workspace-backed document generation.
+- **`src/docfill.rs` lifecycle output rule**: `generate_lifecycle_docs` must resolve relative output folders against the active Workspace root, and may use the provided `projectId` to derive the project folder from Workspace SQLite when no explicit output directory is supplied. It must not write generated lifecycle documents into the Tauri process working directory.
+- **`src/docfill.rs` image embedding rule**: Word image variables receive JSON payloads whose image entries should carry `assetId` values. The backend resolves those asset IDs through Workspace SQLite and embeds image binaries into `word/media`; frontend-only preview URLs must not be treated as document image data.
 - **`src/ai_context/`**: Read-only AI Project Context Service. It exposes `build_ai_project_context`, validates the project against the active workspace database, and summarizes persisted project overview, lifecycle, cashflow, benefit, template, and file metadata without writing data, reading full documents, or loading image binaries.
 - **`src/ai_context/` template detail extension**: `build_ai_project_context` can load `template_detail` for a specified `activeTemplateId`, reading one saved template from `project_template_states` with legacy `project_settings` fallback. `load_ai_template_asset` validates `projectId + assetId` ownership and returns a temporary vision data URL only for explicitly selected template images.
 - **`src/ai_context/` Workspace project index**: `list_ai_workspace_projects` returns a read-only lightweight index for the current Workspace, including project identity, status, updated time, saved lifecycle/cashflow/template/benefit existence flags, and saved template names. It never returns absolute paths, file contents, image bytes, or full template JSON.
@@ -55,7 +57,7 @@ graph TD
 - **`src/views/`**: Screen layouts.
   - [ProjectBoard.tsx](../src-ui/src/views/ProjectBoard.tsx): Kanban lists, detail drawers, and candidate batch importer.
   - [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): The main calculator workspace tabs.
-  - [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Variable mapping and document filling triggers.
+  - [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Variable mapping, inquiry vendor quote rows/screenshots, and document filling triggers.
   - [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): Data Management view containing Roots, Health Checker, and Relocator.
 - **`src/services/workspaceMaintenanceService.ts`**: Frontend IPC wrapper for workspace backup/restore/export/import/health/path maintenance commands.
 - **`src/services/aiProjectContextService.ts`**: Typed frontend wrapper for `build_ai_project_context`, now used by the AI chat context composer during message send.
@@ -158,7 +160,8 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 1. A project is associated with multiple `BenefitAnalysisScheme` records.
 2. Each scheme has multiple versioned `BenefitAnalysisSnapshot` records (retaining the full JSON structure of inputs and outputs).
 3. When launching the calculator, current editor state from `project_lifecycle_states` is preferred over scheme snapshots so global save / Ctrl+S changes are restored even when a default scheme id is present. If no current lifecycle state exists, the latest snapshot's `inputParams` is used as compatibility fallback.
-4. The project's root record caches `summary_metrics` (margins, NPV, risk level) from the selected default scheme.
+4. Cashflow-domain assumptions from `project_cashflow_states.assumptions_json` are overlaid onto the selected lifecycle/snapshot input during hydration. This keeps IT/CT revenue and cost price edits persistent after cashflow-only saves.
+5. The project's root record caches `summary_metrics` (margins, NPV, risk level) from the selected default scheme.
 
 ### 4.3 Funding model to Cashflow flow
 1. Form edits are calculated in real-time or via manual trigger.
@@ -178,6 +181,26 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 3: Rust backend obtains the workspace root path, resolves workspace-relative paths if the input is relative, opens and reads coordinates from the Excel spreadsheet, determines matching formulas, and returns mapped financial parameters.
 4: User confirms overwrite, which updates frontend states and triggers an automated recalculation.
 5: Automated background import: during folder scans, folder binding, or workspace project bulk initialization, the backend checks if the project has 0 schemes. If so, it matches files starting with "效益分析表" and ending with ".xlsx"/".xls", picks the newest by modification date, parses it, and automatically imports it as the default scheme "Excel导入测算方案" without user intervention.
+
+### 4.6 Lifecycle document generation output flow
+
+1. `TemplateForms.tsx` invokes `generate_lifecycle_docs` with selected templates, variables, the active project's output folder hint, and `projectId`.
+2. `docfill.rs` requires the active Workspace and resolves any relative `outputDir` against the Workspace root.
+3. If no output directory is provided, the backend derives the project directory from the Workspace SQLite `projects` record using project path fields, then falls back to the module output folder only when no project target is available.
+4. Generated Word/Excel files are written to the resolved project directory, then the frontend scans the project folder to refresh the file list.
+5. Meeting-review investment detail text is assembled in `TemplateForms.tsx` from the same resolved IT/CT cost subjects used by the sign-off form variables (`SUBJECT_IT_COST`, `SUBJECT_CT_COST`), while amount totals continue to come from the existing tax-exclusive lifecycle cost buckets.
+
+### 4.7 Template image document embedding flow
+
+1. `TemplateForms.tsx` keeps preview images in UI state, but serializes document-generation image payloads with `assetId` first.
+2. `docfill.rs` detects image variables, reads `assetId` from JSON entries, validates and resolves the asset through `project_template_assets`, and writes the image bytes into the generated docx media folder with relationship entries.
+3. If an image JSON payload cannot be resolved, the backend clears the unresolved placeholder rather than inserting raw JSON or preview URLs into Word content.
+
+### 4.8 Inquiry vendor screenshot state flow
+
+1. `TemplateForms.tsx` stores inquiry quote screenshots on each vendor row as `images`.
+2. One-click quote generation may recalculate vendor names, amounts, tax rates, and remarks, but must merge existing screenshots into the regenerated rows by vendor name and then by index.
+3. Screenshot upload callbacks use functional state updates so asynchronous file reads append to the latest vendor row state rather than a stale pre-generation array.
 
 ## 5. State management map
 

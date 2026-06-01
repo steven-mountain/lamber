@@ -4,6 +4,53 @@ This changelog records structural modifications, business rules, and context cha
 
 ## 2026-06-01
 
+### Meeting Investment Subject Alignment Fix
+
+Modified:
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Meeting-review `PROJECT_TOTAL_INVESTMENT_DETAIL` now uses the same resolved IT/CT cost subjects as the sign-off form variables instead of deriving CT subject wording from the mid-platform capability name.
+
+Decision:
+- The presales meeting-review "项目整体投入金额" wording should follow the sign-off form's investment billing subjects. This changes only document subject wording and keeps the existing tax-exclusive IT, CT, mixed-cost, and total investment calculations intact.
+
+### ICT Cashflow Price Persistence Hydration Fix
+
+Modified:
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Added current-state hydration that overlays `project_cashflow_states.assumptions_json`, payment model, and cashflow segments onto lifecycle/snapshot input data before filling calculator fields.
+
+Decision:
+- Price fields belong to the cashflow domain during ordinary edits and can be saved without rewriting lifecycle input payloads.
+- Reopening an ICT project must treat cashflow assumptions as the latest current editor state for IT/CT revenue and cost inputs, otherwise stale lifecycle payloads can restore old prices.
+
+### Inquiry Vendor Image State Preservation Fix
+
+Modified:
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): One-click three-vendor quote generation now merges existing vendor screenshots into regenerated quote rows instead of clearing `images`.
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Vendor screenshot upload now uses functional state updates so async file reads cannot overwrite newer vendor quote state.
+
+Decision:
+- Vendor quote screenshots are part of the vendor row state and must survive quote amount regeneration.
+- The merge prefers vendor-name matches and falls back to row index to support both regenerated default vendors and manually edited rows.
+
+### Template Image Document Embedding Fix
+
+Modified:
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Document-generation image payloads now use `assetId` as the primary `data` value and include `assetId` explicitly, preventing frontend preview URLs from being serialized into Word variables.
+- [docfill.rs](../src-tauri/src/docfill.rs): JSON image parsing now prefers `assetId`, embeds only asset IDs or legacy `data:image` values, and suppresses unresolved image JSON so raw payload text does not appear in generated Word documents.
+
+Decision:
+- Frontend `asset://localhost/...` URLs are preview-only and must not be used as document image source data.
+- The backend remains the authority for resolving image binaries through Workspace SQLite asset ownership and file resolution.
+
+### Lifecycle Document Workspace Output Path Fix
+
+Modified:
+- [docfill.rs](../src-tauri/src/docfill.rs): Added Workspace-aware lifecycle document output resolution. Relative output folders are expanded against the active Workspace root, and `projectId` can be used to derive the project directory from the Workspace SQLite `projects` record when no explicit output directory is provided.
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Passes the active `projectId` to `generate_lifecycle_docs`.
+
+Decision:
+- ICT lifecycle generated documents belong in the bound project directory under the active Workspace, not under the Tauri backend working directory.
+- The previous narrow symptom was a relative path such as `都市花园254号` being interpreted as `src-tauri/都市花园254号`, which also caused Tauri dev watch rebuild/restart behavior. The fix centralizes output path resolution in the backend instead of adding frontend-only path string workarounds.
+
 ### AI Workspace Specified Project Context Routing
 
 Created:

@@ -84,6 +84,30 @@ const getSelfThreeMissingFees = (requirements: SelfThreeRequirement[], hasItInte
   return []
 })
 
+const toDocImagePayload = (img: any, title?: string) => ({
+  title: title || img?.title || "",
+  data: img?.assetId || img?.data || "",
+  assetId: img?.assetId || null,
+  width: img?.width,
+  height: img?.height,
+})
+
+const mergeVendorImages = (nextVendors: any[], previousVendors: any[]) => {
+  const imagesByName = new Map<string, any[]>()
+  previousVendors.forEach(vendor => {
+    const name = String(vendor?.vendorName || "").trim()
+    if (name && vendor?.images?.length) {
+      imagesByName.set(name, vendor.images)
+    }
+  })
+
+  return nextVendors.map((vendor, index) => {
+    const name = String(vendor?.vendorName || "").trim()
+    const previousImages = (name && imagesByName.get(name)) || previousVendors[index]?.images || []
+    return { ...vendor, images: previousImages }
+  })
+}
+
 export default function TemplateForms({
   selectedTemplate,
   projectData,
@@ -705,11 +729,12 @@ export default function TemplateForms({
     ].sort((a, b) => a - b)
 
     const shuffled = [0, 1, 2].sort(() => Math.random() - 0.5)
-    setInqVendors(shuffled.map((idx, i) => ({
+    const generatedVendors = shuffled.map((idx, i) => ({
       vendorName: `厂商${String.fromCharCode(65 + i)}`,
       amount: quotes[idx], taxRate: 6, remark: idx === 0 ? '最低' : '',
       images: []
-    })))
+    }))
+    setInqVendors(previous => mergeVendorImages(generatedVendors, previous))
   }
 
   const handleImageUpload = (e: any, setImages: any, typeName: string) => {
@@ -860,6 +885,9 @@ export default function TemplateForms({
       ? (signCtContent.trim() !== "" ? signCtContent : originalCtContent)
       : originalCtContent
 
+    const resolvedSubjectItCost = get('gen_subject_it_cost').trim() || subjectItCost
+    const resolvedSubjectCtCost = get('gen_subject_ct_cost').trim() || subjectCtCost
+
     const otherCost = projectData.cost?.ct?.other?.incl || 0
     const otherProductContent = otherCost > 0 ? "详见清单" : "无"
 
@@ -875,12 +903,7 @@ export default function TemplateForms({
       if (vendorImgs.length > 0) {
         hasAnyScreenshot = true;
         vendorImgs.forEach((img: any) => {
-          screenshotListArray.push({
-            title: v.vendorName,
-            data: img.data,
-            width: img.width,
-            height: img.height
-          });
+          screenshotListArray.push(toDocImagePayload(img, v.vendorName));
         });
       }
     });
@@ -928,31 +951,14 @@ export default function TemplateForms({
     const mixCost = getExclMix('marketing') + getExclMix('channel') + getExclMix('other');
     const totalCost = itCost + ctCost + nonItCost + mixCost;
 
-    const itConstruction = getExclIt('device') + getExclIt('construction') + getExclIt('survey') + getExclIt('integration') + getExclIt('other');
-    const itMaintenance = getExclIt('maintenance') + getExclIt('running');
-    const ctConstruction = getExclCt('construction');
-    const ctMaintenance = getExclCt('maintenance');
-    const ctProduct = getExclCt('other') + getExclCt('bandwidth') + getExclCt('renewal');
-    const itOther = getExclIt('bidding') + getExclIt('design_eval') + getExclIt('audit');
-
     const isZero = (n: number) => Math.abs(n) < 0.005;
     const fmtYuan = (n: number) => n.toFixed(2);
     const fmtPct = (x: any) => isFinite(x) && x !== null && x !== "" && !isNaN(Number(x)) ? (Number(x) * 100).toFixed(2) + '%' : '--';
     const parts: string[] = [];
-    const itParts: string[] = [];
-    if (!isZero(itConstruction)) itParts.push(`建设投入${fmtYuan(itConstruction)}元（不含税）`);
-    if (!isZero(itMaintenance)) itParts.push(`维护投入${fmtYuan(itMaintenance)}元（不含税）`);
-    if (itParts.length) parts.push(`IT部分${itParts.join('，')}`);
-
-    const ctParts: string[] = [];
-    if (!isZero(ctConstruction)) ctParts.push(`建设投入${fmtYuan(ctConstruction)}元（不含税）`);
-    if (!isZero(ctMaintenance)) ctParts.push(`维护投入${fmtYuan(ctMaintenance)}元（不含税）`);
-    if (ctParts.length) parts.push(`CT部分${ctParts.join('，')}`);
-
-    const ctLabel = hasMidThree ? midThreeName.replace(/能力/g, '').trim() : '专线';
-    const finalCtLabel = ctLabel || '专线';
-    if (!isZero(ctProduct)) parts.push(`CT-${finalCtLabel}投入${fmtYuan(ctProduct)}元（不含税）`);
-    if (!isZero(itOther)) parts.push(`中标服务费/专项审计/第三方项目核算等费用${fmtYuan(itOther)}元（不含税）`);
+    if (!isZero(itCost)) parts.push(`${resolvedSubjectItCost}投入${fmtYuan(itCost)}元（不含税）`);
+    if (!isZero(ctCost)) parts.push(`${resolvedSubjectCtCost}投入${fmtYuan(ctCost)}元（不含税）`);
+    if (!isZero(nonItCost)) parts.push(`工程施工投入等${fmtYuan(nonItCost)}元（不含税）`);
+    if (!isZero(mixCost)) parts.push(`融合营销/渠道酬金/其他管理费用等${fmtYuan(mixCost)}元（不含税）`);
 
     let projTotalInvestStr = `整体投入${fmtYuan(totalCost)}元`;
     if (parts.length) {
@@ -992,8 +998,8 @@ export default function TemplateForms({
     const demandSecurityLine = `\n${securityIdx}、信息安全、密评：${hasSecurity ? (securityDetailStr || "有") : "无"}`;
 
     const attach2TitleLine = hasPublicUrl ? `\n附件2、有效的挂网链接截图/招标文件（有效地址：${demandUrlStr}）` : "";
-    const attach1ImageStr = attach1Images.length > 0 ? JSON.stringify(attach1Images) : "";
-    const attach2ImageStr = (hasPublicUrl && attach2Images.length > 0) ? JSON.stringify(attach2Images) : "";
+    const attach1ImageStr = attach1Images.length > 0 ? JSON.stringify(attach1Images.map(img => toDocImagePayload(img))) : "";
+    const attach2ImageStr = (hasPublicUrl && attach2Images.length > 0) ? JSON.stringify(attach2Images.map(img => toDocImagePayload(img))) : "";
 
     const now = new Date();
     const currDate = `${now.getFullYear()}年${String(now.getMonth()+1).padStart(2, '0')}月${String(now.getDate()).padStart(2, '0')}日`;
@@ -1032,8 +1038,8 @@ export default function TemplateForms({
       'IS_SME': "是",
       'IS_ADVANCE_PAYMENT': get('gen_is_advance') === "on" ? "是" : "否",
 
-      'SUBJECT_IT_COST': get('gen_subject_it_cost') || subjectItCost,
-      'SUBJECT_CT_COST': get('gen_subject_ct_cost') || subjectCtCost,
+      'SUBJECT_IT_COST': resolvedSubjectItCost,
+      'SUBJECT_CT_COST': resolvedSubjectCtCost,
       'SUBJECT_IT_REV': get('gen_subject_it_rev') || subjectItRev,
       'SUBJECT_CT_REV': get('gen_subject_ct_rev') || subjectCtRev,
       'CONSTRUCTION_TIME_REQ': get('gen_construction_time_req'),
@@ -1115,6 +1121,7 @@ export default function TemplateForms({
           variables: variables,
           selectedTemplates: [selectedTemplate],
           outputDir,
+          projectId,
           overwriteExisting
       })
 
@@ -1440,11 +1447,12 @@ export default function TemplateForms({
                       const vendorImages = v.images || [];
 
                       const setVendorImages = (updater: any) => {
-                        const updated = [...inqVendors];
-                        const prevImages = updated[i].images || [];
-                        const newImages = typeof updater === 'function' ? updater(prevImages) : updater;
-                        updated[i].images = newImages;
-                        setInqVendors(updated);
+                        setInqVendors(previous => previous.map((vendor, index) => {
+                          if (index !== i) return vendor;
+                          const prevImages = vendor.images || [];
+                          const newImages = typeof updater === 'function' ? updater(prevImages) : updater;
+                          return { ...vendor, images: newImages };
+                        }));
                       };
 
                       return (

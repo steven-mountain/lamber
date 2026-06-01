@@ -51,6 +51,62 @@ export default function IctLifecycle() {
   const [saveAsSchemeName, setSaveAsSchemeName] = useState("");
   const [showSelectProjectModal, setShowSelectProjectModal] = useState(false);
 
+  const buildHydrationInput = useCallback((baseInput: any, cashflowState: any) => {
+    const merged = { ...(baseInput || {}) };
+    const assumptions = cashflowState?.assumptionsJson || {};
+    const paymentModel = cashflowState?.paymentModelJson || {};
+    const sectorCashflow = cashflowState?.sectorCashflowJson || {};
+
+    if (cashflowState?.cashflowModel || paymentModel.cashflowModel) {
+      merged.cashflow_model = cashflowState?.cashflowModel || paymentModel.cashflowModel;
+    }
+    if (paymentModel.revDistribution) merged.rev_distribution = paymentModel.revDistribution;
+    if (paymentModel.costDistribution) merged.cost_distribution = paymentModel.costDistribution;
+    if (paymentModel.segmentValueMode) merged.cashflow_segment_value_mode = paymentModel.segmentValueMode;
+    if (sectorCashflow.cashflowSegments) merged.cashflow_segments = sectorCashflow.cashflowSegments;
+    if (assumptions.projectYears !== undefined) merged.project_years = assumptions.projectYears;
+    if (assumptions.discountRate !== undefined) merged.discount_rate = String(assumptions.discountRate);
+
+    const applyTaxItem = (key: string, item: any) => {
+      if (!item) return;
+      merged[key] = {
+        incl_tax: String(item.incl ?? item.incl_tax ?? 0),
+        tax_rate: String(item.tax ?? item.tax_rate ?? 0),
+      };
+    };
+
+    applyTaxItem("rev_it_integration", assumptions.revIt?.integration);
+    applyTaxItem("rev_it_maintenance", assumptions.revIt?.maintenance);
+    applyTaxItem("rev_it_device_sales", assumptions.revIt?.device_sales);
+    applyTaxItem("rev_it_device_lease", assumptions.revIt?.device_lease);
+    applyTaxItem("rev_it_other", assumptions.revIt?.other);
+    applyTaxItem("rev_it_cloud", assumptions.revIt?.cloud);
+    applyTaxItem("rev_ct_line", assumptions.revCt?.line);
+    applyTaxItem("rev_ct_product", assumptions.revCt?.product);
+    applyTaxItem("rev_non_it_ct", assumptions.revNonItCt);
+    applyTaxItem("cost_it_device", assumptions.costIt?.device);
+    applyTaxItem("cost_it_construction", assumptions.costIt?.construction);
+    applyTaxItem("cost_it_survey", assumptions.costIt?.survey);
+    applyTaxItem("cost_it_integration", assumptions.costIt?.integration);
+    applyTaxItem("cost_it_other", assumptions.costIt?.other);
+    applyTaxItem("cost_it_maintenance", assumptions.costIt?.maintenance);
+    applyTaxItem("cost_it_running", assumptions.costIt?.running);
+    applyTaxItem("cost_it_bidding", assumptions.costIt?.bidding);
+    applyTaxItem("cost_it_design_eval", assumptions.costIt?.design_eval);
+    applyTaxItem("cost_it_audit", assumptions.costIt?.audit);
+    applyTaxItem("cost_ct_construction", assumptions.costCt?.construction);
+    applyTaxItem("cost_ct_maintenance", assumptions.costCt?.maintenance);
+    applyTaxItem("cost_ct_other", assumptions.costCt?.other);
+    applyTaxItem("cost_ct_bandwidth", assumptions.costCt?.bandwidth);
+    applyTaxItem("cost_ct_renewal", assumptions.costCt?.renewal);
+    applyTaxItem("cost_non_it_ct", assumptions.costMix?.non_it_ct);
+    applyTaxItem("cost_mix_marketing", assumptions.costMix?.marketing);
+    applyTaxItem("cost_mix_channel", assumptions.costMix?.channel);
+    applyTaxItem("cost_mix_other", assumptions.costMix?.other);
+
+    return merged;
+  }, []);
+
   useEffect(() => {
     if (!isWorkspaceReady) {
       setProjects([]);
@@ -215,7 +271,11 @@ export default function IctLifecycle() {
       }
 
       const currentLifecycleInput = fullState?.lifecycleState?.inputPayloadJson;
-      const preferCurrentState = Boolean(currentLifecycleInput);
+      const baseHydrationInput = currentLifecycleInput || fullState?.legacyLifecycleInput || null;
+      const currentHydrationInput = baseHydrationInput
+        ? buildHydrationInput(baseHydrationInput, fullState?.cashflowState)
+        : null;
+      const preferCurrentState = Boolean(currentHydrationInput && (currentLifecycleInput || fullState?.cashflowState));
 
       if (schemeToSelect) {
         setActiveScheme(schemeToSelect);
@@ -225,7 +285,7 @@ export default function IctLifecycle() {
         if (preferCurrentState) {
           setActiveSnapshot(snapshots[0] || null);
           isHydratingRef.current = true;
-          fillCalculatorState(currentLifecycleInput);
+          fillCalculatorState(currentHydrationInput);
           setTimeout(() => {
             isHydratingRef.current = false;
             useSaveStore.getState().clearDirtyScopes(["lifecycle", "cashflow", "benefit-analysis"]);
@@ -256,8 +316,8 @@ export default function IctLifecycle() {
         setActiveScheme(null);
         setActiveSnapshot(null);
         isHydratingRef.current = true;
-        if (currentLifecycleInput) {
-          fillCalculatorState(currentLifecycleInput);
+        if (preferCurrentState) {
+          fillCalculatorState(currentHydrationInput);
         } else if (fullState?.legacyLifecycleInput) {
           fillCalculatorState(fullState.legacyLifecycleInput);
         } else {
@@ -275,7 +335,7 @@ export default function IctLifecycle() {
     } catch (err) {
       console.error("Failed to load project context:", err);
     }
-  }, [state, fillCalculatorState, isWorkspaceReady]);
+  }, [state, fillCalculatorState, buildHydrationInput, isWorkspaceReady]);
 
   useEffect(() => {
     loadProjectContext(activeProjectId, activeSchemeId);

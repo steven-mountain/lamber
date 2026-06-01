@@ -1,6 +1,30 @@
 # PROJECT_STATUS.md
 
-Last updated: 2026-06-01 (AI Workspace Specified Project Context Routing)
+Last updated: 2026-06-01 (Meeting Investment Subject Alignment Fix)
+
+## 0. Meeting Investment Subject Alignment Fix
+
+ICT presales meeting-review document generation now builds the "项目整体投入金额" detail from the same IT/CT cost subject fields used by the project sign-off form. The meeting-review wording no longer derives CT investment subject names from the mid-platform capability name, while the existing tax-exclusive IT, CT, mixed-cost, and total investment calculations remain unchanged.
+
+## 0. ICT Cashflow Price Persistence Hydration Fix
+
+ICT lifecycle reload now hydrates calculator inputs from the latest cashflow domain state when available. Price edits in IT/CT revenue and cost fields are saved under `project_cashflow_states.assumptions_json`; reopening the project overlays those assumptions onto lifecycle input payloads or legacy scheme snapshots before filling the calculator. This prevents stale `project_lifecycle_states.input_payload_json` values from restoring old prices after a cashflow-only save.
+
+## 0. Inquiry Vendor Image State Preservation Fix
+
+The one-click three-vendor quote generator now preserves vendor quote screenshots instead of rebuilding every vendor row with an empty `images` array. Generated quote rows merge existing images by vendor name first and by row position as a fallback, so recalculating quote amounts does not discard uploaded screenshots.
+
+Vendor image upload updates now use functional `setInqVendors` updates, preventing asynchronous file reads from writing image results into stale vendor arrays after quote rows are regenerated or edited.
+
+## 0. Template Image Document Embedding Fix
+
+Template image fields used during Word generation now serialize project template assets by `assetId`, not by frontend preview URLs such as `asset://localhost/...`. The backend image replacement path prefers `assetId` inside JSON image payloads, resolves the asset through Workspace SQLite ownership checks, embeds the binary image into the generated docx, and suppresses unresolved image JSON so raw payload text cannot leak into Word output.
+
+## 0. Lifecycle Document Workspace Output Path Fix
+
+ICT lifecycle document generation now resolves output folders through the active Workspace context before writing files. Workspace-relative project paths such as `项目A` are expanded against the current Workspace root instead of being treated as process-relative paths under `src-tauri`, preventing generated documents from landing inside the Tauri source tree and triggering dev-mode rebuild/restart loops.
+
+The frontend passes the active `projectId` along with document-generation requests. The backend keeps explicit `outputDir` compatibility, but always resolves relative output paths with `workspace::resolve_workspace_path` and can derive the target project folder from the Workspace SQLite project record when no output directory is provided.
 
 ## 0. AI Workspace Specified Project Context Routing
 

@@ -56,7 +56,8 @@ fn internal_generate_docx(
             // JSON array of images
             if let Ok(list) = serde_json::from_str::<Vec<serde_json::Value>>(val) {
                 for item in list {
-                    if let Some(data) = item["data"].as_str() {
+                    let data = item["assetId"].as_str().or_else(|| item["data"].as_str());
+                    if let Some(data) = data {
                         let w = item["width"].as_u64().unwrap_or(0) as u32;
                         let h = item["height"].as_u64().unwrap_or(0) as u32;
                         let title = item["title"].as_str().unwrap_or("").to_string();
@@ -80,7 +81,7 @@ fn internal_generate_docx(
                                     }
                                 }
                             }
-                        } else {
+                        } else if data.starts_with("data:image/") {
                             raw_images.push((data.to_string(), w, h, title));
                         }
                     }
@@ -316,6 +317,11 @@ fn internal_generate_docx(
                 if image_map.contains_key(k) {
                     continue;
                 }
+                if (k.contains("IMAGE") || k.contains("SCREENSHOT"))
+                    && v.trim_start().starts_with('[')
+                {
+                    continue;
+                }
                 let pattern = format!("{{{}}}", k);
                 let escaped_v = v
                     .replace("&", "&amp;")
@@ -461,6 +467,59 @@ pub fn get_available_templates(
     Ok(templates)
 }
 
+fn resolve_lifecycle_output_dir(
+    conn: &rusqlite::Connection,
+    workspace_root: &std::path::Path,
+    project_id: Option<&str>,
+    requested_output_dir: Option<&str>,
+    base_path: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    if let Some(path) = requested_output_dir
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+    {
+        return Ok(crate::workspace::resolve_workspace_path(
+            workspace_root,
+            path,
+        ));
+    }
+
+    if let Some(project_id) = project_id.map(str::trim).filter(|id| !id.is_empty()) {
+        let mut stmt = conn
+            .prepare(
+                "SELECT relative_path, linked_folder_relative_path, folder_path, folder_name, linked_folder_external_path FROM projects WHERE id = ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query([project_id]).map_err(|e| e.to_string())?;
+        let row = rows
+            .next()
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("未找到项目: {}", project_id))?;
+
+        let candidates: [Option<String>; 5] = [
+            row.get(0).map_err(|e| e.to_string())?,
+            row.get(1).map_err(|e| e.to_string())?,
+            row.get(2).map_err(|e| e.to_string())?,
+            row.get(3).map_err(|e| e.to_string())?,
+            row.get(4).map_err(|e| e.to_string())?,
+        ];
+
+        if let Some(path) = candidates
+            .iter()
+            .flatten()
+            .map(|path| path.trim())
+            .find(|path| !path.is_empty())
+        {
+            return Ok(crate::workspace::resolve_workspace_path(
+                workspace_root,
+                path,
+            ));
+        }
+    }
+
+    Ok(base_path.join("output"))
+}
+
 #[tauri::command]
 pub fn generate_lifecycle_docs(
     app: tauri::AppHandle,
@@ -470,6 +529,7 @@ pub fn generate_lifecycle_docs(
     variables: HashMap<String, String>,
     selected_templates: Vec<String>,
     output_dir: Option<String>,
+    project_id: Option<String>,
     overwrite_existing: Option<bool>,
 ) -> Result<String, String> {
     let workspace = runtime.require_workspace()?;
@@ -493,10 +553,14 @@ pub fn generate_lifecycle_docs(
         return Err(format!("未找到模板目录: {}", template_dir.display()));
     }
 
-    let output_dir = output_dir
-        .filter(|path| !path.trim().is_empty())
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| base_path.join("output"));
+    let workspace_root = std::path::Path::new(&workspace.workspace_root);
+    let output_dir = resolve_lifecycle_output_dir(
+        &conn,
+        workspace_root,
+        project_id.as_deref(),
+        output_dir.as_deref(),
+        base_path,
+    )?;
     if !output_dir.exists() {
         fs::create_dir_all(&output_dir).map_err(|e| format!("创建输出目录失败: {}", e))?;
     }

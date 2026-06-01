@@ -1,6 +1,6 @@
 # AI_CONTEXT.md
 
-Last updated: 2026-06-01 (AI Workspace Specified Project Context Routing)
+Last updated: 2026-06-01 (Meeting Investment Subject Alignment Fix)
 
 ## What this project is
 
@@ -49,7 +49,7 @@ Data Management also exposes the local `recentWorkspaces` association list in a 
 
 Current project editing state is split by domain. Project detail fields are stored in `projects`; ICT lifecycle state is stored in `project_lifecycle_states`; funding model and cashflow state are stored in `project_cashflow_states`; benefit方案 history is stored in `benefit_schemes` and `benefit_snapshots`; template form state is stored in `project_template_states` with legacy `project_settings` fallback; template assets are stored as files plus `project_template_assets` metadata. The frontend `useSaveStore` tracks dirty scopes and only clears a scope after its registered domain handler returns the scopes it actually saved for the same workspace/project context. Template form failures must propagate to the global save handler; otherwise `template-forms` remains dirty.
 
-When opening an ICT project, the frontend must restore `project_lifecycle_states` current editor state before falling back to benefit scheme snapshots. This keeps global save / Ctrl+S edits, such as project background, independent from the older scheme snapshot history.
+When opening an ICT project, the frontend must restore `project_lifecycle_states` current editor state before falling back to benefit scheme snapshots, then overlay the latest `project_cashflow_states.assumptions_json` for cashflow-domain price inputs. This keeps global save / Ctrl+S edits, such as project background and IT/CT revenue/cost prices, independent from older scheme snapshot history.
 
 On application launch, the view always defaults to the HubView (`"hub"`) to guarantee the user starts at the central tool selection panel, rather than automatically restoring the last active view. The Hub currently exposes Project Board, ICT Lifecycle Calculator, and Data Management. The old standalone Investment Benefit Analysis and Document Material Production modules have been retired; their shared calculation, Excel import, and template generation engines remain available through ICT/project workflows. The `WorkspaceGate` component and view headers support standardized back-navigation to the Hub across Project Board and Data Management states.
 
@@ -68,6 +68,10 @@ Before starting any task, read the status and architecture documentation in this
 - **ICT Lifecycle Calculator (ICT生命周期测算)**: Main calculation engine handling 10-year cashflows, NPV, margins, and selection fee mappings. Standardizes persistence of project backgrounds and economic assumptions directly in the scheme snapshots database storage.
 - **AI Assistant / Copilot (智能顾问)**: Streamed (SSE) local LLM chatbot that pulls the active view's serialized state to give contextual recommendations based on a built-in capabilities database.
 - **Template Word/Excel Engine (文档填报与填充)**: Backend Rust logic mapping form values and calculation results into docx variables and excel cells. Now utilizes separate template form data (saved in `project_settings` under key `template_form_data::<template_name>`) and sandboxed image assets (saved to the bound project folder under `{project_name}-图片/assets/` if linked, or falling back to `.projects/{project_id}/assets/` inside the active workspace and tracked in `project_template_assets`), ensuring form configurations are kept lightweight and database volume is small.
+- **Meeting Review Investment Wording**: The ICT presales meeting-review "项目整体投入金额" detail must reuse the same resolved IT/CT cost subjects as the sign-off form variables (`SUBJECT_IT_COST`, `SUBJECT_CT_COST`). Do not derive CT investment subject wording from mid-platform capability names; keep the underlying tax-exclusive investment calculations unchanged.
+- **Template Image Embedding Boundary**: Frontend preview URLs (`asset://localhost/...`) are UI-only. Word generation image payloads should carry `assetId` values, and the backend must resolve and embed the image bytes through Workspace SQLite asset validation rather than writing paths or JSON text into the document.
+- **Inquiry Vendor Screenshot State**: Inquiry vendor quote screenshots live on each vendor row's `images` array. Regenerating three-vendor quote amounts must preserve those images by vendor name or row position, and async upload callbacks must update the latest vendor state.
+- **Lifecycle Document Output Ownership**: ICT lifecycle document generation must resolve output directories through the active Workspace. Relative project folder paths are Workspace-relative, not process-relative, so generated files should land in the bound project directory under the Workspace and never under `src-tauri`.
 - **Local File & Scan Engine (本地文件扫描管理)**: Service linking projects to local directory folders, scanning files (Word/Excel/PDF), managing linked vs. sandbox-copied storage modes, handling elastic path resilience via project roots and relative subpaths, and automatically importing calculations from Excel files starting with "效益分析表" and ending with ".xlsx"/".xls" (choosing the newest by modification date) when folder scans are triggered for projects with 0 schemes.
 
 Additional current AI context capability:
