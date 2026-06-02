@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import WorkspaceHeader from "../components/WorkspaceHeader";
 import { useRef } from "react";
 import AppIcon from "../components/icons/AppIcon";
@@ -24,6 +24,7 @@ import { useSaveStore } from "../store/useSaveStore";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { domainSaveService } from "../services/domainSaveService";
 import {
+  ICT_SUBJECT_DEFINITIONS,
   ICT_SUBJECT_GROUPS,
   getSubjectBillingName,
   getSubjectCustomName,
@@ -31,6 +32,18 @@ import {
   normalizeCustomSubjectName,
   type IctSubjectDefinition
 } from "../lib/ictSubjectCatalog";
+import {
+  evaluateBalanceRule,
+  getBalanceSubjectRef,
+  getBalanceSubjectRefKey,
+  isBalanceSubjectMatch,
+  normalizeBalanceAllocationState,
+  serializeBalanceAllocationRule,
+  serializeBalanceAllocationState,
+  type BalanceAllocationSide,
+  type BalanceRuleEvaluation,
+  type BalanceSubjectItem,
+} from "../lib/ictBalanceAllocation";
 
 const restoreCustomSubjectName = (item: any) => normalizeCustomSubjectName(item?.customSubjectName ?? item?.custom_subject_name ?? "");
 const restoreBillingSubjectName = (item: any) => normalizeCustomSubjectName(item?.billingSubjectName ?? item?.billing_subject_name ?? "");
@@ -108,6 +121,13 @@ export default function IctLifecycle() {
     if (sectorCashflow.cashflowSegments) merged.cashflow_segments = sectorCashflow.cashflowSegments;
     if (assumptions.projectYears !== undefined) merged.project_years = assumptions.projectYears;
     if (assumptions.discountRate !== undefined) merged.discount_rate = String(assumptions.discountRate);
+    if (assumptions.balanceAllocation || assumptions.balance_allocation) {
+      const restoredBalanceAllocation = normalizeBalanceAllocationState(
+        assumptions.balanceAllocation || assumptions.balance_allocation,
+      );
+      merged.revenue_balance_rule = serializeBalanceAllocationRule(restoredBalanceAllocation.revenue);
+      merged.investment_balance_rule = serializeBalanceAllocationRule(restoredBalanceAllocation.investment);
+    }
 
     const applyTaxItem = (key: string, item: any) => {
       if (!item) return;
@@ -184,6 +204,10 @@ export default function IctLifecycle() {
     if (params.cashflow_segment_value_mode) state.setSegmentValueMode(params.cashflow_segment_value_mode);
     if (params.cashflow_segments) state.setCashflowSegments(params.cashflow_segments);
     if (params.project_background) state.setProjectBackground(params.project_background);
+    state.setBalanceAllocation(normalizeBalanceAllocationState({
+      revenue: params.revenue_balance_rule ?? params.revenueBalanceRule,
+      investment: params.investment_balance_rule ?? params.investmentBalanceRule,
+    }));
 
     const revItRestored = {
       integration: restoreItem(params.rev_it_integration, 6),
@@ -493,10 +517,8 @@ export default function IctLifecycle() {
     projName,
     customerName,
     projectYears,
-    quickRevTotal, setQuickRevTotal,
-    quickRevProduct, setQuickRevProduct,
-    quickCostTotal, setQuickCostTotal,
-    quickCostProduct, setQuickCostProduct,
+    balanceAllocation,
+    updateBalanceRule,
     revIt,
     revCt,
     revNonItCt,
@@ -539,6 +561,65 @@ export default function IctLifecycle() {
     setActiveModule('ict');
   }, [setActiveModule]);
 
+  const balanceSubjectItems = useMemo<BalanceSubjectItem[]>(() => {
+    const resolveItem = (subject: IctSubjectDefinition) => {
+      if (subject.groupId === "revIt") return revIt[subject.key as keyof typeof revIt] || null;
+      if (subject.groupId === "revCt") return revCt[subject.key as keyof typeof revCt] || null;
+      if (subject.groupId === "revNonItCt") return revNonItCt;
+      if (subject.groupId === "costIt") return costIt[subject.key as keyof typeof costIt] || null;
+      if (subject.groupId === "costCt") return costCt[subject.key as keyof typeof costCt] || null;
+      if (subject.groupId === "costMix") return costMix[subject.key as keyof typeof costMix] || null;
+      return null;
+    };
+
+    return ICT_SUBJECT_DEFINITIONS.map(subject => ({
+      subject,
+      item: resolveItem(subject),
+    }));
+  }, [revIt, revCt, revNonItCt, costIt, costCt, costMix]);
+
+  const revenueBalanceSubjects = useMemo(
+    () => balanceSubjectItems.filter(row => row.subject.side === "revenue"),
+    [balanceSubjectItems],
+  );
+  const investmentBalanceSubjects = useMemo(
+    () => balanceSubjectItems.filter(row => row.subject.side === "cost"),
+    [balanceSubjectItems],
+  );
+
+  const revenueBalanceEvaluation = useMemo(
+    () => evaluateBalanceRule("revenue", balanceAllocation.revenue, revenueBalanceSubjects),
+    [balanceAllocation.revenue, revenueBalanceSubjects],
+  );
+  const investmentBalanceEvaluation = useMemo(
+    () => evaluateBalanceRule("investment", balanceAllocation.investment, investmentBalanceSubjects),
+    [balanceAllocation.investment, investmentBalanceSubjects],
+  );
+
+  const applyBalanceRule = useCallback((evaluation: BalanceRuleEvaluation) => {
+    if (!evaluation.canApply || !evaluation.balancingSubject || evaluation.autoAmount === null) return;
+    const currentIncl = Number(evaluation.balancingItem?.incl ?? 0);
+    if (Math.abs(currentIncl - evaluation.autoAmount) <= 0.004) return;
+    updateTaxItem(
+      evaluation.balancingSubject.groupId,
+      evaluation.balancingSubject.key,
+      "incl",
+      evaluation.autoAmount,
+    );
+  }, [updateTaxItem]);
+
+  useEffect(() => {
+    applyBalanceRule(revenueBalanceEvaluation);
+    applyBalanceRule(investmentBalanceEvaluation);
+  }, [applyBalanceRule, revenueBalanceEvaluation, investmentBalanceEvaluation]);
+
+  const blockingBalanceMessages = useMemo(
+    () => [revenueBalanceEvaluation, investmentBalanceEvaluation]
+      .filter(evaluation => evaluation.status === "negative" && evaluation.message)
+      .map(evaluation => evaluation.message as string),
+    [revenueBalanceEvaluation, investmentBalanceEvaluation],
+  );
+
   useEffect(() => {
     if (!activeProject?.id || !workspaceId) return;
 
@@ -558,6 +639,7 @@ export default function IctLifecycle() {
           discountRate: state.discountRate,
           ignoreTailDifference: state.ignoredTailValue !== null,
           tailDifferenceValue: state.ignoredTailValue,
+          balanceAllocation: serializeBalanceAllocationState(state.balanceAllocation),
         },
         backgroundJson: {
           projectBackground: state.projectBackground,
@@ -595,6 +677,7 @@ export default function IctLifecycle() {
           costIt: state.costIt,
           costCt: state.costCt,
           costMix: state.costMix,
+          balanceAllocation: state.balanceAllocation,
         },
         metricsJson: calculations.metrics,
       });
@@ -668,12 +751,18 @@ export default function IctLifecycle() {
     state.costIt,
     state.costCt,
     state.costMix,
+    state.balanceAllocation,
   ]);
 
   const handleTabSwitch = async (tab: string, templateName?: string, forceIgnore = false) => {
     if (templateName && templateName !== selectedTemplate && dirtyScopes.includes("template-forms")) {
       const canProceed = await confirmOrSave();
       if (!canProceed) return;
+    }
+
+    if ((tab === 'cashflow' || tab === 'generate') && blockingBalanceMessages.length > 0) {
+      alert(blockingBalanceMessages.join("\n"));
+      return;
     }
 
     const currentHash = buildFinancialStateHash({ revIt, revCt, revNonItCt, costIt, costCt, costMix });
@@ -708,6 +797,139 @@ export default function IctLifecycle() {
     }
   };
 
+  const parseRuleAmount = (value: string) => {
+    if (value.trim() === "") return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  };
+
+  const getEvaluationForSide = (side: BalanceAllocationSide) =>
+    side === "revenue" ? revenueBalanceEvaluation : investmentBalanceEvaluation;
+
+  const getSubjectsForSide = (side: BalanceAllocationSide) =>
+    side === "revenue" ? revenueBalanceSubjects : investmentBalanceSubjects;
+
+  const isSubjectAutoBalanced = (subject: IctSubjectDefinition) => {
+    const side: BalanceAllocationSide = subject.side === "revenue" ? "revenue" : "investment";
+    const rule = balanceAllocation[side];
+    return rule.enabled && isBalanceSubjectMatch(rule.balancingSubject, subject);
+  };
+
+  const renderBalanceControl = (side: BalanceAllocationSide) => {
+    const isRevenue = side === "revenue";
+    const rule = balanceAllocation[side];
+    const evaluation = getEvaluationForSide(side);
+    const subjects = getSubjectsForSide(side);
+    const totalLabel = isRevenue ? "收入含税总金额" : "投入含税总金额";
+    const heading = isRevenue ? "收入总额与差额承接" : "投入总额与差额承接";
+    const selectedKey = getBalanceSubjectRefKey(rule.balancingSubject);
+    const ownProductMinimum = rule.totalInclAmount === null
+      ? null
+      : Number((rule.totalInclAmount * 0.01).toFixed(2));
+    const updateRulePatch = (patch: Partial<typeof rule>) => {
+      const nextTotal = patch.totalInclAmount !== undefined ? patch.totalInclAmount : rule.totalInclAmount;
+      const nextSubject = patch.balancingSubject !== undefined ? patch.balancingSubject : rule.balancingSubject;
+      updateBalanceRule(side, {
+        ...patch,
+        enabled: nextTotal !== null || Boolean(nextSubject),
+      });
+    };
+
+    return (
+      <div className="mb-6 bg-muted/70 rounded-xl p-5 shadow-sm">
+        <div className="flex flex-col gap-4">
+          <div>
+            <h3 className="font-bold text-primary text-base flex items-center gap-2">
+              <AppIcon name="quickAction" size={18} /> {heading}
+            </h3>
+            <p className="text-xs text-secondary-foreground mt-1">
+              输入含税总金额并指定差额承接科目；其他科目金额在下方表单录入，系统自动把差额写入承接科目。
+            </p>
+          </div>
+
+          <div className={`grid grid-cols-1 gap-3 ${isRevenue ? "xl:grid-cols-3" : "xl:grid-cols-2"}`}>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-foreground">{totalLabel}</label>
+              <input
+                type="number"
+                step="0.01"
+                placeholder="输入总金额"
+                value={rule.totalInclAmount ?? ""}
+                onChange={event => {
+                  const nextAmount = parseRuleAmount(event.target.value);
+                  updateRulePatch({ totalInclAmount: nextAmount });
+                }}
+                className="bg-card px-3 py-2 rounded-md outline-none text-sm font-semibold shadow-sm focus:ring-1 focus:ring-ring"
+              />
+            </div>
+
+            {isRevenue && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-foreground">
+                  产品含税收入（默认总金额 1%）
+                </label>
+                <input
+                  type="number"
+                  readOnly
+                  value={ownProductMinimum ?? ""}
+                  placeholder="输入总金额后自动提示"
+                  className="bg-muted px-3 py-2 rounded-md outline-none text-sm font-bold text-primary"
+                />
+              </div>
+            )}
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-foreground">差额承接科目</label>
+              <select
+                value={selectedKey}
+                onChange={event => {
+                  const selected = subjects.find(row => getBalanceSubjectRefKey(getBalanceSubjectRef(row.subject)) === event.target.value);
+                  if (rule.balancingSubject && (!selected || !isBalanceSubjectMatch(rule.balancingSubject, selected.subject))) {
+                    const previous = subjects.find(row => isBalanceSubjectMatch(rule.balancingSubject, row.subject));
+                    if (previous) {
+                      updateTaxItem(previous.subject.groupId, previous.subject.key, "incl", 0);
+                    }
+                  }
+                  updateRulePatch({
+                    balancingSubject: selected ? getBalanceSubjectRef(selected.subject) : null,
+                  });
+                }}
+                className="bg-card px-3 py-2 rounded-md outline-none text-sm font-semibold shadow-sm focus:ring-1 focus:ring-ring"
+              >
+                <option value="">请选择科目</option>
+                {subjects.map(row => (
+                  <option
+                    key={row.subject.subjectCode}
+                    value={getBalanceSubjectRefKey(getBalanceSubjectRef(row.subject))}
+                  >
+                    {getSubjectExcelDisplayName(row.subject, row.item)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {evaluation.message && (
+            <div className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+              evaluation.status === "negative"
+                ? "bg-red-50 text-red-700"
+                : "bg-amber-50 text-amber-700"
+            }`}>
+              {evaluation.message}
+            </div>
+          )}
+
+          {rule.enabled && evaluation.status === "valid" && evaluation.balancingSubject && (
+            <div className="rounded-lg bg-blue-50/70 px-3 py-2 text-xs font-semibold text-blue-700">
+              {getSubjectExcelDisplayName(evaluation.balancingSubject, evaluation.balancingItem)}
+              将自动承接差额；该科目的含税/不含税金额不可手工编辑，税率仍可调整。
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderTaxGroup = (title: string, groupId: string, groupState: any, items: IctSubjectDefinition[]) => (
     <div className="table-card bg-card border border-border rounded-xl p-6 shadow-sm mb-6">
       <h3 className="font-bold text-lg mb-4">{title}</h3>
@@ -715,6 +937,7 @@ export default function IctLifecycle() {
         {items.map(item => {
           const itemErr = reconciliationErrors.find(e => e.key === `${groupId}.${item.key}`);
           const currentItem = groupState[item.key];
+          const autoBalanced = isSubjectAutoBalanced(item);
           const customSubjectName = getSubjectCustomName(currentItem);
           const billingSubjectName = getSubjectBillingName(currentItem);
           const displayName = getSubjectExcelDisplayName(item, currentItem);
@@ -741,10 +964,15 @@ export default function IctLifecycle() {
                 />
               </div>
               <div className="flex gap-2">
-                <input type="number" placeholder="含税" className="w-full bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={currentItem.incl === 0 ? "" : currentItem.incl} onChange={e => updateTaxItem(groupId, item.key, 'incl', Number(e.target.value))} />
+                <input type="number" placeholder="含税" readOnly={autoBalanced} title={autoBalanced ? "该金额由总金额自动计算" : undefined} className={`w-full px-3 py-2 rounded-md outline-none text-sm ${autoBalanced ? "bg-muted text-secondary-foreground cursor-not-allowed" : "bg-card border border-input"}`} value={autoBalanced ? currentItem.incl : currentItem.incl === 0 ? "" : currentItem.incl} onChange={e => {
+                  if (!autoBalanced) updateTaxItem(groupId, item.key, 'incl', Number(e.target.value));
+                }} />
                 <input type="number" placeholder="税率" className="w-20 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={currentItem.tax} onChange={e => updateTaxItem(groupId, item.key, 'tax', Number(e.target.value))} />
-                <input type="number" placeholder="不含税" className={`w-full bg-card border px-3 py-2 rounded-md outline-none text-sm focus:border-ring ${itemErr ? 'border-red-500 ring-1 ring-red-500' : 'border-input'}`} value={currentItem.excl === 0 ? "" : currentItem.excl} onChange={e => updateTaxItem(groupId, item.key, 'excl', Number(e.target.value))} />
+                <input type="number" placeholder="不含税" readOnly={autoBalanced} title={autoBalanced ? "该金额由总金额自动计算" : undefined} className={`w-full px-3 py-2 rounded-md outline-none text-sm ${autoBalanced ? "bg-muted text-secondary-foreground cursor-not-allowed" : `bg-card border focus:border-ring ${itemErr ? 'border-red-500 ring-1 ring-red-500' : 'border-input'}`}`} value={autoBalanced ? currentItem.excl : currentItem.excl === 0 ? "" : currentItem.excl} onChange={e => {
+                  if (!autoBalanced) updateTaxItem(groupId, item.key, 'excl', Number(e.target.value));
+                }} />
               </div>
+              {autoBalanced && <span className="text-[10px] font-bold text-primary">该科目金额由总金额自动计算，税率可继续编辑。</span>}
               {itemErr && <span className="text-[10px] text-red-500 font-bold">校验失败：偏离 {itemErr.difference} 元，要求：{itemErr.expectedExcl} 元</span>}
             </div>
           );
@@ -817,7 +1045,7 @@ export default function IctLifecycle() {
           <div className="flex flex-col gap-1">
             <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'basic' ? 'bg-blue-50 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("basic")}><AppIcon name="project" size={18} /> 项目概况与参数</button>
             <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'revenue' ? 'bg-blue-50 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("revenue")}><AppIcon name="revenue" size={18} /> 收入侧测算</button>
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cost' ? 'bg-blue-50 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cost")}><AppIcon name="cost" size={18} /> 支出侧测算</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cost' ? 'bg-blue-50 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cost")}><AppIcon name="cost" size={18} /> 投入侧测算</button>
             <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cashflow' ? 'bg-blue-50 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cashflow")}><AppIcon name="cashflow" size={18} /> 10年现金流推演</button>
           </div>
           <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mt-6 pt-4 border-t border-border mb-2">一键生成全流程文档</h3>
@@ -962,73 +1190,7 @@ export default function IctLifecycle() {
 
           {activeTab === "revenue" && (
             <div>
-              <div className="mb-6 border border-border bg-card p-5 rounded-xl shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-bold text-primary text-base flex items-center gap-2">
-                    <AppIcon name="quickAction" size={18} /> 快捷收入拆分计算器 (融入自有产品测算)
-                  </h3>
-                  <span className="text-xs bg-primary/10 text-primary font-bold px-2.5 py-1 rounded-full border border-primary/20">
-                    自有产品占有率要求 1%
-                  </span>
-                </div>
-                <p className="text-xs text-secondary-foreground mb-4 leading-relaxed">
-                  按项目全生命周期要求，项目需融入自有产品，且自有产品占有率要求达到收入含税总金额的 1%。
-                  当您填写含税总收入（项目总金额）后，程序将默认自动计算出 1% 的自有产品含税金额。您也可按需手工调整。
-                </p>
-                <div className="flex gap-4 items-end">
-                  <div className="flex flex-col gap-1.5 flex-1">
-                    <label className="text-xs font-bold text-foreground">含税总收入 (项目总金额)</label>
-                    <input
-                      type="number"
-                      placeholder="输入总金额"
-                      value={quickRevTotal}
-                      onChange={e => {
-                        const val = e.target.value;
-                        setQuickRevTotal(val);
-                        if (val && !isNaN(Number(val))) {
-                          const productVal = (Number(val) * 0.01).toFixed(2);
-                          setQuickRevProduct(productVal);
-                        } else {
-                          setQuickRevProduct("");
-                        }
-                      }}
-                      className="bg-card border border-input px-3 py-2 rounded-md outline-none focus:border-ring text-sm font-semibold shadow-sm"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5 flex-1">
-                    <label className="text-xs font-bold text-foreground flex items-center justify-between">
-                      <span>含税产品收入 (自有产品)</span>
-                      <span className="text-[10px] text-primary font-mono font-medium">默认1%</span>
-                    </label>
-                    <input
-                      type="number"
-                      placeholder="产品金额"
-                      value={quickRevProduct}
-                      onChange={e => setQuickRevProduct(e.target.value)}
-                      className="bg-card border border-input px-3 py-2 rounded-md outline-none focus:border-ring text-sm font-semibold shadow-sm"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5 flex-1">
-                    <label className="text-xs font-bold text-primary">系统集成服务收入 (自动扣减)</label>
-                    <input
-                      type="number"
-                      disabled
-                      value={Math.max(0, (Number(quickRevTotal)||0) - (Number(quickRevProduct)||0)).toFixed(2)}
-                      className="bg-slate-50 border border-input px-3 py-2 rounded-md outline-none text-sm font-bold text-foreground shadow-sm"
-                    />
-                  </div>
-                  <button
-                    onClick={() => {
-                      const integration = Math.max(0, (Number(quickRevTotal)||0) - (Number(quickRevProduct)||0));
-                      updateTaxItem('revIt', 'integration', 'incl', Number(integration.toFixed(2)));
-                      if (quickRevProduct) updateTaxItem('revCt', 'product', 'incl', Number(Number(quickRevProduct).toFixed(2)));
-                    }}
-                    className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-bold px-5 py-2 rounded-md text-sm hover:bg-primary/90 transition-all shadow-sm hover:shadow active:scale-[0.98]"
-                  >
-                    <AppIcon name="download" size={16} /> 一键填入表单
-                  </button>
-                </div>
-              </div>
+              {renderBalanceControl("revenue")}
               <div className="mb-4 text-xs text-blue-700 bg-blue-50 p-3 rounded-lg border border-blue-200">
                 <span className="inline-flex items-start gap-2"><AppIcon name="info" size={16} className="mt-0.5" /> <span>提示：在「CT收入」中填写的产品或专线含税收入，将会自动【1:1平过】填入对应的「CT投入」中。</span></span>
               </div>
@@ -1040,29 +1202,7 @@ export default function IctLifecycle() {
 
           {activeTab === "cost" && (
             <div>
-              <div className="mb-6 border border-border bg-card p-4 rounded-xl">
-                <h3 className="font-bold text-primary mb-2">快捷投入拆分计算器</h3>
-                <p className="text-xs text-secondary-foreground mb-4">输入含税总投入与含税产品投入，计算“系统集成服务投入”并一键填入下方表单。</p>
-                <div className="flex gap-4 items-end">
-                  <div className="flex flex-col gap-1 flex-1">
-                    <label className="text-xs font-semibold">含税总投入</label>
-                    <input type="number" value={quickCostTotal} onChange={e => setQuickCostTotal(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" />
-                  </div>
-                  <div className="flex flex-col gap-1 flex-1">
-                    <label className="text-xs font-semibold">含税产品投入</label>
-                    <input type="number" value={quickCostProduct} onChange={e => setQuickCostProduct(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" />
-                  </div>
-                  <div className="flex flex-col gap-1 flex-1">
-                    <label className="text-xs font-semibold text-primary">系统集成服务投入 (自动)</label>
-                    <input type="number" disabled value={Math.max(0, (Number(quickCostTotal)||0) - (Number(quickCostProduct)||0))} className="bg-slate-50 border border-input px-3 py-2 rounded-md outline-none text-sm font-bold text-primary" />
-                  </div>
-                  <button onClick={() => {
-                     const integration = Math.max(0, (Number(quickCostTotal)||0) - (Number(quickCostProduct)||0));
-                     updateTaxItem('costIt', 'integration', 'incl', integration);
-                     if (quickCostProduct) updateTaxItem('costIt', 'device', 'incl', Number(quickCostProduct));
-                  }} className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-bold px-4 py-2 rounded-md text-sm hover:bg-primary/90 transition-colors"><AppIcon name="download" size={16} /> 一键填入</button>
-                </div>
-              </div>
+              {renderBalanceControl("investment")}
               {renderTaxGroup("IT/移动云投入", 'costIt', costIt, ICT_SUBJECT_GROUPS.costIt)}
               {renderTaxGroup("CT投入", 'costCt', costCt, ICT_SUBJECT_GROUPS.costCt)}
               {renderTaxGroup("非IT/CT投入 & 综合类成本", 'costMix', costMix, ICT_SUBJECT_GROUPS.costMix)}
@@ -1163,7 +1303,7 @@ export default function IctLifecycle() {
                 <div key={i} className="bg-background border border-red-200 p-4 rounded-lg flex flex-col gap-2">
                   <div className="flex justify-between items-center">
                     <span className="font-bold text-sm bg-red-100 text-red-800 px-2 py-0.5 rounded">
-                      {err.side === 'income' ? '收入侧' : '支出侧'} - {err.taxRate}% 税率组
+                      {err.side === 'income' ? '收入侧' : '投入侧'} - {err.taxRate}% 税率组
                     </span>
                     <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded">{err.key}</span>
                   </div>

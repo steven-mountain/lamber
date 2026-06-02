@@ -816,6 +816,8 @@ pub fn auto_import_excel_calculation(
         cashflow_segment_value_mode: Some("ratio".to_string()),
         cashflow_segments: Some(vec![]),
         project_background: None,
+        revenue_balance_rule: None,
+        investment_balance_rule: None,
         ignore_tail_difference: Some(false),
         tail_difference_value: Some("0".to_string()),
         rev_distribution: vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],

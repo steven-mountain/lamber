@@ -25,6 +25,18 @@ export interface CashflowSegment {
   costAnnualValues: number[];
 }
 
+export interface BalanceSubjectRef {
+  subject_code: string;
+  group_id: string;
+  key: string;
+}
+
+export interface BalanceAllocationRulePayload {
+  enabled: boolean;
+  total_incl_amount: number | null;
+  balancing_subject: BalanceSubjectRef | null;
+}
+
 export interface IctInput {
   project_name: string;
   customer_name?: string;
@@ -36,6 +48,8 @@ export interface IctInput {
   cashflow_segments?: CashflowSegment[];
   ignore_tail_difference?: boolean;
   tail_difference_value?: string;
+  revenue_balance_rule?: BalanceAllocationRulePayload;
+  investment_balance_rule?: BalanceAllocationRulePayload;
   rev_distribution: number[];
   cost_distribution: number[];
   rev_cashflow_excl?: string[] | null;

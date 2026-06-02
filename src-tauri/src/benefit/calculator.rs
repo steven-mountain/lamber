@@ -459,6 +459,8 @@ mod tests {
             cashflow_segments: None,
             ignore_tail_difference: None,
             tail_difference_value: None,
+            revenue_balance_rule: None,
+            investment_balance_rule: None,
             rev_distribution,
             cost_distribution,
             rev_cashflow_excl: None,
@@ -630,6 +632,8 @@ mod tests {
             cashflow_segments: None,
             ignore_tail_difference: None,
             tail_difference_value: None,
+            revenue_balance_rule: None,
+            investment_balance_rule: None,
             rev_distribution: dist(&[0.5, 0.5]),
             cost_distribution: dist(&[0.5, 0.5]),
             rev_cashflow_excl: Some(vec![

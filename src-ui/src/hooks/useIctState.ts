@@ -7,6 +7,12 @@ import {
   normalizeDistribution
 } from "../lib/cashflowDistribution";
 import { normalizeCustomSubjectName } from "../lib/ictSubjectCatalog";
+import {
+  createDefaultBalanceAllocationState,
+  type BalanceAllocationSide,
+  type BalanceAllocationRule,
+  type BalanceAllocationState,
+} from "../lib/ictBalanceAllocation";
 
 export { normalizeProjectYears };
 
@@ -270,11 +276,9 @@ export function useIctState() {
     { vendorName: '厂商C', amount: 0, taxRate: 6, remark: '' }
   ]);
 
-  // --- Quick Calc State ---
-  const [quickRevTotal, setQuickRevTotal] = useState<string>("");
-  const [quickRevProduct, setQuickRevProduct] = useState<string>("");
-  const [quickCostTotal, setQuickCostTotal] = useState<string>("");
-  const [quickCostProduct, setQuickCostProduct] = useState<string>("");
+  const [balanceAllocation, setBalanceAllocation] = useState<BalanceAllocationState>(
+    createDefaultBalanceAllocationState(),
+  );
 
   // --- Revenue State ---
   const [revIt, setRevIt] = useState({
@@ -448,6 +452,19 @@ export function useIctState() {
     updateTaxItemTextField(groupId, key, "billingSubjectName", value);
   };
 
+  const updateBalanceRule = (
+    side: BalanceAllocationSide,
+    patch: Partial<BalanceAllocationRule>,
+  ) => {
+    setBalanceAllocation(prev => ({
+      ...prev,
+      [side]: {
+        ...prev[side],
+        ...patch,
+      },
+    }));
+  };
+
   return {
     activeTab, setActiveTab,
     projName, setProjName,
@@ -463,10 +480,7 @@ export function useIctState() {
     projectBackground, setProjectBackground,
     techItems, setTechItems,
     inqVendors, setInqVendors,
-    quickRevTotal, setQuickRevTotal,
-    quickRevProduct, setQuickRevProduct,
-    quickCostTotal, setQuickCostTotal,
-    quickCostProduct, setQuickCostProduct,
+    balanceAllocation, setBalanceAllocation, updateBalanceRule,
     revIt, setRevIt,
     revCt, setRevCt,
     revNonItCt, setRevNonItCt,

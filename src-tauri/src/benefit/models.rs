@@ -10,6 +10,26 @@ pub struct IctItem {
     pub billing_subject_name: Option<String>,
 }
 
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct BalanceSubjectRef {
+    #[serde(default)]
+    pub subject_code: String,
+    #[serde(default)]
+    pub group_id: String,
+    #[serde(default)]
+    pub key: String,
+}
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct BalanceAllocationRule {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub total_incl_amount: Option<f64>,
+    #[serde(default)]
+    pub balancing_subject: Option<BalanceSubjectRef>,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CashflowSegment {
@@ -41,6 +61,11 @@ pub struct IctInput {
     pub cashflow_segment_value_mode: Option<String>,
     pub cashflow_segments: Option<Vec<CashflowSegment>>,
     pub project_background: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revenue_balance_rule: Option<BalanceAllocationRule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub investment_balance_rule: Option<BalanceAllocationRule>,
 
     // Ignore Tail Difference Payload
     pub ignore_tail_difference: Option<bool>,

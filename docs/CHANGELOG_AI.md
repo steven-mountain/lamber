@@ -2,6 +2,31 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-06-02
+
+### ICT Balance Allocation Rules
+
+Created:
+- [ictBalanceAllocation.ts](../src-ui/src/lib/ictBalanceAllocation.ts): Added shared frontend helpers for revenue/investment balance rule normalization, serialization, subject reference matching, inclusive-amount difference calculation, and validation status reporting.
+
+Modified:
+- [useIctState.ts](../src-ui/src/hooks/useIctState.ts): Added `balanceAllocation` state with independent `revenue` and `investment` rules.
+- [useIctCalculations.ts](../src-ui/src/hooks/useIctCalculations.ts): Serializes `revenue_balance_rule` and `investment_balance_rule` into lifecycle input payloads and AI context payloads.
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Replaced separate quick split panels with revenue/investment total balance controls, removes one-click quick fill and integration-service preview from the control area, shows the revenue own-product minimum prompt as 1% of the revenue total, applies valid balancing amounts through `updateTaxItem`, makes active balancing subject amount fields read-only while preserving tax-rate editing, persists rules in lifecycle/cashflow saves, restores rules from current state, and blocks cashflow/document-generation navigation on negative balance validation.
+- [projectService.ts](../src-ui/src/utils/projectService.ts): Added typed balance rule payload fields to `IctInput`.
+- [models.rs](../src-tauri/src/benefit/models.rs): Added optional `revenue_balance_rule` and `investment_balance_rule` to `IctInput` so benefit snapshots preserve the new rule configuration.
+- [calculator.rs](../src-tauri/src/benefit/calculator.rs) and [excel.rs](../src-tauri/src/benefit/excel.rs): Updated test/import input constructors with disabled balance rules.
+
+Tests:
+- Ran `npm run build` in `src-ui`.
+- Ran `cargo test` in `src-tauri`.
+
+Decision:
+- Balance differences are based on inclusive amounts and are written back only through the existing tax item update path, preserving existing inclusive/tax/exclusive linkage and CT paired update behavior.
+- Switching a balancing subject clears the previous balancing subject's inclusive amount to `0` before the new subject receives the balancing difference, so the same balancing amount does not remain on both subjects.
+- Negative balance differences are validation errors, not formal amounts. They block cashflow and document generation before the 0-tolerance reconciliation modal can be bypassed.
+- Smart reverse calculation remains fixed to the existing current targets and algorithms in this phase. Arbitrary-subject reverse calculation and total-locked reverse solving remain a follow-up phase.
+
 ## 2026-06-01
 
 ### ICT Sign-off Project Situation Itemization

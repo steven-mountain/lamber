@@ -15,6 +15,9 @@ import {
   useIctState
 } from "./useIctState";
 import { normalizeCustomSubjectName } from "../lib/ictSubjectCatalog";
+import {
+  serializeBalanceAllocationRule,
+} from "../lib/ictBalanceAllocation";
 
 // Labels mapping
 const cashflowModelLabels: Record<string, string> = {
@@ -100,6 +103,8 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       cashflow_segment_value_mode: state.segmentValueMode,
       cashflow_segments: state.cashflowModel === 'model_e' ? segmentsForPayload : [],
       project_background: state.projectBackground,
+      revenue_balance_rule: serializeBalanceAllocationRule(state.balanceAllocation.revenue),
+      investment_balance_rule: serializeBalanceAllocationRule(state.balanceAllocation.investment),
       rev_cashflow_excl: state.cashflowModel === 'model_e' && state.segmentValueMode === "amount" ? cashflowPayloadValues(directCashflowForPayload.rev) : null,
       cost_cashflow_excl: state.cashflowModel === 'model_e' && state.segmentValueMode === "amount" ? cashflowPayloadValues(directCashflowForPayload.cost) : null,
       it_rev_cashflow_excl: state.cashflowModel === 'model_e' && state.segmentValueMode === "amount" ? cashflowPayloadValues(directCashflowForPayload.itRev) : null,
@@ -182,7 +187,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     state.projectBackground, state.projName, state.customerName, state.propertyRights,
     state.discountRate, state.projectYears, state.cashflowModel,
     state.distRev, state.distCost, state.segmentValueMode, state.cashflowSegments,
-    state.ignoredTailValue, updateData, buildAiContextPayload
+    state.ignoredTailValue, state.balanceAllocation, updateData, buildAiContextPayload
   ]);
 
   useEffect(() => {
@@ -204,7 +209,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     state.projectBackground, metrics, cashflowTable, state.projName, state.customerName,
     state.propertyRights, state.discountRate, state.projectYears, state.cashflowModel,
     state.distRev, state.distCost, state.segmentValueMode, state.cashflowSegments,
-    state.ignoredTailValue, updateData, buildAiContextPayload
+    state.ignoredTailValue, state.balanceAllocation, updateData, buildAiContextPayload
   ]);
 
   const handleSelFeeChange = async (type: 'quote' | 'markup' | 'limit', val: string) => {

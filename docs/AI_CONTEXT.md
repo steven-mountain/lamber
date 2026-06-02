@@ -1,6 +1,6 @@
 # AI_CONTEXT.md
 
-Last updated: 2026-06-01 (ICT Billing Subject Name Extension)
+Last updated: 2026-06-02 (ICT Balance Allocation Rules)
 
 ## What this project is
 
@@ -66,6 +66,8 @@ Before starting any task, read the status and architecture documentation in this
 
 - **Project Board (项目看板)**: Visual hub displaying project indicators, project phases, and local folders linkage.
 - **ICT Lifecycle Calculator (ICT生命周期测算)**: Main calculation engine handling 10-year cashflows, NPV, margins, and selection fee mappings. Standardizes persistence of project backgrounds and economic assumptions directly in the scheme snapshots database storage.
+- **ICT Balance Allocation Rules**: Revenue and investment measurement pages support independent total-inclusive-amount balancing rules. The frontend stores `balanceAllocation.revenue` and `balanceAllocation.investment`, serializes them as `revenue_balance_rule` / `investment_balance_rule` in lifecycle input payloads, and stores the current-state copy in cashflow assumptions as `balanceAllocation`. A configured total or balancing subject activates the rule; clearing both disables it. The revenue control area displays the own-product minimum prompt as 1% of the revenue total, while concrete amounts remain edited in the subject table. Difference calculation is inclusive amount based and applies only through the existing `updateTaxItem(..., "incl", amount)` path so tax-exclusive amounts and tax linkage remain centralized.
+- Switching a configured balancing subject clears the previous balancing subject's inclusive amount to `0` before applying the current balancing difference to the newly selected subject. The amount should transfer between subjects rather than remain on both.
 - **ICT Standard Subject Presentation Names**: Every fixed revenue/cost billing subject can carry an optional product/business name and an optional billing subject name. The fixed subject catalog remains the source of truth for `subjectCode`, standard subject label, Excel row mapping, and document prefix. Product/business names (`customSubjectName` / `custom_subject_name`) and billing subject names (`billingSubjectName` / `billing_subject_name`) are stored separately and must not replace the standard subject identity used for calculations.
 - **AI Assistant / Copilot (智能顾问)**: Streamed (SSE) local LLM chatbot that pulls the active view's serialized state to give contextual recommendations based on a built-in capabilities database.
 - **Template Word/Excel Engine (文档填报与填充)**: Backend Rust logic mapping form values and calculation results into docx variables and excel cells. Now utilizes separate template form data (saved in `project_settings` under key `template_form_data::<template_name>`) and sandboxed image assets (saved to the bound project folder under `{project_name}-图片/assets/` if linked, or falling back to `.projects/{project_id}/assets/` inside the active workspace and tracked in `project_template_assets`), ensuring form configurations are kept lightweight and database volume is small.
@@ -99,6 +101,7 @@ Additional current AI context capability:
 ## High-risk areas
 
 - **0-tolerance reconciliation check**: Any changes to input fields or calculations must satisfy `excl_tax = incl_tax / (1 + rate)` within a zero-tolerance margin. Mismatches block navigation and document generation.
+- **Balance allocation validation**: If configured revenue/investment total balancing would require a negative inclusive amount because other subjects exceed the configured total, do not write the negative amount. The UI must show the side-specific validation error and block cashflow/document generation before the reconciliation ignore path. A zero balancing amount is valid and should display as `0` on the active balancing subject. This feature does not modify smart reverse calculation behavior.
 - **Subject presentation names are non-financial metadata**: Editing a product/business name or billing subject name must not alter tax rates, inclusive/exclusive amounts, cashflow, NPV, selection fee, or reverse-calculation behavior. Old project data without custom names must display/export the standard subject names. CT paired subjects (`产品收入` ↔ `其他产品成本`, `专线收入` ↔ `专线带宽成本`) keep product/business names and billing subject names synchronized like their amount pass-through path.
 - **SQLite Connection & Transaction management**: The storage layer has migrated to SQLite. When writing multi-row operations or migrating data, always wrap operations in a transaction (`tx`) to prevent database locks and ensure structural integrity. Use `Arc<Mutex<rusqlite::Connection>>` to share connection locks. Avoid `INSERT OR REPLACE` when saving parent records (like `projects`) that have foreign key cascade-delete relations, as `REPLACE` acts as a `DELETE` followed by an `INSERT` in SQLite, wiping out related child rows in `project_directories`, `project_files`, `benefit_schemes`, and `benefit_snapshots`.
 - **Workspace readiness**: Do not run database-backed project operations unless `WorkspaceRuntime::require_workspace()` and `require_db()` succeed. Do not reintroduce startup fallback to AppData `projects_store.db`.
@@ -122,6 +125,10 @@ Additional read-only AI boundary:
   - Backend: [project_files/service.rs](../src-tauri/src/project_files/service.rs)
 - **Benefit Calculation math / NPV changes**:
   - Math Engine: [calculator.rs](../src-tauri/src/benefit/calculator.rs)
+  - Lifecycle View: [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx)
+- **ICT total balance allocation changes**:
+  - Rule helper: [ictBalanceAllocation.ts](../src-ui/src/lib/ictBalanceAllocation.ts)
+  - Lifecycle State: [useIctState.ts](../src-ui/src/hooks/useIctState.ts)
   - Lifecycle View: [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx)
 - **ICT subject naming / Excel row mapping changes**:
   - Subject Catalog: [ictSubjectCatalog.ts](../src-ui/src/lib/ictSubjectCatalog.ts)

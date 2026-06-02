@@ -1,6 +1,16 @@
 # PROJECT_STATUS.md
 
-Last updated: 2026-06-01 (ICT Billing Subject Name Extension)
+Last updated: 2026-06-02 (ICT Balance Allocation Rules)
+
+## 0. ICT Balance Allocation Rules
+
+ICT lifecycle revenue and investment measurement pages now support independent "total inclusive amount + balancing subject" rules. Users can enter `收入含税总金额` / `投入含税总金额` and select one calculable subject from the existing subject catalog for that side; the configured rule takes effect without a separate switch. The selected subject's inclusive amount is derived as total inclusive amount minus all other subject inclusive amounts on the same side. The revenue control area also displays the minimum own-product inclusive revenue prompt as 1% of the configured revenue total, while concrete product/revenue amounts remain edited in the subject table below.
+
+The rule state is saved with lifecycle input payloads as `revenue_balance_rule` and `investment_balance_rule`, and is also stored in cashflow assumptions as `balanceAllocation` for current-state hydration. Older projects without these fields load with balance allocation disabled. The derived amount is written back through the existing tax item update path, so tax rate edits continue to recompute tax-exclusive amounts through the existing inclusive/tax/exclusive linkage.
+
+Negative balancing differences are not written as formal financial input. When other revenue subjects exceed `收入含税总金额`, or other investment subjects exceed `投入含税总金额`, the page shows a balance validation error and blocks navigation into cashflow tables and document generation. Zero difference is valid and displays as `0` on the balancing subject. This phase does not modify smart reverse calculation targets or algorithms; arbitrary-subject reverse calculation and total-locked structural reverse solving remain a later phase.
+
+When users switch the balancing subject on a configured side, the previous balancing subject's inclusive amount is cleared to `0`, then the newly selected subject receives the current balancing difference. This makes the balancing amount transfer between subjects instead of remaining duplicated on both the old and new subjects.
 
 ## 0. ICT Sign-off Project Situation Itemization
 

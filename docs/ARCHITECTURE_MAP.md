@@ -1,6 +1,6 @@
 # ARCHITECTURE_MAP.md
 
-Last updated: 2026-06-01 (ICT Billing Subject Name Extension)
+Last updated: 2026-06-02 (ICT Balance Allocation Rules)
 
 ## 1. Repository overview
 
@@ -64,6 +64,7 @@ graph TD
 - **`src/services/workspaceMaintenanceService.ts`**: Frontend IPC wrapper for workspace backup/restore/export/import/health/path maintenance commands.
 - **`src/services/aiProjectContextService.ts`**: Typed frontend wrapper for `build_ai_project_context`, now used by the AI chat context composer during message send.
 - **`src/lib/ictSubjectCatalog.ts`**: Fixed frontend catalog and shared presentation resolver for ICT billing subject identity. It maps stable `subjectCode`, UI group/key, standard subject name, Excel variable prefix, and document business prefix (`IT`, `CT`, `非IT/CT`, `综合类`) so product/business names and billing subject names remain separate from standard subject identity. `resolveBillingSubjectPresentation` centralizes Excel display names, document business names, and document dedup keys.
+- **`src/lib/ictBalanceAllocation.ts`**: Shared frontend rule helper for ICT revenue/investment total balancing. It normalizes and serializes `revenue_balance_rule` / `investment_balance_rule`, resolves stable `subjectCode + groupId + key` subject references, computes inclusive-amount differences with existing two-decimal money behavior, and reports missing/negative validation states without writing financial amounts itself.
 - **`src/ai/context/`**: AI chat context composer. It builds the per-message context bundle by reading the active project ID, loading saved official context from Workspace SQLite through `aiProjectContextService.ts`, and filtering the current frontend state into an unsaved draft overlay only when dirty scopes match the active project/page.
 - **`src/ai/context/workspaceProjectRouter.ts`**: Deterministic Workspace project-name router used by the composer. It matches explicit project names against the current Workspace project index, limits deep official context loading to two specified projects per turn, resolves one specified template when uniquely named, and returns warnings for ambiguous or unresolved routing.
 - **`src/ai/templateAssetSelection.ts`**: Cross-window event bridge for explicit template image analysis requests. It carries only template asset metadata (`projectId`, `templateId`, `assetId`, field label) and never carries physical file paths or image base64.
@@ -98,6 +99,8 @@ Phase 3 introduces explicit project-state save domains:
 - `project_template_assets`: file-backed template images/attachments and metadata.
 
 ICT revenue/cost tax items may include optional `customSubjectName` / `billingSubjectName` on the frontend and `custom_subject_name` / `billing_subject_name` in serialized lifecycle/snapshot payloads. Amount calculations continue to read only `incl_tax` and `tax_rate`; both custom names are UI/document/Excel metadata and are ignored by financial formula paths. `project_cashflow_states.assumptions_json`, `project_lifecycle_states.input_payload_json`, and benefit snapshots preserve the optional fields for reload and export compatibility.
+
+ICT balance allocation rules are stored as configuration, not as a second source of financial amounts. `useIctState.balanceAllocation` owns independent revenue and investment rules. `IctLifecycle.tsx` evaluates both sides through `ictBalanceAllocation.ts` and, when a rule is valid, applies the derived inclusive amount through `updateTaxItem(groupId, key, "incl", amount)`. This keeps formal subject amounts in the existing `TaxItem` structures consumed by cashflow, metrics, Excel/Word generation, and AI context. The rules are serialized in lifecycle input payloads as `revenue_balance_rule` / `investment_balance_rule` and in cashflow assumptions as `balanceAllocation`.
 
 Frontend global save goes through `domainSaveService` and `useSaveStore` registered handlers. The save store does not read business component state directly; each mounted page registers the handler responsible for serializing its current local state.
 
@@ -209,6 +212,14 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 3. `useIctCalculations` serializes product/business names and billing subject names into lifecycle/snapshot payloads while Rust calculation models ignore them for financial math.
 4. `TemplateForms.tsx` builds Excel variables from the subject catalog resolver, derives document business names with category prefixes, and deduplicates business-composition names by the final resolved document name across revenue/cost.
 5. `docfill.rs` writes the mapped Excel subject name, `G` tax-exclusive amount, and `Q` tax-inclusive amount for every configured subject row in `3-直接经济效益评估表`.
+
+### 4.8.1 ICT total balance allocation flow
+
+1. `IctLifecycle.tsx` builds revenue and investment selectable subjects from `ICT_SUBJECT_DEFINITIONS`, using the live `TaxItem` state and `getSubjectExcelDisplayName` so dropdown labels follow the same billing-subject-name priority as the measurement tables and documents.
+2. `ictBalanceAllocation.ts` evaluates the configured rule for each side. The rule is considered active when the user has entered a total or selected a balancing subject; clearing both disables it. The difference uses inclusive amounts: total inclusive amount minus all other calculable subjects on the same side. Missing total or missing subject produces a UI prompt and no amount write. The revenue control also shows the own-product minimum prompt as 1% of `收入含税总金额`.
+3. When the difference is zero or positive, `IctLifecycle.tsx` writes only the balancing subject's inclusive amount through `updateTaxItem`; the existing tax-rate linkage recalculates tax-exclusive amount. Tax rate remains editable while inclusive and tax-exclusive amount inputs are read-only for the active balancing subject.
+4. When other subjects exceed the configured total, no negative amount is written. The control area reports the validation error and `handleTabSwitch` blocks cashflow and document-generation tabs before the existing 0-tolerance reconciliation flow.
+5. Switching the balancing subject clears the previous balancing subject's inclusive amount to `0`, then the newly selected subject receives the current balancing difference through the same `updateTaxItem` path. This prevents the balancing amount from remaining duplicated on both old and new subjects.
 
 ### 4.9 Inquiry vendor screenshot state flow
 
