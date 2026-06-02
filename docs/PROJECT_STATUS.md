@@ -2,6 +2,14 @@
 
 Last updated: 2026-06-01 (ICT Billing Subject Name Extension)
 
+## 0. ICT Sign-off Project Situation Itemization
+
+The ICT project sign-off form's project situation wording now expands investment and revenue details from the measurement subject catalog instead of relying on four manually edited IT/CT subject fields. Investment and revenue lines enumerate every non-zero standard subject by category using the measurement-table billing subject name when present, otherwise the standard subject name, prepend the fixed category prefix such as `IT-` or `CT-`, and keep tax-exclusive amounts unchanged.
+
+The sign-off form no longer exposes manual "IT投入 / CT投入 / IT收入 / CT收入" billing-subject inputs. Its dedicated configuration order is Project Background, IT/CT Service Content, advance-payment and post-approval-selection checkboxes, then revenue collection and expenditure payment methods. The "立项后甄选" phrase is included in the investment wording only when the new checkbox is selected.
+
+Meeting-review "项目整体投入金额" now reuses the same generated investment wording as the sign-off project situation investment line, keeping subject prefixes and billing-subject fallback consistent. This change affects document wording and template placeholders only. It does not change calculations, tax rates, cashflow, Excel row mapping, or investment amount calculations.
+
 ## 0. ICT Billing Subject Name Extension
 
 ICT lifecycle revenue and cost measurement pages now support a second optional name field, "计费科目名称", for every fixed standard billing subject. The previous "具体业务/产品名称" field remains unchanged and is still saved as the product/business name; the new billing subject name is saved separately and is optional for old project data.

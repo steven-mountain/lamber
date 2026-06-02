@@ -155,6 +155,7 @@ fn internal_generate_docx(
         if name == "word/document.xml" {
             let mut xml_str = String::from_utf8(content.clone()).map_err(|e| e.to_string())?;
             xml_str = clean_xml_placeholders(&xml_str);
+            xml_str = normalize_signoff_project_situation_placeholders(&xml_str);
 
             for (k, v) in variables {
                 if k.starts_with("TABLE_") {
@@ -426,6 +427,18 @@ fn clean_xml_placeholders(xml: &str) -> String {
         }
     })
     .to_string()
+}
+
+fn normalize_signoff_project_situation_placeholders(xml: &str) -> String {
+    xml.replace(
+        "项目投入（不含税）：总投入{PROJECT_TOTAL_INVESTMENT}元：其中{SUBJECT_IT_COST}投入{IT_INVESTMENT}元，{SUBJECT_CT_COST}投入{CT_INVESTMENT}元，此IT部分费用参考三家询价",
+        "项目投入（不含税）：{PROJECT_INVESTMENT_SITUATION}",
+    )
+    .replace("最低价，申请立项后甄选，最终费用不超过上述总投入。", "")
+    .replace(
+        "项目收入（不含税）：总收入{PROJECT_TOTAL_REVENUE}元；其中{SUBJECT_IT_REV}收入{IT_REVENUE}元，{SUBJECT_CT_REV}收入{CT_REVENUE}元。",
+        "项目收入（不含税）：{PROJECT_REVENUE_SITUATION}",
+    )
 }
 
 #[tauri::command]

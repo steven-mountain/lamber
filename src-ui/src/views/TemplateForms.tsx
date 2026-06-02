@@ -16,6 +16,7 @@ import {
   getProjectDataSubjectItem,
   getSubjectDocumentBusinessName,
   ICT_SUBJECT_DEFINITIONS,
+  resolveBillingSubjectPresentation,
   type IctDocumentPrefix,
   type IctSubjectGroupId,
   type IctSubjectSide,
@@ -177,9 +178,9 @@ export default function TemplateForms({
   const [isMidThreeModalOpen, setIsMidThreeModalOpen] = useState(false)
   const [midThreeSearch, setMidThreeSearch] = useState("")
 
-  const [subjectItCost, setSubjectItCost] = useState("IT集成")
+  const [subjectItCost] = useState("IT集成")
   const [subjectCtCost, setSubjectCtCost] = useState("CT-视频监控")
-  const [subjectItRev, setSubjectItRev] = useState("小微ICT业务-IoT-集成")
+  const [subjectItRev] = useState("小微ICT业务-IoT-集成")
   const [subjectCtRev, setSubjectCtRev] = useState("CT-视频监控")
 
   const selectedSelfThree = getSelfThreeOption(selfThreeValue)
@@ -238,7 +239,13 @@ export default function TemplateForms({
     return {
       checked,
       onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
-        handleFieldChange(name, e.target.checked ? "on" : "off");
+        if (e.target.checked) {
+          handleFieldChange(name, "on");
+          return;
+        }
+        delete formDataRef.current[name];
+        setFormData({ ...formDataRef.current });
+        setSyncTrigger(prev => prev + 1);
       }
     };
   };
@@ -246,7 +253,15 @@ export default function TemplateForms({
   const handleFormChange = (e: any) => {
     const target = e.target;
     if (target && target.name && target.name.startsWith('gen_')) {
-      formDataRef.current[target.name] = target.value;
+      if (target.type === 'checkbox') {
+        if (target.checked) {
+          formDataRef.current[target.name] = "on";
+        } else {
+          delete formDataRef.current[target.name];
+        }
+      } else {
+        formDataRef.current[target.name] = target.value;
+      }
       setFormData({ ...formDataRef.current });
       if (target.name === 'gen_project_scale') {
         setProjectScale(normalizeProjectScale(target.value));
@@ -990,18 +1005,33 @@ export default function TemplateForms({
     const isZero = (n: number) => Math.abs(n) < 0.005;
     const fmtYuan = (n: number) => n.toFixed(2);
     const fmtPct = (x: any) => isFinite(x) && x !== null && x !== "" && !isNaN(Number(x)) ? (Number(x) * 100).toFixed(2) + '%' : '--';
-    const parts: string[] = [];
-    if (!isZero(itCost)) parts.push(`${resolvedSubjectItCost}投入${fmtYuan(itCost)}元（不含税）`);
-    if (!isZero(ctCost)) parts.push(`${resolvedSubjectCtCost}投入${fmtYuan(ctCost)}元（不含税）`);
-    if (!isZero(nonItCost)) parts.push(`工程施工投入等${fmtYuan(nonItCost)}元（不含税）`);
-    if (!isZero(mixCost)) parts.push(`融合营销/渠道酬金/其他管理费用等${fmtYuan(mixCost)}元（不含税）`);
-
-    let projTotalInvestStr = `整体投入${fmtYuan(totalCost)}元`;
-    if (parts.length) {
-      projTotalInvestStr += `，其中${parts.join('；')}。`;
-    } else {
-      projTotalInvestStr += `。`;
-    }
+    const subjectDetailName = (subject: (typeof ICT_SUBJECT_DEFINITIONS)[number], item: any) => {
+      const resolved = resolveBillingSubjectPresentation(subject, item);
+      const baseName = resolved.billingSubjectName || resolved.standardName;
+      const prefix = `${subject.documentPrefix}-`;
+      return baseName.startsWith(prefix) ? baseName : `${prefix}${baseName}`;
+    };
+    const buildSubjectAmountDetails = (side: IctSubjectSide, documentPrefix: IctDocumentPrefix, actionLabel: "投入" | "收入") => {
+      return ICT_SUBJECT_DEFINITIONS
+        .filter(subject => subject.side === side && subject.documentPrefix === documentPrefix)
+        .map(subject => {
+          const item = getProjectDataSubjectItem(projectData, subject);
+          const amount = Number(item?.excl || 0);
+          if (isZero(amount)) return "";
+          return `${subjectDetailName(subject, item)}${actionLabel}${fmtYuan(amount)}元`;
+        })
+        .filter(Boolean);
+    };
+    const joinSubjectGroups = (groups: string[][]) => groups.filter(group => group.length > 0).map(group => group.join("，")).join("；");
+    const afterApprovalSelectionPhrase = get('gen_after_approval_selection') === "on" ? "申请立项后甄选，" : "";
+    const investmentDetailGroups = joinSubjectGroups([
+      buildSubjectAmountDetails("cost", "IT", "投入"),
+      buildSubjectAmountDetails("cost", "CT", "投入"),
+      buildSubjectAmountDetails("cost", "非IT/CT", "投入"),
+      buildSubjectAmountDetails("cost", "综合类", "投入"),
+    ]);
+    const projectInvestmentSituation = `总投入${fmtYuan(totalCost)}元${investmentDetailGroups ? `；其中${investmentDetailGroups}` : ""}。此IT部分费用参考三家询价最低价，${afterApprovalSelectionPhrase}最终费用不超过上述总投入。`;
+    const projTotalInvestStr = projectInvestmentSituation;
 
     // Calculate Demand Table specific fields
     const totalRevIt = Object.values(projectData.revenue?.it || {}).reduce((acc: number, curr: any) => acc + (curr?.incl || 0), 0);
@@ -1013,6 +1043,13 @@ export default function TemplateForms({
     const totalRevCtExcl = Object.values(projectData.revenue?.ct || {}).reduce((acc: number, curr: any) => acc + (curr?.excl || 0), 0);
     const totalRevNonItCtExcl = projectData.revenue?.non_it_ct?.excl || 0;
     const totalRevExcl = Number(totalRevItExcl) + Number(totalRevCtExcl) + Number(totalRevNonItCtExcl);
+    const revenueDetailGroups = joinSubjectGroups([
+      buildSubjectAmountDetails("revenue", "IT", "收入"),
+      buildSubjectAmountDetails("revenue", "CT", "收入"),
+      buildSubjectAmountDetails("revenue", "非IT/CT", "收入"),
+      buildSubjectAmountDetails("revenue", "综合类", "收入"),
+    ]);
+    const projectRevenueSituation = `总收入${fmtYuan(totalRevExcl)}元${revenueDetailGroups ? `；其中${revenueDetailGroups}` : ""}。`;
 
     const branchNameFinal = get('gen_demand_branch_name') || get('gen_branch_name') || "XXX分公司";
 
@@ -1085,6 +1122,8 @@ export default function TemplateForms({
       'RISK_OWNER': get('gen_risk_owner'),
 
       'IT_INQUIRY_PROCESS': itInquiryProcess,
+      'PROJECT_INVESTMENT_SITUATION': projectInvestmentSituation,
+      'PROJECT_REVENUE_SITUATION': projectRevenueSituation,
       'PROJECT_TOTAL_INVESTMENT_DETAIL': projTotalInvestStr,
       'PROJECT_TOTAL_INVESTMENT': selectedTemplate.includes("会审") ? projTotalInvestStr : totalCost.toFixed(2),
       'IT_INVESTMENT': itCost.toFixed(2),
@@ -1595,28 +1634,6 @@ export default function TemplateForms({
           <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
             <h4 className="font-bold text-primary mb-4">《ICT项目立项签批表》专属配置</h4>
             <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">计费科目：IT投入</label>
-                <input type="text" name="gen_subject_it_cost" value={subjectItCost} onChange={e => setSubjectItCost(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">计费科目：CT投入</label>
-                <input type="text" name="gen_subject_ct_cost" value={subjectCtCost} onChange={e => setSubjectCtCost(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">计费科目：IT收入</label>
-                <input type="text" name="gen_subject_it_rev" value={subjectItRev} onChange={e => setSubjectItRev(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">计费科目：CT收入</label>
-                <input type="text" name="gen_subject_ct_rev" value={subjectCtRev} onChange={e => setSubjectCtRev(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold flex items-center gap-2">
-                  <input type="checkbox" name="gen_is_advance" {...getBindCheckbox("gen_is_advance")} className="w-4 h-4" />
-                  是否涉及垫资
-                </label>
-              </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">项目背景</label>
                 <textarea
@@ -1627,6 +1644,42 @@ export default function TemplateForms({
                   className="bg-card border border-input px-3 py-2 rounded-md"
                   placeholder="请输入项目背景..."
                 />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-semibold flex items-center justify-between">
+                  <span>IT服务内容</span>
+                  <span className="text-xs text-secondary-foreground font-normal">为空则用系统默认</span>
+                </label>
+                <textarea
+                  name="gen_sign_it_content"
+                  rows={2}
+                  {...getBind("gen_sign_it_content", defaultSignItContent)}
+                  className="bg-card border border-input px-3 py-2 rounded-md"
+                  placeholder={defaultSignItContent}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-semibold flex items-center justify-between">
+                  <span>CT服务内容</span>
+                  <span className="text-xs text-secondary-foreground font-normal">为空则用系统默认</span>
+                </label>
+                <textarea
+                  name="gen_sign_ct_content"
+                  rows={2}
+                  {...getBind("gen_sign_ct_content", defaultSignCtContent)}
+                  className="bg-card border border-input px-3 py-2 rounded-md"
+                  placeholder={defaultSignCtContent}
+                />
+              </div>
+              <div className="flex items-center gap-6 col-span-2">
+                <label className="text-sm font-semibold flex items-center gap-2">
+                  <input type="checkbox" name="gen_is_advance" {...getBindCheckbox("gen_is_advance")} className="w-4 h-4" />
+                  是否涉及垫资
+                </label>
+                <label className="text-sm font-semibold flex items-center gap-2">
+                  <input type="checkbox" name="gen_after_approval_selection" {...getBindCheckbox("gen_after_approval_selection")} className="w-4 h-4" />
+                  是否立项后甄选
+                </label>
               </div>
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-sm font-semibold">收入侧收款方式</label>
@@ -1648,32 +1701,6 @@ export default function TemplateForms({
                   onChange={e => setExpPayment(e.target.value)}
                   className="bg-card border border-input px-3 py-2 rounded-md"
                   placeholder="请输入支出侧付款方式..."
-                />
-              </div>
-              <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold flex items-center justify-between">
-                  <span>IT服务内容</span>
-                  <span className="text-xs text-secondary-foreground font-normal">优先读取此项，为空则用系统默认</span>
-                </label>
-                <textarea
-                  name="gen_sign_it_content"
-                  rows={2}
-                  {...getBind("gen_sign_it_content", defaultSignItContent)}
-                  className="bg-card border border-input px-3 py-2 rounded-md"
-                  placeholder={defaultSignItContent}
-                />
-              </div>
-              <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold flex items-center justify-between">
-                  <span>CT服务内容</span>
-                  <span className="text-xs text-secondary-foreground font-normal">优先读取此项，为空则用系统默认</span>
-                </label>
-                <textarea
-                  name="gen_sign_ct_content"
-                  rows={2}
-                  {...getBind("gen_sign_ct_content", defaultSignCtContent)}
-                  className="bg-card border border-input px-3 py-2 rounded-md"
-                  placeholder={defaultSignCtContent}
                 />
               </div>
             </div>

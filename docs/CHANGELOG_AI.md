@@ -4,6 +4,22 @@ This changelog records structural modifications, business rules, and context cha
 
 ## 2026-06-01
 
+### ICT Sign-off Project Situation Itemization
+
+Modified:
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Reordered the sign-off-only configuration section to Project Background, IT/CT Service Content, advance-payment and post-approval-selection checkboxes, then revenue collection and expenditure payment methods.
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Removed manual sign-off billing-subject override inputs and now generates `PROJECT_INVESTMENT_SITUATION` / `PROJECT_REVENUE_SITUATION` by enumerating non-zero measurement-table subjects with billing-subject-name first, standard-subject fallback, and fixed category prefixes.
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Meeting-review project overall investment wording now reuses the same generated investment sentence as the sign-off project situation investment line.
+- [docfill.rs](../src-tauri/src/docfill.rs): Added generation-time normalization for older sign-off templates that still contain the hardcoded IT/CT-only project situation wording.
+- [【2025版】ICT项目立项签批表（仅适用50万以下项目）模板.docx](../项目全生命周期文件模版/【2025版】ICT项目立项签批表（仅适用50万以下项目）模板.docx): Replaced the hardcoded IT/CT-only project situation wording with full-line placeholders for generated investment and revenue situation text.
+
+Tests:
+- Ran `npm run build` in `src-ui`.
+
+Decision:
+- The optional "申请立项后甄选" wording is controlled by a sign-off checkbox and is no longer hardcoded in the template.
+- Sign-off project situation wording is presentation-only and continues to use existing tax-exclusive amount fields; no financial calculation paths changed.
+
 ### ICT Billing Subject Name Extension
 
 Modified:

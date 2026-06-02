@@ -724,20 +724,22 @@ export default function IctLifecycle() {
                 <label className="text-sm font-semibold text-secondary-foreground">{item.standardSubjectName}</label>
                 {(customSubjectName || billingSubjectName) && <span className="text-[10px] font-medium text-primary truncate max-w-[220px]">{displayName}</span>}
               </div>
-              <input
-                type="text"
-                placeholder="具体业务/产品名称"
-                className="bg-muted px-3 py-2 rounded-md outline-none text-xs focus:bg-card focus:ring-1 focus:ring-ring"
-                value={customSubjectName}
-                onChange={e => updateTaxItemCustomSubjectName(groupId, item.key, e.target.value)}
-              />
-              <input
-                type="text"
-                placeholder="计费科目名称（文书/计费口径）"
-                className="bg-muted px-3 py-2 rounded-md outline-none text-xs focus:bg-card focus:ring-1 focus:ring-ring"
-                value={billingSubjectName}
-                onChange={e => updateTaxItemBillingSubjectName(groupId, item.key, e.target.value)}
-              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  placeholder="具体业务/产品名称"
+                  className="bg-muted px-3 py-2 rounded-md outline-none text-xs focus:bg-card focus:ring-1 focus:ring-ring"
+                  value={customSubjectName}
+                  onChange={e => updateTaxItemCustomSubjectName(groupId, item.key, e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="计费科目名称（文书/计费口径）"
+                  className="bg-muted px-3 py-2 rounded-md outline-none text-xs focus:bg-card focus:ring-1 focus:ring-ring"
+                  value={billingSubjectName}
+                  onChange={e => updateTaxItemBillingSubjectName(groupId, item.key, e.target.value)}
+                />
+              </div>
               <div className="flex gap-2">
                 <input type="number" placeholder="含税" className="w-full bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={currentItem.incl === 0 ? "" : currentItem.incl} onChange={e => updateTaxItem(groupId, item.key, 'incl', Number(e.target.value))} />
                 <input type="number" placeholder="税率" className="w-20 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={currentItem.tax} onChange={e => updateTaxItem(groupId, item.key, 'tax', Number(e.target.value))} />
