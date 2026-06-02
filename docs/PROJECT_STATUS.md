@@ -1,6 +1,10 @@
 # PROJECT_STATUS.md
 
-Last updated: 2026-06-02 (ICT Balance Allocation Rules)
+Last updated: 2026-06-02 (ICT Balance Allocation Rules & Windows NSIS Installer Packaging Support)
+
+## 0. Windows NSIS Installer Packaging Support
+
+The packaging target has been configured to build a standard Windows NSIS executable installer (`.exe`) instead of relying on WiX Toolset (`.msi`), bypassing compatibility issues with WiX/light.exe under local environments. In addition, the Tauri configuration `beforeBuildCommand` was updated to automatically build the React frontend (`npm run build --prefix src-ui`) before compiling and packaging the desktop executable. The production build compiles the frontend with Vite and packages the desktop app successfully.
 
 ## 0. ICT Balance Allocation Rules
 
