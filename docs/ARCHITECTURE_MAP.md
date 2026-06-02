@@ -1,6 +1,6 @@
 # ARCHITECTURE_MAP.md
 
-Last updated: 2026-06-02 (ICT Balance Allocation Rules)
+Last updated: 2026-06-02 (ICT Model E Structure Reverse Segment Sync)
 
 ## 1. Repository overview
 
@@ -65,6 +65,7 @@ graph TD
 - **`src/services/aiProjectContextService.ts`**: Typed frontend wrapper for `build_ai_project_context`, now used by the AI chat context composer during message send.
 - **`src/lib/ictSubjectCatalog.ts`**: Fixed frontend catalog and shared presentation resolver for ICT billing subject identity. It maps stable `subjectCode`, UI group/key, standard subject name, Excel variable prefix, and document business prefix (`IT`, `CT`, `非IT/CT`, `综合类`) so product/business names and billing subject names remain separate from standard subject identity. `resolveBillingSubjectPresentation` centralizes Excel display names, document business names, and document dedup keys.
 - **`src/lib/ictBalanceAllocation.ts`**: Shared frontend rule helper for ICT revenue/investment total balancing. It normalizes and serializes `revenue_balance_rule` / `investment_balance_rule`, resolves stable `subjectCode + groupId + key` subject references, computes inclusive-amount differences with existing two-decimal money behavior, and reports missing/negative validation states without writing financial amounts itself.
+- **`src/lib/ictReverseCalculation.ts`**: Shared frontend helper for dynamic smart reverse calculation subjects. It builds eligible revenue/cost subject options from `ICT_SUBJECT_DEFINITIONS`, uses stable subject references (`side + subjectCode + groupId + key`), resolves display names through the shared subject resolver, applies candidate tax-inclusive amounts to arbitrary subject groups, mirrors the existing CT revenue-to-cost amount linkage, and resolves reverse modes (`normal`, `locked_total_structure`, `blocked`) for balance-allocation interactions.
 - **`src/ai/context/`**: AI chat context composer. It builds the per-message context bundle by reading the active project ID, loading saved official context from Workspace SQLite through `aiProjectContextService.ts`, and filtering the current frontend state into an unsaved draft overlay only when dirty scopes match the active project/page.
 - **`src/ai/context/workspaceProjectRouter.ts`**: Deterministic Workspace project-name router used by the composer. It matches explicit project names against the current Workspace project index, limits deep official context loading to two specified projects per turn, resolves one specified template when uniquely named, and returns warnings for ambiguous or unresolved routing.
 - **`src/ai/templateAssetSelection.ts`**: Cross-window event bridge for explicit template image analysis requests. It carries only template asset metadata (`projectId`, `templateId`, `assetId`, field label) and never carries physical file paths or image base64.
@@ -221,6 +222,25 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 4. When other subjects exceed the configured total, no negative amount is written. The control area reports the validation error and `handleTabSwitch` blocks cashflow and document-generation tabs before the existing 0-tolerance reconciliation flow.
 5. Switching the balancing subject clears the previous balancing subject's inclusive amount to `0`, then the newly selected subject receives the current balancing difference through the same `updateTaxItem` path. This prevents the balancing amount from remaining duplicated on both old and new subjects.
 
+### 4.8.2 ICT dynamic reverse subject flow
+
+1. `IctLifecycle.tsx` renders the smart reverse subject selector from `getReverseEligibleSubjects`, scoped to the selected reverse side (`revenue` or `cost`). Options are backed by the fixed subject catalog plus current tax-item state and identified by stable subject refs, not labels.
+2. `useIctCalculations.ts` evaluates reverse candidates by applying the candidate tax-inclusive amount to the selected subject, then building a full lifecycle input payload and invoking `calculate_ict_benefit`. This replaces the old fixed `rev_it_integration` / `cost_it_integration` reverse entry in the frontend.
+3. The solver still uses the existing binary-search shape and target metrics (`margin`, `npv_rate`). Revenue candidates increase the selected revenue subject until the target is reached; cost candidates find the maximum selected cost subject amount that still satisfies the target.
+4. Final write-back calls `updateTaxItem(groupId, key, "incl", amount)` so tax-exclusive amount, tax amount, CT paired revenue-to-cost linkage, dirty tracking, cashflow recalculation, saved assumptions, document generation, and AI context continue to consume the formal tax-item structures.
+5. In `model_e` amount mode, the selected side's chosen cashflow segment is updated with the same tax-inclusive candidate amount and selected subject tax before calculating the payload, preserving the existing segmented cashflow path.
+6. If a same-side balance allocation rule is valid, the balancing subject is disabled as a reverse target. Other same-side subjects enter locked-total structure reverse, while cross-side reverse is not blocked by the other side's active balance allocation.
+
+### 4.8.3 ICT locked-total structure reverse flow
+
+1. `IctLifecycle.tsx` resolves the reverse mode through `resolveReverseCalculationContext`. With no valid same-side balance rule, the existing normal reverse path is used. With a valid same-side balance rule and a non-balancing selected subject, the panel displays the locked-total structure hint and passes the structure context into `useIctCalculations`.
+2. `ictReverseCalculation.ts` builds the structure context from the locked total `T`, selected target subject `X`, balancing subject `B`, and fixed same-side subjects `F`. The reallocatable pool is `P = T - F`; candidates satisfy `X in [0, P]` and `B = P - X`, so neither amount is negative and the same-side inclusive total remains unchanged.
+3. `useIctCalculations.ts` evaluates structure candidates through the same `calculate_ict_benefit` IPC path as normal reverse. It samples `[0, P]` including 0%, 10%, ..., 100% plus the current target amount, detects metric-insensitive ranges and unreachable target metric ranges, then binary-searches only a crossing interval. If multiple intervals cross the target, it writes the solution closest to the current target amount.
+4. Final write-back uses `useIctState.updateTaxItemsInclBatch`, updating target and balancing inclusive amounts in one bounded state operation. This prevents same-group stale-state overwrites and preserves existing tax-exclusive recomputation plus CT revenue-to-cost paired amount linkage.
+5. In `model_e` amount mode, structure reverse candidates run through a bounded subject-to-segment sync before calling `calculate_ict_benefit`. Stable subject refs (`groupId + key`) map revenue subjects to `CashflowSegment.revenueScope` buckets (`it`, `ct`, `non_it_ct`) and cost subjects to `CashflowSegment.costScope` buckets (`it`, `ct`, `non_it_ct`, `mix`). Candidate evaluation and final write-back reuse the same synced segment array, so reachability, calculation payloads, persisted segment amounts, and AI context stay aligned.
+6. Same-bucket `model_e` structure transfers apply equal and opposite subject deltas inside the same aggregate segment bucket, preserving that bucket's inclusive total. Cross-bucket transfers adjust the target bucket by `+ΔX` and the balancing bucket by `-ΔX`. Segment annual custom plans are adjusted through the existing amount-mode scaling helper; candidates that would require missing buckets, negative segment totals, negative bucket totals, or negative annual values are rejected before calculation.
+7. CT product revenue and CT line revenue retain their paired cost-subject behavior during `model_e` structure reverse: product revenue mirrors to CT other-product cost, and line revenue mirrors to CT bandwidth cost, with cost-side segment buckets synchronized as part of the same candidate. If this cross-side linkage collides with a valid locked-total investment balancing rule, the UI blocks the solve conservatively rather than creating a four-variable cross-side structure reverse.
+
 ### 4.9 Inquiry vendor screenshot state flow
 
 1. `TemplateForms.tsx` stores inquiry quote screenshots on each vendor row as `images`.
@@ -242,8 +262,9 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 
 All core math operations are located in `calculator.rs` under Tauri:
 - **`calculate_ict_benefit`**: Computes IT/CT revenue/costs and simulated 10-year cashflows (using present values).
-- **`reverse_calc_ict_target`**: Binary search to calculate the required IT integration cost to meet a target margin or NPV rate.
-- **`reverse_calc_ict_revenue_target`**: Binary search to calculate the required IT integration revenue to meet a target margin or NPV rate.
+- **`reverse_calc_ict_target`**: Legacy backend binary search to calculate the required IT integration cost to meet a target margin or NPV rate.
+- **`reverse_calc_ict_revenue_target`**: Legacy backend binary search to calculate the required IT integration revenue to meet a target margin or NPV rate.
+- **Frontend dynamic smart reverse**: The ICT Lifecycle panel uses `ictReverseCalculation.ts` plus `calculate_ict_benefit` candidate evaluation for arbitrary selected revenue/cost subjects, rather than these fixed backend reverse commands.
 - **`calculate_selection_fee`**: Bracket-based selection fee estimator.
 
 ## 7. UI system map

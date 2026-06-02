@@ -17,6 +17,7 @@ import {
 export { normalizeProjectYears };
 
 export interface TaxItem { incl: number; tax: number; excl: number; customSubjectName?: string; billingSubjectName?: string; }
+export type TaxItemInclUpdate = { groupId: string; key: string; incl: number };
 export const defaultTaxItem = (tax = 6): TaxItem => ({ incl: 0, tax, excl: 0 });
 export type SegmentValueMode = "ratio" | "amount";
 export type SegmentFlowMode = "upfront" | "equal" | "custom";
@@ -373,6 +374,86 @@ export function useIctState() {
     setCashflowSegments(prev => prev.length <= 1 ? prev : prev.filter(segment => segment.id !== id));
   };
 
+  const updateTaxItemsInclBatch = (updates: TaxItemInclUpdate[]) => {
+    if (updates.length === 0) return;
+    if (ignoredDataHash !== null) {
+      setIgnoredDataHash(null);
+      setIgnoredTailValue(null);
+    }
+
+    let nextRevIt = revIt;
+    let nextRevCt = revCt;
+    let nextRevNonItCt = revNonItCt;
+    let nextCostIt = costIt;
+    let nextCostCt = costCt;
+    let nextCostMix = costMix;
+    const changed = {
+      revIt: false,
+      revCt: false,
+      revNonItCt: false,
+      costIt: false,
+      costCt: false,
+      costMix: false,
+    };
+
+    const itemFromIncl = (current: TaxItem | undefined, incl: number): TaxItem => {
+      const safeIncl = isNaN(incl) ? 0 : roundMoney(incl);
+      const tax = Number(current?.tax ?? 0);
+      return {
+        ...(current || defaultTaxItem(tax)),
+        incl: safeIncl,
+        tax,
+        excl: safeIncl === 0 ? 0 : roundMoney(safeIncl / (1 + tax / 100)),
+      };
+    };
+
+    const setRecordItem = <T extends Record<string, TaxItem>>(
+      group: T,
+      key: string,
+      incl: number,
+    ): T => ({
+      ...group,
+      [key]: itemFromIncl(group[key], incl),
+    } as T);
+
+    updates.forEach(update => {
+      if (update.groupId === "revIt") {
+        nextRevIt = setRecordItem(nextRevIt, update.key, update.incl);
+        changed.revIt = true;
+      } else if (update.groupId === "revCt") {
+        nextRevCt = setRecordItem(nextRevCt, update.key, update.incl);
+        changed.revCt = true;
+        if (update.key === "product") {
+          nextCostCt = setRecordItem(nextCostCt, "other", update.incl);
+          changed.costCt = true;
+        }
+        if (update.key === "line") {
+          nextCostCt = setRecordItem(nextCostCt, "bandwidth", update.incl);
+          changed.costCt = true;
+        }
+      } else if (update.groupId === "revNonItCt") {
+        nextRevNonItCt = itemFromIncl(nextRevNonItCt, update.incl);
+        changed.revNonItCt = true;
+      } else if (update.groupId === "costIt") {
+        nextCostIt = setRecordItem(nextCostIt, update.key, update.incl);
+        changed.costIt = true;
+      } else if (update.groupId === "costCt") {
+        nextCostCt = setRecordItem(nextCostCt, update.key, update.incl);
+        changed.costCt = true;
+      } else if (update.groupId === "costMix") {
+        nextCostMix = setRecordItem(nextCostMix, update.key, update.incl);
+        changed.costMix = true;
+      }
+    });
+
+    if (changed.revIt) setRevIt(nextRevIt);
+    if (changed.revCt) setRevCt(nextRevCt);
+    if (changed.revNonItCt) setRevNonItCt(nextRevNonItCt);
+    if (changed.costIt) setCostIt(nextCostIt);
+    if (changed.costCt) setCostCt(nextCostCt);
+    if (changed.costMix) setCostMix(nextCostMix);
+  };
+
   const updateTaxItem = (groupId: string, key: string, field: "incl" | "tax" | "excl", val: number) => {
     if (ignoredDataHash !== null) {
       setIgnoredDataHash(null);
@@ -502,6 +583,7 @@ export function useIctState() {
     updateCashflowSegmentAnnualValue,
     removeCashflowSegment,
     updateTaxItem,
+    updateTaxItemsInclBatch,
     updateTaxItemCustomSubjectName,
     updateTaxItemBillingSubjectName,
   };

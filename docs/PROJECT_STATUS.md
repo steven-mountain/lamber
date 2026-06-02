@@ -1,6 +1,28 @@
 # PROJECT_STATUS.md
 
-Last updated: 2026-06-02 (ICT Balance Allocation Rules & Windows NSIS Installer Packaging Support)
+Last updated: 2026-06-02 (ICT Model E Structure Reverse Segment Sync)
+
+## 0. ICT Locked-Total Structure Reverse Calculation
+
+ICT lifecycle smart reverse calculation now supports same-side structure reverse when a revenue or investment total balance allocation rule is valid. If the side total is locked and the user selects a non-balancing subject on that same side, the frontend automatically enters `locked_total_structure` mode: it solves the target subject inclusive amount while moving the configured balancing subject inversely, keeping the same-side inclusive total unchanged.
+
+The structure solver uses the locked total `T`, selected target amount `X`, balancing amount `B`, and fixed same-side amount `F` where `X + B = T - F`. It samples the bounded range `[0, T - F]` before local binary search, detects metric-insensitive ranges, reports unreachable target metric ranges without writing state, and chooses the solution closest to the current target-subject amount when multiple crossing intervals exist.
+
+The balancing subject remains disabled as a reverse target. Normal arbitrary-subject reverse remains available when no valid same-side balance rule is active, and cross-side reverse is not blocked by the other side's balance allocation. Structure reverse final write-back updates both the target and balancing subjects through a batch inclusive-amount path so same-group state updates cannot overwrite each other, while preserving the existing tax-exclusive recalculation and CT revenue-to-cost paired amount linkage.
+
+`model_e` amount mode now supports locked-total structure reverse for mapped subject buckets by synchronizing the candidate subject transfer into `cashflowSegments` before each calculation payload and reusing the same sync result for final write-back. The subject-to-segment mapping is derived from the stable catalog identity (`groupId + key`): revenue IT/CT/non-IT-CT subjects map to `revenueScope` `it`/`ct`/`non_it_ct`; cost IT/CT/non-IT-CT/mixed subjects map to `costScope` `it`/`ct`/`non_it_ct`/`mix`. Same-bucket structure transfers keep the bucket net delta at zero, cross-bucket transfers move `+ΔX` into the target bucket and `-ΔX` into the balancing bucket, and yearly custom amount plans are scaled through the existing amount-mode annual adjustment path so annual totals do not drift.
+
+Invalid `model_e` candidates are excluded from reachability and are never written. A candidate is invalid when a required bucket segment is missing, a segment/bucket/year amount would become negative, or the transfer cannot be represented by the aggregate segment scopes. CT product and line revenue structure changes still mirror into their linked cost subjects (`costCt.other` and `costCt.bandwidth`) and synchronize those cost-side segments. If that linked revenue-to-cost transfer would run while the investment side also has a valid locked-total balancing rule, the solver blocks conservatively instead of attempting a four-variable cross-side structure solve.
+
+The revenue own-product 1% rule remains a display prompt in the balance control area; this phase does not convert it into a blocking validation rule.
+
+## 0. ICT Dynamic Reverse Subject Calculation
+
+ICT lifecycle smart reverse calculation now supports user-selected revenue or investment billing subjects instead of only reversing the fixed system-integration revenue/cost fields. The reverse subject selector is populated from the shared ICT subject catalog and current tax-item state, using a stable subject reference (`side + subjectCode + groupId + key`) rather than display names. Display labels reuse the existing billing-subject resolver priority: billing subject name, then product/business name, then standard subject name.
+
+Reverse solving continues to support the existing target metrics only: target margin rate and target NPV rate. Candidate values are written as tax-inclusive amounts into the selected subject through the same tax-linkage model used by formal inputs, then evaluated through the existing `calculate_ict_benefit` path so tax-exclusive amounts, payment distributions, yearly cashflows, NPV, and AI context payloads stay aligned.
+
+Revenue and investment balance allocation are both present in the current implementation. When a same-side balance allocation rule is valid, the balancing subject is not selectable as a reverse target, while other same-side subjects use locked-total structure reverse so the selected subject and balancing subject reallocate the same inclusive total. Cross-side reverse remains allowed, such as investment reverse while revenue balance allocation is active.
 
 ## 0. Windows NSIS Installer Packaging Support
 

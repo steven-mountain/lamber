@@ -5,19 +5,33 @@ import { useProjectStore } from "../store/useProjectStore";
 import { AI_CONTEXT_KEY } from "../utils/aiContextKeys";
 import {
   type CashflowSegment,
+  type SegmentSideScope,
   type TaxItem,
   buildDirectCashflowFromSegments,
   distributionFromCashflow,
   cashflowPayloadValues,
   sumInclTaxItems,
-  makeTaxItemFromIncl,
   clampCashflowYear,
   useIctState
 } from "./useIctState";
-import { normalizeCustomSubjectName } from "../lib/ictSubjectCatalog";
+import {
+  ICT_SUBJECT_DEFINITIONS,
+  normalizeCustomSubjectName,
+  type IctSubjectDefinition,
+} from "../lib/ictSubjectCatalog";
 import {
   serializeBalanceAllocationRule,
 } from "../lib/ictBalanceAllocation";
+import {
+  applyLockedTotalStructureAmountsToState,
+  applySubjectInclAmountToState,
+  buildLockedTotalStructureSamplePoints,
+  readSubjectInclAmount,
+  type LockedTotalStructureContext,
+  type ResolvedReverseCalculationContext,
+  type ReverseSubjectOption,
+  type ReverseSubjectState,
+} from "../lib/ictReverseCalculation";
 
 // Labels mapping
 const cashflowModelLabels: Record<string, string> = {
@@ -34,6 +48,54 @@ const formatDistribution = (arr: number[]) => {
 
 const formatCurrency = (v: number) => new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(v);
 const formatPercent = (v: number) => (v * 100).toFixed(2) + "%";
+const METRIC_EPSILON = 0.0001;
+const MONEY_EPSILON = 0.004;
+const roundMoney = (value: number) => Number((Number.isFinite(value) ? value : 0).toFixed(2));
+
+type ModelEAmountBucket = {
+  side: "revenue" | "cost";
+  scope: SegmentSideScope;
+  label: string;
+};
+
+type ModelEStructureTransfer = {
+  bucket: ModelEAmountBucket;
+  deltaIncl: number;
+  sourceTax: number;
+  reason: string;
+};
+
+type ModelEStructureSyncResult = {
+  valid: boolean;
+  segments: CashflowSegment[];
+  message?: string;
+  transfers: ModelEStructureTransfer[];
+};
+
+const getModelEAmountBucketForSubject = (subject: IctSubjectDefinition): ModelEAmountBucket | null => {
+  if (subject.groupId === "revIt") return { side: "revenue", scope: "it", label: "收入 IT 板块" };
+  if (subject.groupId === "revCt") return { side: "revenue", scope: "ct", label: "收入 CT 板块" };
+  if (subject.groupId === "revNonItCt") return { side: "revenue", scope: "non_it_ct", label: "收入 非IT/CT 板块" };
+  if (subject.groupId === "costIt") return { side: "cost", scope: "it", label: "投入 IT 板块" };
+  if (subject.groupId === "costCt") return { side: "cost", scope: "ct", label: "投入 CT 板块" };
+  if (subject.groupId === "costMix" && subject.key === "non_it_ct") return { side: "cost", scope: "non_it_ct", label: "投入 非IT/CT 板块" };
+  if (subject.groupId === "costMix") return { side: "cost", scope: "mix", label: "投入 综合类板块" };
+  return null;
+};
+
+const getPairedCostSubjectForRevenueSubject = (subject: IctSubjectDefinition) => {
+  if (subject.groupId !== "revCt") return null;
+  if (subject.key === "product") {
+    return ICT_SUBJECT_DEFINITIONS.find(item => item.subjectCode === "cost_ct_other") || null;
+  }
+  if (subject.key === "line") {
+    return ICT_SUBJECT_DEFINITIONS.find(item => item.subjectCode === "cost_ct_bandwidth") || null;
+  }
+  return null;
+};
+
+const isBalanceRuleConfigured = (rule: ReturnType<typeof useIctState>["balanceAllocation"]["investment"]) =>
+  Boolean(rule.enabled && rule.totalInclAmount !== null && rule.balancingSubject);
 
 const serializeTaxItemForPayload = (item: TaxItem) => {
   const customSubjectName = normalizeCustomSubjectName(item.customSubjectName);
@@ -68,6 +130,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   const [revMode, setRevMode] = useState<"cost" | "revenue">("cost");
   const [revTargetType, setRevTargetType] = useState<"margin" | "npv_rate">("margin");
   const [revTargetValue, setRevTargetValue] = useState<string>("0.15");
+  const [revSubjectRefKey, setRevSubjectRefKey] = useState<string>("");
 
   // Helper selectors
   const directSegmentCashflow = state.cashflowSegments ? buildDirectCashflowFromSegments(state.cashflowSegments) : { rev: [], cost: [], itRev: [], itCost: [] };
@@ -79,7 +142,15 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   const effectiveDistRev = state.distRev;
   const effectiveDistCost = state.distCost;
 
-  const buildInputDataPayload = (options?: { segments?: CashflowSegment[]; revItState?: typeof state.revIt; costItState?: typeof state.costIt }) => {
+  const buildInputDataPayload = (options?: {
+    segments?: CashflowSegment[];
+    revItState?: typeof state.revIt;
+    revCtState?: typeof state.revCt;
+    revNonItCtState?: typeof state.revNonItCt;
+    costItState?: typeof state.costIt;
+    costCtState?: typeof state.costCt;
+    costMixState?: typeof state.costMix;
+  }) => {
     const segmentsForPayload = options?.segments ?? state.cashflowSegments;
     const directCashflowForPayload = buildDirectCashflowFromSegments(segmentsForPayload);
     const revDistributionForPayload = state.cashflowModel === 'model_e' && state.segmentValueMode === "amount"
@@ -89,7 +160,11 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       ? distributionFromCashflow(directCashflowForPayload.cost)
       : effectiveDistCost;
     const revItForPayload = options?.revItState ?? state.revIt;
+    const revCtForPayload = options?.revCtState ?? state.revCt;
+    const revNonItCtForPayload = options?.revNonItCtState ?? state.revNonItCt;
     const costItForPayload = options?.costItState ?? state.costIt;
+    const costCtForPayload = options?.costCtState ?? state.costCt;
+    const costMixForPayload = options?.costMixState ?? state.costMix;
 
     return {
       project_name: state.projName,
@@ -117,9 +192,9 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       rev_it_device_lease: serializeTaxItemForPayload(revItForPayload.device_lease),
       rev_it_other: serializeTaxItemForPayload(revItForPayload.other),
       rev_it_cloud: serializeTaxItemForPayload(revItForPayload.cloud),
-      rev_ct_line: serializeTaxItemForPayload(state.revCt.line),
-      rev_ct_product: serializeTaxItemForPayload(state.revCt.product),
-      rev_non_it_ct: serializeTaxItemForPayload(state.revNonItCt),
+      rev_ct_line: serializeTaxItemForPayload(revCtForPayload.line),
+      rev_ct_product: serializeTaxItemForPayload(revCtForPayload.product),
+      rev_non_it_ct: serializeTaxItemForPayload(revNonItCtForPayload),
       cost_it_device: serializeTaxItemForPayload(costItForPayload.device),
       cost_it_construction: serializeTaxItemForPayload(costItForPayload.construction),
       cost_it_survey: serializeTaxItemForPayload(costItForPayload.survey),
@@ -130,15 +205,15 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       cost_it_bidding: serializeTaxItemForPayload(costItForPayload.bidding),
       cost_it_design_eval: serializeTaxItemForPayload(costItForPayload.design_eval),
       cost_it_audit: serializeTaxItemForPayload(costItForPayload.audit),
-      cost_ct_construction: serializeTaxItemForPayload(state.costCt.construction),
-      cost_ct_maintenance: serializeTaxItemForPayload(state.costCt.maintenance),
-      cost_ct_other: serializeTaxItemForPayload(state.costCt.other),
-      cost_ct_bandwidth: serializeTaxItemForPayload(state.costCt.bandwidth),
-      cost_ct_renewal: serializeTaxItemForPayload(state.costCt.renewal),
-      cost_non_it_ct: serializeTaxItemForPayload(state.costMix.non_it_ct),
-      cost_mix_marketing: serializeTaxItemForPayload(state.costMix.marketing),
-      cost_mix_channel: serializeTaxItemForPayload(state.costMix.channel),
-      cost_mix_other: serializeTaxItemForPayload(state.costMix.other),
+      cost_ct_construction: serializeTaxItemForPayload(costCtForPayload.construction),
+      cost_ct_maintenance: serializeTaxItemForPayload(costCtForPayload.maintenance),
+      cost_ct_other: serializeTaxItemForPayload(costCtForPayload.other),
+      cost_ct_bandwidth: serializeTaxItemForPayload(costCtForPayload.bandwidth),
+      cost_ct_renewal: serializeTaxItemForPayload(costCtForPayload.renewal),
+      cost_non_it_ct: serializeTaxItemForPayload(costMixForPayload.non_it_ct),
+      cost_mix_marketing: serializeTaxItemForPayload(costMixForPayload.marketing),
+      cost_mix_channel: serializeTaxItemForPayload(costMixForPayload.channel),
+      cost_mix_other: serializeTaxItemForPayload(costMixForPayload.other),
     };
   };
 
@@ -310,33 +385,538 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     };
   });
 
-  const performModelEAmountReverseCalculation = async () => {
-    const target = Number(revTargetValue);
-    if (!Number.isFinite(target)) return alert("请输入有效的目标值！");
+  const applyModelETransferToBucket = (
+    segments: CashflowSegment[],
+    transfer: ModelEStructureTransfer,
+  ): ModelEStructureSyncResult => {
+    const delta = roundMoney(transfer.deltaIncl);
+    if (Math.abs(delta) <= MONEY_EPSILON) {
+      return { valid: true, segments, transfers: [transfer] };
+    }
 
-    const side = revMode === "revenue" ? "revenue" : "cost";
-    const segmentIndex = selectReverseSegmentIndex(state.cashflowSegments, side);
-    if (segmentIndex < 0) {
+    const scopeKey = transfer.bucket.side === "revenue" ? "revenueScope" : "costScope";
+    const valueKey = transfer.bucket.side === "revenue" ? "revenueValue" : "costValue";
+    const taxKey = transfer.bucket.side === "revenue" ? "revenueTax" : "costTax";
+    const annualValuesKey = transfer.bucket.side === "revenue" ? "revenueAnnualValues" : "costAnnualValues";
+    const matchingIndexes = segments
+      .map((segment, index) => ({ segment, index }))
+      .filter(({ segment }) => segment[scopeKey] === transfer.bucket.scope)
+      .map(({ index }) => index);
+
+    if (matchingIndexes.length === 0) {
+      return {
+        valid: false,
+        segments,
+        transfers: [transfer],
+        message: `${transfer.bucket.label}没有可同步的分板块金额计划，无法执行 model_e 结构反算。`,
+      };
+    }
+
+    const currentTotal = roundMoney(matchingIndexes.reduce((sum, index) => sum + Number(segments[index][valueKey] || 0), 0));
+    if (delta < 0 && currentTotal + delta < -MONEY_EPSILON) {
+      return {
+        valid: false,
+        segments,
+        transfers: [transfer],
+        message: `${transfer.bucket.label}当前金额不足，结构调整会导致板块金额为负。`,
+      };
+    }
+
+    const nextSegments = [...segments];
+    if (delta > 0) {
+      const positiveIndexes = matchingIndexes.filter(index => Number(segments[index][valueKey] || 0) > MONEY_EPSILON);
+      const targetIndexes = positiveIndexes.length > 0 ? positiveIndexes : [matchingIndexes[0]];
+      const baseTotal = positiveIndexes.length > 0
+        ? positiveIndexes.reduce((sum, index) => sum + Number(segments[index][valueKey] || 0), 0)
+        : 0;
+      let remaining = delta;
+      targetIndexes.forEach((index, order) => {
+        const currentValue = Number(nextSegments[index][valueKey] || 0);
+        const share = order === targetIndexes.length - 1
+          ? remaining
+          : roundMoney(delta * (baseTotal > 0 ? currentValue / baseTotal : 1 / targetIndexes.length));
+        remaining = roundMoney(remaining - share);
+        const nextAmount = roundMoney(currentValue + share);
+        nextSegments[index] = {
+          ...nextSegments[index],
+          [valueKey]: nextAmount,
+          [taxKey]: currentValue > MONEY_EPSILON ? nextSegments[index][taxKey] : transfer.sourceTax,
+          [annualValuesKey]: scaleCustomAnnualValuesForReverse(nextSegments[index], transfer.bucket.side, nextAmount),
+        };
+      });
+      return { valid: true, segments: nextSegments, transfers: [transfer] };
+    }
+
+    let remainingDecrease = Math.abs(delta);
+    const positiveIndexes = matchingIndexes.filter(index => Number(segments[index][valueKey] || 0) > MONEY_EPSILON);
+    if (positiveIndexes.length === 0) {
+      return {
+        valid: false,
+        segments,
+        transfers: [transfer],
+        message: `${transfer.bucket.label}没有可减少的正金额板块，无法执行本次结构转移。`,
+      };
+    }
+
+    positiveIndexes.forEach((index, order) => {
+      const currentValue = Number(nextSegments[index][valueKey] || 0);
+      const share = order === positiveIndexes.length - 1
+        ? remainingDecrease
+        : roundMoney(Math.abs(delta) * currentValue / currentTotal);
+      const appliedDecrease = Math.min(currentValue, share);
+      remainingDecrease = roundMoney(remainingDecrease - appliedDecrease);
+      const nextAmount = roundMoney(currentValue - appliedDecrease);
+      nextSegments[index] = {
+        ...nextSegments[index],
+        [valueKey]: nextAmount,
+        [annualValuesKey]: scaleCustomAnnualValuesForReverse(nextSegments[index], transfer.bucket.side, nextAmount),
+      };
+    });
+
+    if (remainingDecrease > MONEY_EPSILON) {
+      return {
+        valid: false,
+        segments,
+        transfers: [transfer],
+        message: `${transfer.bucket.label}年度金额计划不足，结构调整会产生负金额。`,
+      };
+    }
+
+    return { valid: true, segments: nextSegments, transfers: [transfer] };
+  };
+
+  const mergeModelETransfers = (transfers: ModelEStructureTransfer[]) => {
+    const merged = new Map<string, ModelEStructureTransfer>();
+    transfers.forEach(transfer => {
+      const key = `${transfer.bucket.side}:${transfer.bucket.scope}`;
+      const existing = merged.get(key);
+      if (!existing) {
+        merged.set(key, { ...transfer, deltaIncl: roundMoney(transfer.deltaIncl) });
+        return;
+      }
+      merged.set(key, {
+        ...existing,
+        deltaIncl: roundMoney(existing.deltaIncl + transfer.deltaIncl),
+        reason: `${existing.reason}; ${transfer.reason}`,
+      });
+    });
+    return Array.from(merged.values()).filter(transfer => Math.abs(transfer.deltaIncl) > MONEY_EPSILON);
+  };
+
+  const applyModelEStructureTransfer = (params: {
+    segments: CashflowSegment[];
+    structure: LockedTotalStructureContext;
+    candidateTargetIncl: number;
+    candidateBalancingIncl: number;
+  }): ModelEStructureSyncResult => {
+    const { segments, structure, candidateTargetIncl, candidateBalancingIncl } = params;
+    const targetBucket = getModelEAmountBucketForSubject(structure.targetSubject);
+    const balancingBucket = getModelEAmountBucketForSubject(structure.balancingSubject);
+    if (!targetBucket || !balancingBucket) {
+      return {
+        valid: false,
+        segments,
+        transfers: [],
+        message: "当前结构反算组合无法映射到分板块金额计划，请更换反算科目或差额承接科目。",
+      };
+    }
+
+    const rawTransfers: ModelEStructureTransfer[] = [
+      {
+        bucket: targetBucket,
+        deltaIncl: roundMoney(candidateTargetIncl - structure.beforeTargetInclAmount),
+        sourceTax: Number(structure.targetItem?.tax ?? 0),
+        reason: structure.targetDisplayName,
+      },
+      {
+        bucket: balancingBucket,
+        deltaIncl: roundMoney(candidateBalancingIncl - structure.beforeBalancingInclAmount),
+        sourceTax: Number(structure.balancingItem?.tax ?? 0),
+        reason: structure.balancingDisplayName,
+      },
+    ];
+
+    const appendPairedCostTransfer = (
+      subject: IctSubjectDefinition,
+      beforeIncl: number,
+      afterIncl: number,
+      sourceTax: number,
+      reason: string,
+    ) => {
+      const pairedCostSubject = getPairedCostSubjectForRevenueSubject(subject);
+      if (!pairedCostSubject) return;
+      const pairedBucket = getModelEAmountBucketForSubject(pairedCostSubject);
+      if (!pairedBucket) return;
+      rawTransfers.push({
+        bucket: pairedBucket,
+        deltaIncl: roundMoney(afterIncl - beforeIncl),
+        sourceTax,
+        reason: `${reason}联动投入`,
+      });
+    };
+
+    appendPairedCostTransfer(
+      structure.targetSubject,
+      structure.beforeTargetInclAmount,
+      candidateTargetIncl,
+      Number(structure.targetItem?.tax ?? 0),
+      structure.targetDisplayName,
+    );
+    appendPairedCostTransfer(
+      structure.balancingSubject,
+      structure.beforeBalancingInclAmount,
+      candidateBalancingIncl,
+      Number(structure.balancingItem?.tax ?? 0),
+      structure.balancingDisplayName,
+    );
+
+    let nextSegments = segments;
+    const transfers = mergeModelETransfers(rawTransfers);
+    for (const transfer of transfers) {
+      const result = applyModelETransferToBucket(nextSegments, transfer);
+      if (!result.valid) {
+        return { ...result, transfers };
+      }
+      nextSegments = result.segments;
+    }
+
+    return { valid: true, segments: nextSegments, transfers };
+  };
+
+  const structureHasRevenueToCostLink = (structure: LockedTotalStructureContext) =>
+    Boolean(
+      getPairedCostSubjectForRevenueSubject(structure.targetSubject)
+      || getPairedCostSubjectForRevenueSubject(structure.balancingSubject),
+    );
+
+  const getCurrentReverseSubjectState = (): ReverseSubjectState => ({
+    revIt: state.revIt,
+    revCt: state.revCt,
+    revNonItCt: state.revNonItCt,
+    costIt: state.costIt,
+    costCt: state.costCt,
+    costMix: state.costMix,
+  });
+
+  const buildReverseCandidate = (
+    selectedSubject: ReverseSubjectOption,
+    amount: number,
+    modelEAmountSegmentIndex: number | null,
+  ) => {
+    const nextSubjectState = applySubjectInclAmountToState(
+      getCurrentReverseSubjectState(),
+      selectedSubject.subject,
+      amount,
+    );
+    const nextSegments = modelEAmountSegmentIndex === null
+      ? state.cashflowSegments
+      : applyReverseValueToSegments(
+          state.cashflowSegments,
+          selectedSubject.subject.side,
+          modelEAmountSegmentIndex,
+          amount,
+          Number(selectedSubject.item?.tax ?? 0),
+        );
+    const payload = buildInputDataPayload({
+      segments: nextSegments,
+      revItState: nextSubjectState.revIt as typeof state.revIt,
+      revCtState: nextSubjectState.revCt as typeof state.revCt,
+      revNonItCtState: nextSubjectState.revNonItCt as typeof state.revNonItCt,
+      costItState: nextSubjectState.costIt as typeof state.costIt,
+      costCtState: nextSubjectState.costCt as typeof state.costCt,
+      costMixState: nextSubjectState.costMix as typeof state.costMix,
+    });
+
+    return { nextSubjectState, nextSegments, payload };
+  };
+
+  const buildLockedTotalStructureCandidate = (
+    structure: LockedTotalStructureContext,
+    targetAmount: number,
+  ) => {
+    const safeTargetAmount = roundMoney(Math.max(0, Math.min(structure.reallocatablePoolInclAmount, targetAmount)));
+    const balancingAmount = roundMoney(structure.reallocatablePoolInclAmount - safeTargetAmount);
+    const modelEAmountMode = state.cashflowModel === "model_e" && state.segmentValueMode === "amount";
+    const modelESync = modelEAmountMode
+      ? applyModelEStructureTransfer({
+          segments: state.cashflowSegments,
+          structure,
+          candidateTargetIncl: safeTargetAmount,
+          candidateBalancingIncl: balancingAmount,
+        })
+      : { valid: true, segments: state.cashflowSegments, transfers: [] };
+    if (!modelESync.valid) {
+      return {
+        valid: false,
+        message: modelESync.message || "当前 model_e 分板块金额计划无法同步本次结构候选。",
+        targetAmount: safeTargetAmount,
+        balancingAmount,
+        nextSubjectState: getCurrentReverseSubjectState(),
+        nextSegments: state.cashflowSegments,
+        payload: null,
+        modelETransfers: modelESync.transfers,
+      };
+    }
+    const nextSubjectState = applyLockedTotalStructureAmountsToState(
+      getCurrentReverseSubjectState(),
+      structure.targetSubject,
+      safeTargetAmount,
+      structure.balancingSubject,
+      balancingAmount,
+    );
+    const payload = buildInputDataPayload({
+      segments: modelESync.segments,
+      revItState: nextSubjectState.revIt as typeof state.revIt,
+      revCtState: nextSubjectState.revCt as typeof state.revCt,
+      revNonItCtState: nextSubjectState.revNonItCt as typeof state.revNonItCt,
+      costItState: nextSubjectState.costIt as typeof state.costIt,
+      costCtState: nextSubjectState.costCt as typeof state.costCt,
+      costMixState: nextSubjectState.costMix as typeof state.costMix,
+    });
+
+    return {
+      valid: true,
+      targetAmount: safeTargetAmount,
+      balancingAmount,
+      nextSubjectState,
+      nextSegments: modelESync.segments,
+      payload,
+      modelETransfers: modelESync.transfers,
+    };
+  };
+
+  const getMetricValue = (result: any) => {
+    const metricValue = Number(revTargetType === "margin" ? result.margin_rate : result.npv_rate);
+    return Number.isFinite(metricValue) ? metricValue : 0;
+  };
+
+  const performLockedTotalStructureReverseCalculation = async (
+    selectedSubject: ReverseSubjectOption,
+    structure: LockedTotalStructureContext,
+    target: number,
+  ) => {
+    const modelEAmountMode = state.cashflowModel === "model_e" && state.segmentValueMode === "amount";
+    if (
+      modelEAmountMode
+      && structure.side === "revenue"
+      && structureHasRevenueToCostLink(structure)
+      && isBalanceRuleConfigured(state.balanceAllocation.investment)
+    ) {
+      return alert("当前反算科目会联动调整投入金额，但投入侧同时启用了总额锁定与差额承接。该组合涉及双侧联动结构调整，当前暂不支持，请先清空一侧承接规则或选择其他反算科目。");
+    }
+
+    if (structure.targetSubject.subjectCode === structure.balancingSubject.subjectCode) {
+      return alert("结构反算目标科目不能与差额承接科目相同。");
+    }
+    if (structure.reallocatablePoolInclAmount < 0) {
+      return alert("当前锁定总额小于固定科目合计，无法执行结构反算。");
+    }
+
+    const evaluate = async (targetAmount: number) => {
+      const candidate = buildLockedTotalStructureCandidate(structure, targetAmount);
+      if (!candidate.valid || !candidate.payload) {
+        return {
+          ...candidate,
+          result: null,
+          metricValue: 0,
+        };
+      }
+      const result: any = await invoke("calculate_ict_benefit", { input: candidate.payload });
+      return {
+        ...candidate,
+        result,
+        metricValue: getMetricValue(result),
+      };
+    };
+
+    try {
+      if (state.ignoredDataHash !== null) {
+        state.setIgnoredDataHash(null);
+        state.setIgnoredTailValue(null);
+      }
+
+      const sampleAmounts = buildLockedTotalStructureSamplePoints(
+        structure.reallocatablePoolInclAmount,
+        structure.beforeTargetInclAmount,
+      );
+      const samplePoints = [];
+      for (const amount of sampleAmounts) {
+        samplePoints.push(await evaluate(amount));
+      }
+
+      const validSamplePoints = samplePoints.filter(point => point.valid && point.payload && point.result);
+      if (validSamplePoints.length === 0) {
+        const firstInvalid = samplePoints.find(point => !point.valid);
+        return alert(firstInvalid?.message || "当前分板块金额计划无法支持任何结构反算候选点，请调整板块金额计划后再试。");
+      }
+
+      const metricValues = validSamplePoints.map(point => point.metricValue);
+      const minMetric = Math.min(...metricValues);
+      const maxMetric = Math.max(...metricValues);
+      const targetName = revTargetType === "margin" ? "目标毛利润率" : "目标净现值率";
+
+      if (maxMetric - minMetric < METRIC_EPSILON) {
+        return alert(`当前结构调整对${targetName}不敏感：可重分配池在 ${formatCurrency(structure.reallocatablePoolInclAmount)} 内变化时，指标仅从 ${formatPercent(minMetric)} 到 ${formatPercent(maxMetric)}。请调整现金流、税率或目标科目后再试。`);
+      }
+
+      if (target < minMetric - METRIC_EPSILON || target > maxMetric + METRIC_EPSILON) {
+        return alert(`当前锁定总额结构下无法达到目标值。${targetName}可达范围约为 ${formatPercent(minMetric)} - ${formatPercent(maxMetric)}，当前目标为 ${formatPercent(target)}。`);
+      }
+
+      const solutions: Array<{ targetAmount: number; point: Awaited<ReturnType<typeof evaluate>> }> = [];
+      validSamplePoints.forEach(point => {
+        if (Math.abs(point.metricValue - target) <= METRIC_EPSILON) {
+          solutions.push({ targetAmount: point.targetAmount, point });
+        }
+      });
+
+      for (let i = 0; i < validSamplePoints.length - 1; i++) {
+        const left = validSamplePoints[i];
+        const right = validSamplePoints[i + 1];
+        const leftDiff = left.metricValue - target;
+        const rightDiff = right.metricValue - target;
+        if (leftDiff === 0 || rightDiff === 0 || leftDiff * rightDiff > 0) continue;
+
+        let low = left;
+        let high = right;
+        let best = Math.abs(leftDiff) <= Math.abs(rightDiff) ? left : right;
+        const increasing = right.metricValue >= left.metricValue;
+
+        for (let step = 0; step < 45; step++) {
+          const midAmount = roundMoney((low.targetAmount + high.targetAmount) / 2);
+          const mid = await evaluate(midAmount);
+          if (!mid.valid || !mid.payload || !mid.result) {
+            break;
+          }
+          if (Math.abs(mid.metricValue - target) < Math.abs(best.metricValue - target)) {
+            best = mid;
+          }
+          if (Math.abs(mid.metricValue - target) <= METRIC_EPSILON || Math.abs(high.targetAmount - low.targetAmount) <= MONEY_EPSILON) {
+            best = mid;
+            break;
+          }
+          if (increasing) {
+            if (mid.metricValue < target) low = mid;
+            else high = mid;
+          } else if (mid.metricValue > target) {
+            low = mid;
+          } else {
+            high = mid;
+          }
+        }
+        solutions.push({ targetAmount: best.targetAmount, point: best });
+      }
+
+      if (solutions.length === 0) {
+        return alert(`已采样当前可重分配区间，但没有找到可稳定收敛到目标值的区间。${targetName}可达范围约为 ${formatPercent(minMetric)} - ${formatPercent(maxMetric)}。`);
+      }
+
+      const bestSolution = solutions.reduce((best, current) => (
+        Math.abs(current.targetAmount - structure.beforeTargetInclAmount) < Math.abs(best.targetAmount - structure.beforeTargetInclAmount)
+          ? current
+          : best
+      ), solutions[0]);
+
+      const finalPoint = await evaluate(bestSolution.targetAmount);
+      if (!finalPoint.valid || !finalPoint.payload || !finalPoint.result) {
+        return alert(finalPoint.message || "最终结构反算候选无法同步到分板块金额计划，已停止写入。");
+      }
+      const totalCheck = roundMoney(structure.fixedOtherInclAmount + finalPoint.targetAmount + finalPoint.balancingAmount);
+      if (Math.abs(totalCheck - structure.totalInclAmount) > MONEY_EPSILON) {
+        return alert("结构反算结果未能保持同侧含税总金额不变，已停止写入。");
+      }
+      if (finalPoint.targetAmount < -MONEY_EPSILON || finalPoint.balancingAmount < -MONEY_EPSILON) {
+        return alert("结构反算结果出现负金额，已停止写入。");
+      }
+
+      state.updateTaxItemsInclBatch([
+        { groupId: structure.targetSubject.groupId, key: structure.targetSubject.key, incl: finalPoint.targetAmount },
+        { groupId: structure.balancingSubject.groupId, key: structure.balancingSubject.key, incl: finalPoint.balancingAmount },
+      ]);
+      if (modelEAmountMode) {
+        state.setCashflowSegments(finalPoint.nextSegments);
+      }
+      state.setActiveTab(structure.side === "revenue" ? "revenue" : "cost");
+
+      setCashflowTable(finalPoint.result.cashflow);
+      setMetrics(finalPoint.result);
+      updateData(AI_CONTEXT_KEY.ICT_CORE, buildAiContextPayload(true, {
+        metrics: finalPoint.result,
+        cashflow: finalPoint.result.cashflow,
+        extra: {
+          ...finalPoint.payload,
+          reverse_calculation: {
+            mode: "locked_total_structure",
+            side: structure.side,
+            target_type: revTargetType,
+            target_value: revTargetValue,
+            target_subject_ref: selectedSubject.ref,
+            target_subject_name: structure.targetDisplayName,
+            target_before_amount: structure.beforeTargetInclAmount,
+            target_after_amount: finalPoint.targetAmount,
+            balancing_subject: {
+              subjectCode: structure.balancingSubject.subjectCode,
+              groupId: structure.balancingSubject.groupId,
+              key: structure.balancingSubject.key,
+            },
+            balancing_subject_name: structure.balancingDisplayName,
+            balancing_before_amount: structure.beforeBalancingInclAmount,
+            balancing_after_amount: finalPoint.balancingAmount,
+            total_incl_amount: structure.totalInclAmount,
+            metric_after: finalPoint.metricValue,
+            model_e_amount_mode: modelEAmountMode,
+            model_e_transfers: modelEAmountMode
+              ? finalPoint.modelETransfers.map(transfer => ({
+                  side: transfer.bucket.side,
+                  scope: transfer.bucket.scope,
+                  delta_incl: transfer.deltaIncl,
+                  reason: transfer.reason,
+                }))
+              : [],
+          },
+        },
+      }));
+
+      const modelESuccessText = modelEAmountMode
+        ? "\n本次结构调整已同步更新分板块现金流金额计划。"
+        : "";
+
+      alert(
+        modelESuccessText +
+        `结构反算完成：${structure.sideLabel}含税总金额保持 ${formatCurrency(structure.totalInclAmount)} 不变。\n` +
+        `${targetName}：目标 ${formatPercent(target)}，当前 ${formatPercent(finalPoint.metricValue)}\n` +
+        `目标科目：“${structure.targetDisplayName}” ${formatCurrency(structure.beforeTargetInclAmount)} -> ${formatCurrency(finalPoint.targetAmount)}\n` +
+        `承接科目：“${structure.balancingDisplayName}” ${formatCurrency(structure.beforeBalancingInclAmount)} -> ${formatCurrency(finalPoint.balancingAmount)}\n` +
+        `固定同侧科目合计：${formatCurrency(structure.fixedOtherInclAmount)}；可重分配池：${formatCurrency(structure.reallocatablePoolInclAmount)}`
+      );
+    } catch (e) {
+      alert("结构反算失败: " + e);
+    }
+  };
+
+  const performReverseCalculation = async (
+    selectedSubject: ReverseSubjectOption | null,
+    reverseContext?: ResolvedReverseCalculationContext,
+  ) => {
+    const target = Number(revTargetValue);
+    if (!Number.isFinite(target)) return alert("请输入有效的目标值。");
+    if (!selectedSubject) return alert("请选择需要反算的计费科目。");
+
+    if (reverseContext?.mode === "blocked") return alert(reverseContext.message);
+    if (reverseContext?.mode === "locked_total_structure") {
+      return performLockedTotalStructureReverseCalculation(selectedSubject, reverseContext.structure, target);
+    }
+
+    const modelEAmountMode = state.cashflowModel === 'model_e' && state.segmentValueMode === "amount";
+    const segmentIndex = modelEAmountMode
+      ? selectReverseSegmentIndex(state.cashflowSegments, selectedSubject.subject.side)
+      : -1;
+    if (modelEAmountMode && segmentIndex < 0) {
       return alert("请先在分板块资金计划中至少保留一个板块，再使用智能反算。");
     }
 
-    const tax = revMode === "revenue" ? state.revIt.integration.tax : state.costIt.integration.tax;
-    const buildCandidate = (amount: number) => {
-      const nextSegments = applyReverseValueToSegments(state.cashflowSegments, side, segmentIndex, amount, tax);
-      const nextRevIt = revMode === "revenue"
-        ? { ...state.revIt, integration: makeTaxItemFromIncl(amount, tax) }
-        : state.revIt;
-      const nextCostIt = revMode === "cost"
-        ? { ...state.costIt, integration: makeTaxItemFromIncl(amount, tax) }
-        : state.costIt;
-      const payload = buildInputDataPayload({
-        segments: nextSegments,
-        revItState: nextRevIt,
-        costItState: nextCostIt,
-      });
-
-      return { nextSegments, nextRevIt, nextCostIt, payload };
-    };
+    const buildCandidate = (amount: number) =>
+      buildReverseCandidate(selectedSubject, amount, modelEAmountMode ? segmentIndex : null);
 
     const evaluate = async (amount: number) => {
       const candidate = buildCandidate(amount);
@@ -357,31 +937,26 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
 
       const zeroPoint = await evaluate(0);
       if (revMode === "cost" && zeroPoint.metricValue < target) {
-        return alert("当前收入和其他成本条件下，即使系统集成服务成本为 0，也无法达到目标值。");
+        return alert(`当前收入和其他成本条件下，即使“${selectedSubject.displayName}”为 0，也无法达到目标值。`);
       }
 
       let low = 0;
       let high = 10_000_000_000;
-      let bestAmount = 0;
 
       if (revMode === "revenue") {
         const highPoint = await evaluate(high);
         if (highPoint.metricValue < target) {
-          return alert("当前成本和现金流条件下，即使系统集成服务收入达到上限，也无法达到目标值。");
+          return alert(`当前成本和现金流条件下，即使“${selectedSubject.displayName}”达到反算上限，也无法达到目标值。`);
         }
       }
 
       for (let i = 0; i < 70; i++) {
         const mid = (low + high) / 2;
         const point = await evaluate(mid);
-        bestAmount = mid;
 
         if (revMode === "revenue") {
-          if (point.metricValue < target) {
-            low = mid;
-          } else {
-            high = mid;
-          }
+          if (point.metricValue < target) low = mid;
+          else high = mid;
         } else if (point.metricValue > target) {
           low = mid;
         } else {
@@ -389,21 +964,32 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
         }
       }
 
-      const finalAmount = Number(bestAmount.toFixed(2));
+      const finalAmount = Number((revMode === "revenue" ? high : low).toFixed(2));
+      const beforeAmount = readSubjectInclAmount(getCurrentReverseSubjectState(), selectedSubject.ref);
       const finalCandidate = buildCandidate(finalAmount);
       const refreshed: any = await invoke('calculate_ict_benefit', { input: finalCandidate.payload });
 
-      state.setCashflowSegments(finalCandidate.nextSegments);
+      if (modelEAmountMode) {
+        state.setCashflowSegments(finalCandidate.nextSegments);
+      }
+      state.updateTaxItem(
+        selectedSubject.subject.groupId,
+        selectedSubject.subject.key,
+        "incl",
+        finalAmount,
+      );
+
       if (revMode === "revenue") {
-        state.setRevIt(finalCandidate.nextRevIt);
+        state.setActiveTab("revenue");
       } else {
-        state.setCostIt(finalCandidate.nextCostIt);
-        handleSelFeeChange('limit', String(finalAmount));
+        if (selectedSubject.subject.subjectCode === "cost_it_integration") {
+          handleSelFeeChange('limit', String(finalAmount));
+        }
+        state.setActiveTab("cost");
       }
 
       setCashflowTable(refreshed.cashflow);
       setMetrics(refreshed);
-      state.setActiveTab("basic");
       updateData(AI_CONTEXT_KEY.ICT_CORE, buildAiContextPayload(true, {
         metrics: refreshed,
         cashflow: refreshed.cashflow,
@@ -414,98 +1000,36 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
             target_type: revTargetType,
             target_value: revTargetValue,
             result: finalAmount,
-            cashflow_segment: finalCandidate.nextSegments[segmentIndex]?.name,
-            model_e_amount_mode: true,
+            before_amount: beforeAmount,
+            subject_ref: selectedSubject.ref,
+            subject_name: selectedSubject.displayName,
+            cashflow_segment: modelEAmountMode ? finalCandidate.nextSegments[segmentIndex]?.name : null,
+            model_e_amount_mode: modelEAmountMode,
           },
         },
       }));
 
-      const finalDirectCashflow = buildDirectCashflowFromSegments(finalCandidate.nextSegments);
-      const distText = revMode === 'revenue'
-        ? formatDistribution(distributionFromCashflow(finalDirectCashflow.rev))
-        : formatDistribution(distributionFromCashflow(finalDirectCashflow.cost));
-      const targetName = revTargetType === 'margin' ? '毛利润率' : '净现值率';
-      const reverseFieldName = revMode === 'revenue' ? '系统集成服务收入' : '系统集成服务成本';
-      const segmentName = finalCandidate.nextSegments[segmentIndex]?.name ?? "对应板块";
+      const distText = modelEAmountMode
+        ? (() => {
+            const finalDirectCashflow = buildDirectCashflowFromSegments(finalCandidate.nextSegments);
+            return revMode === 'revenue'
+              ? formatDistribution(distributionFromCashflow(finalDirectCashflow.rev))
+              : formatDistribution(distributionFromCashflow(finalDirectCashflow.cost));
+          })()
+        : (revMode === 'revenue' ? formatDistribution(effectiveDistRev) : formatDistribution(effectiveDistCost));
+      const targetName = revTargetType === 'margin' ? '目标毛利润率' : '目标净现值率';
+      const segmentText = modelEAmountMode
+        ? `\n同步板块：${finalCandidate.nextSegments[segmentIndex]?.name ?? "对应板块"}`
+        : "";
 
       alert(
         `反算完成：${formatCurrency(finalAmount)}\n` +
         `目标：${targetName} ≥ ${formatPercent(target)}\n` +
-        `反算字段：${reverseFieldName}\n` +
-        `同步板块：${segmentName}\n` +
+        `反算科目：“${selectedSubject.displayName}”\n` +
+        `反算前金额：${formatCurrency(beforeAmount)}\n` +
+        `该结果为该科目的含税金额，已按当前资金收付模型重新生成现金流。${segmentText}\n` +
         `当前资金收付模型：${cashflowModelLabels[state.cashflowModel]}\n` +
-        `年度分布：${distText}\n` +
-        `已按该板块金额、税率和年度计划重新生成精确现金流。`
-      );
-    } catch (e) {
-      alert("反推失败: " + e);
-    }
-  };
-
-  const performReverseCalculation = async () => {
-    if (!revTargetValue) return alert("请输入目标值！");
-    if (state.cashflowModel === 'model_e' && state.segmentValueMode === "amount") {
-      return performModelEAmountReverseCalculation();
-    }
-    try {
-      const apiName = revMode === 'revenue' ? 'reverse_calc_ict_revenue_target' : 'reverse_calc_ict_target';
-      const basePayload = getInputDataPayload();
-      const valStr: string = await invoke(apiName, {
-        input: basePayload,
-        targetType: revTargetType,
-        targetValue: String(revTargetValue)
-      });
-
-      const numVal = Number(valStr);
-      const nextPayload = {
-        ...basePayload,
-        ...(revMode === 'revenue'
-          ? { rev_it_integration: { ...basePayload.rev_it_integration, incl_tax: String(numVal) } }
-          : { cost_it_integration: { ...basePayload.cost_it_integration, incl_tax: String(numVal) } })
-      };
-
-      if (revMode === 'revenue') {
-        state.updateTaxItem('revIt', 'integration', 'incl', numVal);
-        state.setActiveTab("revenue");
-      } else {
-        state.updateTaxItem('costIt', 'integration', 'incl', numVal);
-        handleSelFeeChange('limit', String(numVal));
-        state.setActiveTab("cost");
-      }
-
-      const refreshed: any = await invoke('calculate_ict_benefit', { input: nextPayload });
-      if (refreshed) {
-        setCashflowTable(refreshed.cashflow);
-        setMetrics(refreshed);
-        updateData(AI_CONTEXT_KEY.ICT_CORE, buildAiContextPayload(true, {
-          metrics: refreshed,
-          cashflow: refreshed.cashflow,
-          extra: {
-            ...nextPayload,
-            reverse_calculation: {
-              mode: revMode,
-              target_type: revTargetType,
-              target_value: revTargetValue,
-              result: numVal,
-            },
-          },
-        }));
-      }
-
-      const distText = revMode === 'revenue'
-        ? formatDistribution(effectiveDistRev)
-        : formatDistribution(effectiveDistCost);
-      const targetName = revTargetType === 'margin' ? '毛利润率' : '净现值率';
-      const reverseFieldName = revMode === 'revenue' ? '系统集成服务收入' : '系统集成服务成本';
-
-      alert(
-        `反算完成：${formatCurrency(numVal)}\n` +
-        `目标：${targetName} ≥ ${formatPercent(Number(revTargetValue))}\n` +
-        `反算字段：${reverseFieldName}\n` +
-        `该结果为含税总额参数值，将按当前资金收付模型自动分摊。\n` +
-        `当前资金收付模型：${cashflowModelLabels[state.cashflowModel]}\n` +
-        `年度分布：${distText}\n` +
-        `已自动刷新 10 年现金流推演。`
+        `年度分布：${distText}`
       );
     } catch (e) {
       alert("反推失败: " + e);
@@ -523,6 +1047,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     revMode, setRevMode,
     revTargetType, setRevTargetType,
     revTargetValue, setRevTargetValue,
+    revSubjectRefKey, setRevSubjectRefKey,
     directSegmentCashflow,
     revenueInclTotal,
     costInclTotal,

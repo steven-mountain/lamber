@@ -4,6 +4,59 @@ This changelog records structural modifications, business rules, and context cha
 
 ## 2026-06-02
 
+### ICT Model E Structure Reverse Segment Sync
+
+Modified:
+- [useIctCalculations.ts](../src-ui/src/hooks/useIctCalculations.ts): Removed the `model_e` amount-mode structure reverse entrance block and added a shared candidate/final segment synchronization path for locked-total structure reverse. The sync maps stable reverse subjects to `CashflowSegment` side/scope buckets, applies target and balancing deltas before `calculate_ict_benefit`, rejects invalid candidates, and writes the accepted synced segment array back only after the final calculation succeeds.
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Extended the structure reverse hint so `model_e` amount mode tells users that segmented cashflow amount plans will be synchronized.
+
+Tests:
+- Ran `npm run build` in `src-ui`.
+- Ran `cargo test` in `src-tauri`: 8 passed, 2 failed because the local test template `项目全生命周期文件模版/效益分析表 .xlsx` is missing for the two `docfill::tests` lifecycle Excel cases.
+- Ran `cargo test benefit::calculator::tests` in `src-tauri`: 7 passed.
+- Ran `cargo test ai_context::service::tests` in `src-tauri`: 1 passed.
+
+Decision:
+- `model_e` amount-mode structure reverse is supported only where the selected subject and balancing subject map to existing segment buckets. Revenue IT/CT/non-IT-CT subjects map to `revenueScope`; cost IT/CT/non-IT-CT/mixed subjects map to `costScope`.
+- Same-bucket transfers preserve the aggregate bucket total; cross-bucket transfers move equal and opposite deltas between buckets. Existing custom annual amount plans are scaled through the amount-mode annual adjustment helper.
+- Candidates are excluded from reachability and final write-back if they require a missing bucket or would create a negative segment, bucket, or annual amount.
+- CT product and line revenue still mirror to their paired CT cost subjects and now synchronize the linked cost-side segment bucket. If that cross-side linkage collides with an active locked-total investment balancing rule, the solver blocks conservatively instead of attempting a four-variable cross-side reverse.
+- The revenue own-product 1% prompt remains display-only.
+
+### ICT Locked-Total Structure Reverse Calculation
+
+Modified:
+- [ictReverseCalculation.ts](../src-ui/src/lib/ictReverseCalculation.ts): Added reverse mode resolution for `normal`, `locked_total_structure`, and `blocked`, plus locked-total structure context construction, dual-subject candidate application, and bounded sample-point generation.
+- [useIctCalculations.ts](../src-ui/src/hooks/useIctCalculations.ts): Added the locked-total structure solver. It samples the finite reallocatable pool, detects metric-insensitive and unreachable targets, chooses the crossing solution closest to the current target amount, validates total preservation/non-negative amounts, and writes target plus balancing subject results together.
+- [useIctState.ts](../src-ui/src/hooks/useIctState.ts): Added `updateTaxItemsInclBatch` for inclusive-amount batch writes, preserving tax-exclusive recomputation and CT revenue-to-cost amount pairing without same-group stale-state overwrite risk.
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Replaced same-side balance blocking with automatic reverse mode detection, added the structure-mode hint in the smart reverse panel, kept balancing subjects disabled, and passed the resolved reverse context into the calculation hook.
+
+Tests:
+- Ran `npm run build` in `src-ui`.
+
+Decision:
+- Same-side reverse under a valid total balance rule is now handled as structure reverse: the selected target subject changes and the balancing subject moves inversely so the side's inclusive total stays unchanged.
+- `model_e` amount mode is blocked for structure reverse because the current segment data model cannot reliably map two changed subjects to distinct cashflow destinations. Normal selected-subject reverse remains supported in amount mode.
+- The revenue own-product 1% prompt is still display-only in the current UI; this phase did not add a blocking validation rule for it.
+
+### ICT Dynamic Reverse Subject Calculation
+
+Created:
+- [ictReverseCalculation.ts](../src-ui/src/lib/ictReverseCalculation.ts): Added shared helpers for reverse subject stable references, eligible subject options, selected-subject display names, candidate tax-inclusive amount application, CT paired amount mirroring, and balance-allocation conflict validation.
+
+Modified:
+- [useIctCalculations.ts](../src-ui/src/hooks/useIctCalculations.ts): Replaced fixed frontend reverse writes to `rev_it_integration` / `cost_it_integration` with a dynamic selected-subject solver. Candidate payloads now support all revenue and cost subject groups, reuse `calculate_ict_benefit`, preserve the existing margin/NPV-rate target metrics, and write final results through `updateTaxItem`.
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Added the smart reverse subject selector, clears invalid subject selections when switching reverse side, disables active balancing subjects, and blocks same-side locked-total reverse conflicts with a clear message.
+
+Tests:
+- Ran `npm run build` in `src-ui`.
+
+Decision:
+- The current balance allocation implementation is present on both revenue and investment sides, so same-side reverse conflict handling is applied to both sides.
+- The reverse subject is identified by stable catalog fields (`side`, `subjectCode`, `groupId`, `key`) and display names are presentation-only.
+- Locked-total structure reverse is intentionally not implemented in this phase. When a same-side balance allocation rule is valid, same-side reverse is blocked; cross-side reverse remains allowed.
+- The old Rust fixed reverse commands remain registered for compatibility, but the ICT frontend smart reverse panel now evaluates selected subjects through the general `calculate_ict_benefit` path.
+
 ### ICT Balance Allocation Rules
 
 Created:

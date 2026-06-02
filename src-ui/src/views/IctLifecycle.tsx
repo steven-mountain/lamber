@@ -44,6 +44,12 @@ import {
   type BalanceRuleEvaluation,
   type BalanceSubjectItem,
 } from "../lib/ictBalanceAllocation";
+import {
+  findReverseSubjectOption,
+  getReverseEligibleSubjects,
+  getReverseSubjectRefKey,
+  resolveReverseCalculationContext,
+} from "../lib/ictReverseCalculation";
 
 const restoreCustomSubjectName = (item: any) => normalizeCustomSubjectName(item?.customSubjectName ?? item?.custom_subject_name ?? "");
 const restoreBillingSubjectName = (item: any) => normalizeCustomSubjectName(item?.billingSubjectName ?? item?.billing_subject_name ?? "");
@@ -79,6 +85,9 @@ const buildFinancialStateHash = (data: any) => JSON.stringify({
   costCt: Object.fromEntries(Object.entries(data.costCt || {}).map(([key, item]) => [key, taxItemFinancialPart(item)])),
   costMix: Object.fromEntries(Object.entries(data.costMix || {}).map(([key, item]) => [key, taxItemFinancialPart(item)])),
 });
+
+const formatReverseCurrency = (value: number) =>
+  new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY" }).format(value);
 
 export default function IctLifecycle() {
   const { activeProjectId, activeSchemeId, entrySource, navigateTo } = useNavigationStore();
@@ -550,6 +559,7 @@ export default function IctLifecycle() {
     revMode, setRevMode,
     revTargetType, setRevTargetType,
     revTargetValue, setRevTargetValue,
+    revSubjectRefKey, setRevSubjectRefKey,
     performReverseCalculation,
     applySelectionLimit,
     handleSelFeeChange,
@@ -619,6 +629,57 @@ export default function IctLifecycle() {
       .map(evaluation => evaluation.message as string),
     [revenueBalanceEvaluation, investmentBalanceEvaluation],
   );
+
+  const reverseBalanceEvaluation = revMode === "revenue"
+    ? revenueBalanceEvaluation
+    : investmentBalanceEvaluation;
+
+  const reverseSubjectOptions = useMemo(
+    () => getReverseEligibleSubjects(
+      revMode,
+      balanceSubjectItems,
+      revMode === "revenue" ? revenueBalanceEvaluation : investmentBalanceEvaluation,
+    ),
+    [revMode, balanceSubjectItems, revenueBalanceEvaluation, investmentBalanceEvaluation],
+  );
+
+  const selectedReverseSubject = useMemo(
+    () => findReverseSubjectOption(reverseSubjectOptions, revSubjectRefKey),
+    [reverseSubjectOptions, revSubjectRefKey],
+  );
+
+  const reverseCalculationContext = useMemo(
+    () => resolveReverseCalculationContext({
+      option: selectedReverseSubject,
+      subjects: balanceSubjectItems,
+      sameSideBalanceEvaluation: reverseBalanceEvaluation,
+    }),
+    [selectedReverseSubject, balanceSubjectItems, reverseBalanceEvaluation],
+  );
+
+  const reverseContextMessage = reverseCalculationContext.mode === "blocked"
+    ? reverseCalculationContext.message
+    : null;
+
+  useEffect(() => {
+    if (!revSubjectRefKey) return;
+    const selected = findReverseSubjectOption(reverseSubjectOptions, revSubjectRefKey);
+    if (!selected || selected.disabledReason) {
+      setRevSubjectRefKey("");
+    }
+  }, [revSubjectRefKey, reverseSubjectOptions, setRevSubjectRefKey]);
+
+  const executeReverseCalculation = () => {
+    if (blockingBalanceMessages.length > 0) {
+      alert(blockingBalanceMessages.join("\n"));
+      return;
+    }
+    if (reverseContextMessage) {
+      alert(reverseContextMessage);
+      return;
+    }
+    performReverseCalculation(selectedReverseSubject, reverseCalculationContext);
+  };
 
   useEffect(() => {
     if (!activeProject?.id || !workspaceId) return;
@@ -1241,8 +1302,38 @@ export default function IctLifecycle() {
                 反算结果为含税总额参数值，系统将根据当前资金收付模型自动分摊至各年度现金流。
               </p>
               <div className="flex gap-2 bg-background p-1 border border-border rounded-lg">
-                <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revMode === 'cost' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => setRevMode('cost')}>反算投入</button>
-                <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revMode === 'revenue' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => setRevMode('revenue')}>反算收入</button>
+                <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revMode === 'cost' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => { setRevMode('cost'); setRevSubjectRefKey(""); }}>反算投入</button>
+                <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revMode === 'revenue' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => { setRevMode('revenue'); setRevSubjectRefKey(""); }}>反算收入</button>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-secondary-foreground">反算科目</label>
+                <select
+                  value={revSubjectRefKey}
+                  onChange={event => setRevSubjectRefKey(event.target.value)}
+                  className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm"
+                >
+                  <option value="">请选择需要反算的计费科目</option>
+                  {reverseSubjectOptions.map(option => (
+                    <option
+                      key={getReverseSubjectRefKey(option.ref)}
+                      value={getReverseSubjectRefKey(option.ref)}
+                      disabled={Boolean(option.disabledReason)}
+                    >
+                      {option.displayName}{option.disabledReason ? "（差额承接中）" : ""}
+                    </option>
+                  ))}
+                </select>
+                {reverseContextMessage && selectedReverseSubject && (
+                  <span className="text-[11px] leading-relaxed text-amber-700 bg-amber-50 rounded-md px-2 py-1">
+                    {reverseContextMessage}
+                  </span>
+                )}
+                {reverseCalculationContext.mode === "locked_total_structure" && (
+                  <span className="text-[11px] leading-relaxed text-blue-700 bg-blue-50/70 rounded-md px-2 py-1">
+                    当前为结构反算模式：{reverseCalculationContext.structure.sideLabel}含税总金额保持 {formatReverseCurrency(reverseCalculationContext.structure.totalInclAmount)} 不变。调整“{reverseCalculationContext.structure.targetDisplayName}”时，“{reverseCalculationContext.structure.balancingDisplayName}”将自动反向补差。
+                    {state.cashflowModel === "model_e" && state.segmentValueMode === "amount" ? " 分板块现金流金额计划将同步更新。" : ""}
+                  </span>
+                )}
               </div>
               <div className="flex gap-2 bg-background p-1 border border-border rounded-lg">
                 <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revTargetType === 'margin' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => setRevTargetType('margin')}>目标毛利润率</button>
@@ -1252,7 +1343,7 @@ export default function IctLifecycle() {
                 <label className="text-xs font-semibold text-secondary-foreground">目标值 (如0.15代表15%)</label>
                 <input type="number" step="0.0001" className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={revTargetValue} onChange={e => setRevTargetValue(e.target.value)} />
               </div>
-              <button className="flex w-full items-center justify-center gap-2 bg-primary text-primary-foreground font-bold py-2 rounded-lg shadow-sm" onClick={performReverseCalculation}><AppIcon name="reverse" size={16} /> 智能反算</button>
+              <button className="flex w-full items-center justify-center gap-2 bg-primary text-primary-foreground font-bold py-2 rounded-lg shadow-sm" onClick={executeReverseCalculation}><AppIcon name="reverse" size={16} /> 智能反算</button>
             </div>
             <h3 className="font-bold text-foreground mb-4">采购甄选费测算</h3>
             <div className="bg-card border border-border p-4 rounded-xl flex flex-col gap-3">
