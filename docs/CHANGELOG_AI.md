@@ -2,7 +2,38 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-06-03
+
+### ICT Lifecycle Balance Control UI Layout Alignment
+
+Modified:
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Changed the balance control columns container to top-align (using `md:items-start` instead of `md:items-center`), and wrapped the input container and summary card/text elements in a matched `h-[38px]` height container. This ensures Row 1 (labels), Row 2 (inputs/summaries), and Row 3 (1% own-product prompts) align row-by-row across columns.
+
+Tests:
+- Ran `npm run build` in `src-ui`: TypeScript compilation and Vite build succeeded.
+- Ran `cargo test benefit::calculator::tests` in `src-tauri`: All unit tests passed.
+
 ## 2026-06-02
+
+### ICT Lifecycle Subject Role Configuration Optimization
+
+Created:
+- [IctSubjectRoleComponents.tsx](../src-ui/src/components/IctSubjectRoleComponents.tsx): Added modular UI components `SubjectRoleActions` (row-level menu for setting/clearing balancing and reverse roles on each subject) and `SelectedSubjectRoleSummary` (card summarizing active role, supporting locate and clear actions), along with helper utilities `scrollToSubject` and `highlightSubjectElement` for smooth-scroll tab switching and visual outline feedback.
+
+Modified:
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Integrates role assignment directly in subject table rows, removing the legacy select dropdowns from the top control areas and right panel. Simplified the right reverse panel to automatically infer target details and reverse side from the selected target, disabling the execute button if no target is set. Removed unused imports and methods.
+
+Tests:
+- Ran `npm run build` in `src-ui`: TypeScript check and Vite build passed.
+- Ran `cargo test` in `src-tauri`: 8 passed, 2 expected failures due to missing template file.
+- Ran `cargo test benefit::calculator::tests`: 7 passed.
+- Ran `cargo test ai_context::service::tests`: 1 passed.
+
+Decision:
+- Entry point for balancing and reverse target roles is shifted to the concrete subject rows for direct visual context.
+- Mutual exclusions (balancing subjects cannot be reverse targets) are enforced with warnings on hover/click.
+- Switching balancing subjects prompts for confirmation and preserves the old balancing subject's current amount value.
+- Right reverse panel automatically adapts its state based on the side and reverse mode of the active target.
 
 ### ICT Model E Structure Reverse Segment Sync
 

@@ -1,6 +1,6 @@
 # ARCHITECTURE_MAP.md
 
-Last updated: 2026-06-02 (ICT Model E Structure Reverse Segment Sync)
+Last updated: 2026-06-03 (ICT total balance allocation layout alignment)
 
 ## 1. Repository overview
 
@@ -78,6 +78,7 @@ graph TD
   - [IctMetricsDashboard.tsx](../src-ui/src/components/IctMetricsDashboard.tsx): Margin and NPV indicators overlay.
   - [ProjectFilesTab.tsx](../src-ui/src/components/project/ProjectFilesTab.tsx): Handles file binding, scanning, and main doc marking in the Project Board drawer.
   - [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx): The AI assistant drawer interface.
+  - [IctSubjectRoleComponents.tsx](../src-ui/src/components/IctSubjectRoleComponents.tsx): UI components for subject role actions (SubjectRoleActions), summaries (SelectedSubjectRoleSummary), and smooth-scroll navigation (scrollToSubject, highlightSubjectElement).
 
 ## 3. Main application flow
 
@@ -221,6 +222,8 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 3. When the difference is zero or positive, `IctLifecycle.tsx` writes only the balancing subject's inclusive amount through `updateTaxItem`; the existing tax-rate linkage recalculates tax-exclusive amount. Tax rate remains editable while inclusive and tax-exclusive amount inputs are read-only for the active balancing subject.
 4. When other subjects exceed the configured total, no negative amount is written. The control area reports the validation error and `handleTabSwitch` blocks cashflow and document-generation tabs before the existing 0-tolerance reconciliation flow.
 5. Switching the balancing subject clears the previous balancing subject's inclusive amount to `0`, then the newly selected subject receives the current balancing difference through the same `updateTaxItem` path. This prevents the balancing amount from remaining duplicated on both old and new subjects.
+6. The balance control UI layout is top-aligned with matched row heights (38px) across the two columns to prevent vertical alignment drift caused by prompts or different interactive item sizes.
+
 
 ### 4.8.2 ICT dynamic reverse subject flow
 

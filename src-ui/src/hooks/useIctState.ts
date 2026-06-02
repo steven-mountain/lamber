@@ -537,6 +537,14 @@ export function useIctState() {
     side: BalanceAllocationSide,
     patch: Partial<BalanceAllocationRule>,
   ) => {
+    if (patch.balancingSubject !== undefined) {
+      const oldSubject = balanceAllocation[side].balancingSubject;
+      const newSubject = patch.balancingSubject;
+      if (oldSubject && newSubject && (oldSubject.groupId !== newSubject.groupId || oldSubject.key !== newSubject.key)) {
+        updateTaxItem(oldSubject.groupId, oldSubject.key, "incl", 0);
+      }
+    }
+
     setBalanceAllocation(prev => ({
       ...prev,
       [side]: {

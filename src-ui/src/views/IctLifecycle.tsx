@@ -34,8 +34,6 @@ import {
 } from "../lib/ictSubjectCatalog";
 import {
   evaluateBalanceRule,
-  getBalanceSubjectRef,
-  getBalanceSubjectRefKey,
   isBalanceSubjectMatch,
   normalizeBalanceAllocationState,
   serializeBalanceAllocationRule,
@@ -47,9 +45,15 @@ import {
 import {
   findReverseSubjectOption,
   getReverseEligibleSubjects,
-  getReverseSubjectRefKey,
   resolveReverseCalculationContext,
+  getReverseSubjectRef,
+  getReverseSubjectRefKey,
 } from "../lib/ictReverseCalculation";
+import {
+  SubjectRoleActions,
+  SelectedSubjectRoleSummary,
+  scrollToSubject,
+} from "../components/IctSubjectRoleComponents";
 
 const restoreCustomSubjectName = (item: any) => normalizeCustomSubjectName(item?.customSubjectName ?? item?.custom_subject_name ?? "");
 const restoreBillingSubjectName = (item: any) => normalizeCustomSubjectName(item?.billingSubjectName ?? item?.billing_subject_name ?? "");
@@ -674,6 +678,10 @@ export default function IctLifecycle() {
       alert(blockingBalanceMessages.join("\n"));
       return;
     }
+    if (!selectedReverseSubject) {
+      alert("请先选择反算目标科目。");
+      return;
+    }
     if (reverseContextMessage) {
       alert(reverseContextMessage);
       return;
@@ -858,135 +866,101 @@ export default function IctLifecycle() {
     }
   };
 
-  const parseRuleAmount = (value: string) => {
-    if (value.trim() === "") return null;
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? numeric : null;
+  const parseRuleAmount = (val: string) => {
+    if (val === "") return null;
+    const num = Number(val);
+    return isNaN(num) ? null : num;
   };
 
-  const getEvaluationForSide = (side: BalanceAllocationSide) =>
-    side === "revenue" ? revenueBalanceEvaluation : investmentBalanceEvaluation;
-
-  const getSubjectsForSide = (side: BalanceAllocationSide) =>
-    side === "revenue" ? revenueBalanceSubjects : investmentBalanceSubjects;
+  const getEvaluationForSide = (side: BalanceAllocationSide) => {
+    return side === "revenue" ? revenueBalanceEvaluation : investmentBalanceEvaluation;
+  };
 
   const isSubjectAutoBalanced = (subject: IctSubjectDefinition) => {
-    const side: BalanceAllocationSide = subject.side === "revenue" ? "revenue" : "investment";
+    const side = subject.side === "revenue" ? "revenue" : "investment";
     const rule = balanceAllocation[side];
     return rule.enabled && isBalanceSubjectMatch(rule.balancingSubject, subject);
   };
 
   const renderBalanceControl = (side: BalanceAllocationSide) => {
-    const isRevenue = side === "revenue";
     const rule = balanceAllocation[side];
     const evaluation = getEvaluationForSide(side);
-    const subjects = getSubjectsForSide(side);
-    const totalLabel = isRevenue ? "收入含税总金额" : "投入含税总金额";
-    const heading = isRevenue ? "收入总额与差额承接" : "投入总额与差额承接";
-    const selectedKey = getBalanceSubjectRefKey(rule.balancingSubject);
-    const ownProductMinimum = rule.totalInclAmount === null
-      ? null
-      : Number((rule.totalInclAmount * 0.01).toFixed(2));
-    const updateRulePatch = (patch: Partial<typeof rule>) => {
-      const nextTotal = patch.totalInclAmount !== undefined ? patch.totalInclAmount : rule.totalInclAmount;
-      const nextSubject = patch.balancingSubject !== undefined ? patch.balancingSubject : rule.balancingSubject;
+    const sideLabel = side === "revenue" ? "收入" : "投入";
+
+    const handleLocate = () => {
+      if (evaluation.balancingSubject) {
+        scrollToSubject(
+          evaluation.balancingSubject.side,
+          evaluation.balancingSubject.groupId,
+          evaluation.balancingSubject.key,
+          activeTab,
+          setActiveTab
+        );
+      }
+    };
+
+    const handleClear = () => {
       updateBalanceRule(side, {
-        ...patch,
-        enabled: nextTotal !== null || Boolean(nextSubject),
+        balancingSubject: null,
+        enabled: rule.totalInclAmount !== null,
       });
     };
 
     return (
-      <div className="mb-6 bg-muted/70 rounded-xl p-5 shadow-sm">
-        <div className="flex flex-col gap-4">
-          <div>
-            <h3 className="font-bold text-primary text-base flex items-center gap-2">
-              <AppIcon name="quickAction" size={18} /> {heading}
-            </h3>
-            <p className="text-xs text-secondary-foreground mt-1">
-              输入含税总金额并指定差额承接科目；其他科目金额在下方表单录入，系统自动把差额写入承接科目。
-            </p>
-          </div>
-
-          <div className={`grid grid-cols-1 gap-3 ${isRevenue ? "xl:grid-cols-3" : "xl:grid-cols-2"}`}>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-foreground">{totalLabel}</label>
+      <div className="table-card bg-card border border-border rounded-xl p-6 shadow-sm mb-6 flex flex-col gap-4">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+          <div className="flex flex-col gap-1.5 flex-1 max-w-sm">
+            <label className="text-sm font-bold text-foreground">
+              {sideLabel}含税总金额 (元)
+            </label>
+            <div className="flex items-center gap-2 h-[38px]">
               <input
                 type="number"
-                step="0.01"
-                placeholder="输入总金额"
-                value={rule.totalInclAmount ?? ""}
-                onChange={event => {
-                  const nextAmount = parseRuleAmount(event.target.value);
-                  updateRulePatch({ totalInclAmount: nextAmount });
-                }}
-                className="bg-card px-3 py-2 rounded-md outline-none text-sm font-semibold shadow-sm focus:ring-1 focus:ring-ring"
-              />
-            </div>
-
-            {isRevenue && (
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-foreground">
-                  产品含税收入（默认总金额 1%）
-                </label>
-                <input
-                  type="number"
-                  readOnly
-                  value={ownProductMinimum ?? ""}
-                  placeholder="输入总金额后自动提示"
-                  className="bg-muted px-3 py-2 rounded-md outline-none text-sm font-bold text-primary"
-                />
-              </div>
-            )}
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-foreground">差额承接科目</label>
-              <select
-                value={selectedKey}
-                onChange={event => {
-                  const selected = subjects.find(row => getBalanceSubjectRefKey(getBalanceSubjectRef(row.subject)) === event.target.value);
-                  if (rule.balancingSubject && (!selected || !isBalanceSubjectMatch(rule.balancingSubject, selected.subject))) {
-                    const previous = subjects.find(row => isBalanceSubjectMatch(rule.balancingSubject, row.subject));
-                    if (previous) {
-                      updateTaxItem(previous.subject.groupId, previous.subject.key, "incl", 0);
-                    }
-                  }
-                  updateRulePatch({
-                    balancingSubject: selected ? getBalanceSubjectRef(selected.subject) : null,
+                placeholder={`请输入${sideLabel}含税总金额`}
+                className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm w-full font-semibold focus:border-ring h-full"
+                value={rule.totalInclAmount === null ? "" : rule.totalInclAmount}
+                onChange={e => {
+                  const val = parseRuleAmount(e.target.value);
+                  updateBalanceRule(side, {
+                    totalInclAmount: val,
+                    enabled: val !== null || rule.balancingSubject !== null,
                   });
                 }}
-                className="bg-card px-3 py-2 rounded-md outline-none text-sm font-semibold shadow-sm focus:ring-1 focus:ring-ring"
-              >
-                <option value="">请选择科目</option>
-                {subjects.map(row => (
-                  <option
-                    key={row.subject.subjectCode}
-                    value={getBalanceSubjectRefKey(getBalanceSubjectRef(row.subject))}
-                  >
-                    {getSubjectExcelDisplayName(row.subject, row.item)}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
+            {side === "revenue" && rule.totalInclAmount !== null && (
+              <span className="text-[10px] text-primary font-bold">
+                产品含税收入最低提示：{(rule.totalInclAmount * 0.01).toFixed(2)} 元 (总金额 1%)
+              </span>
+            )}
           </div>
 
-          {evaluation.message && (
-            <div className={`rounded-lg px-3 py-2 text-xs font-semibold ${
-              evaluation.status === "negative"
-                ? "bg-red-50 text-red-700"
-                : "bg-amber-50 text-amber-700"
-            }`}>
-              {evaluation.message}
+          <div className="flex flex-col gap-1.5 flex-1">
+            <label className="text-sm font-bold text-foreground">
+              差额承接科目
+            </label>
+            <div className="h-[38px] flex items-center">
+              {rule.enabled && evaluation.balancingSubject ? (
+                <SelectedSubjectRoleSummary
+                  subject={evaluation.balancingSubject}
+                  item={evaluation.balancingItem}
+                  onLocate={handleLocate}
+                  onClear={handleClear}
+                />
+              ) : (
+                <span className="text-xs text-secondary-foreground font-semibold">
+                  尚未指定。请在下方{sideLabel}科目列表中点击“设置角色”进行设置。
+                </span>
+              )}
             </div>
-          )}
-
-          {rule.enabled && evaluation.status === "valid" && evaluation.balancingSubject && (
-            <div className="rounded-lg bg-blue-50/70 px-3 py-2 text-xs font-semibold text-blue-700">
-              {getSubjectExcelDisplayName(evaluation.balancingSubject, evaluation.balancingItem)}
-              将自动承接差额；该科目的含税/不含税金额不可手工编辑，税率仍可调整。
-            </div>
-          )}
+          </div>
         </div>
+
+        {rule.enabled && evaluation.status === "negative" && evaluation.message && (
+          <div className="text-xs text-red-500 font-bold bg-red-50 p-2.5 rounded-lg border border-red-200/30">
+            {evaluation.message}
+          </div>
+        )}
       </div>
     );
   };
@@ -1002,11 +976,44 @@ export default function IctLifecycle() {
           const customSubjectName = getSubjectCustomName(currentItem);
           const billingSubjectName = getSubjectBillingName(currentItem);
           const displayName = getSubjectExcelDisplayName(item, currentItem);
+
+          const balanceSide = item.side === "revenue" ? "revenue" : "investment";
+          const rule = balanceAllocation[balanceSide];
+          const isBalancing = rule.enabled && isBalanceSubjectMatch(rule.balancingSubject, item);
+          const isReverseTarget = revSubjectRefKey === getReverseSubjectRefKey(getReverseSubjectRef(item));
+
+          const borderClass = isBalancing
+            ? "border-l-2 border-amber-500/70 bg-amber-50/30 pl-1.5"
+            : isReverseTarget
+            ? "border-l-2 border-purple-500/70 bg-purple-50/30 pl-1.5"
+            : "border-l-2 border-transparent pl-1.5";
+
           return (
-            <div key={item.key} className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <label className="text-sm font-semibold text-secondary-foreground">{item.standardSubjectName}</label>
-                {(customSubjectName || billingSubjectName) && <span className="text-[10px] font-medium text-primary truncate max-w-[220px]">{displayName}</span>}
+            <div
+              key={item.key}
+              id={`subject-anchor-${item.side}-${groupId}-${item.key}`}
+              className={`flex flex-col gap-1.5 py-2 pr-2 rounded-lg transition-all duration-300 ${borderClass}`}
+            >
+              <div className="flex items-center justify-between gap-2 flex-wrap min-w-0">
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                  <label className="text-sm font-semibold text-secondary-foreground shrink-0">{item.standardSubjectName}</label>
+                  {(customSubjectName || billingSubjectName) && (
+                    <span className="text-[10px] font-medium text-primary truncate max-w-[150px] sm:max-w-[200px]" title={displayName}>
+                      ({displayName})
+                    </span>
+                  )}
+                </div>
+                <SubjectRoleActions
+                  subject={item}
+                  item={currentItem}
+                  balanceAllocation={balanceAllocation}
+                  updateBalanceRule={updateBalanceRule}
+                  updateTaxItem={updateTaxItem}
+                  revSubjectRefKey={revSubjectRefKey}
+                  setRevSubjectRefKey={setRevSubjectRefKey}
+                  setRevMode={setRevMode}
+                  subjects={balanceSubjectItems}
+                />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <input
@@ -1301,38 +1308,55 @@ export default function IctLifecycle() {
               <p className="text-xs leading-relaxed text-secondary-foreground">
                 反算结果为含税总额参数值，系统将根据当前资金收付模型自动分摊至各年度现金流。
               </p>
-              <div className="flex gap-2 bg-background p-1 border border-border rounded-lg">
-                <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revMode === 'cost' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => { setRevMode('cost'); setRevSubjectRefKey(""); }}>反算投入</button>
-                <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revMode === 'revenue' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => { setRevMode('revenue'); setRevSubjectRefKey(""); }}>反算收入</button>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-secondary-foreground">反算科目</label>
-                <select
-                  value={revSubjectRefKey}
-                  onChange={event => setRevSubjectRefKey(event.target.value)}
-                  className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm"
-                >
-                  <option value="">请选择需要反算的计费科目</option>
-                  {reverseSubjectOptions.map(option => (
-                    <option
-                      key={getReverseSubjectRefKey(option.ref)}
-                      value={getReverseSubjectRefKey(option.ref)}
-                      disabled={Boolean(option.disabledReason)}
-                    >
-                      {option.displayName}{option.disabledReason ? "（差额承接中）" : ""}
-                    </option>
-                  ))}
-                </select>
-                {reverseContextMessage && selectedReverseSubject && (
-                  <span className="text-[11px] leading-relaxed text-amber-700 bg-amber-50 rounded-md px-2 py-1">
-                    {reverseContextMessage}
-                  </span>
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-secondary-foreground">反算目标</label>
+                {selectedReverseSubject ? (
+                  <div className="flex flex-col gap-2.5">
+                    <SelectedSubjectRoleSummary
+                      subject={selectedReverseSubject.subject}
+                      item={selectedReverseSubject.item}
+                      onLocate={() => {
+                        scrollToSubject(
+                          selectedReverseSubject.ref.side,
+                          selectedReverseSubject.ref.groupId,
+                          selectedReverseSubject.ref.key,
+                          activeTab,
+                          setActiveTab
+                        );
+                      }}
+                      onClear={() => {
+                        setRevSubjectRefKey("");
+                      }}
+                    />
+                    <div className="flex flex-col gap-1 text-[11px] text-secondary-foreground font-semibold bg-muted/30 p-2 rounded-lg">
+                      <div>反算方向：<span className="text-foreground">{selectedReverseSubject.ref.side === 'revenue' ? '收入' : '投入'}</span></div>
+                      <div>反算模式：<span className="text-foreground">{reverseCalculationContext.mode === 'locked_total_structure' ? '结构反算' : '普通反算'}</span></div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-secondary-foreground font-semibold bg-muted/20 p-3 rounded-lg border border-dashed border-border/60">
+                    当前未指定反算目标。请在下方{activeTab === 'revenue' ? '收入' : '投入'}科目列表中点击“设置角色”进行设置。
+                  </div>
                 )}
-                {reverseCalculationContext.mode === "locked_total_structure" && (
-                  <span className="text-[11px] leading-relaxed text-blue-700 bg-blue-50/70 rounded-md px-2 py-1">
-                    当前为结构反算模式：{reverseCalculationContext.structure.sideLabel}含税总金额保持 {formatReverseCurrency(reverseCalculationContext.structure.totalInclAmount)} 不变。调整“{reverseCalculationContext.structure.targetDisplayName}”时，“{reverseCalculationContext.structure.balancingDisplayName}”将自动反向补差。
-                    {state.cashflowModel === "model_e" && state.segmentValueMode === "amount" ? " 分板块现金流金额计划将同步更新。" : ""}
-                  </span>
+                {selectedReverseSubject && (
+                  <div className="flex flex-col gap-2 mt-1">
+                    {reverseContextMessage && (
+                      <span className="text-[11px] leading-relaxed text-amber-700 bg-amber-50 rounded-md px-2 py-1 font-semibold">
+                        {reverseContextMessage}
+                      </span>
+                    )}
+                    {reverseCalculationContext.mode === "locked_total_structure" && (
+                      <span className="text-[11px] leading-relaxed text-blue-700 bg-blue-50/70 rounded-md px-2 py-1 font-semibold">
+                        当前为结构反算模式：{reverseCalculationContext.structure.sideLabel}含税总金额保持 {formatReverseCurrency(reverseCalculationContext.structure.totalInclAmount)} 不变。调整“{reverseCalculationContext.structure.targetDisplayName}”时，“{reverseCalculationContext.structure.balancingDisplayName}”将自动反向补差。
+                        {state.cashflowModel === "model_e" && state.segmentValueMode === "amount" ? " 分板块现金流金额计划将同步更新。" : ""}
+                      </span>
+                    )}
+                    {reverseCalculationContext.mode === "normal" && (
+                      <span className="text-[11px] leading-relaxed text-secondary-foreground bg-muted/40 rounded-md px-2 py-1 font-semibold">
+                        调整该科目金额后，{selectedReverseSubject.ref.side === 'revenue' ? '收入' : '投入'}总额将随反算结果变化。
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="flex gap-2 bg-background p-1 border border-border rounded-lg">
@@ -1343,7 +1367,13 @@ export default function IctLifecycle() {
                 <label className="text-xs font-semibold text-secondary-foreground">目标值 (如0.15代表15%)</label>
                 <input type="number" step="0.0001" className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={revTargetValue} onChange={e => setRevTargetValue(e.target.value)} />
               </div>
-              <button className="flex w-full items-center justify-center gap-2 bg-primary text-primary-foreground font-bold py-2 rounded-lg shadow-sm" onClick={executeReverseCalculation}><AppIcon name="reverse" size={16} /> 智能反算</button>
+              <button
+                className="flex w-full items-center justify-center gap-2 bg-primary text-primary-foreground font-bold py-2 rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!selectedReverseSubject}
+                onClick={executeReverseCalculation}
+              >
+                <AppIcon name="reverse" size={16} /> 智能反算
+              </button>
             </div>
             <h3 className="font-bold text-foreground mb-4">采购甄选费测算</h3>
             <div className="bg-card border border-border p-4 rounded-xl flex flex-col gap-3">

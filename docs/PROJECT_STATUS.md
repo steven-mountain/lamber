@@ -1,6 +1,18 @@
 # PROJECT_STATUS.md
 
-Last updated: 2026-06-02 (ICT Model E Structure Reverse Segment Sync)
+Last updated: 2026-06-03 (ICT Lifecycle Subject Role Configuration Optimization)
+
+## 0. ICT Lifecycle Subject Role Configuration Optimization
+
+The ICT lifecycle calculator has optimized the entry points for setting the "差额承接科目" (balancing subject) and "智能反算目标科目" (reverse calculation target). Instead of selecting these roles from dropdowns in the top and right control panels, users can now assign them directly to each calculable subject row in the income and cost tables:
+- **Direct Role Assignment**: In the subject table rows, each calculable subject shows a `SubjectRoleActions` component. Clicking "设置角色" (or "更改" if a role is already set) opens a dropdown allowing the user to set/clear the balancing role or the smart reverse target role.
+- **Visual Badges**: Active roles are visually highlighted on the subject row title with a low-saturation badge (`[差额承接]` or `[反算目标]`).
+- **Mutual Exclusion & Safety**: A subject cannot be both a balancing subject and a reverse calculation target. Assigning a reverse target as a balancing subject prompts for user confirmation and clears its reverse target role. Assigning a balancing subject as a reverse target is disabled, showing a clear warning message on hover/click.
+- **Role Switching**: Setting a new balancing subject on a side prompts the user and automatically replaces the old balancing subject, keeping the old balancing subject's current amount value intact (instead of clearing it to 0). Setting a new reverse target automatically clears the previous reverse target and infers the correct direction (`revMode`) from the target side.
+- **Top Control Area Modification**: The top revenue/investment control areas no longer render select dropdowns. Instead, they display a read-only `SelectedSubjectRoleSummary` displaying the name of the assigned balancing subject, alongside a "定位" button (which smooth-scrolls and highlights the subject element) and a "清除" button (which clears the balancing role and restores manual editing). The layout of this control area is optimized to be top-aligned (using `md:items-start` instead of `md:items-center`), and both columns' interactive second rows are matched to `38px` in height, ensuring Row 1 (labels), Row 2 (inputs/summaries), and Row 3 (1% own-product prompts) align row-by-row.
+- **Smart Reverse Panel Simplification**: The right smart reverse panel no longer has a side switcher or a subject select dropdown. It automatically reads the selected reverse target and its side. It shows a summary card of the active target (with locate/clear buttons), the inferred direction and reverse mode (普通反算 vs. 结构反算), and disables the "智能反算" button when no target is selected.
+
+All previous calculation logic, cashflow generation, `model_e` segment sync, and Excel/Word output mappings are fully preserved and reused.
 
 ## 0. ICT Locked-Total Structure Reverse Calculation
 
