@@ -1,6 +1,6 @@
 # AI_CONTEXT.md
 
-Last updated: 2026-06-01 (Meeting Investment Subject Alignment Fix)
+Last updated: 2026-06-01 (ICT Billing Subject Name Extension)
 
 ## What this project is
 
@@ -66,9 +66,11 @@ Before starting any task, read the status and architecture documentation in this
 
 - **Project Board (项目看板)**: Visual hub displaying project indicators, project phases, and local folders linkage.
 - **ICT Lifecycle Calculator (ICT生命周期测算)**: Main calculation engine handling 10-year cashflows, NPV, margins, and selection fee mappings. Standardizes persistence of project backgrounds and economic assumptions directly in the scheme snapshots database storage.
+- **ICT Standard Subject Presentation Names**: Every fixed revenue/cost billing subject can carry an optional product/business name and an optional billing subject name. The fixed subject catalog remains the source of truth for `subjectCode`, standard subject label, Excel row mapping, and document prefix. Product/business names (`customSubjectName` / `custom_subject_name`) and billing subject names (`billingSubjectName` / `billing_subject_name`) are stored separately and must not replace the standard subject identity used for calculations.
 - **AI Assistant / Copilot (智能顾问)**: Streamed (SSE) local LLM chatbot that pulls the active view's serialized state to give contextual recommendations based on a built-in capabilities database.
 - **Template Word/Excel Engine (文档填报与填充)**: Backend Rust logic mapping form values and calculation results into docx variables and excel cells. Now utilizes separate template form data (saved in `project_settings` under key `template_form_data::<template_name>`) and sandboxed image assets (saved to the bound project folder under `{project_name}-图片/assets/` if linked, or falling back to `.projects/{project_id}/assets/` inside the active workspace and tracked in `project_template_assets`), ensuring form configurations are kept lightweight and database volume is small.
-- **Meeting Review Investment Wording**: The ICT presales meeting-review "项目整体投入金额" detail must reuse the same resolved IT/CT cost subjects as the sign-off form variables (`SUBJECT_IT_COST`, `SUBJECT_CT_COST`). Do not derive CT investment subject wording from mid-platform capability names; keep the underlying tax-exclusive investment calculations unchanged.
+- **Lifecycle Excel Subject Name and Q Column Fill**: `3-直接经济效益评估表` output writes all mapped standard subject rows through a unified mapping. Name cells receive the shared resolver display name using `计费科目名称 > 具体业务/产品名称 > 标准科目名称`, `G` receives tax-exclusive amount, and `Q` receives tax-inclusive amount for every mapped subject. Empty/zero frontend amounts must remain blank in generated Excel amount cells rather than being written as `0`. Do not insert/delete Excel rows or alter formula regions outside this controlled input mapping.
+- **Shared Document Subject Presentation**: Project sign-off and meeting-review wording must use the shared subject resolver from `ictSubjectCatalog.ts`. Document business names use `计费科目名称 > 具体业务/产品名称 > existing fallback` before adding the fixed category prefix, and aggregation/deduplication uses the final resolved document name. Do not derive CT investment subject wording from mid-platform capability names; keep the underlying tax-exclusive investment calculations unchanged.
 - **Template Image Embedding Boundary**: Frontend preview URLs (`asset://localhost/...`) are UI-only. Word generation image payloads should carry `assetId` values, and the backend must resolve and embed the image bytes through Workspace SQLite asset validation rather than writing paths or JSON text into the document.
 - **Inquiry Vendor Screenshot State**: Inquiry vendor quote screenshots live on each vendor row's `images` array. Regenerating three-vendor quote amounts must preserve those images by vendor name or row position, and async upload callbacks must update the latest vendor state.
 - **Lifecycle Document Output Ownership**: ICT lifecycle document generation must resolve output directories through the active Workspace. Relative project folder paths are Workspace-relative, not process-relative, so generated files should land in the bound project directory under the Workspace and never under `src-tauri`.
@@ -96,6 +98,7 @@ Additional current AI context capability:
 ## High-risk areas
 
 - **0-tolerance reconciliation check**: Any changes to input fields or calculations must satisfy `excl_tax = incl_tax / (1 + rate)` within a zero-tolerance margin. Mismatches block navigation and document generation.
+- **Subject presentation names are non-financial metadata**: Editing a product/business name or billing subject name must not alter tax rates, inclusive/exclusive amounts, cashflow, NPV, selection fee, or reverse-calculation behavior. Old project data without custom names must display/export the standard subject names. CT paired subjects (`产品收入` ↔ `其他产品成本`, `专线收入` ↔ `专线带宽成本`) keep product/business names and billing subject names synchronized like their amount pass-through path.
 - **SQLite Connection & Transaction management**: The storage layer has migrated to SQLite. When writing multi-row operations or migrating data, always wrap operations in a transaction (`tx`) to prevent database locks and ensure structural integrity. Use `Arc<Mutex<rusqlite::Connection>>` to share connection locks. Avoid `INSERT OR REPLACE` when saving parent records (like `projects`) that have foreign key cascade-delete relations, as `REPLACE` acts as a `DELETE` followed by an `INSERT` in SQLite, wiping out related child rows in `project_directories`, `project_files`, `benefit_schemes`, and `benefit_snapshots`.
 - **Workspace readiness**: Do not run database-backed project operations unless `WorkspaceRuntime::require_workspace()` and `require_db()` succeed. Do not reintroduce startup fallback to AppData `projects_store.db`.
 - **Workspace backup and restore safety**: Restoring `.lamber.sqlite` from backup must release or close the active SQLite connection before replacing the file, then reopen the workspace. On Windows this is required to avoid file-lock replacement failures.
@@ -119,6 +122,10 @@ Additional read-only AI boundary:
 - **Benefit Calculation math / NPV changes**:
   - Math Engine: [calculator.rs](../src-tauri/src/benefit/calculator.rs)
   - Lifecycle View: [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx)
+- **ICT subject naming / Excel row mapping changes**:
+  - Subject Catalog: [ictSubjectCatalog.ts](../src-ui/src/lib/ictSubjectCatalog.ts)
+  - Lifecycle View: [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx)
+  - Excel Fill: [docfill.rs](../src-tauri/src/docfill.rs)
 - **AI Chat Copilot changes**:
   - Chat Box Component: [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx)
   - AI State Store: [useAiContextStore.ts](../src-ui/src/store/useAiContextStore.ts)

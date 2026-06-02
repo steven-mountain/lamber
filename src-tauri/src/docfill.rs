@@ -682,18 +682,21 @@ fn internal_generate_xlsx(
             c.set_formula("");
         }
 
-        let mut set_val = |cell: &str, key: &str| {
+        let mut set_cell = |cell: &str, key: &str, as_text: bool| {
             if let Some(v) = variables.get(key) {
+                let cell_obj = sheet.get_cell_mut(cell);
+                cell_obj.set_formula("");
+                if as_text {
+                    cell_obj.set_value(v);
+                    return;
+                }
+
                 let mut num_str = v.replace(",", "");
                 let mut is_pct = false;
                 if num_str.ends_with('%') {
                     num_str = num_str.trim_end_matches('%').to_string();
                     is_pct = true;
                 }
-
-                let cell_obj = sheet.get_cell_mut(cell);
-                // Do NOT clear formula if we are just filling inputs. Wait, if it's an input cell, we should clear formula if any? No, we only target cells we know. But wait, we target Q10, Q23, Q24, Q25. If they have formulas, we overwrite. If they don't, we overwrite.
-                // Wait, if the user explicitly wants to overwrite a cell, we overwrite it. But we MUST NOT overwrite C45-C50, C64-C66.
 
                 if let Ok(mut num) = num_str.parse::<f64>() {
                     if is_pct {
@@ -706,37 +709,42 @@ fn internal_generate_xlsx(
             }
         };
 
-        set_val("G3", "EXCEL_REV_IT_INTEGRATION_EXCL");
-        set_val("G4", "EXCEL_REV_IT_MAINTENANCE_EXCL");
-        set_val("G5", "EXCEL_REV_IT_DEVICE_SALES_EXCL");
-        set_val("G6", "EXCEL_REV_IT_DEVICE_LEASE_EXCL");
-        set_val("G7", "EXCEL_REV_IT_OTHER_EXCL");
-        set_val("G8", "EXCEL_REV_IT_CLOUD_EXCL");
-        set_val("G9", "EXCEL_REV_CT_LINE_EXCL");
-        set_val("Q10", "EXCEL_REV_CT_PRODUCT_INCL"); // formula in G10 uses Q10
-        set_val("G11", "EXCEL_REV_NON_IT_CT_EXCL");
+        let subject_mappings = [
+            ("D3", "G3", "Q3", "EXCEL_REV_IT_INTEGRATION"),
+            ("D4", "G4", "Q4", "EXCEL_REV_IT_MAINTENANCE"),
+            ("D5", "G5", "Q5", "EXCEL_REV_IT_DEVICE_SALES"),
+            ("D6", "G6", "Q6", "EXCEL_REV_IT_DEVICE_LEASE"),
+            ("D7", "G7", "Q7", "EXCEL_REV_IT_OTHER"),
+            ("D8", "G8", "Q8", "EXCEL_REV_IT_CLOUD"),
+            ("D9", "G9", "Q9", "EXCEL_REV_CT_LINE"),
+            ("D10", "G10", "Q10", "EXCEL_REV_CT_PRODUCT"),
+            ("D11", "G11", "Q11", "EXCEL_REV_NON_IT_CT"),
+            ("E13", "G13", "Q13", "EXCEL_COST_IT_DEVICE"),
+            ("E14", "G14", "Q14", "EXCEL_COST_IT_CONSTRUCTION"),
+            ("E15", "G15", "Q15", "EXCEL_COST_IT_SURVEY"),
+            ("E16", "G16", "Q16", "EXCEL_COST_IT_INTEGRATION"),
+            ("E17", "G17", "Q17", "EXCEL_COST_IT_OTHER"),
+            ("E18", "G18", "Q18", "EXCEL_COST_IT_MAINTENANCE"),
+            ("E19", "G19", "Q19", "EXCEL_COST_IT_RUNNING"),
+            ("E20", "G20", "Q20", "EXCEL_COST_IT_BIDDING"),
+            ("E21", "G21", "Q21", "EXCEL_COST_IT_DESIGN_EVAL"),
+            ("E22", "G22", "Q22", "EXCEL_COST_IT_AUDIT"),
+            ("E23", "G23", "Q23", "EXCEL_COST_CT_CONSTRUCTION"),
+            ("E24", "G24", "Q24", "EXCEL_COST_CT_MAINTENANCE"),
+            ("E25", "G25", "Q25", "EXCEL_COST_CT_OTHER"),
+            ("E26", "G26", "Q26", "EXCEL_COST_CT_BANDWIDTH"),
+            ("E27", "G27", "Q27", "EXCEL_COST_CT_RENEWAL"),
+            ("E28", "G28", "Q28", "EXCEL_COST_NON_IT_CT"),
+            ("D29", "G29", "Q29", "EXCEL_COST_MIX_MARKETING"),
+            ("D30", "G30", "Q30", "EXCEL_COST_MIX_CHANNEL"),
+            ("D31", "G31", "Q31", "EXCEL_COST_MIX_OTHER"),
+        ];
 
-        set_val("G13", "EXCEL_COST_IT_DEVICE_EXCL");
-        set_val("G14", "EXCEL_COST_IT_CONSTRUCTION_EXCL");
-        set_val("G15", "EXCEL_COST_IT_SURVEY_EXCL");
-        set_val("G16", "EXCEL_COST_IT_INTEGRATION_EXCL");
-        set_val("G17", "EXCEL_COST_IT_OTHER_EXCL");
-        set_val("G18", "EXCEL_COST_IT_MAINTENANCE_EXCL");
-        set_val("G19", "EXCEL_COST_IT_RUNNING_EXCL");
-        set_val("G20", "EXCEL_COST_IT_BIDDING_EXCL");
-        set_val("G21", "EXCEL_COST_IT_DESIGN_EVAL_EXCL");
-        set_val("G22", "EXCEL_COST_IT_AUDIT_EXCL");
-
-        set_val("Q23", "EXCEL_COST_CT_CONSTRUCTION_INCL"); // formula in G23 uses Q23
-        set_val("Q24", "EXCEL_COST_CT_MAINTENANCE_INCL"); // formula in G24 uses Q24
-        set_val("Q25", "EXCEL_COST_CT_OTHER_INCL"); // formula in G25 uses Q25
-        set_val("G26", "EXCEL_COST_CT_BANDWIDTH_EXCL");
-        set_val("G27", "EXCEL_COST_CT_RENEWAL_EXCL");
-
-        set_val("G28", "EXCEL_COST_NON_IT_CT_EXCL");
-        set_val("G29", "EXCEL_COST_MIX_MARKETING_EXCL");
-        set_val("G30", "EXCEL_COST_MIX_CHANNEL_EXCL");
-        set_val("G31", "EXCEL_COST_MIX_OTHER_EXCL");
+        for (name_cell, excl_cell, incl_cell, prefix) in subject_mappings {
+            set_cell(name_cell, &format!("{}_NAME", prefix), true);
+            set_cell(excl_cell, &format!("{}_EXCL", prefix), false);
+            set_cell(incl_cell, &format!("{}_INCL", prefix), false);
+        }
     }
 
     if let Some(sheet2) = book.get_sheet_by_name_mut("2-ICT项目评估结果") {
@@ -776,4 +784,119 @@ fn internal_generate_xlsx(
         .map_err(|e| format!("保存 Excel 失败: {}", e))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::internal_generate_xlsx;
+    use calamine::{open_workbook, Reader, Xlsx};
+    use std::collections::HashMap;
+    use std::fs;
+    use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn cell_string(range: &calamine::Range<calamine::Data>, row: u32, col: u32) -> String {
+        range
+            .get_value((row - 1, col - 1))
+            .map(|cell| cell.to_string())
+            .unwrap_or_default()
+    }
+
+    fn cell_number(range: &calamine::Range<calamine::Data>, row: u32, col: u32) -> f64 {
+        range
+            .get_value((row - 1, col - 1))
+            .and_then(|cell| match cell {
+                calamine::Data::Float(value) => Some(*value),
+                calamine::Data::Int(value) => Some(*value as f64),
+                calamine::Data::String(value) => value.parse::<f64>().ok(),
+                _ => None,
+            })
+            .unwrap_or(0.0)
+    }
+
+    #[test]
+    fn lifecycle_xlsx_subject_mapping_writes_names_excl_and_incl() {
+        let template_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../项目全生命周期文件模版/效益分析表 .xlsx");
+        assert!(
+            template_path.exists(),
+            "missing test template: {}",
+            template_path.display()
+        );
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let output_path =
+            std::env::temp_dir().join(format!("lamber-xlsx-subjects-{}.xlsx", suffix));
+        fs::copy(&template_path, &output_path).unwrap();
+
+        let mut variables = HashMap::new();
+        variables.insert(
+            "EXCEL_REV_CT_PRODUCT_NAME".to_string(),
+            "产品收入（视频监控）".to_string(),
+        );
+        variables.insert("EXCEL_REV_CT_PRODUCT_EXCL".to_string(), "41.51".to_string());
+        variables.insert("EXCEL_REV_CT_PRODUCT_INCL".to_string(), "44".to_string());
+        variables.insert(
+            "EXCEL_COST_CT_OTHER_NAME".to_string(),
+            "其他产品成本（视频监控）".to_string(),
+        );
+        variables.insert("EXCEL_COST_CT_OTHER_EXCL".to_string(), "41.51".to_string());
+        variables.insert("EXCEL_COST_CT_OTHER_INCL".to_string(), "44".to_string());
+
+        internal_generate_xlsx(output_path.to_str().unwrap(), &variables).unwrap();
+
+        let mut workbook: Xlsx<_> = open_workbook(&output_path).unwrap();
+        let range = workbook.worksheet_range("3-直接经济效益评估表").unwrap();
+
+        assert_eq!(cell_string(&range, 10, 4), "产品收入（视频监控）");
+        assert!((cell_number(&range, 10, 7) - 41.51).abs() < 0.001);
+        assert!((cell_number(&range, 10, 17) - 44.0).abs() < 0.001);
+
+        assert_eq!(cell_string(&range, 25, 5), "其他产品成本（视频监控）");
+        assert!((cell_number(&range, 25, 7) - 41.51).abs() < 0.001);
+        assert!((cell_number(&range, 25, 17) - 44.0).abs() < 0.001);
+
+        let _ = fs::remove_file(output_path);
+    }
+
+    #[test]
+    fn lifecycle_xlsx_blank_amounts_clear_formula_and_do_not_write_zero() {
+        let template_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../项目全生命周期文件模版/效益分析表 .xlsx");
+        assert!(
+            template_path.exists(),
+            "missing test template: {}",
+            template_path.display()
+        );
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let output_path =
+            std::env::temp_dir().join(format!("lamber-xlsx-blank-amounts-{}.xlsx", suffix));
+        fs::copy(&template_path, &output_path).unwrap();
+
+        let mut variables = HashMap::new();
+        variables.insert(
+            "EXCEL_REV_CT_PRODUCT_NAME".to_string(),
+            "产品收入".to_string(),
+        );
+        variables.insert("EXCEL_REV_CT_PRODUCT_EXCL".to_string(), "".to_string());
+        variables.insert("EXCEL_REV_CT_PRODUCT_INCL".to_string(), "".to_string());
+
+        internal_generate_xlsx(output_path.to_str().unwrap(), &variables).unwrap();
+
+        let mut workbook: Xlsx<_> = open_workbook(&output_path).unwrap();
+        let range = workbook.worksheet_range("3-直接经济效益评估表").unwrap();
+
+        assert_eq!(cell_string(&range, 10, 4), "产品收入");
+        assert_eq!(cell_string(&range, 10, 7), "");
+        assert_eq!(cell_string(&range, 10, 17), "");
+
+        let _ = fs::remove_file(output_path);
+    }
 }

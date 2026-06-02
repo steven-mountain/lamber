@@ -6,10 +6,11 @@ import {
   type CashflowModel,
   normalizeDistribution
 } from "../lib/cashflowDistribution";
+import { normalizeCustomSubjectName } from "../lib/ictSubjectCatalog";
 
 export { normalizeProjectYears };
 
-export interface TaxItem { incl: number; tax: number; excl: number; }
+export interface TaxItem { incl: number; tax: number; excl: number; customSubjectName?: string; billingSubjectName?: string; }
 export const defaultTaxItem = (tax = 6): TaxItem => ({ incl: 0, tax, excl: 0 });
 export type SegmentValueMode = "ratio" | "amount";
 export type SegmentFlowMode = "upfront" | "equal" | "custom";
@@ -404,6 +405,49 @@ export function useIctState() {
     else if (groupId === 'costMix') processItem(costMix, setCostMix, key);
   };
 
+  const updateTaxItemTextField = (
+    groupId: string,
+    key: string,
+    field: "customSubjectName" | "billingSubjectName",
+    value: string,
+  ) => {
+    const normalizedValue = normalizeCustomSubjectName(value);
+    const nextItem = (item: TaxItem) => ({
+      ...item,
+      [field]: normalizedValue,
+    });
+
+    const updateGroupItem = (groupState: Record<string, TaxItem>, setGroupState: (value: any) => void, targetKey: string) => {
+      setGroupState({
+        ...groupState,
+        [targetKey]: nextItem(groupState[targetKey] || defaultTaxItem()),
+      });
+    };
+
+    if (groupId === 'revIt') updateGroupItem(revIt, setRevIt, key);
+    else if (groupId === 'revCt') {
+      updateGroupItem(revCt, setRevCt, key);
+      if (key === 'product') updateGroupItem(costCt, setCostCt, 'other');
+      if (key === 'line') updateGroupItem(costCt, setCostCt, 'bandwidth');
+    }
+    else if (groupId === 'revNonItCt') setRevNonItCt(nextItem(revNonItCt));
+    else if (groupId === 'costIt') updateGroupItem(costIt, setCostIt, key);
+    else if (groupId === 'costCt') {
+      updateGroupItem(costCt, setCostCt, key);
+      if (key === 'other') updateGroupItem(revCt, setRevCt, 'product');
+      if (key === 'bandwidth') updateGroupItem(revCt, setRevCt, 'line');
+    }
+    else if (groupId === 'costMix') updateGroupItem(costMix, setCostMix, key);
+  };
+
+  const updateTaxItemCustomSubjectName = (groupId: string, key: string, value: string) => {
+    updateTaxItemTextField(groupId, key, "customSubjectName", value);
+  };
+
+  const updateTaxItemBillingSubjectName = (groupId: string, key: string, value: string) => {
+    updateTaxItemTextField(groupId, key, "billingSubjectName", value);
+  };
+
   return {
     activeTab, setActiveTab,
     projName, setProjName,
@@ -444,5 +488,7 @@ export function useIctState() {
     updateCashflowSegmentAnnualValue,
     removeCashflowSegment,
     updateTaxItem,
+    updateTaxItemCustomSubjectName,
+    updateTaxItemBillingSubjectName,
   };
 }

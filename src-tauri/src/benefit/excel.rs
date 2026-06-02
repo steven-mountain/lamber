@@ -8,6 +8,10 @@ pub struct ExcelParsedTaxItem {
     pub incl_tax: f64,
     pub excl_tax: f64,
     pub tax_rate: f64,
+    pub custom_subject_name: Option<String>,
+    pub billing_subject_name: Option<String>,
+    pub standard_subject_name: Option<String>,
+    pub display_name: Option<String>,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -124,8 +128,44 @@ fn normalize_tax_percent(tax_rate: f64) -> f64 {
     }
 }
 
+fn normalize_subject_text(value: &str) -> String {
+    value.split_whitespace().collect::<String>()
+}
+
+fn extract_custom_subject_name(
+    display_name: &str,
+    standard_subject_name: &str,
+    template_subject_name: &str,
+) -> Option<String> {
+    let display_trimmed = display_name.trim().replace(['\n', '\r'], "");
+    let standard_trimmed = standard_subject_name.trim();
+    let display = normalize_subject_text(display_name);
+    let standard = normalize_subject_text(standard_subject_name);
+    let template = normalize_subject_text(template_subject_name);
+
+    if display.is_empty() || display == standard || display == template {
+        return None;
+    }
+
+    let prefix = format!("{}（", standard_trimmed);
+    if display_trimmed.starts_with(&prefix) && display_trimmed.ends_with('）') {
+        let custom = display_trimmed[prefix.len()..display_trimmed.len() - '）'.len_utf8()]
+            .trim()
+            .to_string();
+        if custom.is_empty() || custom.contains("具体测算规则") {
+            return None;
+        }
+        return Some(custom);
+    }
+
+    None
+}
+
 fn item_from_cells(
     range: &calamine::Range<calamine::Data>,
+    name_cell: &str,
+    standard_subject_name: &str,
+    template_subject_name: &str,
     incl_cell: &str,
     excl_cell: &str,
     tax_rate: f64,
@@ -133,6 +173,9 @@ fn item_from_cells(
     let tax = normalize_tax_percent(tax_rate);
     let incl = get_cell_f64(range, incl_cell);
     let excl = get_cell_f64(range, excl_cell);
+    let display_name = get_cell_string(range, name_cell);
+    let custom_subject_name =
+        extract_custom_subject_name(&display_name, standard_subject_name, template_subject_name);
 
     let (incl_tax, excl_tax) = if incl.abs() > f64::EPSILON {
         (incl, incl / (1.0 + tax / 100.0))
@@ -146,6 +189,14 @@ fn item_from_cells(
         incl_tax,
         excl_tax,
         tax_rate: tax,
+        custom_subject_name,
+        billing_subject_name: None,
+        standard_subject_name: Some(standard_subject_name.to_string()),
+        display_name: if display_name.trim().is_empty() {
+            None
+        } else {
+            Some(display_name)
+        },
     }
 }
 
@@ -176,40 +227,273 @@ fn parse_lifecycle_benefit_excel(
 
     let mut items = HashMap::new();
     let mappings = [
-        ("rev_it_integration", "Q3", "G3", 6.0),
-        ("rev_it_maintenance", "Q4", "G4", 6.0),
-        ("rev_it_device_sales", "Q5", "G5", 13.0),
-        ("rev_it_device_lease", "Q6", "G6", 13.0),
-        ("rev_it_other", "Q7", "G7", 6.0),
-        ("rev_it_cloud", "Q8", "G8", 6.0),
-        ("rev_ct_line", "Q9", "G9", 9.0),
-        ("rev_ct_product", "Q10", "G10", 6.0),
-        ("rev_non_it_ct", "Q11", "G11", 9.0),
-        ("cost_it_device", "Q13", "G13", 13.0),
-        ("cost_it_construction", "Q14", "G14", 9.0),
-        ("cost_it_survey", "Q15", "G15", 6.0),
-        ("cost_it_integration", "Q16", "G16", 6.0),
-        ("cost_it_other", "Q17", "G17", 6.0),
-        ("cost_it_maintenance", "Q18", "G18", 6.0),
-        ("cost_it_running", "Q19", "G19", 13.0),
-        ("cost_it_bidding", "Q20", "G20", 6.0),
-        ("cost_it_design_eval", "Q21", "G21", 6.0),
-        ("cost_it_audit", "Q22", "G22", 6.0),
-        ("cost_ct_construction", "Q23", "G23", 6.0),
-        ("cost_ct_maintenance", "Q24", "G24", 9.0),
-        ("cost_ct_other", "Q25", "G25", 6.0),
-        ("cost_ct_bandwidth", "Q26", "G26", 9.0),
-        ("cost_ct_renewal", "Q27", "G27", 9.0),
-        ("cost_non_it_ct", "Q28", "G28", 9.0),
-        ("cost_mix_marketing", "Q29", "G29", 6.0),
-        ("cost_mix_channel", "Q30", "G30", 6.0),
-        ("cost_mix_other", "Q31", "G31", 6.0),
+        (
+            "rev_it_integration",
+            "D3",
+            "系统集成服务收入",
+            "系统集成服务收入",
+            "Q3",
+            "G3",
+            6.0,
+        ),
+        (
+            "rev_it_maintenance",
+            "D4",
+            "维保收入",
+            "维保收入",
+            "Q4",
+            "G4",
+            6.0,
+        ),
+        (
+            "rev_it_device_sales",
+            "D5",
+            "设备销售收入",
+            "设备销售收入",
+            "Q5",
+            "G5",
+            13.0,
+        ),
+        (
+            "rev_it_device_lease",
+            "D6",
+            "设备租赁收入",
+            "设备租赁收入",
+            "Q6",
+            "G6",
+            13.0,
+        ),
+        (
+            "rev_it_other",
+            "D7",
+            "其他收入",
+            "其他收入（代销设备、代理采购手续费等）",
+            "Q7",
+            "G7",
+            6.0,
+        ),
+        (
+            "rev_it_cloud",
+            "D8",
+            "移动云-定制化收入",
+            "移动云-定制化收入",
+            "Q8",
+            "G8",
+            6.0,
+        ),
+        ("rev_ct_line", "D9", "专线收入", "专线收入", "Q9", "G9", 9.0),
+        (
+            "rev_ct_product",
+            "D10",
+            "产品收入",
+            "产品收入",
+            "Q10",
+            "G10",
+            6.0,
+        ),
+        (
+            "rev_non_it_ct",
+            "D11",
+            "工程施工收入等",
+            "工程施工收入等",
+            "Q11",
+            "G11",
+            9.0,
+        ),
+        (
+            "cost_it_device",
+            "E13",
+            "主要设备/甲供材料",
+            "主要设备/甲供材料",
+            "Q13",
+            "G13",
+            13.0,
+        ),
+        (
+            "cost_it_construction",
+            "E14",
+            "施工",
+            "施工",
+            "Q14",
+            "G14",
+            9.0,
+        ),
+        (
+            "cost_it_survey",
+            "E15",
+            "勘察设计/预备费",
+            "勘察设计/预备费",
+            "Q15",
+            "G15",
+            6.0,
+        ),
+        (
+            "cost_it_integration",
+            "E16",
+            "集成服务",
+            "集成服务",
+            "Q16",
+            "G16",
+            6.0,
+        ),
+        (
+            "cost_it_other",
+            "E17",
+            "其他投入",
+            "其他投入",
+            "Q17",
+            "G17",
+            6.0,
+        ),
+        (
+            "cost_it_maintenance",
+            "E18",
+            "维护费用",
+            "维护费用",
+            "Q18",
+            "G18",
+            6.0,
+        ),
+        (
+            "cost_it_running",
+            "E19",
+            "其他运行支出（电费等）",
+            "其他运行支出（电费等）",
+            "Q19",
+            "G19",
+            13.0,
+        ),
+        (
+            "cost_it_bidding",
+            "E20",
+            "中标服务费",
+            "中标服务费",
+            "Q20",
+            "G20",
+            6.0,
+        ),
+        (
+            "cost_it_design_eval",
+            "E21",
+            "设计院成本评估费",
+            "设计院成本评估费",
+            "Q21",
+            "G21",
+            6.0,
+        ),
+        (
+            "cost_it_audit",
+            "E22",
+            "第三方审计评估费",
+            "第三方审计评估费",
+            "Q22",
+            "G22",
+            6.0,
+        ),
+        (
+            "cost_ct_construction",
+            "E23",
+            "专线建设",
+            "专线建设",
+            "Q23",
+            "G23",
+            6.0,
+        ),
+        (
+            "cost_ct_maintenance",
+            "E24",
+            "专线维护",
+            "专线维护",
+            "Q24",
+            "G24",
+            9.0,
+        ),
+        (
+            "cost_ct_other",
+            "E25",
+            "其他产品成本",
+            "其他产品成本（具体测算规则详见Sheet5）",
+            "Q25",
+            "G25",
+            6.0,
+        ),
+        (
+            "cost_ct_bandwidth",
+            "E26",
+            "专线带宽成本",
+            "专线带宽成本",
+            "Q26",
+            "G26",
+            9.0,
+        ),
+        (
+            "cost_ct_renewal",
+            "E27",
+            "专线/其他产品续签成本",
+            "专线/其他产品续签成本",
+            "Q27",
+            "G27",
+            9.0,
+        ),
+        (
+            "cost_non_it_ct",
+            "E28",
+            "工程施工投入等",
+            "工程施工投入等",
+            "Q28",
+            "G28",
+            9.0,
+        ),
+        (
+            "cost_mix_marketing",
+            "D29",
+            "融合营销成本",
+            "融合营销成本",
+            "Q29",
+            "G29",
+            6.0,
+        ),
+        (
+            "cost_mix_channel",
+            "D30",
+            "渠道酬金",
+            "渠道酬金",
+            "Q30",
+            "G30",
+            6.0,
+        ),
+        (
+            "cost_mix_other",
+            "D31",
+            "其他管理费用等",
+            "其他管理费用等",
+            "Q31",
+            "G31",
+            6.0,
+        ),
     ];
 
-    for (key, incl_cell, excl_cell, tax_rate) in mappings {
+    for (
+        key,
+        name_cell,
+        standard_subject_name,
+        template_subject_name,
+        incl_cell,
+        excl_cell,
+        tax_rate,
+    ) in mappings
+    {
         items.insert(
             key.to_string(),
-            item_from_cells(&econ_range, incl_cell, excl_cell, tax_rate),
+            item_from_cells(
+                &econ_range,
+                name_cell,
+                standard_subject_name,
+                template_subject_name,
+                incl_cell,
+                excl_cell,
+                tax_rate,
+            ),
         );
     }
 
@@ -452,10 +736,20 @@ pub fn auto_import_excel_calculation(
         .values()
         .any(|item| item.incl_tax.abs() > 0.0 || item.excl_tax.abs() > 0.0);
 
-    let make_item = |incl: f64, tax: f64| -> IctItem {
+    let make_item = |incl: f64,
+                     tax: f64,
+                     custom_subject_name: Option<String>,
+                     billing_subject_name: Option<String>|
+     -> IctItem {
         IctItem {
             incl_tax: format!("{:.2}", if incl.is_finite() { incl } else { 0.0 }),
             tax_rate: format!("{:.4}", if tax.is_finite() { tax } else { 0.0 }),
+            custom_subject_name: custom_subject_name
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
+            billing_subject_name: billing_subject_name
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
         }
     };
 
@@ -463,12 +757,27 @@ pub fn auto_import_excel_calculation(
         if let Some(item) = parsed_data.items.get(key) {
             let tax = to_tax_percent(item.tax_rate, default_tax);
             if item.incl_tax.is_finite() && item.incl_tax.abs() > 0.0 {
-                return make_item(item.incl_tax, tax);
+                return make_item(
+                    item.incl_tax,
+                    tax,
+                    item.custom_subject_name.clone(),
+                    item.billing_subject_name.clone(),
+                );
             }
             if item.excl_tax.is_finite() && item.excl_tax.abs() > 0.0 {
-                return make_item(item.excl_tax * (1.0 + tax / 100.0), tax);
+                return make_item(
+                    item.excl_tax * (1.0 + tax / 100.0),
+                    tax,
+                    item.custom_subject_name.clone(),
+                    item.billing_subject_name.clone(),
+                );
             }
-            return make_item(0.0, tax);
+            return make_item(
+                0.0,
+                tax,
+                item.custom_subject_name.clone(),
+                item.billing_subject_name.clone(),
+            );
         }
         make_item(
             if has_detailed_items {
@@ -477,6 +786,8 @@ pub fn auto_import_excel_calculation(
                 fallback_incl
             },
             default_tax,
+            None,
+            None,
         )
     };
 

@@ -23,7 +23,49 @@ import { useProjectStore } from "../store/useProjectStore";
 import { useSaveStore } from "../store/useSaveStore";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { domainSaveService } from "../services/domainSaveService";
+import {
+  ICT_SUBJECT_GROUPS,
+  getSubjectBillingName,
+  getSubjectCustomName,
+  getSubjectExcelDisplayName,
+  normalizeCustomSubjectName,
+  type IctSubjectDefinition
+} from "../lib/ictSubjectCatalog";
 
+const restoreCustomSubjectName = (item: any) => normalizeCustomSubjectName(item?.customSubjectName ?? item?.custom_subject_name ?? "");
+const restoreBillingSubjectName = (item: any) => normalizeCustomSubjectName(item?.billingSubjectName ?? item?.billing_subject_name ?? "");
+
+const syncRestoredSubjectNamePair = (
+  leftItem: any,
+  rightItem: any,
+  field: "customSubjectName" | "billingSubjectName",
+  restore: (item: any) => string,
+) => {
+  const leftName = restore(leftItem);
+  const rightName = restore(rightItem);
+  if (leftName && !rightName) rightItem[field] = leftName;
+  if (rightName && !leftName) leftItem[field] = rightName;
+};
+
+const syncRestoredPairedSubjectNames = (leftItem: any, rightItem: any) => {
+  syncRestoredSubjectNamePair(leftItem, rightItem, "customSubjectName", restoreCustomSubjectName);
+  syncRestoredSubjectNamePair(leftItem, rightItem, "billingSubjectName", restoreBillingSubjectName);
+};
+
+const taxItemFinancialPart = (item: any) => ({
+  incl: Number(item?.incl || 0),
+  tax: Number(item?.tax || 0),
+  excl: Number(item?.excl || 0),
+});
+
+const buildFinancialStateHash = (data: any) => JSON.stringify({
+  revIt: Object.fromEntries(Object.entries(data.revIt || {}).map(([key, item]) => [key, taxItemFinancialPart(item)])),
+  revCt: Object.fromEntries(Object.entries(data.revCt || {}).map(([key, item]) => [key, taxItemFinancialPart(item)])),
+  revNonItCt: taxItemFinancialPart(data.revNonItCt),
+  costIt: Object.fromEntries(Object.entries(data.costIt || {}).map(([key, item]) => [key, taxItemFinancialPart(item)])),
+  costCt: Object.fromEntries(Object.entries(data.costCt || {}).map(([key, item]) => [key, taxItemFinancialPart(item)])),
+  costMix: Object.fromEntries(Object.entries(data.costMix || {}).map(([key, item]) => [key, taxItemFinancialPart(item)])),
+});
 
 export default function IctLifecycle() {
   const { activeProjectId, activeSchemeId, entrySource, navigateTo } = useNavigationStore();
@@ -69,9 +111,13 @@ export default function IctLifecycle() {
 
     const applyTaxItem = (key: string, item: any) => {
       if (!item) return;
+      const customSubjectName = restoreCustomSubjectName(item);
+      const billingSubjectName = restoreBillingSubjectName(item);
       merged[key] = {
         incl_tax: String(item.incl ?? item.incl_tax ?? 0),
         tax_rate: String(item.tax ?? item.tax_rate ?? 0),
+        ...(customSubjectName ? { custom_subject_name: customSubjectName } : {}),
+        ...(billingSubjectName ? { billing_subject_name: billingSubjectName } : {}),
       };
     };
 
@@ -122,7 +168,9 @@ export default function IctLifecycle() {
     const restoreItem = (item: any, defaultTax = 6) => ({
       incl: item ? Number(item.incl_tax) : 0,
       tax: item ? Number(item.tax_rate) : defaultTax,
-      excl: item ? Number((Number(item.incl_tax) / (1 + Number(item.tax_rate) / 100)).toFixed(2)) : 0
+      excl: item ? Number((Number(item.incl_tax) / (1 + Number(item.tax_rate) / 100)).toFixed(2)) : 0,
+      customSubjectName: restoreCustomSubjectName(item),
+      billingSubjectName: restoreBillingSubjectName(item),
     });
 
     if (params.project_name) state.setProjName(params.project_name);
@@ -177,6 +225,9 @@ export default function IctLifecycle() {
       other: restoreItem(params.cost_mix_other, 6),
     };
 
+    syncRestoredPairedSubjectNames(revCtRestored.product, costCtRestored.other);
+    syncRestoredPairedSubjectNames(revCtRestored.line, costCtRestored.bandwidth);
+
     state.setRevIt(revItRestored);
     state.setRevCt(revCtRestored);
     state.setRevNonItCt(revNonItCtRestored);
@@ -186,7 +237,7 @@ export default function IctLifecycle() {
 
     if (params.ignore_tail_difference) {
       state.setIgnoredTailValue(params.tail_difference_value || "0");
-      state.setIgnoredDataHash(JSON.stringify({
+      state.setIgnoredDataHash(buildFinancialStateHash({
         revIt: revItRestored,
         revCt: revCtRestored,
         revNonItCt: revNonItCtRestored,
@@ -463,6 +514,8 @@ export default function IctLifecycle() {
     setIgnoredTailValue,
     loadTemplates,
     updateTaxItem,
+    updateTaxItemCustomSubjectName,
+    updateTaxItemBillingSubjectName,
   } = state;
 
   const {
@@ -623,7 +676,7 @@ export default function IctLifecycle() {
       if (!canProceed) return;
     }
 
-    const currentHash = JSON.stringify({ revIt, revCt, revNonItCt, costIt, costCt, costMix });
+    const currentHash = buildFinancialStateHash({ revIt, revCt, revNonItCt, costIt, costCt, costMix });
 
     if ((tab === 'cashflow' || tab === 'generate') && !forceIgnore) {
       if (currentHash !== ignoredDataHash) {
@@ -655,19 +708,40 @@ export default function IctLifecycle() {
     }
   };
 
-  const renderTaxGroup = (title: string, groupId: string, groupState: any, items: {key: string, label: string}[]) => (
+  const renderTaxGroup = (title: string, groupId: string, groupState: any, items: IctSubjectDefinition[]) => (
     <div className="table-card bg-card border border-border rounded-xl p-6 shadow-sm mb-6">
       <h3 className="font-bold text-lg mb-4">{title}</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {items.map(item => {
           const itemErr = reconciliationErrors.find(e => e.key === `${groupId}.${item.key}`);
+          const currentItem = groupState[item.key];
+          const customSubjectName = getSubjectCustomName(currentItem);
+          const billingSubjectName = getSubjectBillingName(currentItem);
+          const displayName = getSubjectExcelDisplayName(item, currentItem);
           return (
-            <div key={item.key} className="flex flex-col gap-1">
-              <label className="text-sm font-semibold text-secondary-foreground">{item.label}</label>
+            <div key={item.key} className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-sm font-semibold text-secondary-foreground">{item.standardSubjectName}</label>
+                {(customSubjectName || billingSubjectName) && <span className="text-[10px] font-medium text-primary truncate max-w-[220px]">{displayName}</span>}
+              </div>
+              <input
+                type="text"
+                placeholder="具体业务/产品名称"
+                className="bg-muted px-3 py-2 rounded-md outline-none text-xs focus:bg-card focus:ring-1 focus:ring-ring"
+                value={customSubjectName}
+                onChange={e => updateTaxItemCustomSubjectName(groupId, item.key, e.target.value)}
+              />
+              <input
+                type="text"
+                placeholder="计费科目名称（文书/计费口径）"
+                className="bg-muted px-3 py-2 rounded-md outline-none text-xs focus:bg-card focus:ring-1 focus:ring-ring"
+                value={billingSubjectName}
+                onChange={e => updateTaxItemBillingSubjectName(groupId, item.key, e.target.value)}
+              />
               <div className="flex gap-2">
-                <input type="number" placeholder="含税" className="w-full bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={groupState[item.key].incl === 0 ? "" : groupState[item.key].incl} onChange={e => updateTaxItem(groupId, item.key, 'incl', Number(e.target.value))} />
-                <input type="number" placeholder="税率" className="w-20 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={groupState[item.key].tax} onChange={e => updateTaxItem(groupId, item.key, 'tax', Number(e.target.value))} />
-                <input type="number" placeholder="不含税" className={`w-full bg-card border px-3 py-2 rounded-md outline-none text-sm focus:border-ring ${itemErr ? 'border-red-500 ring-1 ring-red-500' : 'border-input'}`} value={groupState[item.key].excl === 0 ? "" : groupState[item.key].excl} onChange={e => updateTaxItem(groupId, item.key, 'excl', Number(e.target.value))} />
+                <input type="number" placeholder="含税" className="w-full bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={currentItem.incl === 0 ? "" : currentItem.incl} onChange={e => updateTaxItem(groupId, item.key, 'incl', Number(e.target.value))} />
+                <input type="number" placeholder="税率" className="w-20 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={currentItem.tax} onChange={e => updateTaxItem(groupId, item.key, 'tax', Number(e.target.value))} />
+                <input type="number" placeholder="不含税" className={`w-full bg-card border px-3 py-2 rounded-md outline-none text-sm focus:border-ring ${itemErr ? 'border-red-500 ring-1 ring-red-500' : 'border-input'}`} value={currentItem.excl === 0 ? "" : currentItem.excl} onChange={e => updateTaxItem(groupId, item.key, 'excl', Number(e.target.value))} />
               </div>
               {itemErr && <span className="text-[10px] text-red-500 font-bold">校验失败：偏离 {itemErr.difference} 元，要求：{itemErr.expectedExcl} 元</span>}
             </div>
@@ -956,9 +1030,9 @@ export default function IctLifecycle() {
               <div className="mb-4 text-xs text-blue-700 bg-blue-50 p-3 rounded-lg border border-blue-200">
                 <span className="inline-flex items-start gap-2"><AppIcon name="info" size={16} className="mt-0.5" /> <span>提示：在「CT收入」中填写的产品或专线含税收入，将会自动【1:1平过】填入对应的「CT投入」中。</span></span>
               </div>
-              {renderTaxGroup("IT/移动云收入", 'revIt', revIt, [{key: 'integration', label: '系统集成服务收入'}, {key: 'maintenance', label: '维保收入'}, {key: 'device_sales', label: '设备销售收入'}, {key: 'device_lease', label: '设备租赁收入'}, {key: 'other', label: '其他收入'}, {key: 'cloud', label: '移动云-定制化收入'}])}
-              {renderTaxGroup("CT收入", 'revCt', revCt, [{key: 'line', label: '专线收入'}, {key: 'product', label: '产品收入'}])}
-              {renderTaxGroup("非IT/CT收入", 'revNonItCt', { item: revNonItCt }, [{key: 'item', label: '工程施工收入等'}])}
+              {renderTaxGroup("IT/移动云收入", 'revIt', revIt, ICT_SUBJECT_GROUPS.revIt)}
+              {renderTaxGroup("CT收入", 'revCt', revCt, ICT_SUBJECT_GROUPS.revCt)}
+              {renderTaxGroup("非IT/CT收入", 'revNonItCt', { item: revNonItCt }, ICT_SUBJECT_GROUPS.revNonItCt)}
             </div>
           )}
 
@@ -987,9 +1061,9 @@ export default function IctLifecycle() {
                   }} className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-bold px-4 py-2 rounded-md text-sm hover:bg-primary/90 transition-colors"><AppIcon name="download" size={16} /> 一键填入</button>
                 </div>
               </div>
-              {renderTaxGroup("IT/移动云投入", 'costIt', costIt, [{key: 'device', label: '主要设备/甲供材料'}, {key: 'construction', label: '施工'}, {key: 'survey', label: '勘察设计/预备费'}, {key: 'integration', label: '集成服务'}, {key: 'other', label: '其他投入'}, {key: 'maintenance', label: '维护费用'}, {key: 'running', label: '其他运行支出（电费等）'}, {key: 'bidding', label: '中标服务费'}, {key: 'design_eval', label: '设计院成本评估费'}, {key: 'audit', label: '第三方审计评估费'}])}
-              {renderTaxGroup("CT投入", 'costCt', costCt, [{key: 'construction', label: '专线建设'}, {key: 'maintenance', label: '专线维护'}, {key: 'other', label: '其他产品成本'}, {key: 'bandwidth', label: '专线带宽成本'}, {key: 'renewal', label: '专线/其他产品续签成本'}])}
-              {renderTaxGroup("非IT/CT投入 & 综合类成本", 'costMix', costMix, [{key: 'non_it_ct', label: '工程施工投入等'}, {key: 'marketing', label: '融合营销成本'}, {key: 'channel', label: '渠道酬金'}, {key: 'other', label: '其他管理费用等'}])}
+              {renderTaxGroup("IT/移动云投入", 'costIt', costIt, ICT_SUBJECT_GROUPS.costIt)}
+              {renderTaxGroup("CT投入", 'costCt', costCt, ICT_SUBJECT_GROUPS.costCt)}
+              {renderTaxGroup("非IT/CT投入 & 综合类成本", 'costMix', costMix, ICT_SUBJECT_GROUPS.costMix)}
             </div>
           )}
 

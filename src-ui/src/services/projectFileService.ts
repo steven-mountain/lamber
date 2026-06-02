@@ -106,5 +106,9 @@ export interface ExcelParsedData {
     incl_tax: number;
     excl_tax: number;
     tax_rate: number;
+    custom_subject_name?: string | null;
+    billing_subject_name?: string | null;
+    standard_subject_name?: string | null;
+    display_name?: string | null;
   }>;
 }

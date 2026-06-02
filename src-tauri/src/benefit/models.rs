@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 pub struct IctItem {
     pub incl_tax: String,
     pub tax_rate: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_subject_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub billing_subject_name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

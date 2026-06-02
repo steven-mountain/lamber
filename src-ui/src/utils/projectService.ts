@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 export interface IctItem {
   incl_tax: string;
   tax_rate: string;
+  custom_subject_name?: string;
+  billing_subject_name?: string;
 }
 
 export interface CashflowSegment {
@@ -250,4 +252,3 @@ export const projectService = {
     return invoke<UnregisteredProject[]>("inspect_workspace_projects");
   },
 };
-

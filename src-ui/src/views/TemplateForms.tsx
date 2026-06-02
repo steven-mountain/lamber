@@ -10,6 +10,16 @@ import { domainSaveService } from "../services/domainSaveService"
 import { useSaveStore } from "../store/useSaveStore"
 import { useWorkspaceStore } from "../store/useWorkspaceStore"
 import { createTemplateAssetSelection, publishTemplateAssetSelection } from "../ai/templateAssetSelection"
+import {
+  buildExcelSubjectVariables,
+  collectDocumentBusinessNames,
+  getProjectDataSubjectItem,
+  getSubjectDocumentBusinessName,
+  ICT_SUBJECT_DEFINITIONS,
+  type IctDocumentPrefix,
+  type IctSubjectGroupId,
+  type IctSubjectSide,
+} from "../lib/ictSubjectCatalog"
 
 interface Props {
   selectedTemplate: string;
@@ -187,6 +197,22 @@ export default function TemplateForms({
     projectData.revenue?.ct?.product,
     projectData.revenue?.non_it_ct,
   ].reduce((sum, item) => sum + Number(item?.incl || 0), 0)
+  const getBusinessNames = (options: { side?: IctSubjectSide; documentPrefix?: IctDocumentPrefix; groupId?: IctSubjectGroupId }) => collectDocumentBusinessNames(projectData, options)
+  const getSubjectBusinessName = (subjectCode: string) => {
+    const subject = ICT_SUBJECT_DEFINITIONS.find(item => item.subjectCode === subjectCode)
+    if (!subject) return ""
+    return getSubjectDocumentBusinessName(subject, getProjectDataSubjectItem(projectData, subject))
+  }
+  const customItBusinessNames = getBusinessNames({ documentPrefix: "IT" })
+  const customCtBusinessNames = getBusinessNames({ documentPrefix: "CT" })
+  const customNonItCtBusinessNames = getBusinessNames({ documentPrefix: "非IT/CT" })
+  const customMixBusinessNames = getBusinessNames({ documentPrefix: "综合类" })
+  const customItCostBusinessNames = getBusinessNames({ side: "cost", documentPrefix: "IT" })
+  const customCtCostBusinessNames = getBusinessNames({ side: "cost", documentPrefix: "CT" })
+  const customItRevenueBusinessNames = getBusinessNames({ side: "revenue", documentPrefix: "IT" })
+  const customCtRevenueBusinessNames = getBusinessNames({ side: "revenue", documentPrefix: "CT" })
+  const joinedBusinessNames = (names: string[]) => names.join("、")
+  const excelSubjectVariables = buildExcelSubjectVariables(projectData)
 
   const formDataRef = useRef<Record<string, string>>({});
   const [formData, setFormData] = useState<Record<string, string>>({});
@@ -869,10 +895,18 @@ export default function TemplateForms({
     }
     const branchName = get('gen_branch_name') || "XXXX"
     attendees += `${branchName}分公司（建设、维护、网络/信息安全员）：\n        ${get('gen_branch_attendees')}`
-    const originalCtContent = hasMidThree ? (ctContent ? ctContent.replace(/能力/g, '') : "详见清单") : "无"
+    const customItContent = joinedBusinessNames(customItBusinessNames)
+    const customCtContent = joinedBusinessNames(customCtBusinessNames)
+    const projectBusinessComposition = joinedBusinessNames([
+      ...customItBusinessNames,
+      ...customCtBusinessNames,
+      ...customNonItCtBusinessNames,
+      ...customMixBusinessNames,
+    ])
+    const originalCtContent = customCtContent || (hasMidThree ? (ctContent ? ctContent.replace(/能力/g, '') : "详见清单") : "无")
 
     const itCostInclForContent = (projectData.cost?.it?.integration?.incl || 0) + (projectData.cost?.it?.device?.incl || 0) + (projectData.cost?.it?.maintenance?.incl || 0)
-    const originalItContent = itCostInclForContent > 0 ? (itContent || "集成服务") : "无"
+    const originalItContent = customItContent || (itCostInclForContent > 0 ? (itContent || "集成服务") : "无")
 
     const signItContent = get('gen_sign_it_content')
     const signCtContent = get('gen_sign_ct_content')
@@ -885,11 +919,13 @@ export default function TemplateForms({
       ? (signCtContent.trim() !== "" ? signCtContent : originalCtContent)
       : originalCtContent
 
-    const resolvedSubjectItCost = get('gen_subject_it_cost').trim() || subjectItCost
-    const resolvedSubjectCtCost = get('gen_subject_ct_cost').trim() || subjectCtCost
+    const resolvedSubjectItCost = get('gen_subject_it_cost').trim() || joinedBusinessNames(customItCostBusinessNames) || subjectItCost
+    const resolvedSubjectCtCost = get('gen_subject_ct_cost').trim() || joinedBusinessNames(customCtCostBusinessNames) || subjectCtCost
+    const resolvedSubjectItRev = get('gen_subject_it_rev').trim() || joinedBusinessNames(customItRevenueBusinessNames) || subjectItRev
+    const resolvedSubjectCtRev = get('gen_subject_ct_rev').trim() || joinedBusinessNames(customCtRevenueBusinessNames) || subjectCtRev
 
     const otherCost = projectData.cost?.ct?.other?.incl || 0
-    const otherProductContent = otherCost > 0 ? "详见清单" : "无"
+    const otherProductContent = getSubjectBusinessName("cost_ct_other") || (otherCost > 0 ? "详见清单" : "无")
 
     let hasAnyScreenshot = false;
     const screenshotListArray: any[] = [];
@@ -1017,6 +1053,7 @@ export default function TemplateForms({
       'ATTENDEES': attendees,
       'ONSITE_SUPPORT': get('gen_onsite_support'),
       'PROJECT_BACKGROUND': projectBackground,
+      'PROJECT_BUSINESS_COMPOSITION': projectBusinessComposition,
       'IT_CONTENT': itContentStr,
       'CT_CONTENT': ctContentStr,
       'OTHER_PRODUCT_CONTENT': otherProductContent,
@@ -1040,8 +1077,8 @@ export default function TemplateForms({
 
       'SUBJECT_IT_COST': resolvedSubjectItCost,
       'SUBJECT_CT_COST': resolvedSubjectCtCost,
-      'SUBJECT_IT_REV': get('gen_subject_it_rev') || subjectItRev,
-      'SUBJECT_CT_REV': get('gen_subject_ct_rev') || subjectCtRev,
+      'SUBJECT_IT_REV': resolvedSubjectItRev,
+      'SUBJECT_CT_REV': resolvedSubjectCtRev,
       'CONSTRUCTION_TIME_REQ': get('gen_construction_time_req'),
       'PROCUREMENT_METHOD': procurementMethod === '其他' ? get('gen_procurement_method_other') : procurementMethod,
       'CONSTRUCTION_INTERFACE': get('gen_construction_interface'),
@@ -1080,37 +1117,7 @@ export default function TemplateForms({
       'ATTACH2_TITLE_LINE': attach2TitleLine,
 
       // --- Excel Specific Variable Back-filling ---
-      'EXCEL_REV_IT_INTEGRATION_EXCL': String(projectData.revenue?.it?.integration?.excl ?? 0),
-      'EXCEL_REV_IT_MAINTENANCE_EXCL': String(projectData.revenue?.it?.maintenance?.excl ?? 0),
-      'EXCEL_REV_IT_DEVICE_SALES_EXCL': String(projectData.revenue?.it?.device_sales?.excl ?? 0),
-      'EXCEL_REV_IT_DEVICE_LEASE_EXCL': String(projectData.revenue?.it?.device_lease?.excl ?? 0),
-      'EXCEL_REV_IT_OTHER_EXCL': String(projectData.revenue?.it?.other?.excl ?? 0),
-      'EXCEL_REV_IT_CLOUD_EXCL': String(projectData.revenue?.it?.cloud?.excl ?? 0),
-      'EXCEL_REV_CT_LINE_EXCL': String(projectData.revenue?.ct?.line?.excl ?? 0),
-      'EXCEL_REV_CT_PRODUCT_INCL': String(projectData.revenue?.ct?.product?.incl ?? 0),
-      'EXCEL_REV_NON_IT_CT_EXCL': String(projectData.revenue?.non_it_ct?.excl ?? 0),
-
-      'EXCEL_COST_IT_DEVICE_EXCL': String(projectData.cost?.it?.device?.excl ?? 0),
-      'EXCEL_COST_IT_CONSTRUCTION_EXCL': String(projectData.cost?.it?.construction?.excl ?? 0),
-      'EXCEL_COST_IT_SURVEY_EXCL': String(projectData.cost?.it?.survey?.excl ?? 0),
-      'EXCEL_COST_IT_INTEGRATION_EXCL': String(projectData.cost?.it?.integration?.excl ?? 0),
-      'EXCEL_COST_IT_OTHER_EXCL': String(projectData.cost?.it?.other?.excl ?? 0),
-      'EXCEL_COST_IT_MAINTENANCE_EXCL': String(projectData.cost?.it?.maintenance?.excl ?? 0),
-      'EXCEL_COST_IT_RUNNING_EXCL': String(projectData.cost?.it?.running?.excl ?? 0),
-      'EXCEL_COST_IT_BIDDING_EXCL': String(projectData.cost?.it?.bidding?.excl ?? 0),
-      'EXCEL_COST_IT_DESIGN_EVAL_EXCL': String(projectData.cost?.it?.design_eval?.excl ?? 0),
-      'EXCEL_COST_IT_AUDIT_EXCL': String(projectData.cost?.it?.audit?.excl ?? 0),
-
-      'EXCEL_COST_CT_CONSTRUCTION_INCL': String(projectData.cost?.ct?.construction?.incl ?? 0),
-      'EXCEL_COST_CT_MAINTENANCE_INCL': String(projectData.cost?.ct?.maintenance?.incl ?? 0),
-      'EXCEL_COST_CT_OTHER_INCL': String(projectData.cost?.ct?.other?.incl ?? 0),
-      'EXCEL_COST_CT_BANDWIDTH_EXCL': String(projectData.cost?.ct?.bandwidth?.excl ?? 0),
-      'EXCEL_COST_CT_RENEWAL_EXCL': String(projectData.cost?.ct?.renewal?.excl ?? 0),
-
-      'EXCEL_COST_NON_IT_CT_EXCL': String(projectData.cost?.mix?.non_it_ct?.excl ?? 0),
-      'EXCEL_COST_MIX_MARKETING_EXCL': String(projectData.cost?.mix?.marketing?.excl ?? 0),
-      'EXCEL_COST_MIX_CHANNEL_EXCL': String(projectData.cost?.mix?.channel?.excl ?? 0),
-      'EXCEL_COST_MIX_OTHER_EXCL': String(projectData.cost?.mix?.other?.excl ?? 0),
+      ...excelSubjectVariables,
 
       'RENEWAL_PROJECT_FLAG': (projectData.cost?.ct?.renewal?.excl ?? 0) > 0 ? "是" : "否",
       'CONTRACT_DURATION': String(projectData.basic?.project_years || 1),
@@ -1155,8 +1162,8 @@ export default function TemplateForms({
     }
   }
   const itCostInclForContent = (projectData.cost?.it?.integration?.incl || 0) + (projectData.cost?.it?.device?.incl || 0) + (projectData.cost?.it?.maintenance?.incl || 0)
-  const defaultSignItContent = itCostInclForContent > 0 ? (itContent || "集成服务") : "无"
-  const defaultSignCtContent = hasMidThree ? (ctContent ? ctContent.replace(/能力/g, '') : "详见清单") : "无"
+  const defaultSignItContent = joinedBusinessNames(customItBusinessNames) || (itCostInclForContent > 0 ? (itContent || "集成服务") : "无")
+  const defaultSignCtContent = joinedBusinessNames(customCtBusinessNames) || (hasMidThree ? (ctContent ? ctContent.replace(/能力/g, '') : "详见清单") : "无")
 
   return (
     <div className="flex flex-col gap-6">

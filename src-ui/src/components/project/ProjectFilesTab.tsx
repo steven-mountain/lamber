@@ -102,10 +102,16 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
         return Math.abs(Number(item?.incl_tax || 0)) > 0 || Math.abs(Number(item?.excl_tax || 0)) > 0;
       });
 
-      const makeItem = (incl: number, tax: number) => ({
-        incl_tax: String(Number.isFinite(incl) ? Number(incl.toFixed(2)) : 0),
-        tax_rate: String(Number.isFinite(tax) ? Number(tax.toFixed(4)) : 0),
-      });
+      const makeItem = (incl: number, tax: number, customSubjectName?: string | null, billingSubjectName?: string | null) => {
+        const custom = String(customSubjectName || "").trim();
+        const billing = String(billingSubjectName || "").trim();
+        return {
+          incl_tax: String(Number.isFinite(incl) ? Number(incl.toFixed(2)) : 0),
+          tax_rate: String(Number.isFinite(tax) ? Number(tax.toFixed(4)) : 0),
+          ...(custom ? { custom_subject_name: custom } : {}),
+          ...(billing ? { billing_subject_name: billing } : {}),
+        };
+      };
 
       const makeParsedItem = (key: string, defaultTax: number, fallbackIncl = 0) => {
         const item = parsedItems[key];
@@ -113,15 +119,15 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
           const tax = toTaxPercent(item.tax_rate, defaultTax);
           const parsedIncl = Number(item.incl_tax);
           if (Number.isFinite(parsedIncl) && Math.abs(parsedIncl) > 0) {
-            return makeItem(parsedIncl, tax);
+            return makeItem(parsedIncl, tax, item.custom_subject_name, item.billing_subject_name);
           }
 
           const parsedExcl = Number(item.excl_tax);
           if (Number.isFinite(parsedExcl) && Math.abs(parsedExcl) > 0) {
-            return makeItem(parsedExcl * (1 + tax / 100), tax);
+            return makeItem(parsedExcl * (1 + tax / 100), tax, item.custom_subject_name, item.billing_subject_name);
           }
 
-          return makeItem(0, tax);
+          return makeItem(0, tax, item.custom_subject_name, item.billing_subject_name);
         }
 
         return makeItem(hasDetailedItems ? 0 : fallbackIncl, defaultTax);

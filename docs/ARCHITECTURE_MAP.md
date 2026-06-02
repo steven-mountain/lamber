@@ -1,6 +1,6 @@
 # ARCHITECTURE_MAP.md
 
-Last updated: 2026-06-01 (Meeting Investment Subject Alignment Fix)
+Last updated: 2026-06-01 (ICT Billing Subject Name Extension)
 
 ## 1. Repository overview
 
@@ -32,6 +32,7 @@ graph TD
 - **`src/docfill.rs`**: Fills Word/Excel lifecycle templates for workspace-backed document generation.
 - **`src/docfill.rs` lifecycle output rule**: `generate_lifecycle_docs` must resolve relative output folders against the active Workspace root, and may use the provided `projectId` to derive the project folder from Workspace SQLite when no explicit output directory is supplied. It must not write generated lifecycle documents into the Tauri process working directory.
 - **`src/docfill.rs` image embedding rule**: Word image variables receive JSON payloads whose image entries should carry `assetId` values. The backend resolves those asset IDs through Workspace SQLite and embeds image binaries into `word/media`; frontend-only preview URLs must not be treated as document image data.
+- **`src/docfill.rs` Excel subject-row mapping**: `internal_generate_xlsx` uses a unified mapping for all standard revenue/cost subjects in `3-直接经济效益评估表`. For each mapped subject row, the name cell receives the frontend-resolved display name from `ictSubjectCatalog.ts` (`计费科目名称 > 具体业务/产品名称 > 标准科目名称`), `G` receives tax-exclusive amount, and `Q` receives tax-inclusive amount. Empty/zero frontend amount inputs are written as blank cells rather than numeric `0`. No rows are inserted or deleted.
 - **`src/ai_context/`**: Read-only AI Project Context Service. It exposes `build_ai_project_context`, validates the project against the active workspace database, and summarizes persisted project overview, lifecycle, cashflow, benefit, template, and file metadata without writing data, reading full documents, or loading image binaries.
 - **`src/ai_context/` template detail extension**: `build_ai_project_context` can load `template_detail` for a specified `activeTemplateId`, reading one saved template from `project_template_states` with legacy `project_settings` fallback. `load_ai_template_asset` validates `projectId + assetId` ownership and returns a temporary vision data URL only for explicitly selected template images.
 - **`src/ai_context/` Workspace project index**: `list_ai_workspace_projects` returns a read-only lightweight index for the current Workspace, including project identity, status, updated time, saved lifecycle/cashflow/template/benefit existence flags, and saved template names. It never returns absolute paths, file contents, image bytes, or full template JSON.
@@ -61,6 +62,7 @@ graph TD
   - [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): Data Management view containing Roots, Health Checker, and Relocator.
 - **`src/services/workspaceMaintenanceService.ts`**: Frontend IPC wrapper for workspace backup/restore/export/import/health/path maintenance commands.
 - **`src/services/aiProjectContextService.ts`**: Typed frontend wrapper for `build_ai_project_context`, now used by the AI chat context composer during message send.
+- **`src/lib/ictSubjectCatalog.ts`**: Fixed frontend catalog and shared presentation resolver for ICT billing subject identity. It maps stable `subjectCode`, UI group/key, standard subject name, Excel variable prefix, and document business prefix (`IT`, `CT`, `非IT/CT`, `综合类`) so product/business names and billing subject names remain separate from standard subject identity. `resolveBillingSubjectPresentation` centralizes Excel display names, document business names, and document dedup keys.
 - **`src/ai/context/`**: AI chat context composer. It builds the per-message context bundle by reading the active project ID, loading saved official context from Workspace SQLite through `aiProjectContextService.ts`, and filtering the current frontend state into an unsaved draft overlay only when dirty scopes match the active project/page.
 - **`src/ai/context/workspaceProjectRouter.ts`**: Deterministic Workspace project-name router used by the composer. It matches explicit project names against the current Workspace project index, limits deep official context loading to two specified projects per turn, resolves one specified template when uniquely named, and returns warnings for ambiguous or unresolved routing.
 - **`src/ai/templateAssetSelection.ts`**: Cross-window event bridge for explicit template image analysis requests. It carries only template asset metadata (`projectId`, `templateId`, `assetId`, field label) and never carries physical file paths or image base64.
@@ -93,6 +95,8 @@ Phase 3 introduces explicit project-state save domains:
 - `benefit_schemes` / `benefit_snapshots`: named benefit方案 metadata and historical calculation snapshots.
 - `project_template_states`: template form field values, field mappings, template binding metadata, and output configuration.
 - `project_template_assets`: file-backed template images/attachments and metadata.
+
+ICT revenue/cost tax items may include optional `customSubjectName` / `billingSubjectName` on the frontend and `custom_subject_name` / `billing_subject_name` in serialized lifecycle/snapshot payloads. Amount calculations continue to read only `incl_tax` and `tax_rate`; both custom names are UI/document/Excel metadata and are ignored by financial formula paths. `project_cashflow_states.assumptions_json`, `project_lifecycle_states.input_payload_json`, and benefit snapshots preserve the optional fields for reload and export compatibility.
 
 Frontend global save goes through `domainSaveService` and `useSaveStore` registered handlers. The save store does not read business component state directly; each mounted page registers the handler responsible for serializing its current local state.
 
@@ -196,7 +200,15 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 2. `docfill.rs` detects image variables, reads `assetId` from JSON entries, validates and resolves the asset through `project_template_assets`, and writes the image bytes into the generated docx media folder with relationship entries.
 3. If an image JSON payload cannot be resolved, the backend clears the unresolved placeholder rather than inserting raw JSON or preview URLs into Word content.
 
-### 4.8 Inquiry vendor screenshot state flow
+### 4.8 ICT subject custom name flow
+
+1. `IctLifecycle.tsx` renders every standard revenue and cost subject from `ictSubjectCatalog.ts`, keeping the standard subject label visible and adding optional product/business name and billing subject name inputs.
+2. `useIctState` stores both names on the existing tax item object without changing amount fields. CT product revenue and CT other-product cost names synchronize in both directions; CT line revenue and CT bandwidth cost names use the same paired-subject rule. Hydration accepts old items without billing names plus serialized `custom_subject_name` / `billing_subject_name` fields, and fills missing paired names when only one side has them.
+3. `useIctCalculations` serializes product/business names and billing subject names into lifecycle/snapshot payloads while Rust calculation models ignore them for financial math.
+4. `TemplateForms.tsx` builds Excel variables from the subject catalog resolver, derives document business names with category prefixes, and deduplicates business-composition names by the final resolved document name across revenue/cost.
+5. `docfill.rs` writes the mapped Excel subject name, `G` tax-exclusive amount, and `Q` tax-inclusive amount for every configured subject row in `3-直接经济效益评估表`.
+
+### 4.9 Inquiry vendor screenshot state flow
 
 1. `TemplateForms.tsx` stores inquiry quote screenshots on each vendor row as `images`.
 2. One-click quote generation may recalculate vendor names, amounts, tax rates, and remarks, but must merge existing screenshots into the regenerated rows by vendor name and then by index.

@@ -5,6 +5,7 @@ import { useProjectStore } from "../store/useProjectStore";
 import { AI_CONTEXT_KEY } from "../utils/aiContextKeys";
 import {
   type CashflowSegment,
+  type TaxItem,
   buildDirectCashflowFromSegments,
   distributionFromCashflow,
   cashflowPayloadValues,
@@ -13,6 +14,7 @@ import {
   clampCashflowYear,
   useIctState
 } from "./useIctState";
+import { normalizeCustomSubjectName } from "../lib/ictSubjectCatalog";
 
 // Labels mapping
 const cashflowModelLabels: Record<string, string> = {
@@ -29,6 +31,17 @@ const formatDistribution = (arr: number[]) => {
 
 const formatCurrency = (v: number) => new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(v);
 const formatPercent = (v: number) => (v * 100).toFixed(2) + "%";
+
+const serializeTaxItemForPayload = (item: TaxItem) => {
+  const customSubjectName = normalizeCustomSubjectName(item.customSubjectName);
+  const billingSubjectName = normalizeCustomSubjectName(item.billingSubjectName);
+  return {
+    incl_tax: String(item.incl),
+    tax_rate: String(item.tax),
+    ...(customSubjectName ? { custom_subject_name: customSubjectName } : {}),
+    ...(billingSubjectName ? { billing_subject_name: billingSubjectName } : {}),
+  };
+};
 
 export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   const updateData = useAiContextStore(stateStore => stateStore.updateBusinessData);
@@ -93,34 +106,34 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       it_cost_cashflow_excl: state.cashflowModel === 'model_e' && state.segmentValueMode === "amount" ? cashflowPayloadValues(directCashflowForPayload.itCost) : null,
       ignore_tail_difference: state.ignoredTailValue !== null,
       tail_difference_value: state.ignoredTailValue || "0",
-      rev_it_integration: { incl_tax: String(revItForPayload.integration.incl), tax_rate: String(revItForPayload.integration.tax) },
-      rev_it_maintenance: { incl_tax: String(revItForPayload.maintenance.incl), tax_rate: String(revItForPayload.maintenance.tax) },
-      rev_it_device_sales: { incl_tax: String(revItForPayload.device_sales.incl), tax_rate: String(revItForPayload.device_sales.tax) },
-      rev_it_device_lease: { incl_tax: String(revItForPayload.device_lease.incl), tax_rate: String(revItForPayload.device_lease.tax) },
-      rev_it_other: { incl_tax: String(revItForPayload.other.incl), tax_rate: String(revItForPayload.other.tax) },
-      rev_it_cloud: { incl_tax: String(revItForPayload.cloud.incl), tax_rate: String(revItForPayload.cloud.tax) },
-      rev_ct_line: { incl_tax: String(state.revCt.line.incl), tax_rate: String(state.revCt.line.tax) },
-      rev_ct_product: { incl_tax: String(state.revCt.product.incl), tax_rate: String(state.revCt.product.tax) },
-      rev_non_it_ct: { incl_tax: String(state.revNonItCt.incl), tax_rate: String(state.revNonItCt.tax) },
-      cost_it_device: { incl_tax: String(costItForPayload.device.incl), tax_rate: String(costItForPayload.device.tax) },
-      cost_it_construction: { incl_tax: String(costItForPayload.construction.incl), tax_rate: String(costItForPayload.construction.tax) },
-      cost_it_survey: { incl_tax: String(costItForPayload.survey.incl), tax_rate: String(costItForPayload.survey.tax) },
-      cost_it_integration: { incl_tax: String(costItForPayload.integration.incl), tax_rate: String(costItForPayload.integration.tax) },
-      cost_it_other: { incl_tax: String(costItForPayload.other.incl), tax_rate: String(costItForPayload.other.tax) },
-      cost_it_maintenance: { incl_tax: String(costItForPayload.maintenance.incl), tax_rate: String(costItForPayload.maintenance.tax) },
-      cost_it_running: { incl_tax: String(costItForPayload.running.incl), tax_rate: String(costItForPayload.running.tax) },
-      cost_it_bidding: { incl_tax: String(costItForPayload.bidding.incl), tax_rate: String(costItForPayload.bidding.tax) },
-      cost_it_design_eval: { incl_tax: String(costItForPayload.design_eval.incl), tax_rate: String(costItForPayload.design_eval.tax) },
-      cost_it_audit: { incl_tax: String(costItForPayload.audit.incl), tax_rate: String(costItForPayload.audit.tax) },
-      cost_ct_construction: { incl_tax: String(state.costCt.construction.incl), tax_rate: String(state.costCt.construction.tax) },
-      cost_ct_maintenance: { incl_tax: String(state.costCt.maintenance.incl), tax_rate: String(state.costCt.maintenance.tax) },
-      cost_ct_other: { incl_tax: String(state.costCt.other.incl), tax_rate: String(state.costCt.other.tax) },
-      cost_ct_bandwidth: { incl_tax: String(state.costCt.bandwidth.incl), tax_rate: String(state.costCt.bandwidth.tax) },
-      cost_ct_renewal: { incl_tax: String(state.costCt.renewal.incl), tax_rate: String(state.costCt.renewal.tax) },
-      cost_non_it_ct: { incl_tax: String(state.costMix.non_it_ct.incl), tax_rate: String(state.costMix.non_it_ct.tax) },
-      cost_mix_marketing: { incl_tax: String(state.costMix.marketing.incl), tax_rate: String(state.costMix.marketing.tax) },
-      cost_mix_channel: { incl_tax: String(state.costMix.channel.incl), tax_rate: String(state.costMix.channel.tax) },
-      cost_mix_other: { incl_tax: String(state.costMix.other.incl), tax_rate: String(state.costMix.other.tax) },
+      rev_it_integration: serializeTaxItemForPayload(revItForPayload.integration),
+      rev_it_maintenance: serializeTaxItemForPayload(revItForPayload.maintenance),
+      rev_it_device_sales: serializeTaxItemForPayload(revItForPayload.device_sales),
+      rev_it_device_lease: serializeTaxItemForPayload(revItForPayload.device_lease),
+      rev_it_other: serializeTaxItemForPayload(revItForPayload.other),
+      rev_it_cloud: serializeTaxItemForPayload(revItForPayload.cloud),
+      rev_ct_line: serializeTaxItemForPayload(state.revCt.line),
+      rev_ct_product: serializeTaxItemForPayload(state.revCt.product),
+      rev_non_it_ct: serializeTaxItemForPayload(state.revNonItCt),
+      cost_it_device: serializeTaxItemForPayload(costItForPayload.device),
+      cost_it_construction: serializeTaxItemForPayload(costItForPayload.construction),
+      cost_it_survey: serializeTaxItemForPayload(costItForPayload.survey),
+      cost_it_integration: serializeTaxItemForPayload(costItForPayload.integration),
+      cost_it_other: serializeTaxItemForPayload(costItForPayload.other),
+      cost_it_maintenance: serializeTaxItemForPayload(costItForPayload.maintenance),
+      cost_it_running: serializeTaxItemForPayload(costItForPayload.running),
+      cost_it_bidding: serializeTaxItemForPayload(costItForPayload.bidding),
+      cost_it_design_eval: serializeTaxItemForPayload(costItForPayload.design_eval),
+      cost_it_audit: serializeTaxItemForPayload(costItForPayload.audit),
+      cost_ct_construction: serializeTaxItemForPayload(state.costCt.construction),
+      cost_ct_maintenance: serializeTaxItemForPayload(state.costCt.maintenance),
+      cost_ct_other: serializeTaxItemForPayload(state.costCt.other),
+      cost_ct_bandwidth: serializeTaxItemForPayload(state.costCt.bandwidth),
+      cost_ct_renewal: serializeTaxItemForPayload(state.costCt.renewal),
+      cost_non_it_ct: serializeTaxItemForPayload(state.costMix.non_it_ct),
+      cost_mix_marketing: serializeTaxItemForPayload(state.costMix.marketing),
+      cost_mix_channel: serializeTaxItemForPayload(state.costMix.channel),
+      cost_mix_other: serializeTaxItemForPayload(state.costMix.other),
     };
   };
 

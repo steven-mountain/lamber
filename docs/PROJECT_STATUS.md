@@ -1,6 +1,28 @@
 # PROJECT_STATUS.md
 
-Last updated: 2026-06-01 (Meeting Investment Subject Alignment Fix)
+Last updated: 2026-06-01 (ICT Billing Subject Name Extension)
+
+## 0. ICT Billing Subject Name Extension
+
+ICT lifecycle revenue and cost measurement pages now support a second optional name field, "计费科目名称", for every fixed standard billing subject. The previous "具体业务/产品名称" field remains unchanged and is still saved as the product/business name; the new billing subject name is saved separately and is optional for old project data.
+
+A shared subject presentation resolver now centralizes subject naming for UI display hints, Excel output variables, project sign-off wording, meeting-review wording, and document aggregation deduplication. The display priority is `计费科目名称 > 具体业务/产品名称 > 标准科目名称` for Excel and page subject labels. Document business names use the same priority before adding the existing category prefix (`IT-`, `CT-`, `非IT/CT-`, `综合类-`), while old fallback behavior remains in place when neither custom field is present.
+
+The new field is persisted through existing lifecycle input payloads, benefit scheme snapshots, and cashflow assumptions JSON as `billing_subject_name` / `billingSubjectName`; no new SQLite table or schema migration is required. CT paired subjects (`产品收入` ↔ `其他产品成本`, `专线收入` ↔ `专线带宽成本`) keep billing subject names synchronized like their amount and product-name pass-through path.
+
+This change does not add/delete standard subjects, does not add Excel rows, and does not alter G/Q amount writing, tax rates, cashflow, NPV, selection fee, reconciliation, or reverse-calculation formulas.
+
+## 0. ICT Subject Custom Business Name Extension
+
+ICT lifecycle revenue and cost measurement pages now support a "具体业务/产品名称" field for every built-in standard billing subject. The standard subject remains the fixed internal identity for calculation, mapping, Excel row targeting, and backward compatibility; the custom name is stored separately on the tax item and is optional for old project data.
+
+Excel generation for `3-直接经济效益评估表` now writes each subject's display name as `标准科目（具体名称）` when a custom name exists, while keeping the standard name when it does not. The same row's `G` column is written with tax-exclusive amount and `Q` column with tax-inclusive amount for all mapped revenue/cost subjects, including `Q10` and `Q25`, through a single subject-row mapping.
+
+Project sign-off and meeting-review document variables now derive custom document business names such as `IT-高楼消防监测平台集成服务` and `CT-视频监控` from the subject catalog. Business composition-style values are deduplicated across revenue and cost when the same custom business appears on both sides; amount detail variables still keep income and cost records separate.
+
+Follow-up refinement: empty/zero frontend amounts are serialized as blank Excel amount inputs rather than `0`, so unused subject rows remain unfilled in generated benefit analysis sheets. CT product revenue and CT other-product cost custom names now stay synchronized in both directions, matching the existing amount pass-through behavior; CT line revenue and CT bandwidth cost names follow the same paired-subject synchronization.
+
+This change does not add or delete billing subject rows, does not insert Excel rows, and does not alter tax, cashflow, NPV, selection fee, or reverse-calculation formulas.
 
 ## 0. Meeting Investment Subject Alignment Fix
 

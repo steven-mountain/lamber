@@ -4,6 +4,44 @@ This changelog records structural modifications, business rules, and context cha
 
 ## 2026-06-01
 
+### ICT Billing Subject Name Extension
+
+Modified:
+- [ictSubjectCatalog.ts](../src-ui/src/lib/ictSubjectCatalog.ts): Added `billingSubjectName` / `billing_subject_name` support and the shared `resolveBillingSubjectPresentation` resolver for Excel display names, document business names, and document dedup keys.
+- [useIctState.ts](../src-ui/src/hooks/useIctState.ts), [useIctCalculations.ts](../src-ui/src/hooks/useIctCalculations.ts), and [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Added the "计费科目名称（文书/计费口径）" input for every existing revenue/cost subject, synchronized it across CT paired subjects, and persisted it through lifecycle/cashflow/benefit payloads without changing amount behavior.
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Continued using catalog helpers for Excel variables, sign-off wording, meeting-review wording, and business-composition deduplication so billing subject names now take priority over product/business names.
+- [models.rs](../src-tauri/src/benefit/models.rs), [excel.rs](../src-tauri/src/benefit/excel.rs), [ProjectFilesTab.tsx](../src-ui/src/components/project/ProjectFilesTab.tsx), [projectFileService.ts](../src-ui/src/services/projectFileService.ts), and [projectService.ts](../src-ui/src/utils/projectService.ts): Extended the serialized item DTOs with optional `billing_subject_name` while preserving old data without the field.
+
+Tests:
+- Ran `npm run build` in `src-ui`.
+- Ran `cargo test` in `src-tauri`; existing Excel subject-row tests still verify name/G/Q writes and blank amount clearing.
+
+Decision:
+- `customSubjectName` remains the product/business name field; the new billing subject name is stored independently and only affects presentation/export/document wording.
+- The resolver priority is `计费科目名称 > 具体业务/产品名称 > 标准科目名称` for Excel/page display and `计费科目名称 > 具体业务/产品名称 > existing fallback` for documents.
+- No standard subject rows, Excel formulas, tax calculations, cashflow math, selection fee logic, or reverse-calculation behavior were changed.
+
+### ICT Subject Custom Business Name Extension
+
+Created:
+- [ictSubjectCatalog.ts](../src-ui/src/lib/ictSubjectCatalog.ts): Added a fixed subject catalog mapping stable subject codes, UI groups, standard subject names, Excel variable prefixes, and document business prefixes.
+
+Modified:
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx) and [useIctState.ts](../src-ui/src/hooks/useIctState.ts): Added custom business/product name inputs for every existing revenue and cost subject, storing the optional custom name separately from amount/tax fields and restoring old data safely.
+- [useIctCalculations.ts](../src-ui/src/hooks/useIctCalculations.ts), [models.rs](../src-tauri/src/benefit/models.rs), [excel.rs](../src-tauri/src/benefit/excel.rs), [ProjectFilesTab.tsx](../src-ui/src/components/project/ProjectFilesTab.tsx), and [projectFileService.ts](../src-ui/src/services/projectFileService.ts): Persist custom subject names through lifecycle/snapshot payloads and preserve them when parsing/importing exported lifecycle Excel files.
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Generates Excel subject display names, document business names, and deduplicated business composition values from the subject catalog.
+- [docfill.rs](../src-tauri/src/docfill.rs): Replaced scattered Excel cell writes with a unified `3-直接经济效益评估表` subject-row mapping that writes the subject name, `G` tax-exclusive amount, and `Q` tax-inclusive amount for every standard subject row.
+
+Tests:
+- Added a Rust unit test verifying that CT product revenue and CT other product cost write `产品收入（视频监控）` / `其他产品成本（视频监控）`, `G=41.51`, and `Q=44` into the lifecycle Excel sheet.
+- Added a Rust unit test verifying that blank amount variables clear `G/Q` cells instead of writing numeric `0`.
+
+Decision:
+- Custom business/product names are metadata on fixed standard billing subjects, not new subject rows. The implementation does not support adding/deleting subjects or inserting Excel rows.
+- Financial calculations remain keyed by the existing standard subjects and continue to use only amount/tax fields; custom names affect UI labels, Excel output/import, and document wording only.
+- Business composition wording deduplicates repeated document business names across revenue and cost, while amount detail fields keep each side separate.
+- Empty/zero frontend amount inputs remain blank in generated Excel amount cells; paired CT subject custom names follow existing amount pass-through relationships.
+
 ### Meeting Investment Subject Alignment Fix
 
 Modified:

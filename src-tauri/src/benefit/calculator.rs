@@ -413,6 +413,8 @@ mod tests {
         IctItem {
             incl_tax: incl_tax.to_string(),
             tax_rate: "0".to_string(),
+            custom_subject_name: None,
+            billing_subject_name: None,
         }
     }
 
@@ -420,6 +422,8 @@ mod tests {
         IctItem {
             incl_tax: incl_tax.to_string(),
             tax_rate: tax_rate.to_string(),
+            custom_subject_name: None,
+            billing_subject_name: None,
         }
     }
 
