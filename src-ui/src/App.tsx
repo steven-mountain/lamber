@@ -3,6 +3,7 @@ import { emitTo } from "@tauri-apps/api/event";
 import IctLifecycle from "./views/IctLifecycle";
 import ProjectBoard from "./views/ProjectBoard";
 import DataManagement from "./views/DataManagement";
+import SettingsView from "./components/settings/SettingsView";
 import AiFloatingLauncher from "./components/ai/AiFloatingLauncher";
 import AiFloatingWindow from "./components/ai/AiFloatingWindow";
 import AppIcon, { type AppIconName } from "./components/icons/AppIcon";
@@ -30,7 +31,7 @@ function getAiAssistantView() {
 }
 
 export default function App() {
-  const { currentView, navigateTo } = useNavigationStore();
+  const { currentView, settingsReturnView, navigateTo } = useNavigationStore();
   const setActiveModule = useAiContextStore(state => state.setActiveModule);
   const { isWorkspaceReady, refreshWorkspaceState } = useWorkspaceStore();
   const aiAssistantView = getAiAssistantView();
@@ -58,7 +59,7 @@ export default function App() {
 
     if (isTauriRuntime()) {
       emitTo(AI_ASSISTANT_LABEL, "lamber-ai-view-changed", { view: currentView })
-        .catch(error => console.warn("Failed to sync AI assistant view:", error));
+         .catch(error => console.warn("Failed to sync AI assistant view:", error));
     }
   }, [aiAssistantView, currentView, setActiveModule]);
 
@@ -77,6 +78,8 @@ export default function App() {
         />
       ) : currentView === "ict_lifecycle" ? (
         <IctLifecycle />
+      ) : currentView === "settings" ? (
+        <SettingsView onBack={() => navigateTo(settingsReturnView || "hub")} />
       ) : currentView === "data_management" ? (
         isWorkspaceReady ? (
           <DataManagement onBack={() => navigateTo("hub")} />
@@ -86,13 +89,13 @@ export default function App() {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => navigateTo("hub")}
-                  className="text-secondary-foreground hover:text-primary hover:bg-secondary font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors"
+                  className="text-secondary-foreground hover:text-primary hover:bg-secondary font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors text-body"
                 >
                   <span>←</span> 返回集市
                 </button>
                 <div>
-                  <h1 className="text-xl font-bold tracking-tight">数据管理中心</h1>
-                  <p className="text-xs text-secondary-foreground mt-0.5">项目根目录管理、文件健康度检测与路径批量重定位</p>
+                  <h1 className="text-page-title font-bold tracking-tight">数据管理中心</h1>
+                  <p className="text-caption text-secondary-foreground mt-0.5">项目根目录管理、文件健康度检测与路径批量重定位</p>
                 </div>
               </div>
             </header>
@@ -100,7 +103,7 @@ export default function App() {
           </div>
         )
       ) : (
-        <div className="p-8">
+        <div className="p-8 text-body">
           <button onClick={() => navigateTo("hub")} className="mb-4 font-bold text-primary">返回</button>
           <p>模块正在开发中...</p>
         </div>
@@ -114,12 +117,21 @@ export default function App() {
 function HubView({ onOpenTool }: { onOpenTool: (view: string) => void }) {
   return (
     <div className="relative flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-6 py-8 animate-in fade-in duration-500 md:px-10">
-      <div className="absolute left-6 top-5 flex items-center gap-2 font-bold text-foreground before:h-4 before:w-1 before:rounded-sm before:bg-primary before:content-[''] md:left-10">
+      <div className="absolute left-6 top-5 flex items-center gap-2 text-body-strong text-foreground before:h-4 before:w-1 before:rounded-sm before:bg-primary before:content-[''] md:left-10">
         云数中心工具集
       </div>
+      <div className="absolute right-6 top-4 md:right-10 flex items-center gap-3">
+        <button
+          onClick={() => onOpenTool("settings")}
+          className="flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-semibold text-secondary-foreground hover:bg-secondary hover:text-foreground transition-all shadow-sm"
+        >
+          <AppIcon name="settings" size={16} />
+          系统设置
+        </button>
+      </div>
       <div className="mb-10 mt-20 text-center md:mb-12">
-        <h1 className="mb-2 text-4xl font-extrabold tracking-tight text-foreground">云数中心工具集</h1>
-        <p className="font-medium text-secondary-foreground">请选择需要使用的工具模块</p>
+        <h1 className="mb-2 text-display font-extrabold tracking-tight text-foreground">云数中心工具集</h1>
+        <p className="text-body font-medium text-secondary-foreground">请选择需要使用的工具模块</p>
       </div>
       <div className="grid w-full max-w-5xl grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-6 pb-8">
         <HubCard
@@ -170,8 +182,8 @@ function HubCard({
       <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary text-primary transition-colors">
         <AppIcon name={icon} size={30} />
       </div>
-      <div className="mb-1 text-lg font-bold">{title}</div>
-      <div className="text-sm text-secondary-foreground">{description}</div>
+      <div className="mb-1 text-section-title font-bold">{title}</div>
+      <div className="text-body text-secondary-foreground">{description}</div>
     </button>
   );
 }

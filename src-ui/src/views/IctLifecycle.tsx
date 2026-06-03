@@ -983,9 +983,9 @@ export default function IctLifecycle() {
           const isReverseTarget = revSubjectRefKey === getReverseSubjectRefKey(getReverseSubjectRef(item));
 
           const borderClass = isBalancing
-            ? "border-l-2 border-amber-500/70 bg-amber-50/30 pl-1.5"
+            ? "border-l-2 border-warning/70 bg-warning-soft/30 pl-1.5"
             : isReverseTarget
-            ? "border-l-2 border-purple-500/70 bg-purple-50/30 pl-1.5"
+            ? "border-l-2 border-primary/70 bg-primary-soft/30 pl-1.5"
             : "border-l-2 border-transparent pl-1.5";
 
           return (
@@ -1081,15 +1081,15 @@ export default function IctLifecycle() {
                 <span className="truncate text-secondary-foreground max-w-[140px]">({activeProject.customer_name})</span>
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
                   activeProject.benefit_status === "normal"
-                    ? "bg-emerald-50 text-emerald-700"
+                    ? "bg-success-soft text-success-foreground"
                     : activeProject.benefit_status === "outdated"
-                      ? "bg-amber-50 text-amber-700"
-                      : "bg-slate-100 text-slate-700"
+                      ? "bg-warning-soft text-warning-foreground"
+                      : "bg-muted text-muted-foreground"
                 }`}>
                   效益状态: {activeProject.benefit_status === "normal" ? "最新" : activeProject.benefit_status === "outdated" ? "已失效" : "未测算"}
                 </span>
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                  lastSaveError ? "bg-amber-50 text-amber-700" : pageDirty ? "bg-orange-50 text-orange-700" : "bg-emerald-50 text-emerald-700"
+                  lastSaveError ? "bg-destructive-soft text-destructive" : pageDirty ? "bg-warning-soft text-warning-foreground" : "bg-success-soft text-success-foreground"
                 }`}>
                   {saveStatusLabel}
                 </span>
@@ -1111,10 +1111,10 @@ export default function IctLifecycle() {
         <div className="w-[260px] bg-muted p-6 overflow-y-auto flex flex-col gap-4 border-r border-border shrink-0">
           <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mb-1">测算流程</h3>
           <div className="flex flex-col gap-1">
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'basic' ? 'bg-blue-50 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("basic")}><AppIcon name="project" size={18} /> 项目概况与参数</button>
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'revenue' ? 'bg-blue-50 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("revenue")}><AppIcon name="revenue" size={18} /> 收入侧测算</button>
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cost' ? 'bg-blue-50 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cost")}><AppIcon name="cost" size={18} /> 投入侧测算</button>
-            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cashflow' ? 'bg-blue-50 text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cashflow")}><AppIcon name="cashflow" size={18} /> 10年现金流推演</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'basic' ? 'bg-primary-soft text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("basic")}><AppIcon name="project" size={18} /> 项目概况与参数</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'revenue' ? 'bg-primary-soft text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("revenue")}><AppIcon name="revenue" size={18} /> 收入侧测算</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cost' ? 'bg-primary-soft text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cost")}><AppIcon name="cost" size={18} /> 投入侧测算</button>
+            <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'cashflow' ? 'bg-primary-soft text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("cashflow")}><AppIcon name="cashflow" size={18} /> 10年现金流推演</button>
           </div>
           <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mt-6 pt-4 border-t border-border mb-2">一键生成全流程文档</h3>
           <div className="flex flex-col gap-2">
@@ -1124,7 +1124,7 @@ export default function IctLifecycle() {
                 return (
                   <button
                     key={t}
-                    className={`relative overflow-hidden px-4 py-3 rounded-lg text-sm flex items-start gap-2.5 transition-all text-left border-b border-border/60 shadow-sm ${isActive ? 'bg-blue-50 text-primary font-bold border-blue-200 shadow-sm' : 'text-secondary-foreground font-semibold hover:bg-primary/10 hover:text-primary'}`}
+                    className={`relative overflow-hidden px-4 py-3 rounded-lg text-sm flex items-start gap-2.5 transition-all text-left border-b border-border/60 shadow-sm ${isActive ? 'bg-primary-soft text-primary font-bold border-primary/20 shadow-sm' : 'text-secondary-foreground font-semibold hover:bg-primary-soft hover:text-primary'}`}
                     onClick={() => handleTabSwitch("generate", t)}
                   >
                     {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
@@ -1150,12 +1150,12 @@ export default function IctLifecycle() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-extrabold text-foreground text-sm">{activeProject.name}</span>
                     <span className="text-xs text-secondary-foreground">({activeProject.customer_name})</span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
                       activeProject.benefit_status === 'normal'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        ? 'bg-success-soft text-success-foreground border-success-soft/80'
                         : activeProject.benefit_status === 'outdated'
-                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                        : 'bg-slate-100 text-slate-700 border border-slate-200'
+                        ? 'bg-warning-soft text-warning-foreground border-warning-soft/80'
+                        : 'bg-muted text-muted-foreground border-border'
                     }`}>
                       效益状态: {activeProject.benefit_status === 'normal' ? '最新' : activeProject.benefit_status === 'outdated' ? '已失效' : '未测算'}
                     </span>
@@ -1259,7 +1259,7 @@ export default function IctLifecycle() {
           {activeTab === "revenue" && (
             <div>
               {renderBalanceControl("revenue")}
-              <div className="mb-4 text-xs text-blue-700 bg-blue-50 p-3 rounded-lg border border-blue-200">
+              <div className="mb-4 text-xs text-primary bg-primary-soft p-3 rounded-lg border border-primary/20">
                 <span className="inline-flex items-start gap-2"><AppIcon name="info" size={16} className="mt-0.5" /> <span>提示：在「CT收入」中填写的产品或专线含税收入，将会自动【1:1平过】填入对应的「CT投入」中。</span></span>
               </div>
               {renderTaxGroup("IT/移动云收入", 'revIt', revIt, ICT_SUBJECT_GROUPS.revIt)}
@@ -1341,12 +1341,12 @@ export default function IctLifecycle() {
                 {selectedReverseSubject && (
                   <div className="flex flex-col gap-2 mt-1">
                     {reverseContextMessage && (
-                      <span className="text-[11px] leading-relaxed text-amber-700 bg-amber-50 rounded-md px-2 py-1 font-semibold">
+                      <span className="text-[11px] leading-relaxed text-warning-foreground bg-warning-soft rounded-md px-2 py-1 font-semibold">
                         {reverseContextMessage}
                       </span>
                     )}
                     {reverseCalculationContext.mode === "locked_total_structure" && (
-                      <span className="text-[11px] leading-relaxed text-blue-700 bg-blue-50/70 rounded-md px-2 py-1 font-semibold">
+                      <span className="text-[11px] leading-relaxed text-primary bg-primary-soft rounded-md px-2 py-1 font-semibold">
                         当前为结构反算模式：{reverseCalculationContext.structure.sideLabel}含税总金额保持 {formatReverseCurrency(reverseCalculationContext.structure.totalInclAmount)} 不变。调整“{reverseCalculationContext.structure.targetDisplayName}”时，“{reverseCalculationContext.structure.balancingDisplayName}”将自动反向补差。
                         {state.cashflowModel === "model_e" && state.segmentValueMode === "amount" ? " 分板块现金流金额计划将同步更新。" : ""}
                       </span>
@@ -1388,8 +1388,8 @@ export default function IctLifecycle() {
               <div className="flex flex-col gap-1">
                  <label className="text-xs font-semibold text-secondary-foreground">测算甄选费 / 实际测算成本</label>
                  <div className="flex gap-2">
-                   <input type="text" disabled value={selFee} className="bg-slate-50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
-                   <input type="text" disabled value={selActualCost} className="bg-slate-50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
+                   <input type="text" disabled value={selFee} className="bg-muted/50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
+                   <input type="text" disabled value={selActualCost} className="bg-muted/50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
                  </div>
               </div>
               <div className="flex flex-col gap-1 mt-2 border-t border-border pt-3">

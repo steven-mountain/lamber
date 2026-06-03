@@ -1,0 +1,30 @@
+export const colors = {
+  background: 'var(--background)',
+  foreground: 'var(--foreground)',
+  primary: 'var(--primary)',
+  primaryForeground: 'var(--primary-foreground)',
+  primarySoft: 'var(--primary-soft)',
+  secondary: 'var(--secondary)',
+  secondaryForeground: 'var(--secondary-foreground)',
+  card: 'var(--card)',
+  cardForeground: 'var(--card-foreground)',
+  muted: 'var(--muted)',
+  mutedForeground: 'var(--muted-foreground)',
+  border: 'var(--border)',
+  input: 'var(--input)',
+  success: 'var(--success)',
+  successForeground: 'var(--success-foreground)',
+  successSoft: 'var(--success-soft)',
+  warning: 'var(--warning)',
+  warningForeground: 'var(--warning-foreground)',
+  warningSoft: 'var(--warning-soft)',
+  destructive: 'var(--destructive)',
+  destructiveForeground: 'var(--destructive-foreground)',
+  destructiveSoft: 'var(--destructive-soft)',
+};
+
+export const radius = {
+  lg: 'var(--radius)',
+  md: 'calc(var(--radius) - 2px)',
+  sm: 'calc(var(--radius) - 4px)',
+};

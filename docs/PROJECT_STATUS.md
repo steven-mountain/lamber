@@ -1,6 +1,36 @@
 # PROJECT_STATUS.md
 
-Last updated: 2026-06-03 (ICT Lifecycle Subject Role Configuration Optimization)
+Last updated: 2026-06-03 (Front-End Advanced Appearance Customization & Accessibility Safeguards Phase 3)
+
+## 0. Front-End Advanced Appearance Customization & Accessibility Safeguards (Phase 3)
+
+The third phase of the appearance settings system is fully complete. This styling and accessibility iteration implements safe user customization, WCAG-compliant contrast checking, high-contrast preference overrides, and refined dark presets:
+- **Custom Accent Colors & HSL Derivation**: Users can toggle between preset primary accent colors and custom hex entries via color palette items or an HTML5 color picker. Custom colors are evaluated dynamically and translated into space-separated HSL values to override `--primary`, `--primary-foreground`, `--primary-soft`, `--ring`, `--accent`, and `--accent-foreground` tokens. Handles flexible formats (3/6 digits, with or without leading '#') and applies real-time adjusted previews directly to the DOM for immediate user visual feedback before saving.
+- **WCAG Contrast Checker & Safe Fallbacks**: Accent color inputs are validated in real-time. If the contrast ratio is below the WCAG AA minimum standard (4.5:1 for standard mode, 7.0:1 for high contrast mode) against the light/dark background, the validator shifts HSL lightness (`L`) to automatically derive a safe alternative. Warning banners present the safe alternative and let the user adopt it.
+- **High Contrast Preference Mode**: Added standard vs. high contrast selectors. High contrast preference applies pure white/black background blocks, highly legible text configurations, bright distinct border lines, and enhanced success/warning/destructive notification components.
+- **Refined Dark Preset Schemes**: Refined dark mode surface and border definitions across the 5 themes (lamber, graphite, navy, forest, warmStone) to preserve their distinct visual identities in dark modes.
+- **Configuration Migration**: Upgraded `localStorage` keys to Version 3, automatically appending new fields (`contrastPreference`, `customAccent`) to Phase 2 setups on launch.
+- **Sync & Verification**: Multi-window synchronization handles custom colors and high contrast events seamlessly. Type checking and unit tests verify complete correctness of color math.
+
+## 0. Front-End Appearance Settings Center & Theme Runtime Switching (Phase 2)
+
+
+The second phase of the visual foundation refactoring is fully complete. This preference-level integration introduces real-time theme customization and layout spacing controls:
+- **Appearance Settings Center**: Implemented options to configure Theme Preset schemes (`lamber`, `graphite`, `navy`, `forest`, `warmStone`), Color Modes (`light`, `dark`, `system`), Font Sizes (compact `0.93`, standard `1.0`, comfortable `1.08`, large `1.16`), and Spacing Densities (`compact`, `standard`, `comfortable`). Includes a Default Restore control.
+- **Dynamic CSS Variables & DOM Applier**: Standard primitives (`Button`, `Input`, `Card`) and table cells read custom CSS variables directly. Settings changes are applied immediately to `document.documentElement` attributes and styles without reloading the window.
+- **Cross-Window Real-time Sync**: The main workbench window and independent floating AI Assistant chatbot window synchronize their styling states in real-time through the Tauri event `appearance-settings-updated`.
+- **Early Hydration (Flash Prevention)**: Settings are stored in the client browser's `localStorage` and hydrated synchronously on React bootstrap in `main.tsx`, preventing visual color flashes or layouts jumping.
+- **Documentation**: Updated design guidelines, architecture map, changelogs, and constraints.
+
+## 0. Front-End Global Visual Foundation Refactoring (Phase 1)
+
+The first phase of the global visual foundation refactoring is fully complete. This styling-only iteration aligns all main workspace views and floating tools with the unified design language:
+- **Design Tokens & Typographic Scales**: Established standard CSS variables in `tokens.ts` and `typography.ts`, scaling dynamically via `calc(px * var(--font-scale))`. Applied `font-variant-numeric: tabular-nums` (.numeric-value) on all monetary and percentage indicators.
+- **HSL Semantic Color Systems**: Standardized feedback roles (`success`/`success-soft`, `warning`/`warning-soft`, `destructive`/`destructive-soft`, `primary-soft`) across all views.
+- **No-Line Rule**: Eliminated traditional hard borders, replacing them with tonal container backgrounds (`bg-muted/30` or nested `bg-card` surface shifts) and standard corner radii (`rounded-xl` / `rounded-lg`).
+- **Migrated Components & Views**: Refactored primitive components (`Button`, `Input`, `Card`, `Label`) and migrated Hub (`App.tsx`), Project Board (`ProjectBoard.tsx`), ICT Lifecycle (`IctLifecycle.tsx` and sub-tables), Document Template Forms (`TemplateForms.tsx`), Data Management (`DataManagement.tsx`), and the floating AI Assistant chat panel (`AiChatPanel.tsx` and `MessageBubble.tsx`).
+- **Design Specifications**: Documented Lamber Global Visual Specification v1 in `DESIGN.md` to guide future UI expansions.
+- **Tests & Builds**: Verified clean TypeScript/Vite compilations and Cargo test suite execution.
 
 ## 0. ICT Lifecycle Subject Role Configuration Optimization
 

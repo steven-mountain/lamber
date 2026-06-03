@@ -633,8 +633,8 @@ export default function DataManagement({ onBack }: { onBack: () => void }) {
       {notification && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl shadow-lg border text-sm font-medium transition-all animate-in fade-in slide-in-from-top-4 duration-300 ${
           notification.type === "success"
-            ? "bg-green-50 border-green-200 text-green-800"
-            : "bg-red-50 border-red-200 text-red-800"
+            ? "bg-success-soft border-success/20 text-success-foreground"
+            : "bg-destructive-soft border-destructive/20 text-destructive"
         }`}>
           {notification.message}
         </div>
@@ -848,9 +848,9 @@ export default function DataManagement({ onBack }: { onBack: () => void }) {
                 ) : (
                   <div className="space-y-3">
                     <div className={`inline-flex rounded-md px-2.5 py-1 text-xs font-extrabold ${
-                      workspaceHealth.status === "normal" ? "bg-green-500/10 text-green-700" :
-                      workspaceHealth.status === "warning" ? "bg-amber-500/10 text-amber-700" :
-                      "bg-red-500/10 text-red-700"
+                      workspaceHealth.status === "normal" ? "bg-success-soft text-success" :
+                      workspaceHealth.status === "warning" ? "bg-warning-soft text-warning-foreground" :
+                      "bg-destructive-soft text-destructive"
                     }`}>
                       {workspaceHealth.status}
                     </div>
@@ -861,8 +861,8 @@ export default function DataManagement({ onBack }: { onBack: () => void }) {
                         <div key={item.id} className="rounded-lg bg-muted/35 p-3 space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className={`rounded-md px-2 py-0.5 text-[10px] font-extrabold ${
-                              item.severity === "error" ? "bg-red-500/10 text-red-700" :
-                              item.severity === "warning" ? "bg-amber-500/10 text-amber-700" :
+                              item.severity === "error" ? "bg-destructive-soft text-destructive" :
+                              item.severity === "warning" ? "bg-warning-soft text-warning-foreground" :
                               "bg-muted text-secondary-foreground"
                             }`}>
                               {item.severity}
@@ -897,7 +897,7 @@ export default function DataManagement({ onBack }: { onBack: () => void }) {
                     <div key={`${item.path}-${idx}`} className="rounded-lg bg-muted/35 p-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="rounded-md bg-card px-2 py-0.5 text-[10px] font-bold text-secondary-foreground">{item.pathType}</span>
-                        <span className={item.exists ? "text-[10px] font-bold text-green-700" : "text-[10px] font-bold text-red-700"}>
+                        <span className={item.exists ? "text-[10px] font-bold text-success" : "text-[10px] font-bold text-destructive"}>
                           {item.exists ? "存在" : "缺失"}
                         </span>
                         {item.projectName && <span className="text-[11px] text-secondary-foreground">{item.projectName}</span>}
@@ -1163,17 +1163,17 @@ export default function DataManagement({ onBack }: { onBack: () => void }) {
                       <div className="text-secondary-foreground text-xs font-semibold">总关联文件数</div>
                       <div className="text-2xl font-black mt-1 tabular-nums">{healthReport.totalFiles}</div>
                     </div>
-                    <div className="bg-green-50/50 rounded-xl p-4 text-center">
-                      <div className="text-green-700 text-xs font-semibold">健康文件数</div>
-                      <div className="text-2xl font-black text-green-600 mt-1 tabular-nums">{healthReport.healthyFiles}</div>
+                    <div className="bg-success-soft border border-success/10 rounded-xl p-4 text-center">
+                      <div className="text-success-foreground text-xs font-semibold">健康文件数</div>
+                      <div className="text-2xl font-black text-success mt-1 tabular-nums">{healthReport.healthyFiles}</div>
                     </div>
-                    <div className="bg-amber-50/50 rounded-xl p-4 text-center">
-                      <div className="text-amber-700 text-xs font-semibold">自愈修复数</div>
-                      <div className="text-2xl font-black text-amber-500 mt-1 tabular-nums">{healthReport.recoverableFiles}</div>
+                    <div className="bg-warning-soft border border-warning/10 rounded-xl p-4 text-center">
+                      <div className="text-warning-foreground text-xs font-semibold">自愈修复数</div>
+                      <div className="text-2xl font-black text-warning mt-1 tabular-nums">{healthReport.recoverableFiles}</div>
                     </div>
-                    <div className="bg-red-50/50 rounded-xl p-4 text-center">
-                      <div className="text-red-700 text-xs font-semibold">已断链文件数</div>
-                      <div className="text-2xl font-black text-red-500 mt-1 tabular-nums">{healthReport.missingFiles}</div>
+                    <div className="bg-destructive-soft border border-destructive/10 rounded-xl p-4 text-center">
+                      <div className="text-destructive text-xs font-semibold">已断链文件数</div>
+                      <div className="text-2xl font-black text-destructive mt-1 tabular-nums">{healthReport.missingFiles}</div>
                     </div>
                   </div>
 
@@ -1199,7 +1199,7 @@ export default function DataManagement({ onBack }: { onBack: () => void }) {
                                     <span>
                                       <span className="line-through opacity-50">{detail.currentPath}</span>
                                       <br />
-                                      <span className="text-amber-600">→ {detail.recoveredPath}</span>
+                                      <span className="text-warning-foreground">→ {detail.recoveredPath}</span>
                                     </span>
                                   ) : (
                                     detail.currentPath
@@ -1207,13 +1207,13 @@ export default function DataManagement({ onBack }: { onBack: () => void }) {
                                 </td>
                                 <td className="p-2.5 select-none">
                                   {detail.status === "healthy" && (
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-600">健康</span>
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-success-soft text-success">健康</span>
                                   )}
                                   {detail.status === "recoverable" && (
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-500">已自愈修复</span>
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-warning-soft text-warning-foreground">已自愈修复</span>
                                   )}
                                   {detail.status === "missing" && (
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/10 text-red-500">已断链</span>
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-destructive-soft text-destructive">已断链</span>
                                   )}
                                 </td>
                               </tr>
@@ -1290,8 +1290,8 @@ export default function DataManagement({ onBack }: { onBack: () => void }) {
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-bold text-foreground">重定位映射预览</h4>
                     <div className="text-xs text-secondary-foreground">
-                      匹配成功: <span className="text-green-600 font-bold tabular-nums">{relocationPreview.matchedItems}</span> / 
-                      未找到: <span className="text-red-500 font-bold tabular-nums">{relocationPreview.missingItems}</span>
+                      匹配成功: <span className="text-success font-bold tabular-nums">{relocationPreview.matchedItems}</span> / 
+                      未找到: <span className="text-destructive font-bold tabular-nums">{relocationPreview.missingItems}</span>
                     </div>
                   </div>
 
@@ -1311,9 +1311,9 @@ export default function DataManagement({ onBack }: { onBack: () => void }) {
                           <tr key={idx} className="hover:bg-muted/10 transition-colors">
                             <td className="p-2.5">
                               {detail.itemType === "file" ? (
-                                <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 font-bold">文件</span>
+                                <span className="px-1.5 py-0.5 rounded bg-primary-soft text-primary font-bold">文件</span>
                               ) : (
-                                <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-500 font-bold">目录</span>
+                                <span className="px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-bold">目录</span>
                               )}
                             </td>
                             <td className="p-2.5 font-medium text-foreground">{detail.name}</td>
@@ -1325,9 +1325,9 @@ export default function DataManagement({ onBack }: { onBack: () => void }) {
                             </td>
                             <td className="p-2.5">
                               {detail.exists ? (
-                                <span className="text-green-500 font-bold">存在</span>
+                                <span className="text-success font-bold">存在</span>
                               ) : (
-                                <span className="text-red-500 font-bold">缺损</span>
+                                <span className="text-destructive font-bold">缺损</span>
                               )}
                             </td>
                           </tr>

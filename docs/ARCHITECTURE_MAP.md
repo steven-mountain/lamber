@@ -1,6 +1,6 @@
 # ARCHITECTURE_MAP.md
 
-Last updated: 2026-06-03 (ICT total balance allocation layout alignment)
+Last updated: 2026-06-03 (Front-End Advanced Appearance Customization & Accessibility Safeguards Phase 3)
 
 ## 1. Repository overview
 
@@ -54,13 +54,20 @@ graph TD
 
 
 ### `src-ui/...` (Vite + React Frontend)
-- **`src/main.tsx`**: Bootstraps the React application.
+- **`src/main.tsx`**: Bootstraps the React application. Executes synchronous theme and scaling hydration on startup to prevent color flashes.
 - **`src/App.tsx`**: Router matching `currentView` in Zustand.
 - **`src/views/`**: Screen layouts.
-  - [ProjectBoard.tsx](../src-ui/src/views/ProjectBoard.tsx): Kanban lists, detail drawers, and candidate batch importer.
+  - [ProjectBoard.tsx](../src-ui/src/views/ProjectBoard.tsx): Kanban lists, detail drawers, and candidate batch importer. Incorporates system settings gear shortcut.
   - [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): The main calculator workspace tabs.
   - [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Variable mapping, inquiry vendor quote rows/screenshots, and document filling triggers.
   - [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): Data Management view containing Roots, Health Checker, and Relocator.
+- **`src/theme/`**: Theme specification tokens and runtime switcher:
+  - [appearance.ts](../src-ui/src/theme/appearance.ts): Holds type definitions (extended with `ContrastPreference`, `CustomAccentSettings`), config version (v3), and DEFAULT_APPEARANCE_SETTINGS.
+  - [presets.ts](../src-ui/src/theme/presets.ts): Holds the HSL light themes and refined HSL dark themes (`DARK_THEMES`) for the 5 presets, plus high contrast overrides.
+  - [applyAppearance.ts](../src-ui/src/theme/applyAppearance.ts): Resolves final variables in sequence (Base preset -> Custom accent derivation -> High contrast overrides) and writes HSL colors, scaling ratios, and density settings to `document.documentElement` styles and attributes.
+  - [colorUtils.ts](../src-ui/src/theme/colorUtils.ts): Custom RGB/HSL conversions, relative luminance calculations, and WCAG contrast ratio checkers.
+  - [deriveAccentTokens.ts](../src-ui/src/theme/deriveAccentTokens.ts): Generates WCAG-compliant derived HSL accent tokens (`primary`, `primary-foreground`, `primary-soft`, `ring`, `accent`, `accent-foreground`) from custom colors using HSL lightness shifting.
+
 - **`src/services/workspaceMaintenanceService.ts`**: Frontend IPC wrapper for workspace backup/restore/export/import/health/path maintenance commands.
 - **`src/services/aiProjectContextService.ts`**: Typed frontend wrapper for `build_ai_project_context`, now used by the AI chat context composer during message send.
 - **`src/lib/ictSubjectCatalog.ts`**: Fixed frontend catalog and shared presentation resolver for ICT billing subject identity. It maps stable `subjectCode`, UI group/key, standard subject name, Excel variable prefix, and document business prefix (`IT`, `CT`, `非IT/CT`, `综合类`) so product/business names and billing subject names remain separate from standard subject identity. `resolveBillingSubjectPresentation` centralizes Excel display names, document business names, and document dedup keys.
@@ -70,9 +77,11 @@ graph TD
 - **`src/ai/context/workspaceProjectRouter.ts`**: Deterministic Workspace project-name router used by the composer. It matches explicit project names against the current Workspace project index, limits deep official context loading to two specified projects per turn, resolves one specified template when uniquely named, and returns warnings for ambiguous or unresolved routing.
 - **`src/ai/templateAssetSelection.ts`**: Cross-window event bridge for explicit template image analysis requests. It carries only template asset metadata (`projectId`, `templateId`, `assetId`, field label) and never carries physical file paths or image base64.
 - **`src/store/`**: Zustand state management.
-  - [useNavigationStore.ts](../src-ui/src/store/useNavigationStore.ts): Navigation routing and tracking origin.
+  - [useNavigationStore.ts](../src-ui/src/store/useNavigationStore.ts): Navigation routing and tracking origin. Incorporates return paths for temporary overlay settings.
   - [useAiContextStore.ts](../src-ui/src/store/useAiContextStore.ts): Local RAG workspace synchronization.
+  - [useAppearanceStore.ts](../src-ui/src/store/useAppearanceStore.ts): Stores application-level appearance settings in `localStorage` and handles cross-window sync broadcasts via Tauri events.
 - **`src/components/`**: Modular UI components.
+  - [settings/SettingsView.tsx](../src-ui/src/components/settings/SettingsView.tsx): Screen panel enabling themePreset, colorMode, fontScale, and density selections, with a real-time preview card.
   - [IctBasicInfo.tsx](../src-ui/src/components/IctBasicInfo.tsx): Project parameters form.
   - [IctCashflowTable.tsx](../src-ui/src/components/IctCashflowTable.tsx): 10-year present value table.
   - [IctMetricsDashboard.tsx](../src-ui/src/components/IctMetricsDashboard.tsx): Margin and NPV indicators overlay.
@@ -272,10 +281,15 @@ All core math operations are located in `calculator.rs` under Tauri:
 
 ## 7. UI system map
 
-Following "The Architectural Ledger" specs in `DESIGN.md`:
-- **Colors**: Hex tokens mapped in [DESIGN.md](../DESIGN.md) (e.g. Primary `#285ab9`, Surface `#f9f9ff`).
-- **No-border design**: Demarcate layout sections using tonal color differences (`bg-muted` vs `bg-card` vs `bg-white`) rather than solid border lines.
-- **Typography**: Inter font with `font-variant-numeric: tabular-nums` for alignment of financial values.
+Following "The Architectural Ledger" specs in [DESIGN.md](../DESIGN.md):
+- **Theme Tokens Directory (`src-ui/src/theme/`)**:
+  - [tokens.ts](../src-ui/src/theme/tokens.ts): Define design system color schemes, border radius (`lg: var(--radius)`, `md`, `sm`), and sizing.
+  - [typography.ts](../src-ui/src/theme/typography.ts): Declare base line-heights, weight bindings, and typographic roles mapped to `--font-scale`.
+  - [index.ts](../src-ui/src/theme/index.ts): Centralized theme exports.
+- **HSL Semantic Color Map**: Mapped in `index.css` and `tailwind.config.js`. Feeds status indicators (`success`, `warning`, `destructive`) and layouts (`primary-soft`, `bg-muted/30`, `bg-card`) with soft, low-saturation tone panels.
+- **No-border design**: Section boundaries use surface color shifts (e.g., nesting cards, background panels) rather than hard borders.
+- **Typography Scale**: Typographic roles (`text-display`, `text-page-title`, `text-section-title`, `text-body`, `text-body-strong`, `text-label`, `text-caption`, `text-metric`) scale dynamically via CSS variable `calc(size * var(--font-scale))`.
+- **Numerical presentation**: Enforces `font-variant-numeric: tabular-nums` (.numeric-value class) across all financial metrics and spreadsheets.
 
 ## 8. Common task entry points
 
@@ -292,3 +306,4 @@ Following "The Architectural Ledger" specs in `DESIGN.md`:
 - **SQLite cascade deletes on INSERT OR REPLACE**: Avoid calling `INSERT OR REPLACE` to update existing records in parent tables (e.g. `projects` table) where child tables have `ON DELETE CASCADE` constraints (e.g. `project_directories`, `project_files`, `benefit_schemes`, `benefit_snapshots`). SQLite implements `REPLACE` as a delete-and-reinsert, which triggers cascades that delete all associated child rows. Use an existence check (`SELECT EXISTS`) followed by an `UPDATE` or `INSERT` instead.
 - **Workspace archive safety**: `.lamber.zip` extraction must reject absolute paths, `..` path components, and extracted paths that do not remain under the selected target directory.
 - **Flat workspace reserved names**: Project folder names must not collide with `.lamber.workspace.json`, `.lamber.sqlite`, `.backups`, `.exports`, `.projects`, `backups`, `exports`, or `projects`.
+- **Custom accent color real-time preview boundaries**: Incomplete or low-contrast custom color inputs are mapped as temporary previews directly to the DOM for immediate user visual feedback, but are only persisted to the store and `localStorage` when they pass contrast checks or the user explicitly clicks "Adopt Recommended Color". This prevents invalid or low-contrast values from contaminating persistent settings.

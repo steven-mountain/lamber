@@ -13,6 +13,7 @@ import { useAiContextStore } from "../store/useAiContextStore";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { domainSaveService } from "../services/domainSaveService";
 import GlobalSaveButton from "../components/GlobalSaveButton";
+import { useNavigationStore } from "../store/useNavigationStore";
 
 interface CandidateFile {
   name: string;
@@ -759,17 +760,17 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="mt-0.5 rounded-md bg-amber-50 p-1 text-amber-500">
+      <div className="mt-0.5 rounded-md bg-warning-soft p-1 text-warning">
         <StickyNote className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
-        <span className="block text-xs font-bold text-slate-800">项目备注</span>
+        <span className="block text-caption font-bold text-foreground">项目备注</span>
         <textarea
           value={noteDrafts[project.id] ?? project.note ?? ""}
           onChange={(e) => handleProjectNoteChange(project.id, e.target.value)}
           rows={compact ? 2 : 3}
           placeholder="填写客户背景、推进风险、下一步动作..."
-          className={`mt-1 block w-full resize-none rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-200 focus:bg-white focus:ring-2 focus:ring-blue-100 ${
+          className={`mt-1 block w-full resize-none rounded-xl border border-border bg-muted px-3 py-2 text-caption leading-5 text-secondary-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-ring focus:bg-card focus:ring-2 focus:ring-ring/20 ${
             compact ? "min-h-[48px]" : "min-h-[58px]"
           }`}
         />
@@ -780,11 +781,11 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   const getStatusBadge = (status: Project["benefit_status"]) => {
     switch (status) {
       case "normal":
-        return <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md font-bold border border-emerald-200"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" /> 测算已更新</span>;
+        return <span className="inline-flex items-center gap-1 text-[10px] bg-success-soft text-success px-2 py-0.5 rounded-md font-bold border border-success-soft"><span className="w-1.5 h-1.5 bg-success rounded-full" /> 测算已更新</span>;
       case "outdated":
-        return <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md font-bold border border-amber-200"><span className="w-1.5 h-1.5 bg-amber-500 rounded-full" /> 测算已失效</span>;
+        return <span className="inline-flex items-center gap-1 text-[10px] bg-warning-soft text-warning px-2 py-0.5 rounded-md font-bold border border-warning-soft"><span className="w-1.5 h-1.5 bg-warning rounded-full" /> 测算已失效</span>;
       default:
-        return <span className="inline-flex items-center gap-1 text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold border border-slate-200">未测算</span>;
+        return <span className="inline-flex items-center gap-1 text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-md font-bold border border-border">未测算</span>;
     }
   };
 
@@ -819,40 +820,40 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   const getRiskTone = (level?: string) => {
     if (level === "高风险") {
       return {
-        badge: "border-rose-200 bg-rose-50 text-rose-700",
-        dot: "bg-rose-500",
+        badge: "border-destructive-soft bg-destructive-soft text-destructive",
+        dot: "bg-destructive",
       };
     }
     if (level === "中风险") {
       return {
-        badge: "border-amber-200 bg-amber-50 text-amber-700",
-        dot: "bg-amber-500",
+        badge: "border-warning-soft bg-warning-soft text-warning",
+        dot: "bg-warning",
       };
     }
     return {
-      badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
-      dot: "bg-emerald-500",
+      badge: "border-success-soft bg-success-soft text-success",
+      dot: "bg-success",
     };
   };
 
   const getRiskBorderStyles = (level?: string) => {
     if (level === "高风险") {
-      return "border-l-4 border-l-rose-500";
+      return "border-l-4 border-l-destructive";
     }
     if (level === "中风险") {
-      return "border-l-4 border-l-amber-500";
+      return "border-l-4 border-l-warning";
     }
-    return "border-l-4 border-l-emerald-500";
+    return "border-l-4 border-l-success";
   };
 
   const getRiskTopBorderStyles = (level?: string) => {
     if (level === "高风险") {
-      return "border-t-4 border-t-rose-500";
+      return "border-t-4 border-t-destructive";
     }
     if (level === "中风险") {
-      return "border-t-4 border-t-amber-500";
+      return "border-t-4 border-t-warning";
     }
-    return "border-t-4 border-t-emerald-500";
+    return "border-t-4 border-t-success";
   };
 
   const renderMetricValue = (
@@ -865,12 +866,12 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     const isEmpty = displayValue === "--";
 
     return (
-      <div className="flex min-w-0 items-baseline gap-1">
-        {prefix && !isEmpty && <span className="text-[10px] font-bold text-slate-400">{prefix}</span>}
-        <span className={`${compact ? "text-xl" : "text-2xl"} min-w-0 truncate font-extrabold tracking-tight text-slate-950`}>
+      <div className="flex min-w-0 items-baseline gap-1 numeric-value">
+        {prefix && !isEmpty && <span className="text-[10px] font-bold text-muted-foreground">{prefix}</span>}
+        <span className={`${compact ? "text-xl" : "text-2xl"} min-w-0 truncate font-extrabold tracking-tight text-foreground`}>
           {displayValue}
         </span>
-        {unit && !isEmpty && <span className="text-xs font-bold text-slate-400">{unit}</span>}
+        {unit && !isEmpty && <span className="text-xs font-bold text-muted-foreground">{unit}</span>}
       </div>
     );
   };
@@ -880,8 +881,8 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     value: string,
     options: { unit?: string; prefix?: string; compact?: boolean } = {}
   ) => (
-    <div className={`${options.compact ? "p-3" : "p-3.5"} min-w-0 rounded-xl border border-slate-100 bg-white transition-colors hover:border-blue-100`}>
-      <span className="mb-1 block truncate text-[11px] font-semibold text-slate-500">{label}</span>
+    <div className={`${options.compact ? "p-3" : "p-3.5"} min-w-0 rounded-xl border border-border bg-card transition-colors hover:border-primary/50`}>
+      <span className="mb-1 block truncate text-caption font-semibold text-muted-foreground">{label}</span>
       {renderMetricValue(value, options)}
     </div>
   );
@@ -889,12 +890,12 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   const renderRiskAssessment = (metrics: SummaryMetrics, compact = false) => {
     const tone = getRiskTone(metrics.risk_level);
     return (
-      <div className={`${compact ? "mt-3 px-3 py-2" : "mt-4 px-4 py-2.5"} flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-slate-100/70`}>
-        <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-slate-500">
-          <Info className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+      <div className={`${compact ? "mt-3 px-3 py-2" : "mt-4 px-4 py-2.5"} flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/50`}>
+        <span className="flex min-w-0 items-center gap-1.5 text-caption font-semibold text-muted-foreground">
+          <Info className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
           <span className="truncate">风险综合评估</span>
         </span>
-        <span className={`${tone.badge} inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-bold`}>
+        <span className={`${tone.badge} inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1 text-caption font-bold`}>
           <span className={`${tone.dot} h-1.5 w-1.5 rounded-full`} />
           {metrics.risk_level}
         </span>
@@ -905,7 +906,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   const renderMetricPanel = (metrics: SummaryMetrics | null | undefined, compact = false) => {
     if (!metrics) {
       return (
-        <div className="rounded-xl border border-dashed border-slate-200 bg-white/70 px-4 py-6 text-center text-xs font-medium leading-5 text-slate-500">
+        <div className="rounded-xl border border-dashed border-border bg-card/70 px-4 py-6 text-center text-caption font-medium leading-5 text-muted-foreground">
           暂无效益分析指标，点击下方按钮开始测算
         </div>
       );
@@ -925,29 +926,29 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   };
 
   const renderProjectCardHeader = (project: Project, compact = false) => (
-    <div className={`${compact ? "p-4" : "p-5"} border-b border-slate-100`}>
+    <div className={`${compact ? "p-4" : "p-5"} border-b border-border`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-slate-600 transition-colors group-hover:bg-blue-50 group-hover:text-blue-600">
+          <div className="rounded-xl border border-border bg-muted p-2.5 text-secondary-foreground transition-colors group-hover:bg-primary-soft group-hover:text-primary">
             <FileText className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <h3 className={`${compact ? "text-base" : "text-lg"} truncate font-extrabold leading-snug tracking-tight text-slate-900`} title={project.name}>
+            <h3 className={`${compact ? "text-base" : "text-lg"} truncate font-extrabold leading-snug tracking-tight text-foreground`} title={project.name}>
               {project.name}
             </h3>
-            <p className="mt-1 truncate text-xs leading-5 text-slate-500">
-              客户: <span className="font-medium text-slate-700">{project.customer_name || "未填写"}</span>
+            <p className="mt-1 truncate text-caption leading-5 text-muted-foreground">
+              客户: <span className="font-medium text-secondary-foreground">{project.customer_name || "未填写"}</span>
             </p>
           </div>
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+          <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
             {project.status}
           </span>
           {getStatusBadge(project.benefit_status)}
           {project.directoryExists === false && (
-            <span className="rounded-md bg-rose-50 border border-rose-200 px-2 py-0.5 text-[10px] font-bold text-rose-600 flex items-center gap-1 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
+            <span className="rounded-md bg-destructive-soft border border-destructive-soft px-2 py-0.5 text-[10px] font-bold text-destructive flex items-center gap-1 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
               <AlertTriangle className="h-3 w-3 shrink-0" />
               目录缺失
             </span>
@@ -966,7 +967,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
         if (!canProceed) return;
         onOpenCalc(project.id, project.default_scheme_id || null);
       }}
-      className={`${compact ? "px-3 py-1.5" : "px-4 py-2"} group inline-flex shrink-0 items-center justify-center rounded-xl bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white dark:bg-blue-950/30 dark:text-blue-400 dark:hover:bg-blue-600 dark:hover:text-white border border-blue-100 dark:border-blue-900/40 text-xs font-bold shadow-sm transition-all active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200`}
+      className={`${compact ? "px-3 py-1.5" : "px-4 py-2"} group inline-flex shrink-0 items-center justify-center rounded-xl bg-primary-soft hover:bg-primary text-primary hover:text-primary-foreground border border-primary-soft text-caption font-bold shadow-sm transition-all active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20`}
     >
       <BarChart3 className="h-4 w-4" />
       <span className="ml-2">打开效益分析</span>
@@ -991,7 +992,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
             alert("无法打开项目文件夹: " + err);
           }
         }}
-        className={`group inline-flex shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/80 text-xs font-bold transition-all active:scale-[0.98] ${
+        className={`group inline-flex shrink-0 items-center justify-center rounded-xl border border-border bg-card hover:bg-muted text-secondary-foreground text-caption font-bold transition-all active:scale-[0.98] ${
           compact ? "p-1.5" : "px-3 py-2"
         } ${!hasFolder ? "opacity-40 cursor-not-allowed" : ""}`}
         title={hasFolder ? `打开项目文件夹: ${project.folder_path}` : "未绑定项目文件夹"}
@@ -1044,12 +1045,12 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
         id={`board_create_project_entry_${mode}`}
         type="button"
         onClick={openCreateProjectModal}
-        className={`group flex items-center justify-center gap-3 border-2 border-dashed border-slate-300 bg-white dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 shadow-sm transition-all hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 active:scale-[0.99] ${heightClass}`}
+        className={`group flex items-center justify-center gap-3 border-2 border-dashed border-border bg-card text-secondary-foreground shadow-sm transition-all hover:border-primary/50 hover:bg-primary-soft hover:text-primary active:scale-[0.99] ${heightClass}`}
       >
-        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shadow-sm transition-all group-hover:scale-105 group-hover:bg-blue-600 group-hover:text-white">
+        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-muted text-muted-foreground shadow-sm transition-all group-hover:scale-105 group-hover:bg-primary group-hover:text-primary-foreground">
           <Plus className="h-5 w-5" />
         </span>
-        <span className="text-sm font-extrabold">创建新项目</span>
+        <span className="text-body font-extrabold">创建新项目</span>
       </button>
     );
   };
@@ -1062,15 +1063,15 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
             <button
               id="board_back_btn"
               onClick={onBack}
-              className="text-secondary-foreground hover:text-primary hover:bg-secondary font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors"
+              className="text-secondary-foreground hover:text-primary hover:bg-secondary font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors text-body"
             >
               <span>←</span> 返回集市
             </button>
             <div>
-              <h1 className="text-xl font-extrabold flex items-center gap-2 text-foreground">
-                <AppIcon name="project" size={22} className="text-slate-500" /> 项目工作区
+              <h1 className="text-page-title font-extrabold flex items-center gap-2 text-foreground">
+                <AppIcon name="project" size={22} className="text-muted-foreground" /> 项目工作区
               </h1>
-              <p className="text-xs text-secondary-foreground mt-0.5">选择工作区后进入对应的项目看板</p>
+              <p className="text-caption text-secondary-foreground mt-0.5">选择工作区后进入对应的项目看板</p>
             </div>
           </div>
         </header>
@@ -1086,36 +1087,42 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
 
   return (
     <div className="flex flex-col flex-1 h-full overflow-hidden bg-background text-foreground animate-in fade-in duration-300">
-      {/* Top Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0 bg-card">
         <div className="flex items-center gap-3">
           <button
             id="board_back_btn"
             onClick={onBack}
-            className="text-secondary-foreground hover:text-primary hover:bg-secondary font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors"
+            className="text-secondary-foreground hover:text-primary hover:bg-secondary font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors text-body"
           >
             <span>←</span> 返回集市
           </button>
           <div>
-            <h1 className="text-xl font-extrabold flex items-center gap-2 text-foreground">
-              <AppIcon name="project" size={22} className="text-slate-500" /> 项目看板
+            <h1 className="text-page-title font-extrabold flex items-center gap-2 text-foreground">
+              <AppIcon name="project" size={22} className="text-muted-foreground" /> 项目看板
             </h1>
-            <p className="text-xs text-secondary-foreground mt-0.5">管理项目生命周期及其关联的效益分析测算</p>
+            <p className="text-caption text-secondary-foreground mt-0.5">管理项目生命周期及其关联的效益分析测算</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <GlobalSaveButton />
           <button
+            onClick={() => useNavigationStore.getState().navigateTo("settings")}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-secondary-foreground hover:bg-secondary hover:text-foreground transition-all shadow-sm"
+            title="系统设置"
+          >
+            <AppIcon name="settings" size={18} />
+          </button>
+          <button
             onClick={handleOpenImportScanner}
-            className="inline-flex items-center gap-1.5 bg-secondary hover:bg-muted text-secondary-foreground border border-input font-bold px-4 py-2 rounded-lg text-sm transition-all shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+            className="inline-flex items-center gap-1.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground border border-input font-bold px-4 py-2 rounded-lg text-body transition-all shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
           >
             <FolderPlus className="h-4 w-4" /> 批量扫描导入
           </button>
           <button
             id="board_create_project_btn"
             onClick={openCreateProjectModal}
-            className="inline-flex items-center gap-1.5 bg-blue-600 text-white font-bold px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-all shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+            className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground font-bold px-4 py-2 rounded-lg text-body hover:bg-primary/95 transition-all shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
           >
             <Plus className="h-4 w-4" /> 创建新项目
           </button>
@@ -1125,12 +1132,12 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       <section className="shrink-0 bg-muted/35 px-6 py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <div className="text-[10px] font-extrabold uppercase tracking-wide text-secondary-foreground">项目工作区</div>
+            <div className="text-caption font-extrabold uppercase tracking-wide text-secondary-foreground">项目工作区</div>
             <div className="mt-1 flex min-w-0 items-center gap-2">
-              <span className="shrink-0 rounded-md bg-primary/10 px-2 py-1 text-xs font-extrabold text-primary">
+              <span className="shrink-0 rounded-md bg-primary-soft px-2 py-1 text-caption font-extrabold text-primary">
                 {currentWorkspace?.workspaceName || "当前工作区"}
               </span>
-              <span className="truncate font-mono text-[11px] text-secondary-foreground">
+              <span className="truncate font-mono text-caption text-secondary-foreground">
                 {currentWorkspace?.workspaceRoot}
               </span>
             </div>
@@ -1140,12 +1147,12 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
               type="button"
               disabled={workspaceLoading || loading || globalImportLoading}
               onClick={handleScanAndImportAllCalculations}
-              className="rounded-md bg-card px-3 py-2 text-xs font-bold text-foreground shadow-sm disabled:opacity-50 flex items-center gap-1.5 hover:bg-muted transition-all duration-200"
+              className="rounded-md bg-card px-3 py-2 text-caption font-bold text-foreground shadow-sm disabled:opacity-50 flex items-center gap-1.5 hover:bg-muted transition-all duration-200"
             >
               <AppIcon
                 name={globalImportLoading ? "loading" : "reverse"}
                 size={13}
-                className={`${globalImportLoading ? "animate-spin text-primary" : "text-slate-500"}`}
+                className={`${globalImportLoading ? "animate-spin text-primary" : "text-muted-foreground"}`}
               />
               {globalImportLoading ? "正在导入全区测算..." : "刷新全区测算"}
             </button>
@@ -1156,7 +1163,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                 const canProceed = await confirmOrSave();
                 if (canProceed) setShowWorkspaceOverview(true);
               }}
-              className="rounded-md bg-card px-3 py-2 text-xs font-bold text-foreground shadow-sm disabled:opacity-50 hover:bg-muted transition-all duration-200"
+              className="rounded-md bg-card px-3 py-2 text-caption font-bold text-foreground shadow-sm disabled:opacity-50 hover:bg-muted transition-all duration-200"
             >
               切换工作区
             </button>
@@ -1167,7 +1174,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                 const canProceed = await confirmOrSave();
                 if (canProceed) selectAndCreateWorkspace();
               }}
-              className="rounded-md bg-primary px-3 py-2 text-xs font-bold text-primary-foreground shadow-sm disabled:opacity-50 transition-all duration-200"
+              className="rounded-md bg-primary px-3 py-2 text-caption font-bold text-primary-foreground shadow-sm disabled:opacity-50 transition-all duration-200"
             >
               新建工作区
             </button>
@@ -1177,22 +1184,22 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
 
       {/* Kanban Board Container */}
       {loading ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-secondary-foreground">
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-secondary-foreground text-body">
           <AppIcon name="loading" size={36} className="animate-spin text-primary" />
-          <span className="text-sm font-semibold">正在载入项目库...</span>
+          <span className="text-body font-semibold">正在载入项目库...</span>
         </div>
       ) : error ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-2 text-red-500">
+        <div className="flex-1 flex flex-col items-center justify-center gap-2 text-red-500 text-body">
           <AppIcon name="error" size={40} />
           <span className="font-bold">{error}</span>
-          <button onClick={fetchProjects} className="mt-2 text-sm text-primary underline">重试</button>
+          <button onClick={fetchProjects} className="mt-2 text-body text-primary underline">重试</button>
         </div>
       ) : (
         <>
           {/* Filter Bar */}
           <div className="px-6 py-4 bg-muted/20 border-b border-border/80 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between shrink-0">
             <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
-              <span className="text-xs text-secondary-foreground font-extrabold mr-2 uppercase tracking-wider shrink-0">项目阶段筛选:</span>
+              <span className="text-caption text-secondary-foreground font-extrabold mr-2 uppercase tracking-wider shrink-0">项目阶段筛选:</span>
               {["全部", ...statusOptions].map((stage) => {
                 const isActive = projectStageFilter === stage;
                 const count = getStageCount(stage);
@@ -1201,15 +1208,15 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                   <button
                     key={stage}
                     onClick={() => setProjectStageFilter(stage)}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 active:scale-[0.98] ${
+                    className={`px-3.5 py-1.5 rounded-full text-caption font-bold transition-all flex items-center gap-1.5 shrink-0 active:scale-[0.98] ${
                       isActive
-                        ? "bg-blue-600 text-white shadow-sm font-extrabold"
-                        : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                        ? "bg-primary text-primary-foreground shadow-sm font-extrabold"
+                        : "bg-card border border-border text-secondary-foreground hover:bg-muted hover:text-foreground"
                     }`}
                   >
                     {stage}
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                      isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
+                      isActive ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
                     }`}>
                       {count}
                     </span>
@@ -1219,7 +1226,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
               <button
                 type="button"
                 onClick={handleOpenStatusManager}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition-all hover:bg-slate-50 hover:text-slate-900"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-caption font-bold text-secondary-foreground transition-all hover:bg-muted hover:text-foreground"
                 title="管理项目阶段"
               >
                 <Settings2 className="h-3.5 w-3.5" />
@@ -1235,7 +1242,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                   value={projectSearchTerm}
                   onChange={(event) => setProjectSearchTerm(event.target.value)}
                   placeholder="搜索项目、客户或备注..."
-                  className="w-full rounded-lg border border-input bg-card py-2 pl-9 pr-9 text-xs font-semibold text-foreground outline-none transition-all focus:border-ring focus:ring-2 focus:ring-ring/20"
+                  className="w-full rounded-lg border border-input bg-card py-2 pl-9 pr-9 text-caption font-semibold text-foreground outline-none transition-all focus:border-ring focus:ring-2 focus:ring-ring/20"
                 />
                 {projectSearchTerm && (
                   <button
@@ -1257,7 +1264,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                   }}
                   className={`px-2 py-1 rounded-md text-[10px] transition-all ${
                     densityMode === "original"
-                      ? "bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white font-extrabold shadow-sm"
+                      ? "bg-muted text-foreground font-extrabold shadow-sm"
                       : "text-secondary-foreground hover:text-foreground opacity-60 hover:opacity-100 font-bold"
                   }`}
                   title="低密度 - 原版高卡"
@@ -1271,7 +1278,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                   }}
                   className={`px-2 py-1 rounded-md text-[10px] transition-all ${
                     densityMode === "standard"
-                      ? "bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white font-extrabold shadow-sm"
+                      ? "bg-muted text-foreground font-extrabold shadow-sm"
                       : "text-secondary-foreground hover:text-foreground opacity-60 hover:opacity-100 font-bold"
                   }`}
                   title="中密度 - 标准精致"
@@ -1285,7 +1292,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                   }}
                   className={`px-2 py-1 rounded-md text-[10px] transition-all ${
                     densityMode === "compact"
-                      ? "bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white font-extrabold shadow-sm"
+                      ? "bg-muted text-foreground font-extrabold shadow-sm"
                       : "text-secondary-foreground hover:text-foreground opacity-60 hover:opacity-100 font-bold"
                   }`}
                   title="高密度 - 极致紧凑"
@@ -1299,7 +1306,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                   onClick={() => handleToggleViewMode("list")}
                   className={`p-1.5 rounded-md transition-all ${
                     viewMode === "list"
-                      ? "bg-slate-100 text-slate-900 font-bold shadow-sm"
+                      ? "bg-muted text-foreground font-bold shadow-sm"
                       : "text-secondary-foreground hover:text-foreground opacity-60 hover:opacity-100"
                   }`}
                   title="列表视图"
@@ -1310,7 +1317,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                   onClick={() => handleToggleViewMode("grid")}
                   className={`p-1.5 rounded-md transition-all ${
                     viewMode === "grid"
-                      ? "bg-slate-100 text-slate-900 font-bold shadow-sm"
+                      ? "bg-muted text-foreground font-bold shadow-sm"
                       : "text-secondary-foreground hover:text-foreground opacity-60 hover:opacity-100"
                   }`}
                   title="卡片视图"
@@ -1326,7 +1333,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {renderCreateProjectEntry("list")}
               {filteredProjects.length === 0 && (
-                <div className="rounded-xl border border-dashed border-border bg-card/60 p-8 text-center text-sm font-semibold text-secondary-foreground">
+                <div className="rounded-xl border border-dashed border-border bg-card/60 p-8 text-center text-body font-semibold text-secondary-foreground">
                   {projectSearchTerm ? "没有匹配的项目" : "该阶段下暂无项目"}
                 </div>
               )}
@@ -1340,7 +1347,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                       key={project.id}
                       id={`project_card_${project.id}`}
                       onClick={() => handleOpenDetails(project)}
-                      className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:border-slate-300 hover:shadow-md animate-in fade-in slide-in-from-bottom-2"
+                      className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-200 hover:border-border/80 hover:shadow-md animate-in fade-in slide-in-from-bottom-2"
                     >
                       <div className="flex flex-col xl:flex-row">
                         <div className="min-w-0 flex-1">
@@ -1350,13 +1357,13 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                           </div>
                         </div>
 
-                        <div className="flex w-full flex-col border-t border-slate-100 bg-slate-50/60 xl:w-[560px] xl:border-l xl:border-t-0">
+                        <div className="flex w-full flex-col border-t border-border bg-muted/60 xl:w-[560px] xl:border-l xl:border-t-0">
                           <div className="p-4">
                             {renderMetricPanel(metrics, true)}
                           </div>
 
-                          <div className="flex items-center justify-between gap-4 border-t border-slate-100 bg-white/70 px-4 py-3">
-                            <span className="shrink-0 text-[11px] font-medium text-slate-400">
+                          <div className="flex items-center justify-between gap-4 border-t border-border bg-card/70 px-4 py-3">
+                            <span className="shrink-0 text-caption font-medium text-muted-foreground">
                               更新于 {new Date(project.updated_at).toLocaleDateString()}
                             </span>
                             <div className="flex items-center gap-2">
@@ -1377,34 +1384,34 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                       key={project.id}
                       id={`project_card_${project.id}`}
                       onClick={() => handleOpenDetails(project)}
-                      className="group relative cursor-pointer overflow-hidden bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/85 dark:border-slate-800 p-4 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col md:flex-row items-stretch gap-4 animate-in fade-in slide-in-from-bottom-2"
+                      className="group relative cursor-pointer overflow-hidden bg-card rounded-2xl border border-border/85 p-4 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col md:flex-row items-stretch gap-4 animate-in fade-in slide-in-from-bottom-2"
                     >
                       {/* Left Block (30% Width): Meta info & notes */}
-                      <div className="md:w-[30%] flex flex-col justify-between border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-800 pb-3 md:pb-0 md:pr-4">
+                      <div className="md:w-[30%] flex flex-col justify-between border-b md:border-b-0 md:border-r border-border pb-3 md:pb-0 md:pr-4">
                         <div className="space-y-2">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                            <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
                               {project.status}
                             </span>
                             {getStatusBadge(project.benefit_status)}
                             {project.directoryExists === false && (
-                              <span className="rounded-md bg-rose-50 border border-rose-200 px-2 py-0.5 text-[10px] font-bold text-rose-600 flex items-center gap-1 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
+                              <span className="rounded-md bg-destructive-soft border border-destructive-soft px-2 py-0.5 text-[10px] font-bold text-destructive flex items-center gap-1 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
                                 <AlertTriangle className="h-3 w-3 shrink-0" />
                                 目录缺失
                               </span>
                             )}
                           </div>
                           <div>
-                            <h3 className="text-sm font-black text-slate-900 dark:text-white tracking-tight truncate" title={project.name}>{project.name}</h3>
-                            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 truncate" title={project.customer_name || "未填写"}>
+                            <h3 className="text-body font-black text-foreground tracking-tight truncate" title={project.name}>{project.name}</h3>
+                            <p className="text-caption text-muted-foreground mt-0.5 truncate" title={project.customer_name || "未填写"}>
                               客户: {project.customer_name || "未填写"}
                             </p>
                           </div>
                         </div>
 
                         {/* Note Box */}
-                        <div className="mt-3 bg-slate-50/50 dark:bg-slate-800/40 p-2 rounded-lg border border-slate-100/60 dark:border-slate-800/60 flex items-start gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          <StickyNote className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                        <div className="mt-3 bg-muted/50 p-2 rounded-lg border border-border/60 flex items-start gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          <StickyNote className="h-3.5 w-3.5 text-warning flex-shrink-0 mt-0.5" />
                           <div className="min-w-0 flex-1">
                             <textarea
                               value={noteDrafts[project.id] ?? project.note ?? ""}
@@ -1412,7 +1419,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                               onBlur={() => handleProjectNoteBlur(project)}
                               rows={2}
                               placeholder="填写备注..."
-                              className="w-full resize-none bg-transparent text-[10px] text-slate-500 dark:text-slate-400 outline-none leading-normal placeholder:text-slate-400 focus:ring-0"
+                              className="w-full resize-none bg-transparent text-caption text-muted-foreground outline-none leading-normal placeholder:text-muted-foreground/60 focus:ring-0"
                             />
                           </div>
                         </div>
@@ -1421,27 +1428,27 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                       {/* Middle Block (50% Width): 4 Metrics horizontally */}
                       <div className="md:w-[50%] flex flex-col justify-center px-2">
                         <div className="grid grid-cols-4 gap-2 text-left">
-                          <div className="bg-slate-50/30 dark:bg-slate-800/20 p-2.5 rounded-xl border border-slate-100/40 dark:border-slate-800/80">
-                            <span className="text-[9px] text-slate-400 dark:text-slate-500 block font-bold uppercase truncate">毛利率</span>
-                            <span className="text-sm font-black text-slate-900 dark:text-white truncate block">
+                          <div className="bg-muted/30 p-2.5 rounded-xl border border-border/40">
+                            <span className="text-[9px] text-muted-foreground block font-bold uppercase truncate">毛利率</span>
+                            <span className="text-body font-black text-foreground truncate block">
                               {metrics ? formatMetricPercent(metrics.margin_rate) : "--"}
                             </span>
                           </div>
-                          <div className="bg-slate-50/30 dark:bg-slate-800/20 p-2.5 rounded-xl border border-slate-100/40 dark:border-slate-800/80">
-                            <span className="text-[9px] text-slate-400 dark:text-slate-500 block font-bold uppercase truncate">净现值 NPV</span>
-                            <span className="text-sm font-black text-slate-900 dark:text-white truncate block">
+                          <div className="bg-muted/30 p-2.5 rounded-xl border border-border/40">
+                            <span className="text-[9px] text-muted-foreground block font-bold uppercase truncate">净现值 NPV</span>
+                            <span className="text-body font-black text-foreground truncate block">
                               {metrics ? `¥${formatMetricNumber(metrics.npv)}` : "--"}
                             </span>
                           </div>
-                          <div className="bg-slate-50/30 dark:bg-slate-800/20 p-2.5 rounded-xl border border-slate-100/40 dark:border-slate-800/80">
-                            <span className="text-[9px] text-slate-400 dark:text-slate-500 block font-bold uppercase truncate">NPVR</span>
-                            <span className="text-sm font-black text-slate-900 dark:text-white truncate block">
+                          <div className="bg-muted/30 p-2.5 rounded-xl border border-border/40">
+                            <span className="text-[9px] text-muted-foreground block font-bold uppercase truncate">NPVR</span>
+                            <span className="text-body font-black text-foreground truncate block">
                               {metrics ? formatMetricPercent(metrics.npv_rate) : "--"}
                             </span>
                           </div>
-                          <div className="bg-slate-50/30 dark:bg-slate-800/20 p-2.5 rounded-xl border border-slate-100/40 dark:border-slate-800/80">
-                            <span className="text-[9px] text-slate-400 dark:text-slate-500 block font-bold uppercase truncate">IRR</span>
-                            <span className="text-sm font-black text-slate-900 dark:text-white truncate block">
+                          <div className="bg-muted/30 p-2.5 rounded-xl border border-border/40">
+                            <span className="text-[9px] text-muted-foreground block font-bold uppercase truncate">IRR</span>
+                            <span className="text-body font-black text-foreground truncate block">
                               {metrics ? formatMetricPercent(metrics.irr) : "--"}
                             </span>
                           </div>
@@ -1449,7 +1456,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
 
                         {/* Combined Risk tag */}
                         {metrics && metrics.risk_level && (
-                          <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+                          <div className="mt-2 flex items-center justify-between text-caption text-muted-foreground">
                             <span className="font-semibold">风险评估:</span>
                             <span className={`px-2 py-0.5 font-bold border rounded-md text-[9px] ${getRiskTone(metrics.risk_level).badge}`}>
                               <span className={`w-1 h-1 rounded-full ${getRiskTone(metrics.risk_level).dot} mr-1 inline-block`} />
@@ -1459,9 +1466,9 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                         )}
                       </div>
 
-                      {/* Right Block (20% Width): Date & Action */}
-                      <div className="md:w-[20%] border-t md:border-t-0 md:border-l border-slate-100 dark:border-slate-800 pt-3 md:pt-0 md:pl-4 flex flex-col justify-between items-end gap-2 text-right">
-                        <span className="text-[9px] text-slate-400 dark:text-slate-500">
+                      {/* Right Block (20% Width): Action */}
+                      <div className="md:w-[20%] border-t md:border-t-0 md:border-l border-border pt-3 md:pt-0 md:pl-4 flex flex-col justify-between items-end gap-2 text-right">
+                        <span className="text-[9px] text-muted-foreground">
                           更新于 {new Date(project.updated_at).toLocaleDateString()}
                         </span>
                         <div className="flex items-center gap-2">
@@ -1479,29 +1486,29 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                     key={project.id}
                     id={`project_card_${project.id}`}
                     onClick={() => handleOpenDetails(project)}
-                    className={`bg-white dark:bg-slate-900 rounded-xl border border-slate-200/85 dark:border-slate-800/85 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col lg:flex-row lg:items-center justify-between p-3 gap-3 min-h-[64px] ${getRiskBorderStyles(metrics?.risk_level)} animate-in fade-in slide-in-from-bottom-2`}
+                    className={`bg-card rounded-xl border border-border/85 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col lg:flex-row lg:items-center justify-between p-3 gap-3 min-h-[64px] ${getRiskBorderStyles(metrics?.risk_level)} animate-in fade-in slide-in-from-bottom-2`}
                   >
                     {/* Column 1: Project Identity & Stage (26% width) */}
                     <div className="lg:w-[26%] flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 bg-slate-50 dark:bg-slate-800 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-700/50 flex-shrink-0">
+                      <div className="w-8 h-8 bg-muted rounded-lg flex items-center justify-center text-secondary-foreground border border-border flex-shrink-0">
                         <FileText className="h-4 w-4" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                          <h3 className="text-xs font-black text-slate-900 dark:text-white truncate leading-tight hover:text-blue-600 cursor-pointer" title={project.name}>
+                          <h3 className="text-caption font-black text-foreground truncate leading-tight hover:text-primary cursor-pointer" title={project.name}>
                             {project.name}
                           </h3>
-                          <span className="px-1 py-0.5 text-[8px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded flex-shrink-0">
+                          <span className="px-1 py-0.5 text-[8px] font-bold bg-muted text-muted-foreground rounded flex-shrink-0">
                             {project.status}
                           </span>
                           {project.directoryExists === false && (
-                            <span className="px-1 py-0.5 text-[8px] font-bold bg-rose-50 border border-rose-200 text-rose-600 rounded flex-shrink-0 flex items-center gap-0.5 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
+                            <span className="px-1 py-0.5 text-[8px] font-bold bg-destructive-soft border border-destructive-soft text-destructive rounded flex-shrink-0 flex items-center gap-0.5 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
                               <AlertTriangle className="h-2.5 w-2.5 shrink-0" />
                               目录缺失
                             </span>
                           )}
                         </div>
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5" title={project.customer_name || "未填写"}>
+                        <p className="text-caption text-muted-foreground truncate mt-0.5" title={project.customer_name || "未填写"}>
                           {project.customer_name || "未填写"}
                         </p>
                       </div>
@@ -1515,37 +1522,37 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                           {metrics.risk_level}
                         </span>
                       ) : (
-                        <span className="text-[9px] text-slate-400">无风险评估</span>
+                        <span className="text-[9px] text-muted-foreground">无风险评估</span>
                       )}
                     </div>
 
                     {/* Column 3: High Density Financial Metrics (44% width) */}
-                    <div className="lg:w-[44%] bg-slate-50/50 dark:bg-slate-800/30 rounded-lg p-1.5 border border-slate-100/60 dark:border-slate-800/80">
-                      <div className="grid grid-cols-4 gap-1 text-center divide-x divide-slate-200/40 dark:divide-slate-700/40">
+                    <div className="lg:w-[44%] bg-muted/50 rounded-lg p-1.5 border border-border/60">
+                      <div className="grid grid-cols-4 gap-1 text-center divide-x divide-border/40">
                         <div className="px-1 text-left sm:text-center">
-                          <span className="text-[8px] text-slate-400 dark:text-slate-500 font-bold block scale-90 origin-left sm:origin-center">毛利率</span>
-                          <span className="text-xs font-black text-slate-900 dark:text-white truncate block">
+                          <span className="text-[8px] text-muted-foreground font-bold block scale-90 origin-left sm:origin-center">毛利率</span>
+                          <span className="text-caption font-black text-foreground truncate block">
                             {metrics ? formatMetricPercent(metrics.margin_rate) : "--"}
                           </span>
                         </div>
 
                         <div className="px-1 text-left sm:text-center">
-                          <span className="text-[8px] text-slate-400 dark:text-slate-500 font-bold block scale-90 origin-left sm:origin-center">NPV</span>
-                          <span className="text-xs font-black text-slate-900 dark:text-white truncate block">
+                          <span className="text-[8px] text-muted-foreground font-bold block scale-90 origin-left sm:origin-center">NPV</span>
+                          <span className="text-caption font-black text-foreground truncate block">
                             {metrics ? `¥${formatMetricNumber(metrics.npv)}` : "--"}
                           </span>
                         </div>
 
                         <div className="px-1 text-left sm:text-center">
-                          <span className="text-[8px] text-slate-400 dark:text-slate-500 font-bold block scale-90 origin-left sm:origin-center">NPVR</span>
-                          <span className="text-xs font-black text-slate-900 dark:text-white truncate block">
+                          <span className="text-[8px] text-muted-foreground font-bold block scale-90 origin-left sm:origin-center">NPVR</span>
+                          <span className="text-caption font-black text-foreground truncate block">
                             {metrics ? formatMetricPercent(metrics.npv_rate) : "--"}
                           </span>
                         </div>
 
                         <div className="px-1 text-left sm:text-center">
-                          <span className="text-[8px] text-slate-400 dark:text-slate-500 font-bold block scale-90 origin-left sm:origin-center">IRR</span>
-                          <span className="text-xs font-black text-slate-900 dark:text-white truncate block">
+                          <span className="text-[8px] text-muted-foreground font-bold block scale-90 origin-left sm:origin-center">IRR</span>
+                          <span className="text-caption font-black text-foreground truncate block">
                             {metrics ? formatMetricPercent(metrics.irr) : "--"}
                           </span>
                         </div>
@@ -1553,10 +1560,10 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                     </div>
 
                     {/* Column 4: Truncated Remarks with tooltip (12% width) */}
-                    <div className="lg:w-[12%] min-w-0 flex items-center gap-1 bg-amber-500/5 dark:bg-amber-500/10 px-2 py-1 rounded-lg border border-amber-500/10 dark:border-amber-500/20">
-                      <StickyNote className="h-3 w-3 text-amber-500 flex-shrink-0" />
+                    <div className="lg:w-[12%] min-w-0 flex items-center gap-1 bg-warning-soft px-2 py-1 rounded-lg border border-warning/20">
+                      <StickyNote className="h-3 w-3 text-warning flex-shrink-0" />
                       <span
-                        className="text-[10px] text-slate-600 dark:text-slate-300 font-semibold truncate flex-1"
+                        className="text-[10px] text-foreground font-semibold truncate flex-1"
                         title={project.note ? `项目备注: ${project.note}` : "暂无备注"}
                       >
                         {project.note || "暂无备注"}
@@ -1564,8 +1571,8 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                     </div>
 
                     {/* Column 5: Single Row Actions (10% width) */}
-                    <div className="lg:w-[10%] flex lg:flex-col items-center lg:items-end justify-between lg:justify-center gap-1 flex-shrink-0 text-right border-t lg:border-t-0 border-slate-100 dark:border-slate-800 pt-2 lg:pt-0">
-                      <span className="text-[8px] text-slate-400 dark:text-slate-500 scale-90 origin-right">
+                    <div className="lg:w-[10%] flex lg:flex-col items-center lg:items-end justify-between lg:justify-center gap-1 flex-shrink-0 text-right border-t lg:border-t-0 border-border pt-2 lg:pt-0">
+                      <span className="text-[8px] text-muted-foreground scale-90 origin-right">
                         更新于 {new Date(project.updated_at).toLocaleDateString()}
                       </span>
                       <div className="flex items-center gap-1.5 mt-1 lg:mt-0">
@@ -1599,20 +1606,20 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                         key={project.id}
                         id={`project_card_${project.id}`}
                         onClick={() => handleOpenDetails(project)}
-                        className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:bg-slate-900 shadow-sm transition-all duration-200 hover:border-slate-300 hover:shadow-md animate-in fade-in slide-in-from-bottom-2"
+                        className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-200 hover:border-border/80 hover:shadow-md animate-in fade-in slide-in-from-bottom-2"
                       >
                         {renderProjectCardHeader(project)}
 
-                        <div className="bg-slate-50/60 dark:bg-slate-800/30 px-5 py-4">
+                        <div className="bg-muted/30 px-5 py-4">
                           {renderMetricPanel(metrics)}
                         </div>
 
-                        <div className="border-t border-slate-100 dark:border-slate-800 p-5">
+                        <div className="border-t border-border p-5">
                           {renderProjectNote(project)}
                         </div>
 
-                        <div className="mt-auto flex items-center justify-between gap-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 px-5 py-3.5">
-                          <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                        <div className="mt-auto flex items-center justify-between gap-4 border-t border-border bg-muted/40 px-5 py-3.5">
+                          <span className="text-caption font-medium text-muted-foreground">
                             更新于 {new Date(project.updated_at).toLocaleDateString()}
                           </span>
                           <div className="flex items-center gap-2">
@@ -1631,20 +1638,20 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                         key={project.id}
                         id={`project_card_${project.id}`}
                         onClick={() => handleOpenDetails(project)}
-                        className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-slate-200 bg-white dark:bg-slate-900 shadow-sm transition-all duration-200 hover:border-slate-300 hover:shadow-md animate-in fade-in slide-in-from-bottom-2"
+                        className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-all duration-200 hover:border-border/80 hover:shadow-md animate-in fade-in slide-in-from-bottom-2"
                       >
                         {renderProjectCardHeader(project, true)}
 
-                        <div className="bg-slate-50/40 dark:bg-slate-800/20 px-4 py-3">
+                        <div className="bg-muted/20 px-4 py-3">
                           {renderMetricPanel(metrics, true)}
                         </div>
 
-                        <div className="border-t border-slate-100 dark:border-slate-800 p-4">
+                        <div className="border-t border-border p-4">
                           {renderProjectNote(project, true)}
                         </div>
 
-                        <div className="mt-auto flex items-center justify-between gap-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 px-4 py-2.5">
-                          <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                        <div className="mt-auto flex items-center justify-between gap-4 border-t border-border bg-muted/30 px-4 py-2.5">
+                          <span className="text-caption font-medium text-muted-foreground">
                             更新于 {new Date(project.updated_at).toLocaleDateString()}
                           </span>
                           <div className="flex items-center gap-2">
@@ -1662,26 +1669,26 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                       key={project.id}
                       id={`project_card_${project.id}`}
                       onClick={() => handleOpenDetails(project)}
-                      className={`group relative flex cursor-pointer flex-col justify-between overflow-hidden rounded-xl border border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-slate-900 shadow-sm hover:shadow-md transition-all duration-200 p-4 min-h-[220px] ${getRiskTopBorderStyles(metrics?.risk_level)} animate-in fade-in slide-in-from-bottom-2`}
+                      className={`group relative flex cursor-pointer flex-col justify-between overflow-hidden rounded-xl border border-border/90 bg-card shadow-sm hover:shadow-md transition-all duration-200 p-4 min-h-[220px] ${getRiskTopBorderStyles(metrics?.risk_level)} animate-in fade-in slide-in-from-bottom-2`}
                     >
                       {/* Header: Title + Client + Stage Tag Inline */}
-                      <div className="border-b border-slate-100 dark:border-slate-800/80 pb-2 flex items-start justify-between gap-2">
+                      <div className="border-b border-border/80 pb-2 flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                            <h3 className="text-xs font-black text-slate-900 dark:text-white truncate" title={project.name}>
+                            <h3 className="text-caption font-black text-foreground truncate" title={project.name}>
                               {project.name}
                             </h3>
-                            <span className="px-1 py-0.5 text-[8px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded flex-shrink-0">
+                            <span className="px-1 py-0.5 text-[8px] font-bold bg-muted text-muted-foreground rounded flex-shrink-0">
                               {project.status}
                             </span>
                             {project.directoryExists === false && (
-                              <span className="px-1 py-0.5 text-[8px] font-bold bg-rose-50 border border-rose-200 text-rose-600 rounded flex-shrink-0 flex items-center gap-0.5 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
+                              <span className="px-1 py-0.5 text-[8px] font-bold bg-destructive-soft border border-destructive-soft text-destructive rounded flex-shrink-0 flex items-center gap-0.5 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
                                 <AlertTriangle className="h-2.5 w-2.5 shrink-0" />
                                 目录缺失
                               </span>
                             )}
                           </div>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5" title={project.customer_name || "未填写"}>
+                          <p className="text-caption text-muted-foreground truncate mt-0.5" title={project.customer_name || "未填写"}>
                             {project.customer_name || "未填写"}
                           </p>
                         </div>
@@ -1693,34 +1700,34 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                             {metrics.risk_level}
                           </span>
                         ) : (
-                          <span className="text-[9px] text-slate-450 dark:text-slate-500">无风险评估</span>
+                          <span className="text-[9px] text-muted-foreground">无风险评估</span>
                         )}
                       </div>
 
                       {/* Compact Metrics Row */}
                       <div className="py-2.5">
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs font-mono">
-                          <div className="flex justify-between items-baseline border-b border-slate-100/50 dark:border-slate-800/50 pb-1">
-                            <span className="text-[10px] text-slate-400 font-semibold font-sans">毛利率</span>
-                            <span className="text-xs font-black text-slate-900 dark:text-white">
+                          <div className="flex justify-between items-baseline border-b border-border/50 pb-1">
+                            <span className="text-[10px] text-muted-foreground font-semibold font-sans">毛利率</span>
+                            <span className="text-caption font-black text-foreground numeric-value">
                               {metrics ? formatMetricPercent(metrics.margin_rate) : "--"}
                             </span>
                           </div>
-                          <div className="flex justify-between items-baseline border-b border-slate-100/50 dark:border-slate-800/50 pb-1">
-                            <span className="text-[10px] text-slate-400 font-semibold font-sans">NPV</span>
-                            <span className="text-xs font-black text-slate-900 dark:text-white">
+                          <div className="flex justify-between items-baseline border-b border-border/50 pb-1">
+                            <span className="text-[10px] text-muted-foreground font-semibold font-sans">NPV</span>
+                            <span className="text-caption font-black text-foreground numeric-value">
                               {metrics ? `¥${formatMetricNumber(metrics.npv)}` : "--"}
                             </span>
                           </div>
                           <div className="flex justify-between items-baseline">
-                            <span className="text-[10px] text-slate-400 font-semibold font-sans">NPVR</span>
-                            <span className="text-xs font-black text-slate-900 dark:text-white">
+                            <span className="text-[10px] text-muted-foreground font-semibold font-sans">NPVR</span>
+                            <span className="text-caption font-black text-foreground numeric-value">
                               {metrics ? formatMetricPercent(metrics.npv_rate) : "--"}
                             </span>
                           </div>
                           <div className="flex justify-between items-baseline">
-                            <span className="text-[10px] text-slate-400 font-semibold font-sans">IRR</span>
-                            <span className="text-xs font-black text-slate-900 dark:text-white">
+                            <span className="text-[10px] text-muted-foreground font-semibold font-sans">IRR</span>
+                            <span className="text-caption font-black text-foreground numeric-value">
                               {metrics ? formatMetricPercent(metrics.irr) : "--"}
                             </span>
                           </div>
@@ -1728,10 +1735,10 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                       </div>
 
                       {/* Compressed Remarks Box */}
-                      <div className="bg-slate-50/50 dark:bg-slate-800/30 p-2 rounded-xl text-[10px] flex items-center gap-1.5 border border-slate-100/50 dark:border-slate-800/80 mb-2">
-                        <StickyNote className="h-3 w-3 text-amber-500 flex-shrink-0" />
+                      <div className="bg-muted/50 p-2 rounded-xl text-[10px] flex items-center gap-1.5 border border-border/50 mb-2">
+                        <StickyNote className="h-3 w-3 text-warning flex-shrink-0" />
                         <span
-                          className="text-slate-500 dark:text-slate-400 font-semibold truncate flex-1 cursor-help"
+                          className="text-muted-foreground font-semibold truncate flex-1 cursor-help"
                           title={project.note ? `项目备注: ${project.note}` : "暂无备注"}
                         >
                           {project.note || "暂无备注"}
@@ -1739,8 +1746,8 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                       </div>
 
                       {/* Footer Actions */}
-                      <div className="border-t border-slate-100 dark:border-slate-800/80 pt-2 flex items-center justify-between text-[10px]">
-                        <span className="text-slate-400 dark:text-slate-500">
+                      <div className="border-t border-border/80 pt-2 flex items-center justify-between text-[10px]">
+                        <span className="text-muted-foreground">
                           更新于 {new Date(project.updated_at).toLocaleDateString()}
                         </span>
                         <div className="flex items-center gap-1.5">
@@ -1827,7 +1834,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
 
 
       {showStatusManager && (
-        <div className="fixed inset-0 z-[60] bg-slate-950/35 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-border bg-muted/30 flex items-center justify-between">
               <h2 className="font-bold text-base text-foreground flex items-center gap-2">
@@ -2129,9 +2136,9 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                                   <span className="text-secondary-foreground">{new Date(snap.created_at).toLocaleString()}</span>
                                 </div>
                                 <div className="grid grid-cols-3 gap-x-4 gap-y-1 mt-2 text-secondary-foreground font-mono text-[10px]">
-                                  <div>毛利率: <span className="font-bold text-foreground">{formatMetricPercent(snap.output_metrics.margin_rate)}</span></div>
-                                  <div>NPV: <span className="font-bold text-foreground">{formatMetricNumber(snap.output_metrics.npv)}</span></div>
-                                  <div>IRR: <span className="font-bold text-foreground">{formatMetricPercent(snap.output_metrics.irr)}</span></div>
+                                  <div>毛利率: <span className="font-bold text-foreground numeric-value">{formatMetricPercent(snap.output_metrics.margin_rate)}</span></div>
+                                  <div>NPV: <span className="font-bold text-foreground numeric-value">{formatMetricNumber(snap.output_metrics.npv)}</span></div>
+                                  <div>IRR: <span className="font-bold text-foreground numeric-value">{formatMetricPercent(snap.output_metrics.irr)}</span></div>
                                 </div>
                               </div>
                               <button
@@ -2343,10 +2350,10 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                               />
                               <div className="min-w-0">
                                 <span className="font-extrabold text-sm text-foreground flex items-center gap-2">
-                                  <FolderOpen className="h-4 w-4 text-slate-400 shrink-0" />
+                                  <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
                                   {c.folderName}
                                   {c.existsConflict && (
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 text-[9px] font-bold border border-amber-500/20">
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-warning-soft text-warning-foreground text-[9px] font-bold border border-warning/20">
                                       <AlertTriangle className="h-2.5 w-2.5" />
                                       同名项目已存在
                                     </span>
@@ -2360,8 +2367,8 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
 
                             <div className="flex items-center gap-3 self-end md:self-auto">
                               {c.existsConflict && isSelected && (
-                                <div className="flex items-center gap-1.5 shrink-0 bg-amber-50/50 px-2 py-1 rounded-lg border border-amber-100">
-                                  <span className="text-[10px] font-bold text-amber-700 uppercase">冲突策略:</span>
+                                <div className="flex items-center gap-1.5 shrink-0 bg-warning-soft px-2 py-1 rounded-lg border border-warning/20">
+                                  <span className="text-[10px] font-bold text-warning-foreground uppercase">冲突策略:</span>
                                   <select
                                     value={conflictAction}
                                     onChange={e => {
@@ -2371,7 +2378,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                                         [c.folderPath]: val
                                       }));
                                     }}
-                                    className="bg-transparent text-[10px] font-bold text-amber-800 outline-none cursor-pointer"
+                                    className="bg-transparent text-[10px] font-bold text-warning-foreground outline-none cursor-pointer"
                                   >
                                     <option value="merge">覆盖合并 (Merge)</option>
                                     <option value="new">另存为新项目 (New)</option>
@@ -2400,16 +2407,16 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                             <div className="px-4 pb-4 pt-1 border-t border-border/20 bg-muted/10 rounded-b-xl">
                               <div className="space-y-1.5 pt-2">
                                 {c.files.map(f => {
-                                  let pillClass = "bg-slate-100 text-slate-600";
+                                  let pillClass = "bg-muted text-muted-foreground";
                                   let roleLabel = "普通文件";
                                   if (f.fileRole === "benefit_scheme") {
-                                    pillClass = "bg-blue-50 text-blue-700";
+                                    pillClass = "bg-primary-soft text-primary";
                                     roleLabel = "效益测算主方案";
                                   } else if (f.fileRole === "budget") {
-                                    pillClass = "bg-orange-500/10 text-orange-600";
+                                    pillClass = "bg-warning-soft text-warning-foreground";
                                     roleLabel = "项目预算表";
                                   } else if (f.fileRole === "proposal") {
-                                    pillClass = "bg-emerald-500/10 text-emerald-600";
+                                    pillClass = "bg-success-soft text-success-foreground";
                                     roleLabel = "立项申报书";
                                   }
 

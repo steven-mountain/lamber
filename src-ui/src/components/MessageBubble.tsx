@@ -20,14 +20,14 @@ const renderInlineBadges = (children: React.ReactNode) => {
     return child.split(/(\[系统内置\]|【系统外扩展】)/g).map((segment, segmentIndex) => {
       if (segment === '[系统内置]') {
         return (
-          <span className="mx-1 inline-flex items-center gap-1 rounded-md border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-xs font-bold text-primary">
+          <span className="mx-1 inline-flex items-center gap-1 rounded-md border border-primary/20 bg-primary-soft px-1.5 py-0.5 text-xs font-bold text-primary">
             <AppIcon name="check" size={12} strokeWidth={3} /> 系统内置
           </span>
         );
       }
       if (segment === '【系统外扩展】') {
         return (
-          <span className="mx-1 inline-flex items-center gap-1 rounded-md border border-border bg-muted-foreground/10 px-1.5 py-0.5 text-[11px] font-medium italic text-muted-foreground">
+          <span className="mx-1 inline-flex items-center gap-1 rounded-md border border-border bg-muted/60 px-1.5 py-0.5 text-[11px] font-medium italic text-muted-foreground">
             系统外扩展
           </span>
         );
@@ -74,7 +74,7 @@ const markdownComponents: Components = {
     </li>
   ),
   blockquote: ({ children, ...props }) => (
-    <blockquote className="my-4 border-l-4 border-blue-200 bg-muted/40 py-2 pl-4 pr-3 text-muted-foreground" {...props}>
+    <blockquote className="my-4 border-l-4 border-primary/30 bg-muted/40 py-2 pl-4 pr-3 text-muted-foreground" {...props}>
       {children}
     </blockquote>
   ),
@@ -122,7 +122,7 @@ const markdownComponents: Components = {
     );
   },
   pre: ({ children, ...props }) => (
-    <pre className="my-4 overflow-x-auto rounded-xl border border-slate-700 bg-slate-950 p-4 shadow-sm" {...props}>
+    <pre className="my-4 overflow-x-auto rounded-xl border border-border/40 bg-neutral-900 p-4 shadow-sm" {...props}>
       {children}
     </pre>
   ),
@@ -170,7 +170,7 @@ const MessageBubble = ({ msg, idx, isStreaming, onCopy, copiedIdx }: MessageBubb
       <div className={clsx(
         'rounded-2xl border px-4 py-3 shadow-sm',
         msg.role === 'user'
-          ? 'rounded-br-sm border-primary/20 bg-primary text-primary-foreground'
+          ? 'rounded-br-sm border-primary/10 bg-primary-soft text-foreground font-medium'
           : 'rounded-bl-sm border-border bg-card text-card-foreground'
       )}>
         {msg.think && (
@@ -191,7 +191,7 @@ const MessageBubble = ({ msg, idx, isStreaming, onCopy, copiedIdx }: MessageBubb
               </div>
               {isExpanded ? <AppIcon name="chevronUp" size={14} /> : <AppIcon name="chevronDown" size={14} />}
             </button>
-
+ 
             {isExpanded && (
               <div className="whitespace-pre-wrap border-t border-border/30 px-3 pb-3 pt-1 text-xs italic leading-relaxed text-muted-foreground/80">
                 {msg.think}
@@ -199,7 +199,7 @@ const MessageBubble = ({ msg, idx, isStreaming, onCopy, copiedIdx }: MessageBubb
             )}
           </div>
         )}
-
+ 
         {msg.images && msg.images.length > 0 && (
           <div className={clsx('mb-3 grid gap-2', msg.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>
             {msg.images.map((image) => (
@@ -209,13 +209,13 @@ const MessageBubble = ({ msg, idx, isStreaming, onCopy, copiedIdx }: MessageBubb
                   href={image.dataUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="block overflow-hidden rounded-lg border border-primary-foreground/30 bg-black/10"
+                  className="block overflow-hidden rounded-lg border border-border/30 bg-black/5"
                   title={image.name}
                 >
                   <img src={image.dataUrl} alt={image.name} className="max-h-44 w-full object-cover" />
                 </a>
               ) : (
-                <div key={image.id} className="flex min-h-20 items-center gap-2 rounded-lg border border-primary-foreground/30 bg-black/10 px-3 py-2 text-xs font-semibold">
+                <div key={image.id} className="flex min-h-20 items-center gap-2 rounded-lg border border-border/30 bg-black/5 px-3 py-2 text-xs font-semibold">
                   <AppIcon name="imageUpload" size={16} />
                   <span className="truncate">{image.name}</span>
                 </div>
@@ -223,7 +223,7 @@ const MessageBubble = ({ msg, idx, isStreaming, onCopy, copiedIdx }: MessageBubb
             ))}
           </div>
         )}
-
+ 
         {msg.content && (
           <div className="relative">
             {isStreaming ? (
@@ -231,7 +231,7 @@ const MessageBubble = ({ msg, idx, isStreaming, onCopy, copiedIdx }: MessageBubb
                 {String(msg.content)}
               </div>
             ) : msg.role === 'user' ? (
-              <div className="whitespace-pre-wrap break-words text-sm leading-7 text-primary-foreground">
+              <div className="whitespace-pre-wrap break-words text-sm leading-7 text-foreground">
                 {String(msg.content)}
               </div>
             ) : (
@@ -241,14 +241,14 @@ const MessageBubble = ({ msg, idx, isStreaming, onCopy, copiedIdx }: MessageBubb
                 </ReactMarkdown>
               </div>
             )}
-
+ 
             {!isStreaming && msg.content.trim() && (
               <button
                 onClick={() => onCopy(msg.content, idx)}
                 className="absolute -bottom-2 -right-2 rounded-md border border-border bg-background p-1.5 opacity-0 shadow-sm transition-opacity hover:bg-muted group-hover:opacity-100"
                 title="复制内容"
               >
-                {copiedIdx === idx ? <AppIcon name="check" size={12} className="text-green-500" /> : <AppIcon name="copy" size={12} className="text-muted-foreground" />}
+                {copiedIdx === idx ? <AppIcon name="check" size={12} className="text-success" /> : <AppIcon name="copy" size={12} className="text-muted-foreground" />}
               </button>
             )}
           </div>

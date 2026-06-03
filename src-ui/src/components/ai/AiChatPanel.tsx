@@ -471,10 +471,10 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
     ? `已连接：${connectedScope}`
     : '未检测到业务状态';
   const connectionStatusClassName = connectedContextModule
-    ? 'border-emerald-100 bg-emerald-50 text-emerald-600'
+    ? 'border-success/20 bg-success-soft text-success'
     : 'border-border bg-muted text-muted-foreground';
   const connectionDotClassName = connectedContextModule
-    ? 'bg-emerald-500'
+    ? 'bg-success'
     : 'bg-muted-foreground/50';
 
   return (

@@ -1,6 +1,6 @@
-# AI_CONTEXT.md
+# AI_CONTEXT.md
 
-Last updated: 2026-06-03 (ICT Lifecycle Subject Role Configuration Optimization)
+Last updated: 2026-06-03 (Front-End Advanced Appearance Customization & Accessibility Safeguards Phase 3)
 
 ## What this project is
 
@@ -31,7 +31,7 @@ Flat workspace roots reserve `.lamber.workspace.json`, `.lamber.sqlite`, `.backu
 
 Dot-prefixed system entries are not enough on Windows. The backend must also mark `.lamber.workspace.json`, `.lamber.sqlite`, `.backups`, `.exports`, and `.projects` with the Windows Hidden attribute whenever those entries are created, repaired, imported, or opened.
 
-Workspace portability maintenance is implemented in `workspace_maintenance.rs`. It provides daily/manual SQLite backups, safe restore from backup, backup file deletion, read-only workspace health checks, explicit repair commands, external path listing, dry-run internal absolute path conversion, fixed-root `.lamber.zip` export, `.lamber.zip` validation/import, and file-manager reveal. Export archives preserve `workspaceId`, use the workspace root as the zip root, include `.lamber.workspace.json`, a consistent `.lamber.sqlite`, `.projects/`, project folders, and `export-manifest.json`, and exclude `.backups` / `.exports` by default. Import preserves `workspaceId`, can read both direct-root archives and archives with a single top-level wrapper folder, treats the selected folder as the parent destination, and creates `{selectedFolder}/{workspaceName}` by default. The import command uses flat IPC arguments (`openAfterImport`, `conflictStrategy`, `destinationName`) rather than a nested `options` object. Frontend callers should call the maintenance service with explicit arguments, and the backend normalizes `openAfterImport` from JSON to avoid Tauri rejecting stale object-shaped payloads before import validation runs; absent or malformed nested booleans default to `false`.
+Workspace portability maintenance is implemented in `workspace_maintenance.rs`. It provides daily/manual SQLite backups, safe restore from backup, backup file deletion, read-only workspace health checks, explicit repair commands, external path listing, dry-run internal absolute path conversion, fixed-root `.lamber.zip` export, `.lamber.zip` validation/import, and file-manager reveal. Export archives preserve `workspaceId`, use the workspace root as the zip root, include `.lamber.workspace.json`, a consistent `.lamber.sqlite` copy, `.projects/`, project folders, and `export-manifest.json`, and exclude `.backups` / `.exports` by default. Import preserves `workspaceId`, can read both direct-root archives and archives with a single top-level wrapper folder, treats the selected folder as the parent destination, and creates `{selectedFolder}/{workspaceName}` by default. The import command uses flat IPC arguments (`openAfterImport`, `conflictStrategy`, `destinationName`) rather than a nested `options` object. Frontend callers should call the maintenance service with explicit arguments, and the backend normalizes `openAfterImport` from JSON to avoid Tauri rejecting stale object-shaped payloads before import validation runs; absent or malformed nested booleans default to `false`.
 
 After Workspace export, the UI should open the generated `.lamber.zip` file's containing directory, not a generic system location. The backend reveal command still supports file selection, using a Windows Explorer `/select,PATH` argument without embedded quotes for better path parsing.
 
@@ -112,13 +112,13 @@ Additional current AI context capability:
 - **Workspace backup and restore safety**: Restoring `.lamber.sqlite` from backup must release or close the active SQLite connection before replacing the file, then reopen the workspace. On Windows this is required to avoid file-lock replacement failures.
 - **Workspace archive safety**: Importing `.lamber.zip` must validate structure and reject zip entries with absolute paths, `..` components, or extraction targets outside the chosen destination directory.
 - **Local Folder binding & scan synchronization**: Scanning folders updates physical file existence, but must never delete files physically on linked mode. Sandboxed (`copied`) files should be physically deleted only after user confirmation. Folder binding warning options allow auto-parent folder registration as project roots. Scanning and adding files inside absolute-only (rootless) folders must keep `directory_id` set to `None` to prevent SQLite `FOREIGN KEY constraint failed` errors on the `project_files` table.
-- **Template Form & Image Assets Separation**: Form configurations are saved in `project_settings` under key `template_form_data::<template_name>`, and any large base64 image data is stripped beforehand to prevent database bloat. Pasted/dropped images are uploaded directly to the backend project asset sandbox, tracked in `project_template_assets`, and represented using `assetId` references. When generating documents, the frontend must NOT pass absolute file paths; the backend validates project ownership of the `assetId`, loads the physical file from the sandbox, and embeds it directly. Legacy base64 images must be migrated automatically during the next form save. Image uploads are constrained to PNG, JPEG, and WEBP formats and must not exceed 20MB.
+- **Template Form & Image Assets Separation**: Form configurations are saved in `project_settings` under key `template_form_data::<template_name>`, and any large base64 image data is stripped beforehand to prevent database bloat. Pasted/dropped images are uploaded instantly to the backend project asset sandbox, tracked in `project_template_assets`, and represented using `assetId` references. When generating documents, the frontend must NOT pass absolute file paths; the backend validates project ownership of the `assetId`, loads the physical file from the sandbox, and embeds it directly. Legacy base64 images must be migrated automatically during the next form save. Image uploads are constrained to PNG, JPEG, and WEBP formats and must not exceed 20MB.
 - **Built-in Product Recommendations**: Recommended products must be cross-checked with codes in `midThreeConstants.ts`. If matched, append `[系统内置]` label; otherwise, append `【系统外扩展】`.
 
 Additional read-only AI boundary:
 
 - **AI Project Context Read Boundary**: `build_ai_project_context` only performs SQLite `SELECT` reads through the active `WorkspaceRuntime` database. It does not accept workspace/database paths from the frontend, does not mutate business data, does not trigger scans/repairs/saves, and does not expose template asset absolute paths or image/document binary content.
-- **AI Chat Context Boundary**: AI chat prompt construction separates saved official state from current unsaved draft overlay. Saved state comes from Workspace SQLite; draft state comes from frontend dirty page state and must be described as unsaved. Chat context loading failures are represented as warnings and must not be interpreted as empty project data. The AI still cannot write project data, auto-save, apply patches, run RAG/embedding work, generate file summaries, read image binaries, or change financial formulas.
+- **AI Chat Context Boundary**: AI chat prompt composition separates saved official state from current unsaved draft overlay. Saved state comes from Workspace SQLite; draft state comes from frontend localStorage; draft state is described as unsaved. Chat context loading failures are represented as warnings and must not be interpreted as empty project data. The AI still cannot write project data, auto-save, apply patches, run RAG/embedding work, generate file summaries, read image binaries, or change financial formulas.
 - **AI Template Detail and Image Boundary**: Saved template detail is official only when loaded from Workspace SQLite. Template dirty state remains an unsaved draft overlay. Template image binaries are provided to the model only after explicit user selection and backend `projectId + assetId` ownership validation; the frontend does not pass or receive physical paths for AI analysis, and image base64 is not stored back into the database.
 - **AI Workspace Routing Boundary**: Project names are only used to locate a target project inside the current Workspace for the current chat turn. Names are never used as business keys after matching; official data reads use the resolved `projectId`. Duplicate, ambiguous, missing, or overly broad project requests must not fall back to another project. Current frontend dirty state is injected only for the project it belongs to and must not contaminate another specified project.
 
@@ -150,9 +150,12 @@ Additional read-only AI boundary:
   - Template forms: [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx)
   - Docfill service: [docfill.rs](../src-tauri/src/docfill.rs)
   - Excel parser: [excel.rs](../src-tauri/src/benefit/excel.rs)
-- **UI Design modifications**:
+- **UI Design & Theme modifications**:
   - Main styling: [index.css](../src-ui/src/index.css)
   - Design Tokens: [DESIGN.md](../DESIGN.md)
+  - Global theme config: [tokens.ts](../src-ui/src/theme/tokens.ts), [typography.ts](../src-ui/src/theme/typography.ts), [appearance.ts](../src-ui/src/theme/appearance.ts), [presets.ts](../src-ui/src/theme/presets.ts), [applyAppearance.ts](../src-ui/src/theme/applyAppearance.ts), [index.ts](../src-ui/src/theme/index.ts)
+  - Appearance Store: [useAppearanceStore.ts](../src-ui/src/store/useAppearanceStore.ts)
+  - Settings panel: [SettingsView.tsx](../src-ui/src/components/settings/SettingsView.tsx)
 - **Data Management Center changes**:
   - Frontend: [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx)
   - Backend: [roots.rs](../src-tauri/src/project_files/roots.rs), [health.rs](../src-tauri/src/project_files/health.rs), [relocation.rs](../src-tauri/src/project_files/relocation.rs), [import_scanner.rs](../src-tauri/src/project_files/import_scanner.rs)
@@ -162,3 +165,12 @@ Additional read-only AI boundary:
 - Do not move the Project Board back under the ICT Lifecycle view. They must remain independent.
 - Do not let the AI rewrite `projects_store.json` directly without an explicit user transaction.
 - Do not replace the tonal-shift design system with high-saturation solid borders or solid purple/blue panels.
+- Do not write appearance preferences to project SQLite database tables or workspace-specific manifests. They must remain application-level configuration.
+- Do not hardcode raw colors or sizes in business pages. Always utilize semantic HSL custom properties or custom density variables.
+- All new components must consume semantic CSS variables and must not hardcode raw hex, rgb, or tailwind slate/zinc colors.
+- State colors (success, warning, destructive) must remain separated from the user-selected custom accent color to avoid business meaning overlaps.
+- Custom user interfaces and interactive components must render cleanly under both standard contrast and high-contrast modes.
+- Custom accent colors should support flexible hex input (3/6 digits with/without #) and leverage the real-time DOM-applied preview pattern for immediate visual feedback before saving.
+- Newly spawned Tauri windows or dialog webviews must initialize and listen to the appearance store sync to avoid theme mismatches.
+
+

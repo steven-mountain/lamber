@@ -81,12 +81,12 @@ export const IctCashflowTable: React.FC<IctCashflowTableProps> = ({ state, calcu
             {cashflowTable.map((row: any, i: number) => (
               <tr key={i} className="bg-muted">
                 <td className="text-left p-3 rounded-l-md font-semibold">第{row.year}年</td>
-                <td className="p-3">{formatCurrency(row.cash_in)}</td>
-                <td className="p-3">{formatCurrency(row.cash_out)}</td>
-                <td className="p-3 font-bold text-primary">{formatCurrency(row.net_cash)}</td>
-                <td className="p-3">{formatCurrency(row.cum_net_cash)}</td>
-                <td className="p-3">{formatCurrency(row.pv)}</td>
-                <td className="p-3 rounded-r-md">{formatCurrency(row.cum_pv)}</td>
+                <td className="p-3 numeric-value">{formatCurrency(row.cash_in)}</td>
+                <td className="p-3 numeric-value">{formatCurrency(row.cash_out)}</td>
+                <td className="p-3 font-bold text-primary numeric-value">{formatCurrency(row.net_cash)}</td>
+                <td className="p-3 numeric-value">{formatCurrency(row.cum_net_cash)}</td>
+                <td className="p-3 numeric-value">{formatCurrency(row.pv)}</td>
+                <td className="p-3 rounded-r-md numeric-value">{formatCurrency(row.cum_pv)}</td>
               </tr>
             ))}
           </tbody>

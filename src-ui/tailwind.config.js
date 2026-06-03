@@ -29,6 +29,7 @@ export default {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
         },
+        'primary-soft': "hsl(var(--primary-soft))",
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
@@ -36,6 +37,17 @@ export default {
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
+          soft: "hsl(var(--destructive-soft))",
+        },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+          soft: "hsl(var(--success-soft))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+          soft: "hsl(var(--warning-soft))",
         },
         muted: {
           DEFAULT: "hsl(var(--muted))",
@@ -53,6 +65,16 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+      },
+      fontSize: {
+        'display': ['var(--text-display)', 'var(--lh-display)'],
+        'page-title': ['var(--text-page-title)', 'var(--lh-page-title)'],
+        'section-title': ['var(--text-section-title)', 'var(--lh-section-title)'],
+        'body': ['var(--text-body)', 'var(--lh-body)'],
+        'body-strong': ['var(--text-body-strong)', 'var(--lh-body-strong)'],
+        'label': ['var(--text-label)', 'var(--lh-label)'],
+        'caption': ['var(--text-caption)', 'var(--lh-caption)'],
+        'metric': ['var(--text-metric)', 'var(--lh-metric)'],
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -1315,7 +1315,7 @@ export default function TemplateForms({
               <div className="col-span-2 border border-border rounded-lg p-4 bg-background">
                 <div className="flex justify-between items-center mb-3">
                   <label className="text-sm font-bold">技术方案可行性清单</label>
-                  <button type="button" onClick={addTechItem} className="text-xs bg-primary/10 text-primary px-3 py-1.5 rounded font-semibold hover:bg-blue-50">+ 新增一行</button>
+                  <button type="button" onClick={addTechItem} className="text-xs bg-primary-soft text-primary px-3 py-1.5 rounded font-semibold hover:bg-primary-soft/80">+ 新增一行</button>
                 </div>
                 <div className="flex flex-col gap-2">
                   {techItems.map((item, i) => (
@@ -1352,7 +1352,7 @@ export default function TemplateForms({
                       </div>
                     )}
                     {selfThreeMissingFees.length > 0 && (
-                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
+                      <div className="rounded-md border border-warning/20 bg-warning-soft px-3 py-2 text-warning-foreground">
                         {selfThreeMissingFees.join("；")}。
                       </div>
                     )}
@@ -1460,10 +1460,10 @@ export default function TemplateForms({
                     )}
                   </div>
                   <div className="flex gap-2">
-                    <button type="button" onClick={autoGenerateInquiry} className="inline-flex items-center gap-1.5 text-xs bg-amber-100 text-amber-700 px-3 py-1.5 rounded font-bold hover:bg-amber-200">
+                    <button type="button" onClick={autoGenerateInquiry} className="inline-flex items-center gap-1.5 text-xs bg-warning-soft text-warning-foreground px-3 py-1.5 rounded font-bold hover:bg-warning/20">
                       <AppIcon name="quickAction" size={14} /> 一键生成三家报价
                     </button>
-                    <button type="button" onClick={addInqVendor} className="text-xs bg-primary/10 text-primary px-3 py-1.5 rounded font-semibold hover:bg-blue-50">+ 新增厂商</button>
+                    <button type="button" onClick={addInqVendor} className="text-xs bg-primary-soft text-primary px-3 py-1.5 rounded font-semibold hover:bg-primary-soft/80">+ 新增厂商</button>
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -1505,11 +1505,11 @@ export default function TemplateForms({
                         <div key={i} className="border border-border/60 bg-muted/5 p-4 rounded-xl flex flex-col gap-3 transition-colors hover:border-primary/40">
                           <div className="flex justify-between items-center">
                             <span className="text-sm font-bold text-foreground flex items-center gap-1.5">
-                              <span className="bg-primary/10 text-primary text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">{i + 1}</span>
+                              <span className="bg-primary-soft text-primary text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">{i + 1}</span>
                               <span className="text-primary font-extrabold">{v.vendorName}</span> 报价截图
                             </span>
                             {vendorImages.length > 0 && (
-                              <span className="text-xs bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded-full font-medium">
+                              <span className="text-xs bg-success-soft text-success px-2 py-0.5 rounded-full font-medium">
                                 已上传 {vendorImages.length} 张图片
                               </span>
                             )}
@@ -1734,7 +1734,7 @@ export default function TemplateForms({
               <div className="col-span-2 border border-border rounded-lg p-4 bg-background">
                 <div className="flex justify-between items-center mb-3">
                   <label className="text-sm font-bold text-foreground">技术方案可行性清单 (设备需求清单)</label>
-                  <button type="button" onClick={addTechItem} className="text-xs bg-primary/10 text-primary px-3 py-1.5 rounded font-semibold hover:bg-blue-50">+ 新增一行</button>
+                  <button type="button" onClick={addTechItem} className="text-xs bg-primary-soft text-primary px-3 py-1.5 rounded font-semibold hover:bg-primary-soft/80">+ 新增一行</button>
                 </div>
                 <div className="flex flex-col gap-2">
                   {techItems.map((item, i) => (
@@ -1890,7 +1890,7 @@ export default function TemplateForms({
       </button>
 
       {isMidThreeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-card rounded-xl shadow-md w-full max-w-3xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h3 className="font-bold text-lg flex items-center gap-2">

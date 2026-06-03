@@ -23,23 +23,23 @@ export const IctMetricsDashboard: React.FC<IctMetricsDashboardProps> = ({ metric
       <div className="grid grid-cols-5 gap-4">
         <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
           <span className="text-xs font-semibold text-secondary-foreground">项目净现值 (NPV)</span>
-          <span id="ict-metric-npv" className="text-lg font-bold">{formatCurrency(metrics.npv)}</span>
+          <span id="ict-metric-npv" className="text-lg font-bold numeric-value">{formatCurrency(metrics.npv)}</span>
         </div>
         <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
           <span className="text-xs font-semibold text-secondary-foreground">净现值率</span>
-          <span id="ict-metric-npv-rate" className="text-lg font-bold text-green-600">{formatPercent(metrics.npv_rate)}</span>
+          <span id="ict-metric-npv-rate" className="text-lg font-bold text-success numeric-value">{formatPercent(metrics.npv_rate)}</span>
         </div>
         <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
           <span className="text-xs font-semibold text-secondary-foreground">毛利润率</span>
-          <span id="ict-metric-margin" className="text-lg font-bold text-green-600">{formatPercent(metrics.margin_rate)}</span>
+          <span id="ict-metric-margin" className="text-lg font-bold text-success numeric-value">{formatPercent(metrics.margin_rate)}</span>
         </div>
         <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
           <span className="text-xs font-semibold text-secondary-foreground">动态回收期 (年)</span>
-          <span id="ict-metric-payback" className="text-lg font-bold">{metrics.dynamic_payback}</span>
+          <span id="ict-metric-payback" className="text-lg font-bold numeric-value">{metrics.dynamic_payback}</span>
         </div>
         <div className="bg-muted p-4 rounded-lg flex flex-col gap-1 border border-border">
           <span className="text-xs font-semibold text-secondary-foreground">内部收益率 (IRR)</span>
-          <span id="ict-metric-irr" className="text-lg font-bold">{metrics.irr}</span>
+          <span id="ict-metric-irr" className="text-lg font-bold numeric-value">{metrics.irr}</span>
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useModulePath } from "../hooks/useModulePath";
 import AppIcon from "./icons/AppIcon";
 import GlobalSaveButton from "./GlobalSaveButton";
+import { useNavigationStore } from "../store/useNavigationStore";
 
 interface WorkspaceHeaderProps {
   moduleId: string;
@@ -36,8 +37,15 @@ export default function WorkspaceHeader({ moduleId, title, onBack, onPathChange,
             {contextContent}
           </div>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <GlobalSaveButton />
+          <button
+            onClick={() => useNavigationStore.getState().navigateTo("settings")}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-secondary-foreground hover:bg-secondary hover:text-foreground transition-all shadow-sm"
+            title="系统设置"
+          >
+            <AppIcon name="settings" size={18} />
+          </button>
         </div>
       </div>
 

@@ -4,6 +4,86 @@ This changelog records structural modifications, business rules, and context cha
 
 ## 2026-06-03
 
+### Custom Accent Color Real-Time Preview Fix
+
+Modified:
+- [SettingsView.tsx](../src-ui/src/components/settings/SettingsView.tsx): Resolved a bug where custom accent colors (especially low-contrast inputs) did not update the real-time preview or warning banners correctly. Implemented a `useEffect` that continuously translates user-typed hex values (including HSL self-adjusted safe versions) and applies them to the DOM for instant preview. Supported flexible hex formats (3/6 digits, with or without leading '#').
+
+### Front-End Advanced Appearance Customization & Accessibility Safeguards (Phase 3)
+
+Created:
+- [colorUtils.ts](../src-ui/src/theme/colorUtils.ts): Custom RGB/HSL conversions, relative luminance calculations, and WCAG contrast ratio checkers.
+- [deriveAccentTokens.ts](../src-ui/src/theme/deriveAccentTokens.ts): Generates WCAG-compliant derived HSL accent tokens (`primary`, `primary-foreground`, `primary-soft`, `ring`, `accent`, `accent-foreground`) from custom colors using HSL lightness shifting.
+- [test_color_math.js](../scratch/test_color_math.js): Verification script to test HSL conversion, WCAG contrast calculations, and automatic lightness adjustments for custom accent colors.
+
+Modified:
+- [appearance.ts](../src-ui/src/theme/appearance.ts): Extended `AppearanceSettings` type to support `contrastPreference`, `customAccent` settings, and version fields. Upgraded standard default settings to version 3.
+- [presets.ts](../src-ui/src/theme/presets.ts): Refined HSL dark theme preset mappings (`DARK_THEMES`) for all 5 presets to establish distinct visual styles in dark modes. Added HSL contrast override variables.
+- [applyAppearance.ts](../src-ui/src/theme/applyAppearance.ts): Implemented sequence-based color tokens resolution: standard presets are modified by custom accent calculations and then overlaid with high-contrast rules. Applied `data-contrast` attribute on document element.
+- [useAppearanceStore.ts](../src-ui/src/store/useAppearanceStore.ts): Added preference setters and state for Custom Accent and Contrast. Added Version 3 localStorage settings parsing and configuration migration paths.
+- [SettingsView.tsx](../src-ui/src/components/settings/SettingsView.tsx): Extended layouts with Accent color palette recommended selections, Custom HTML5 Color Picker, Standard vs High Contrast selectors, and warning banners for auto-adjusted low contrast accent inputs. Enhanced real-time preview panel with focused input ring and simulated AI chatbot bubble elements.
+- [index.ts](../src-ui/src/theme/index.ts): Exported `colorUtils` and `deriveAccentTokens`.
+- [DESIGN.md](../DESIGN.md): Appended Phase 3 visual specs, contrast boundaries, custom accent derivation rules, and dark theme refinement notes.
+- [PROJECT_STATUS.md](../docs/PROJECT_STATUS.md), [ARCHITECTURE_MAP.md](../docs/ARCHITECTURE_MAP.md): Updated project status history, directory maps, and theme components definitions.
+
+Decision:
+- Accent color adjustments are validated dynamically against WCAG standards (4.5:1 standard minimum, 7.0:1 high contrast minimum) against light/dark backgrounds. If low contrast is detected, lightness is shifted in HSL, warning the user and applying a safe version.
+- High Contrast preference applies pure white/black canvas background blocks, highly visible text, and thick distinct border lines.
+- SQLite project database structures, business cashflow calculations, NPV metrics, and AI context composer schemas remain completely untouched.
+
+### Front-End Appearance Settings Center & Theme Runtime Switching (Phase 2)
+
+
+Created:
+- [appearance.ts](../src-ui/src/theme/appearance.ts): Formulates brightness modes, color themes, font scaling levels, interface density configurations, default presets, and font scaling ratio factors.
+- [presets.ts](../src-ui/src/theme/presets.ts): Formulates full HSL variables mapping for 5 corporate light themes (`lamber`, `graphite`, `navy`, `forest`, `warmStone`) and system dark base configuration with light preset primary adaptation.
+- [applyAppearance.ts](../src-ui/src/theme/applyAppearance.ts): Writes color tokens, font scaling weights, and interface densities to `document.documentElement` attributes and styles dynamically.
+- [useAppearanceStore.ts](../src-ui/src/store/useAppearanceStore.ts): Persists user styling configuration to `localStorage`, observes brightness system media query settings, applies styles to root, and manages cross-window event synchronization.
+- [SettingsView.tsx](../src-ui/src/components/settings/SettingsView.tsx): Renders custom selectors for all style choices with a real-time mini business preview card and default restoration command.
+
+Modified:
+- [index.ts](../src-ui/src/theme/index.ts): Exports all theme, presets, configuration types, and DOM applier helper utilities.
+- [index.css](../src-ui/src/index.css): Dynamically scales typographic line heights by `--font-scale` to prevent overlap, and implements custom overrides for card padding, button/input heights, table cell vertical paddings, and page spacing gaps.
+- [card.tsx](../src-ui/src/components/ui/card.tsx), [button.tsx](../src-ui/src/components/ui/button.tsx), [input.tsx](../src-ui/src/components/ui/input.tsx): Rewrote primitive sizes and paddings to read custom CSS density variables with standard defaults.
+- [main.tsx](../src-ui/src/main.tsx): Runs synchronous appearance store hydration prior to React rendering to ensure color and layouts render without startup flashing.
+- [useNavigationStore.ts](../src-ui/src/store/useNavigationStore.ts): Integrated `"settings"` view type and track previous view context to return safely on settings panel close.
+- [App.tsx](../src-ui/src/App.tsx): Routes settings views and places Settings button in `HubView` header toolbar.
+- [ProjectBoard.tsx](../src-ui/src/views/ProjectBoard.tsx): Places Settings button on the kanban board header toolbar next to the GlobalSaveButton.
+- [WorkspaceHeader.tsx](../src-ui/src/components/WorkspaceHeader.tsx): Places Settings button on the header toolbar of all workspaces next to the GlobalSaveButton.
+- [DESIGN.md](../DESIGN.md): Documented specifications for presets, mode observers, scaling bounds, density levels, and application mechanisms.
+- [PROJECT_STATUS.md](../docs/PROJECT_STATUS.md), [ARCHITECTURE_MAP.md](../docs/ARCHITECTURE_MAP.md), [AI_CONTEXT.md](../docs/AI_CONTEXT.md): Updated project milestones, directory indexes, and visual token guidelines.
+
+Decision:
+- Appearance preferences are strictly application-level settings and must never be written to project databases or workspaces.
+- Color presets are dynamically set via raw space-separated numbers on root styles to respect Tailwind's HSL wrapper.
+- Cross-window visual synchronizations are dispatched via Tauri window event listener bridges.
+
+### Front-End Global Visual Foundation Refactoring (Phase 1)
+
+Created:
+- [tokens.ts](../src-ui/src/theme/tokens.ts): Define design system color schemes, border radius (`lg: var(--radius)`, `md`, `sm`), and sizing.
+- [typography.ts](../src-ui/src/theme/typography.ts): Declare base line-heights, weight bindings, and typographic roles mapped to `--font-scale`.
+- [index.ts](../src-ui/src/theme/index.ts): Centralized theme exports.
+
+Modified:
+- [index.css](../src-ui/src/index.css): Added new HSL color variables and typography scale calculations. Integrated `.numeric-value` class.
+- [tailwind.config.js](../src-ui/tailwind.config.js): Extended Tailwind configuration with semantic color names and typographic roles.
+- [button.tsx](../src-ui/src/components/ui/button.tsx), [input.tsx](../src-ui/src/components/ui/input.tsx), [card.tsx](../src-ui/src/components/ui/card.tsx), [label.tsx](../src-ui/src/components/ui/label.tsx): Refactored primitive components to adhere to visual standards.
+- [App.tsx](../src-ui/src/App.tsx), [ProjectBoard.tsx](../src-ui/src/views/ProjectBoard.tsx), [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx), [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Migrated views to utilize semantic styles, typography variables, and tabular numbers.
+- [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): Refactored path lists, workspace cards, status labels, and relocation tables to use semantic HSL tokens.
+- [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx): Refactored connection status badge and quick actions.
+- [MessageBubble.tsx](../src-ui/src/components/MessageBubble.tsx): Refactored inline badges, user/assistant chat bubbles, blockquotes, and code block components.
+- [DESIGN.md](../DESIGN.md): Updated document with the Lamber Global Visual Specification v1 details.
+
+Tests:
+- Run `npm run build` inside `src-ui`: TypeScript compilation and Vite build succeeded.
+- Run `cargo test` in `src-tauri`: All unit tests passed.
+
+Decision:
+- Visual elements must follow the "No-Line" rule using background HSL shifts instead of thick solid borders.
+- Sizing and typography must support dynamic resizing based on `--font-scale` variable.
+- Financial numerical representation enforces tabular-nums across the UI.
+
 ### ICT Lifecycle Balance Control UI Layout Alignment
 
 Modified:

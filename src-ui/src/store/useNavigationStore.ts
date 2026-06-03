@@ -1,12 +1,13 @@
 import { create } from "zustand";
 
-export type ViewType = "hub" | "project_board" | "ict_lifecycle" | "data_management";
+export type ViewType = "hub" | "project_board" | "ict_lifecycle" | "data_management" | "settings";
 
 interface NavigationState {
   currentView: ViewType;
   activeProjectId: string | null;
   activeSchemeId: string | null;
   entrySource: "hub" | "project_board" | null;
+  settingsReturnView: ViewType | null;
   navigateTo: (view: ViewType, projectId?: string | null, schemeId?: string | null) => void;
   clearContext: () => void;
 }
@@ -46,9 +47,12 @@ export const useNavigationStore = create<NavigationState>((set) => {
 
   return {
     ...initial,
+    settingsReturnView: null,
     navigateTo: (view, projectId = null, schemeId = null) => {
       set((state) => {
         let newEntrySource = state.entrySource;
+        let newSettingsReturnView = state.settingsReturnView;
+
         if (view === "ict_lifecycle") {
           // If we navigate to ict_lifecycle, and we were in hub or project_board, remember it
           if (state.currentView === "hub" || state.currentView === "project_board") {
@@ -58,15 +62,26 @@ export const useNavigationStore = create<NavigationState>((set) => {
           newEntrySource = null;
         }
 
+        if (view === "settings") {
+          newSettingsReturnView = state.currentView;
+        } else if (state.currentView === "settings") {
+          newSettingsReturnView = null;
+        }
+
+        const finalProjectId = view === "settings" ? (projectId || state.activeProjectId) : projectId;
+        const finalSchemeId = view === "settings" ? (schemeId || state.activeSchemeId) : schemeId;
+
         const newState = {
           currentView: view,
-          activeProjectId: projectId,
-          activeSchemeId: schemeId,
+          activeProjectId: finalProjectId,
+          activeSchemeId: finalSchemeId,
           entrySource: newEntrySource,
+          settingsReturnView: newSettingsReturnView,
         };
 
         try {
-          localStorage.setItem(NAVIGATION_STORAGE_KEY, JSON.stringify(newState));
+          const { settingsReturnView: _, ...storedState } = newState;
+          localStorage.setItem(NAVIGATION_STORAGE_KEY, JSON.stringify(storedState));
         } catch (e) {
           console.warn("Failed to save navigation state to localStorage:", e);
         }
