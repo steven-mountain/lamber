@@ -1,6 +1,6 @@
 # AI_CONTEXT.md
 
-Last updated: 2026-06-03 (Front-End Advanced Appearance Customization & Accessibility Safeguards Phase 3)
+Last updated: 2026-06-03 (ICT Subject-Level Funding Plans Phase 2)
 
 ## What this project is
 
@@ -72,6 +72,7 @@ Before starting any task, read the status and architecture documentation in this
 - Dynamic reverse must respect balance allocation conflicts. Revenue and investment balance allocation are both currently implemented. A subject cannot be both a balancing subject and a reverse calculation target. When same-side balance allocation is valid, the balancing subject is disabled as a reverse target, while other same-side subjects enter locked-total structure reverse. The structure solver keeps the same-side inclusive total unchanged by changing the selected target subject and the balancing subject inversely over the finite pool `total - fixedOther`. Cross-side reverse remains allowed.
 - Locked-total structure reverse in `model_e` amount mode must synchronize subject transfers into `cashflowSegments` before candidate calculation and reuse the same synced segment array for final write-back. The mapping source is stable subject identity (`groupId + key`): revenue IT/CT/non-IT-CT subjects map to `revenueScope` buckets, and cost IT/CT/non-IT-CT/mixed subjects map to `costScope` buckets. Same-bucket transfers must keep the bucket net delta at zero; cross-bucket transfers must apply equal and opposite deltas. Existing custom annual amount plans should be scaled through the amount-mode annual adjustment helper. Missing bucket segments or negative segment/bucket/year results make the candidate invalid and must not be written.
 - CT product and line revenue links continue to mirror into CT other-product and CT bandwidth cost subjects during `model_e` structure reverse, with linked cost-side segment synchronization. If that cross-side linkage collides with a valid locked-total investment balancing rule, block conservatively rather than solving a four-variable cross-side structure problem.
+- **ICT Subject-Level Funding Plans Phase 2**: Each revenue/cost subject row can maintain a collection/payment plan keyed by concrete subject instance `side + groupId + key` (`revenue:revIt:integration`, etc.). `src-ui/src/lib/ictSubjectFundingPlan.ts` owns the data model and pure helpers for `upfront`, `equal`, and `custom` 10-year tax-inclusive annual values, cents-exact validation, full source-coverage validation, normalization, upsert, cleanup, and annual subject-plan cashflow generation. `useIctState.cashflowCalculationSource` is the explicit mutually exclusive source (`legacy_model` or `subject_funding_plans`); missing/old/new projects default to `legacy_model`, and existing plans never auto-switch the source. When `subject_funding_plans` is active and coverage is valid, `useIctCalculations.ts` builds per-subject/per-year tax-exclusive annual arrays using each subject's own tax rate and passes them to Rust through `rev_cashflow_excl`, `cost_cashflow_excl`, `it_rev_cashflow_excl`, and `it_cost_cashflow_excl`. If coverage later becomes invalid, the app keeps the last valid result visible with a stale warning, does not recalculate, does not fall back to legacy, and blocks benefit metric saves/document generation. Smart reverse is disabled while this source is active; users must switch back to `legacy_model` for reverse solving.
 - **ICT Standard Subject Presentation Names**: Every fixed revenue/cost billing subject can carry an optional product/business name and an optional billing subject name. The fixed subject catalog remains the source of truth for `subjectCode`, standard subject label, Excel row mapping, and document prefix. Product/business names (`customSubjectName` / `custom_subject_name`) and billing subject names (`billingSubjectName` / `billing_subject_name`) are stored separately and must not replace the standard subject identity used for calculations.
 - **AI Assistant / Copilot (智能顾问)**: Streamed (SSE) local LLM chatbot that pulls the active view's serialized state to give contextual recommendations based on a built-in capabilities database.
 - **Template Word/Excel Engine (文档填报与填充)**: Backend Rust logic mapping form values and calculation results into docx variables and excel cells. Now utilizes separate template form data (saved in `project_settings` under key `template_form_data::<template_name>`) and sandboxed image assets (saved to the bound project folder under `{project_name}-图片/assets/` if linked, or falling back to `.projects/{project_id}/assets/` inside the active workspace and tracked in `project_template_assets`), ensuring form configurations are kept lightweight and database volume is small.
@@ -134,6 +135,11 @@ Additional read-only AI boundary:
   - Rule helper: [ictBalanceAllocation.ts](../src-ui/src/lib/ictBalanceAllocation.ts)
   - Lifecycle State: [useIctState.ts](../src-ui/src/hooks/useIctState.ts)
   - Lifecycle View: [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx)
+- **ICT subject-level funding plan changes**:
+  - Funding Plan Helper: [ictSubjectFundingPlan.ts](../src-ui/src/lib/ictSubjectFundingPlan.ts)
+  - Funding Plan Editor: [IctSubjectFundingPlanEditor.tsx](../src-ui/src/components/IctSubjectFundingPlanEditor.tsx)
+  - Lifecycle State: [useIctState.ts](../src-ui/src/hooks/useIctState.ts)
+  - Lifecycle View: [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx)
 - **ICT smart reverse subject changes**:
   - Reverse subject helper: [ictReverseCalculation.ts](../src-ui/src/lib/ictReverseCalculation.ts)
   - Calculation hook: [useIctCalculations.ts](../src-ui/src/hooks/useIctCalculations.ts)
@@ -172,5 +178,3 @@ Additional read-only AI boundary:
 - Custom user interfaces and interactive components must render cleanly under both standard contrast and high-contrast modes.
 - Custom accent colors should support flexible hex input (3/6 digits with/without #) and leverage the real-time DOM-applied preview pattern for immediate visual feedback before saving.
 - Newly spawned Tauri windows or dialog webviews must initialize and listen to the appearance store sync to avoid theme mismatches.
-
-

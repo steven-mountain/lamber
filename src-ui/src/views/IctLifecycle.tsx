@@ -54,6 +54,13 @@ import {
   SelectedSubjectRoleSummary,
   scrollToSubject,
 } from "../components/IctSubjectRoleComponents";
+import IctSubjectFundingPlanEditor from "../components/IctSubjectFundingPlanEditor";
+import {
+  createSubjectFundingPlanId,
+  normalizeCashflowCalculationSource,
+  normalizeSubjectFundingPlans,
+  type CashflowCalculationSource,
+} from "../lib/ictSubjectFundingPlan";
 
 const restoreCustomSubjectName = (item: any) => normalizeCustomSubjectName(item?.customSubjectName ?? item?.custom_subject_name ?? "");
 const restoreBillingSubjectName = (item: any) => normalizeCustomSubjectName(item?.billingSubjectName ?? item?.billing_subject_name ?? "");
@@ -141,6 +148,17 @@ export default function IctLifecycle() {
       merged.revenue_balance_rule = serializeBalanceAllocationRule(restoredBalanceAllocation.revenue);
       merged.investment_balance_rule = serializeBalanceAllocationRule(restoredBalanceAllocation.investment);
     }
+    if (assumptions.subjectFundingPlans || assumptions.subject_funding_plans) {
+      merged.subject_funding_plans = assumptions.subjectFundingPlans || assumptions.subject_funding_plans;
+    }
+    const restoredCalculationSource =
+      assumptions.cashflowCalculationSource
+      || assumptions.cashflow_calculation_source
+      || paymentModel.cashflowCalculationSource
+      || paymentModel.cashflow_calculation_source;
+    if (restoredCalculationSource) {
+      merged.cashflow_calculation_source = restoredCalculationSource;
+    }
 
     const applyTaxItem = (key: string, item: any) => {
       if (!item) return;
@@ -217,6 +235,10 @@ export default function IctLifecycle() {
     if (params.cashflow_segment_value_mode) state.setSegmentValueMode(params.cashflow_segment_value_mode);
     if (params.cashflow_segments) state.setCashflowSegments(params.cashflow_segments);
     if (params.project_background) state.setProjectBackground(params.project_background);
+    state.setCashflowCalculationSource(
+      normalizeCashflowCalculationSource(params.cashflow_calculation_source ?? params.cashflowCalculationSource),
+    );
+    state.setSubjectFundingPlans(normalizeSubjectFundingPlans(params.subject_funding_plans ?? params.subjectFundingPlans));
     state.setBalanceAllocation(normalizeBalanceAllocationState({
       revenue: params.revenue_balance_rule ?? params.revenueBalanceRule,
       investment: params.investment_balance_rule ?? params.investmentBalanceRule,
@@ -300,6 +322,8 @@ export default function IctLifecycle() {
       setActiveScheme(null);
       setActiveSnapshot(null);
       setPendingNewSchemeName(null);
+      state.setCashflowCalculationSource("legacy_model");
+      state.setSubjectFundingPlans({});
       return;
     }
     if (!isWorkspaceReady) {
@@ -316,6 +340,8 @@ export default function IctLifecycle() {
         setActiveScheme(null);
         setActiveSnapshot(null);
         setPendingNewSchemeName(null);
+        state.setCashflowCalculationSource("legacy_model");
+        state.setSubjectFundingPlans({});
         return;
       }
 
@@ -336,6 +362,8 @@ export default function IctLifecycle() {
         if (project.discount_rate > 0) state.setDiscountRate(project.discount_rate);
         if (project.project_years > 0) state.setProjectYears(project.project_years);
         if (project.cashflow_model) state.setCashflowModel(project.cashflow_model as any);
+        state.setCashflowCalculationSource("legacy_model");
+        state.setSubjectFundingPlans({});
         setTimeout(() => {
           isHydratingRef.current = false;
           useSaveStore.getState().clearDirtyScopes(["lifecycle", "cashflow", "benefit-analysis"]);
@@ -395,6 +423,8 @@ export default function IctLifecycle() {
           if (project.discount_rate > 0) state.setDiscountRate(project.discount_rate);
           if (project.project_years > 0) state.setProjectYears(project.project_years);
           if (project.cashflow_model) state.setCashflowModel(project.cashflow_model as any);
+          state.setCashflowCalculationSource("legacy_model");
+          state.setSubjectFundingPlans({});
           setTimeout(() => {
             isHydratingRef.current = false;
             useSaveStore.getState().clearDirtyScopes(["lifecycle", "cashflow", "benefit-analysis"]);
@@ -414,6 +444,8 @@ export default function IctLifecycle() {
           if (project.discount_rate > 0) state.setDiscountRate(project.discount_rate);
           if (project.project_years > 0) state.setProjectYears(project.project_years);
           if (project.cashflow_model) state.setCashflowModel(project.cashflow_model as any);
+          state.setCashflowCalculationSource("legacy_model");
+          state.setSubjectFundingPlans({});
         }
         setTimeout(() => {
           isHydratingRef.current = false;
@@ -429,9 +461,30 @@ export default function IctLifecycle() {
     loadProjectContext(activeProjectId, activeSchemeId);
   }, [activeProjectId, activeSchemeId]);
 
+  const getSubjectFundingBlockingMessage = useCallback((actionLabel: string) => {
+    if (state.cashflowCalculationSource !== "subject_funding_plans" || calculations.subjectFundingCoverage.valid) {
+      return "";
+    }
+    const issueLines = calculations.subjectFundingCoverage.issues
+      .slice(0, 8)
+      .map((issue, index) => `${index + 1}. ${issue.message}`);
+    const extraCount = calculations.subjectFundingCoverage.issues.length - issueLines.length;
+    return [
+      `当前现金流计算口径为“按科目收付款计划计算”，但覆盖校验未通过，不能${actionLabel}。`,
+      "请补齐或修正科目级收付款计划，或切回“沿用原资金模型计算”。",
+      ...issueLines,
+      ...(extraCount > 0 ? [`另有 ${extraCount} 项问题未展开。`] : []),
+    ].join("\n");
+  }, [calculations.subjectFundingCoverage, state.cashflowCalculationSource]);
+
   const handleSaveToSelectedProject = async (targetProjectId: string) => {
     if (!isWorkspaceReady) {
       alert("请先新建或打开工作区后再保存项目方案。");
+      return;
+    }
+    const blockingMessage = getSubjectFundingBlockingMessage("保存测算方案");
+    if (blockingMessage) {
+      alert(blockingMessage);
       return;
     }
 
@@ -468,6 +521,11 @@ export default function IctLifecycle() {
     if (!activeProject) return;
     const schemeId = pendingNewSchemeName ? null : (activeScheme?.id || activeProject.default_scheme_id || null);
     const schemeName = pendingNewSchemeName || activeScheme?.name || activeProject.name || "默认测算方案";
+    const blockingMessage = getSubjectFundingBlockingMessage("保存当前项目指标");
+    if (blockingMessage) {
+      alert(blockingMessage);
+      return;
+    }
 
     try {
       const payload = calculations.buildInputDataPayload();
@@ -499,6 +557,11 @@ export default function IctLifecycle() {
       return;
     }
     if (!activeProject || !saveAsSchemeName.trim()) return;
+    const blockingMessage = getSubjectFundingBlockingMessage("另存为新方案");
+    if (blockingMessage) {
+      alert(blockingMessage);
+      return;
+    }
 
     try {
       const payload = calculations.buildInputDataPayload();
@@ -532,6 +595,10 @@ export default function IctLifecycle() {
     projectYears,
     balanceAllocation,
     updateBalanceRule,
+    cashflowCalculationSource,
+    setCashflowCalculationSource,
+    subjectFundingPlans,
+    upsertSubjectFundingPlan,
     revIt,
     revCt,
     revNonItCt,
@@ -564,6 +631,9 @@ export default function IctLifecycle() {
     revTargetType, setRevTargetType,
     revTargetValue, setRevTargetValue,
     revSubjectRefKey, setRevSubjectRefKey,
+    subjectFundingCoverage,
+    subjectFundingAnnualCashflow,
+    subjectFundingCalculationBlocked,
     performReverseCalculation,
     applySelectionLimit,
     handleSelFeeChange,
@@ -674,6 +744,10 @@ export default function IctLifecycle() {
   }, [revSubjectRefKey, reverseSubjectOptions, setRevSubjectRefKey]);
 
   const executeReverseCalculation = () => {
+    if (cashflowCalculationSource === "subject_funding_plans") {
+      alert("当前现金流计算口径为“按科目收付款计划计算”。智能反算暂不支持该口径，请先切回“沿用原资金模型计算”后再执行反算。");
+      return;
+    }
     if (blockingBalanceMessages.length > 0) {
       alert(blockingBalanceMessages.join("\n"));
       return;
@@ -709,6 +783,7 @@ export default function IctLifecycle() {
           ignoreTailDifference: state.ignoredTailValue !== null,
           tailDifferenceValue: state.ignoredTailValue,
           balanceAllocation: serializeBalanceAllocationState(state.balanceAllocation),
+          cashflowCalculationSource: state.cashflowCalculationSource,
         },
         backgroundJson: {
           projectBackground: state.projectBackground,
@@ -729,10 +804,12 @@ export default function IctLifecycle() {
           revDistribution: state.distRev,
           costDistribution: state.distCost,
           segmentValueMode: state.segmentValueMode,
+          cashflowCalculationSource: state.cashflowCalculationSource,
         },
         yearlyCashflowJson: {
           cashflowTable: calculations.cashflowTable,
           directSegmentCashflow: calculations.directSegmentCashflow,
+          subjectFundingAnnualCashflow: calculations.subjectFundingAnnualCashflow,
         },
         sectorCashflowJson: {
           cashflowSegments: state.cashflowSegments,
@@ -747,6 +824,8 @@ export default function IctLifecycle() {
           costCt: state.costCt,
           costMix: state.costMix,
           balanceAllocation: state.balanceAllocation,
+          cashflowCalculationSource: state.cashflowCalculationSource,
+          subjectFundingPlans: state.subjectFundingPlans,
         },
         metricsJson: calculations.metrics,
       });
@@ -756,6 +835,10 @@ export default function IctLifecycle() {
     registerSaveHandler("benefit-analysis", async (context) => {
       if (context.workspaceId !== workspaceId || context.projectId !== activeProject.id) {
         throw new Error("项目或工作区已切换");
+      }
+      const blockingMessage = getSubjectFundingBlockingMessage("保存效益方案");
+      if (blockingMessage) {
+        throw new Error(blockingMessage);
       }
       const inputPayload = calculations.buildInputDataPayload();
       const schemeId = pendingNewSchemeName ? null : (activeScheme?.id || activeProject.default_scheme_id || null);
@@ -792,6 +875,7 @@ export default function IctLifecycle() {
     workspaceId,
     registerSaveHandler,
     unregisterSaveHandler,
+    getSubjectFundingBlockingMessage,
     calculations,
     state,
   ]);
@@ -814,6 +898,7 @@ export default function IctLifecycle() {
     state.distCost,
     state.segmentValueMode,
     state.cashflowSegments,
+    state.cashflowCalculationSource,
     state.revIt,
     state.revCt,
     state.revNonItCt,
@@ -821,6 +906,7 @@ export default function IctLifecycle() {
     state.costCt,
     state.costMix,
     state.balanceAllocation,
+    state.subjectFundingPlans,
   ]);
 
   const handleTabSwitch = async (tab: string, templateName?: string, forceIgnore = false) => {
@@ -832,6 +918,14 @@ export default function IctLifecycle() {
     if ((tab === 'cashflow' || tab === 'generate') && blockingBalanceMessages.length > 0) {
       alert(blockingBalanceMessages.join("\n"));
       return;
+    }
+
+    if (tab === 'generate') {
+      const blockingMessage = getSubjectFundingBlockingMessage("进入文档生成");
+      if (blockingMessage) {
+        alert(blockingMessage);
+        return;
+      }
     }
 
     const currentHash = buildFinancialStateHash({ revIt, revCt, revNonItCt, costIt, costCt, costMix });
@@ -880,6 +974,129 @@ export default function IctLifecycle() {
     const side = subject.side === "revenue" ? "revenue" : "investment";
     const rule = balanceAllocation[side];
     return rule.enabled && isBalanceSubjectMatch(rule.balancingSubject, subject);
+  };
+
+  const formatFundingControlMoney = (value: number) =>
+    new Intl.NumberFormat("zh-CN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number.isFinite(value) ? value : 0);
+
+  const formatAnnualCashflowPreview = (values: number[]) => {
+    const parts = values
+      .map((value, index) => ({ value, year: index + 1 }))
+      .filter(item => Math.abs(item.value) > 0.005)
+      .map(item => `第${item.year}年 ${formatFundingControlMoney(item.value)} 元`);
+    return parts.length > 0 ? parts.join("，") : "暂无有效年度金额";
+  };
+
+  const getSourceSwitchIssueMessage = () => {
+    const issueLines = subjectFundingCoverage.issues
+      .slice(0, 10)
+      .map((issue, index) => `${index + 1}. ${issue.message}`);
+    const extraCount = subjectFundingCoverage.issues.length - issueLines.length;
+    return [
+      "当前科目级收付款计划覆盖校验未通过，已保持“沿用原资金模型计算”。",
+      ...issueLines,
+      ...(extraCount > 0 ? [`另有 ${extraCount} 项问题未展开。`] : []),
+    ].join("\n");
+  };
+
+  const handleCashflowCalculationSourceChange = (source: CashflowCalculationSource) => {
+    if (source === cashflowCalculationSource) return;
+    if (source === "subject_funding_plans" && !subjectFundingCoverage.valid) {
+      alert(getSourceSwitchIssueMessage());
+      return;
+    }
+    setCashflowCalculationSource(source);
+  };
+
+  const renderCashflowCalculationSourceControl = () => {
+    const counts = subjectFundingCoverage.counts;
+    const sourceOptions: Array<{ value: CashflowCalculationSource; label: string; description: string }> = [
+      {
+        value: "legacy_model",
+        label: "沿用原资金模型计算",
+        description: "继续使用模型 A-E、分布比例和分板块金额计划生成年度现金流。",
+      },
+      {
+        value: "subject_funding_plans",
+        label: "按科目收付款计划计算",
+        description: "使用每个收入/投入科目的10年收付计划生成正式年度现金流。",
+      },
+    ];
+
+    return (
+      <div className="table-card bg-card border border-border rounded-xl p-5 shadow-sm mb-6 flex flex-col gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-extrabold text-foreground">现金流计算口径</h3>
+            <p className="mt-1 text-xs leading-relaxed text-secondary-foreground">
+              当前口径：{cashflowCalculationSource === "subject_funding_plans" ? "按科目收付款计划计算" : "沿用原资金模型计算"}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 lg:min-w-[520px]">
+            {sourceOptions.map(option => {
+              const active = option.value === cashflowCalculationSource;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => handleCashflowCalculationSourceChange(option.value)}
+                  className={`rounded-lg px-3 py-2 text-left transition-colors ${
+                    active ? "bg-primary-soft text-primary" : "bg-muted/50 text-secondary-foreground hover:bg-secondary"
+                  }`}
+                >
+                  <div className="text-xs font-extrabold">{option.label}</div>
+                  <div className="mt-1 text-[10px] leading-relaxed font-semibold opacity-80">{option.description}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs font-semibold">
+          <div className="rounded-lg bg-muted/50 px-3 py-2">
+            收入计划覆盖：<span className="numeric-value font-extrabold text-foreground">{counts.revenuePlannedCount}/{counts.revenueSubjectCount}</span>
+          </div>
+          <div className="rounded-lg bg-muted/50 px-3 py-2">
+            投入计划覆盖：<span className="numeric-value font-extrabold text-foreground">{counts.costPlannedCount}/{counts.costSubjectCount}</span>
+          </div>
+          <div className={`rounded-lg px-3 py-2 ${subjectFundingCoverage.valid ? "bg-success-soft text-success-foreground" : "bg-warning-soft text-warning-foreground"}`}>
+            覆盖状态：{subjectFundingCoverage.valid ? "可用于科目级计算" : `${subjectFundingCoverage.issues.length} 项待处理`}
+          </div>
+        </div>
+
+        {cashflowCalculationSource === "subject_funding_plans" && (
+          <div className={`rounded-lg p-3 text-xs font-semibold leading-relaxed ${subjectFundingCalculationBlocked ? "bg-warning-soft text-warning-foreground" : "bg-success-soft text-success-foreground"}`}>
+            {subjectFundingCalculationBlocked
+              ? "当前科目级计划已失效，系统保留上一次有效现金流/指标结果，未使用旧模型回退重算。"
+              : "当前正式现金流由科目级收付款计划生成，并按各科目税率逐年换算为不含税现金流。"}
+          </div>
+        )}
+
+        {cashflowCalculationSource === "subject_funding_plans" && subjectFundingCoverage.issues.length > 0 && (
+          <div className="rounded-lg bg-warning-soft/70 p-3 text-xs text-warning-foreground">
+            <div className="font-extrabold mb-2">需修正的问题</div>
+            <div className="flex flex-col gap-1">
+              {subjectFundingCoverage.issues.slice(0, 8).map(issue => (
+                <span key={`${issue.planId}-${issue.type}`}>{issue.message}</span>
+              ))}
+              {subjectFundingCoverage.issues.length > 8 && (
+                <span>另有 {subjectFundingCoverage.issues.length - 8} 项问题未展开。</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {cashflowCalculationSource === "subject_funding_plans" && subjectFundingCoverage.valid && (
+          <div className="grid grid-cols-1 gap-1 text-[11px] font-semibold text-secondary-foreground">
+            <div>科目计划现金流入(不含税)：{formatAnnualCashflowPreview(subjectFundingAnnualCashflow.annualRevenueExcl)}</div>
+            <div>科目计划现金流出(不含税)：{formatAnnualCashflowPreview(subjectFundingAnnualCashflow.annualCostExcl)}</div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const renderBalanceControl = (side: BalanceAllocationSide) => {
@@ -981,6 +1198,12 @@ export default function IctLifecycle() {
           const rule = balanceAllocation[balanceSide];
           const isBalancing = rule.enabled && isBalanceSubjectMatch(rule.balancingSubject, item);
           const isReverseTarget = revSubjectRefKey === getReverseSubjectRefKey(getReverseSubjectRef(item));
+          const fundingPlanId = createSubjectFundingPlanId({
+            side: item.side,
+            groupId: item.groupId,
+            key: item.key,
+          });
+          const fundingPlan = subjectFundingPlans[fundingPlanId];
 
           const borderClass = isBalancing
             ? "border-l-2 border-warning/70 bg-warning-soft/30 pl-1.5"
@@ -1042,6 +1265,14 @@ export default function IctLifecycle() {
               </div>
               {autoBalanced && <span className="text-[10px] font-bold text-primary">该科目金额由总金额自动计算，税率可继续编辑。</span>}
               {itemErr && <span className="text-[10px] text-red-500 font-bold">校验失败：偏离 {itemErr.difference} 元，要求：{itemErr.expectedExcl} 元</span>}
+              <IctSubjectFundingPlanEditor
+                subject={item}
+                item={currentItem}
+                plan={fundingPlan}
+                displayName={displayName}
+                calculationSource={cashflowCalculationSource}
+                onPlanChange={upsertSubjectFundingPlan}
+              />
             </div>
           );
         })}
@@ -1258,6 +1489,7 @@ export default function IctLifecycle() {
 
           {activeTab === "revenue" && (
             <div>
+              {renderCashflowCalculationSourceControl()}
               {renderBalanceControl("revenue")}
               <div className="mb-4 text-xs text-primary bg-primary-soft p-3 rounded-lg border border-primary/20">
                 <span className="inline-flex items-start gap-2"><AppIcon name="info" size={16} className="mt-0.5" /> <span>提示：在「CT收入」中填写的产品或专线含税收入，将会自动【1:1平过】填入对应的「CT投入」中。</span></span>
@@ -1270,6 +1502,7 @@ export default function IctLifecycle() {
 
           {activeTab === "cost" && (
             <div>
+              {renderCashflowCalculationSourceControl()}
               {renderBalanceControl("investment")}
               {renderTaxGroup("IT/移动云投入", 'costIt', costIt, ICT_SUBJECT_GROUPS.costIt)}
               {renderTaxGroup("CT投入", 'costCt', costCt, ICT_SUBJECT_GROUPS.costCt)}
@@ -1278,7 +1511,10 @@ export default function IctLifecycle() {
           )}
 
           {activeTab === "cashflow" && (
-            <IctCashflowTable state={state} calculations={calculations} />
+            <div>
+              {renderCashflowCalculationSourceControl()}
+              <IctCashflowTable state={state} calculations={calculations} />
+            </div>
           )}
 
           <div className={`bg-card border border-border rounded-xl p-8 shadow-sm flex-col gap-6 ${activeTab === "generate" ? "flex" : "hidden"}`}>
@@ -1308,6 +1544,11 @@ export default function IctLifecycle() {
               <p className="text-xs leading-relaxed text-secondary-foreground">
                 反算结果为含税总额参数值，系统将根据当前资金收付模型自动分摊至各年度现金流。
               </p>
+              {cashflowCalculationSource === "subject_funding_plans" && (
+                <div className="rounded-lg bg-warning-soft px-3 py-2 text-[11px] font-semibold leading-relaxed text-warning-foreground">
+                  当前按科目收付款计划计算现金流，智能反算暂不支持自动维护科目级年度计划。请切回原资金模型后执行反算。
+                </div>
+              )}
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-secondary-foreground">反算目标</label>
                 {selectedReverseSubject ? (
@@ -1369,7 +1610,7 @@ export default function IctLifecycle() {
               </div>
               <button
                 className="flex w-full items-center justify-center gap-2 bg-primary text-primary-foreground font-bold py-2 rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!selectedReverseSubject}
+                disabled={!selectedReverseSubject || cashflowCalculationSource === "subject_funding_plans"}
                 onClick={executeReverseCalculation}
               >
                 <AppIcon name="reverse" size={16} /> 智能反算

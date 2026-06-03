@@ -1,0 +1,491 @@
+import type { IctSubjectGroupId, IctSubjectSide } from "./ictSubjectCatalog";
+
+export type SubjectFundingPlanMode = "upfront" | "equal" | "custom";
+export type SubjectFundingPlanSource = "manual" | "template" | "migration";
+export type CashflowCalculationSource = "legacy_model" | "subject_funding_plans";
+
+export type SubjectFundingSubjectRef = {
+  side: IctSubjectSide;
+  groupId: IctSubjectGroupId;
+  key: string;
+};
+
+export interface SubjectFundingPlan {
+  id: string;
+  subjectRef: SubjectFundingSubjectRef;
+  mode: SubjectFundingPlanMode;
+  annualInclValues: number[];
+  enabled: boolean;
+  source: SubjectFundingPlanSource;
+  equalYears?: number;
+  updatedAt?: string;
+}
+
+export type SubjectFundingPlans = Record<string, SubjectFundingPlan>;
+
+export type FundingPlanValidationResult = {
+  valid: boolean;
+  subjectAmountIncl: number;
+  plannedAmountIncl: number;
+  difference: number;
+};
+
+export type FundingPlanCoverageIssueType =
+  | "missing_plan"
+  | "disabled_plan"
+  | "invalid_length"
+  | "negative_annual_value"
+  | "amount_mismatch"
+  | "zero_subject_with_nonzero_plan";
+
+export type SubjectFundingPlanCoverageSubject = {
+  subjectRef: SubjectFundingSubjectRef;
+  displayName: string;
+  subjectAmountIncl: number;
+  taxRate: number;
+  isItScope?: boolean;
+};
+
+export type FundingPlanCoverageIssue = {
+  type: FundingPlanCoverageIssueType;
+  subjectRef: SubjectFundingSubjectRef;
+  planId: string;
+  displayName: string;
+  side: IctSubjectSide;
+  message: string;
+  subjectAmountIncl: number;
+  plannedAmountIncl?: number;
+  difference?: number;
+};
+
+export type FundingPlanCoverageCounts = {
+  revenueSubjectCount: number;
+  costSubjectCount: number;
+  revenuePlannedCount: number;
+  costPlannedCount: number;
+  zeroSubjectWithNonzeroPlanCount: number;
+  issueCount: number;
+};
+
+export type FundingPlanCoverageResult = {
+  valid: boolean;
+  issues: FundingPlanCoverageIssue[];
+  counts: FundingPlanCoverageCounts;
+};
+
+export type SubjectFundingAnnualCashflow = {
+  source: "subject_funding_plans";
+  annualRevenueIncl: number[];
+  annualCostIncl: number[];
+  annualRevenueExcl: number[];
+  annualCostExcl: number[];
+  annualItRevenueExcl: number[];
+  annualItCostExcl: number[];
+  annualNetIncl: number[];
+  annualNetExcl: number[];
+};
+
+const PLAN_YEARS = 10;
+
+const toMoneyCents = (value: number) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return Math.round(numeric * 100);
+};
+
+const toSignedMoneyCents = (value: unknown) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.round(numeric * 100);
+};
+
+const roundSignedFundingMoney = (value: number) => toSignedMoneyCents(value) / 100;
+
+const formatFundingAmount = (value: number) =>
+  roundSignedFundingMoney(value).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+const sideLabel = (side: IctSubjectSide) => side === "revenue" ? "收入" : "投入";
+const actionLabel = (side: IctSubjectSide) => side === "revenue" ? "收款" : "付款";
+
+export const roundFundingMoney = (value: number) => toMoneyCents(value) / 100;
+
+export const clampFundingPlanYears = (value: number) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return PLAN_YEARS;
+  return Math.max(1, Math.min(Math.trunc(numeric), PLAN_YEARS));
+};
+
+export const createSubjectFundingPlanId = (ref: SubjectFundingSubjectRef) =>
+  `${ref.side}:${ref.groupId}:${ref.key}`;
+
+export const normalizeCashflowCalculationSource = (value: unknown): CashflowCalculationSource =>
+  value === "subject_funding_plans" ? "subject_funding_plans" : "legacy_model";
+
+export const normalizeAnnualInclValues = (values: unknown): number[] => {
+  const source = Array.isArray(values) ? values : [];
+  return Array.from({ length: PLAN_YEARS }, (_, index) => {
+    const numeric = Number(source[index] ?? 0);
+    return roundFundingMoney(numeric);
+  });
+};
+
+export const buildUpfrontAnnualInclValues = (subjectAmountIncl: number): number[] => {
+  const values = Array(PLAN_YEARS).fill(0);
+  values[0] = roundFundingMoney(subjectAmountIncl);
+  return values;
+};
+
+export const buildEqualAnnualInclValues = (subjectAmountIncl: number, equalYears = PLAN_YEARS): number[] => {
+  const values = Array(PLAN_YEARS).fill(0);
+  const years = clampFundingPlanYears(equalYears);
+  const totalCents = toMoneyCents(subjectAmountIncl);
+  if (totalCents <= 0) return values;
+
+  const baseCents = Math.floor(totalCents / years);
+  const tailCents = totalCents - baseCents * years;
+  for (let index = 0; index < years; index += 1) {
+    values[index] = baseCents / 100;
+  }
+  values[years - 1] = (baseCents + tailCents) / 100;
+  return values;
+};
+
+export const createDefaultSubjectFundingPlan = (
+  subjectRef: SubjectFundingSubjectRef,
+  subjectAmountIncl: number,
+): SubjectFundingPlan => ({
+  id: createSubjectFundingPlanId(subjectRef),
+  subjectRef,
+  mode: "upfront",
+  annualInclValues: buildUpfrontAnnualInclValues(subjectAmountIncl),
+  enabled: true,
+  source: "manual",
+  updatedAt: new Date().toISOString(),
+});
+
+export const normalizeSubjectFundingPlan = (value: unknown): SubjectFundingPlan | null => {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<SubjectFundingPlan> & {
+    subject_ref?: Partial<SubjectFundingSubjectRef>;
+    annual_incl_values?: unknown;
+    equal_years?: number;
+  };
+  const rawRef = raw.subjectRef || raw.subject_ref;
+  if (!rawRef || rawRef.side !== "revenue" && rawRef.side !== "cost" || !rawRef.groupId || !rawRef.key) {
+    return null;
+  }
+
+  const subjectRef: SubjectFundingSubjectRef = {
+    side: rawRef.side,
+    groupId: rawRef.groupId as IctSubjectGroupId,
+    key: String(rawRef.key),
+  };
+  const mode: SubjectFundingPlanMode =
+    raw.mode === "equal" || raw.mode === "custom" || raw.mode === "upfront" ? raw.mode : "upfront";
+  const source: SubjectFundingPlanSource =
+    raw.source === "template" || raw.source === "migration" || raw.source === "manual" ? raw.source : "manual";
+
+  return {
+    id: createSubjectFundingPlanId(subjectRef),
+    subjectRef,
+    mode,
+    annualInclValues: normalizeAnnualInclValues(raw.annualInclValues ?? raw.annual_incl_values),
+    enabled: raw.enabled !== false,
+    source,
+    equalYears: clampFundingPlanYears(Number(raw.equalYears ?? raw.equal_years ?? PLAN_YEARS)),
+    updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : undefined,
+  };
+};
+
+export const normalizeSubjectFundingPlans = (value: unknown): SubjectFundingPlans => {
+  if (!value || typeof value !== "object") return {};
+  return Object.values(value as Record<string, unknown>).reduce<SubjectFundingPlans>((plans, rawPlan) => {
+    const plan = normalizeSubjectFundingPlan(rawPlan);
+    if (!plan) return plans;
+    plans[plan.id] = plan;
+    return plans;
+  }, {});
+};
+
+export const updateSubjectFundingPlanMode = (
+  plan: SubjectFundingPlan,
+  subjectAmountIncl: number,
+  mode: SubjectFundingPlanMode,
+  equalYears = plan.equalYears || PLAN_YEARS,
+): SubjectFundingPlan => ({
+  ...plan,
+  mode,
+  equalYears: mode === "equal" ? clampFundingPlanYears(equalYears) : plan.equalYears,
+  annualInclValues: mode === "upfront"
+    ? buildUpfrontAnnualInclValues(subjectAmountIncl)
+    : mode === "equal"
+      ? buildEqualAnnualInclValues(subjectAmountIncl, equalYears)
+      : normalizeAnnualInclValues(plan.annualInclValues),
+  enabled: true,
+  updatedAt: new Date().toISOString(),
+});
+
+export const updateSubjectFundingPlanAnnualValue = (
+  plan: SubjectFundingPlan,
+  yearIndex: number,
+  value: number,
+): SubjectFundingPlan => {
+  const annualInclValues = normalizeAnnualInclValues(plan.annualInclValues);
+  if (yearIndex >= 0 && yearIndex < PLAN_YEARS) {
+    annualInclValues[yearIndex] = roundFundingMoney(value);
+  }
+  return {
+    ...plan,
+    mode: "custom",
+    annualInclValues,
+    enabled: true,
+    updatedAt: new Date().toISOString(),
+  };
+};
+
+export const setSubjectFundingPlanEnabled = (
+  plan: SubjectFundingPlan,
+  enabled: boolean,
+): SubjectFundingPlan => ({
+  ...plan,
+  enabled,
+  updatedAt: new Date().toISOString(),
+});
+
+export const sumSubjectFundingPlanAnnualIncl = (plan: SubjectFundingPlan | null | undefined) =>
+  normalizeAnnualInclValues(plan?.annualInclValues).reduce((sum, value) => sum + value, 0);
+
+export const validateSubjectFundingPlan = (
+  plan: SubjectFundingPlan | null | undefined,
+  subjectAmountIncl: number,
+): FundingPlanValidationResult => {
+  const subjectCents = toMoneyCents(subjectAmountIncl);
+  const plannedCents = toMoneyCents(sumSubjectFundingPlanAnnualIncl(plan));
+  const differenceCents = subjectCents - plannedCents;
+  return {
+    valid: differenceCents === 0,
+    subjectAmountIncl: subjectCents / 100,
+    plannedAmountIncl: plannedCents / 100,
+    difference: differenceCents / 100,
+  };
+};
+
+const getRawAnnualValues = (plan: SubjectFundingPlan | null | undefined) =>
+  Array.isArray(plan?.annualInclValues) ? plan.annualInclValues : [];
+
+const sumRawAnnualCents = (plan: SubjectFundingPlan | null | undefined) =>
+  getRawAnnualValues(plan).reduce((sum, value) => sum + toSignedMoneyCents(value), 0);
+
+const hasRawNonzeroAnnualValue = (plan: SubjectFundingPlan | null | undefined) =>
+  getRawAnnualValues(plan).some(value => Math.abs(toSignedMoneyCents(value)) > 0);
+
+const pushCoverageIssue = (
+  issues: FundingPlanCoverageIssue[],
+  subject: SubjectFundingPlanCoverageSubject,
+  type: FundingPlanCoverageIssueType,
+  message: string,
+  plannedAmountIncl?: number,
+  difference?: number,
+) => {
+  issues.push({
+    type,
+    subjectRef: subject.subjectRef,
+    planId: createSubjectFundingPlanId(subject.subjectRef),
+    displayName: subject.displayName,
+    side: subject.subjectRef.side,
+    message,
+    subjectAmountIncl: roundFundingMoney(subject.subjectAmountIncl),
+    plannedAmountIncl,
+    difference,
+  });
+};
+
+export const validateSubjectFundingPlanCoverage = (
+  subjects: SubjectFundingPlanCoverageSubject[],
+  plans: SubjectFundingPlans,
+): FundingPlanCoverageResult => {
+  const issues: FundingPlanCoverageIssue[] = [];
+  const counts: FundingPlanCoverageCounts = {
+    revenueSubjectCount: 0,
+    costSubjectCount: 0,
+    revenuePlannedCount: 0,
+    costPlannedCount: 0,
+    zeroSubjectWithNonzeroPlanCount: 0,
+    issueCount: 0,
+  };
+
+  subjects.forEach(subject => {
+    const planId = createSubjectFundingPlanId(subject.subjectRef);
+    const plan = plans[planId];
+    const subjectCents = toMoneyCents(subject.subjectAmountIncl);
+    const subjectAmount = subjectCents / 100;
+    const label = sideLabel(subject.subjectRef.side);
+    const action = actionLabel(subject.subjectRef.side);
+
+    if (subjectCents <= 0) {
+      if (plan && hasRawNonzeroAnnualValue(plan)) {
+        counts.zeroSubjectWithNonzeroPlanCount += 1;
+        pushCoverageIssue(
+          issues,
+          subject,
+          "zero_subject_with_nonzero_plan",
+          `${label}科目“${subject.displayName}”当前金额为 0，但${action}计划仍存在非零年度金额。`,
+          sumRawAnnualCents(plan) / 100,
+          -sumRawAnnualCents(plan) / 100,
+        );
+      }
+      return;
+    }
+
+    if (subject.subjectRef.side === "revenue") counts.revenueSubjectCount += 1;
+    else counts.costSubjectCount += 1;
+
+    if (!plan) {
+      pushCoverageIssue(
+        issues,
+        subject,
+        "missing_plan",
+        `${label}科目“${subject.displayName}”含税金额 ${formatFundingAmount(subjectAmount)} 元，尚未维护${action}计划。`,
+      );
+      return;
+    }
+
+    if (!plan.enabled) {
+      pushCoverageIssue(
+        issues,
+        subject,
+        "disabled_plan",
+        `${label}科目“${subject.displayName}”已维护${action}计划，但当前计划已停用。`,
+      );
+      return;
+    }
+
+    const annualValues = getRawAnnualValues(plan);
+    const rowIssueStart = issues.length;
+
+    if (annualValues.length !== PLAN_YEARS) {
+      pushCoverageIssue(
+        issues,
+        subject,
+        "invalid_length",
+        `${label}科目“${subject.displayName}”的${action}计划不是完整 10 年年度金额。`,
+      );
+    }
+
+    if (annualValues.some(value => toSignedMoneyCents(value) < 0)) {
+      pushCoverageIssue(
+        issues,
+        subject,
+        "negative_annual_value",
+        `${label}科目“${subject.displayName}”的${action}计划存在负数年度金额。`,
+      );
+    }
+
+    const plannedCents = sumRawAnnualCents(plan);
+    if (plannedCents !== subjectCents) {
+      const plannedAmount = plannedCents / 100;
+      const difference = (subjectCents - plannedCents) / 100;
+      pushCoverageIssue(
+        issues,
+        subject,
+        "amount_mismatch",
+        `${label}科目“${subject.displayName}”的${action}计划合计 ${formatFundingAmount(plannedAmount)} 元，与科目含税金额 ${formatFundingAmount(subjectAmount)} 元不一致，差额 ${formatFundingAmount(difference)} 元。`,
+        plannedAmount,
+        difference,
+      );
+    }
+
+    if (issues.length === rowIssueStart) {
+      if (subject.subjectRef.side === "revenue") counts.revenuePlannedCount += 1;
+      else counts.costPlannedCount += 1;
+    }
+  });
+
+  counts.issueCount = issues.length;
+  return {
+    valid: issues.length === 0,
+    issues,
+    counts,
+  };
+};
+
+const isSubjectItScope = (subject: SubjectFundingPlanCoverageSubject) => {
+  if (subject.isItScope !== undefined) return subject.isItScope;
+  return subject.subjectRef.groupId === "revIt" || subject.subjectRef.groupId === "costIt";
+};
+
+const addAnnualValue = (target: number[], index: number, value: number) => {
+  target[index] = roundSignedFundingMoney(target[index] + value);
+};
+
+export const buildAnnualCashflowFromSubjectFundingPlans = (
+  subjects: SubjectFundingPlanCoverageSubject[],
+  plans: SubjectFundingPlans,
+): SubjectFundingAnnualCashflow => {
+  const annualRevenueIncl = Array(PLAN_YEARS).fill(0);
+  const annualCostIncl = Array(PLAN_YEARS).fill(0);
+  const annualRevenueExcl = Array(PLAN_YEARS).fill(0);
+  const annualCostExcl = Array(PLAN_YEARS).fill(0);
+  const annualItRevenueExcl = Array(PLAN_YEARS).fill(0);
+  const annualItCostExcl = Array(PLAN_YEARS).fill(0);
+
+  subjects.forEach(subject => {
+    const subjectCents = toMoneyCents(subject.subjectAmountIncl);
+    if (subjectCents <= 0) return;
+
+    const plan = plans[createSubjectFundingPlanId(subject.subjectRef)];
+    if (!plan?.enabled) return;
+
+    const taxRate = Number(subject.taxRate);
+    const divisor = 1 + (Number.isFinite(taxRate) ? taxRate : 0) / 100;
+    const annualValues = normalizeAnnualInclValues(plan.annualInclValues);
+
+    annualValues.forEach((annualIncl, index) => {
+      const inclValue = roundFundingMoney(annualIncl);
+      const exclValue = roundSignedFundingMoney(inclValue / divisor);
+      if (subject.subjectRef.side === "revenue") {
+        addAnnualValue(annualRevenueIncl, index, inclValue);
+        addAnnualValue(annualRevenueExcl, index, exclValue);
+        if (isSubjectItScope(subject)) addAnnualValue(annualItRevenueExcl, index, exclValue);
+      } else {
+        addAnnualValue(annualCostIncl, index, inclValue);
+        addAnnualValue(annualCostExcl, index, exclValue);
+        if (isSubjectItScope(subject)) addAnnualValue(annualItCostExcl, index, exclValue);
+      }
+    });
+  });
+
+  return {
+    source: "subject_funding_plans",
+    annualRevenueIncl,
+    annualCostIncl,
+    annualRevenueExcl,
+    annualCostExcl,
+    annualItRevenueExcl,
+    annualItCostExcl,
+    annualNetIncl: annualRevenueIncl.map((value, index) => roundSignedFundingMoney(value - annualCostIncl[index])),
+    annualNetExcl: annualRevenueExcl.map((value, index) => roundSignedFundingMoney(value - annualCostExcl[index])),
+  };
+};
+
+export const upsertSubjectFundingPlan = (
+  plans: SubjectFundingPlans,
+  plan: SubjectFundingPlan,
+): SubjectFundingPlans => ({
+  ...plans,
+  [plan.id]: normalizeSubjectFundingPlan(plan) || plan,
+});
+
+export const removeSubjectFundingPlan = (
+  plans: SubjectFundingPlans,
+  subjectRef: SubjectFundingSubjectRef,
+): SubjectFundingPlans => {
+  const id = createSubjectFundingPlanId(subjectRef);
+  if (!plans[id]) return plans;
+  const nextPlans = { ...plans };
+  delete nextPlans[id];
+  return nextPlans;
+};

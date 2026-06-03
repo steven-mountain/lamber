@@ -13,6 +13,16 @@ import {
   type BalanceAllocationRule,
   type BalanceAllocationState,
 } from "../lib/ictBalanceAllocation";
+import {
+  normalizeCashflowCalculationSource,
+  normalizeSubjectFundingPlans,
+  removeSubjectFundingPlan,
+  upsertSubjectFundingPlan as upsertSubjectFundingPlanRecord,
+  type CashflowCalculationSource,
+  type SubjectFundingPlan,
+  type SubjectFundingPlans,
+  type SubjectFundingSubjectRef,
+} from "../lib/ictSubjectFundingPlan";
 
 export { normalizeProjectYears };
 
@@ -280,6 +290,9 @@ export function useIctState() {
   const [balanceAllocation, setBalanceAllocation] = useState<BalanceAllocationState>(
     createDefaultBalanceAllocationState(),
   );
+  const [subjectFundingPlans, setSubjectFundingPlansState] = useState<SubjectFundingPlans>({});
+  const [cashflowCalculationSource, setCashflowCalculationSourceState] =
+    useState<CashflowCalculationSource>("legacy_model");
 
   // --- Revenue State ---
   const [revIt, setRevIt] = useState({
@@ -372,6 +385,22 @@ export function useIctState() {
 
   const removeCashflowSegment = (id: string) => {
     setCashflowSegments(prev => prev.length <= 1 ? prev : prev.filter(segment => segment.id !== id));
+  };
+
+  const setSubjectFundingPlans = (plans: SubjectFundingPlans | unknown) => {
+    setSubjectFundingPlansState(normalizeSubjectFundingPlans(plans));
+  };
+
+  const setCashflowCalculationSource = (source: CashflowCalculationSource | unknown) => {
+    setCashflowCalculationSourceState(normalizeCashflowCalculationSource(source));
+  };
+
+  const upsertSubjectFundingPlan = (plan: SubjectFundingPlan) => {
+    setSubjectFundingPlansState(prev => upsertSubjectFundingPlanRecord(prev, plan));
+  };
+
+  const removeSubjectFundingPlanForRef = (subjectRef: SubjectFundingSubjectRef) => {
+    setSubjectFundingPlansState(prev => removeSubjectFundingPlan(prev, subjectRef));
   };
 
   const updateTaxItemsInclBatch = (updates: TaxItemInclUpdate[]) => {
@@ -570,6 +599,8 @@ export function useIctState() {
     techItems, setTechItems,
     inqVendors, setInqVendors,
     balanceAllocation, setBalanceAllocation, updateBalanceRule,
+    cashflowCalculationSource, setCashflowCalculationSource,
+    subjectFundingPlans, setSubjectFundingPlans, upsertSubjectFundingPlan, removeSubjectFundingPlanForRef,
     revIt, setRevIt,
     revCt, setRevCt,
     revNonItCt, setRevNonItCt,

@@ -813,6 +813,7 @@ pub fn auto_import_excel_calculation(
             1
         }),
         cashflow_model: Some("model_a".to_string()),
+        cashflow_calculation_source: Some("legacy_model".to_string()),
         cashflow_segment_value_mode: Some("ratio".to_string()),
         cashflow_segments: Some(vec![]),
         project_background: None,

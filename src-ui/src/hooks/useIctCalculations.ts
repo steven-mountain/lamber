@@ -16,6 +16,7 @@ import {
 } from "./useIctState";
 import {
   ICT_SUBJECT_DEFINITIONS,
+  getSubjectExcelDisplayName,
   normalizeCustomSubjectName,
   type IctSubjectDefinition,
 } from "../lib/ictSubjectCatalog";
@@ -32,6 +33,11 @@ import {
   type ReverseSubjectOption,
   type ReverseSubjectState,
 } from "../lib/ictReverseCalculation";
+import {
+  buildAnnualCashflowFromSubjectFundingPlans,
+  validateSubjectFundingPlanCoverage,
+  type SubjectFundingPlanCoverageSubject,
+} from "../lib/ictSubjectFundingPlan";
 
 // Labels mapping
 const cashflowModelLabels: Record<string, string> = {
@@ -142,6 +148,59 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   const effectiveDistRev = state.distRev;
   const effectiveDistCost = state.distCost;
 
+  const buildSubjectFundingCoverageSubjects = (sources?: {
+    revItState?: typeof state.revIt;
+    revCtState?: typeof state.revCt;
+    revNonItCtState?: typeof state.revNonItCt;
+    costItState?: typeof state.costIt;
+    costCtState?: typeof state.costCt;
+    costMixState?: typeof state.costMix;
+  }): SubjectFundingPlanCoverageSubject[] => {
+    const revItSource = sources?.revItState ?? state.revIt;
+    const revCtSource = sources?.revCtState ?? state.revCt;
+    const revNonItCtSource = sources?.revNonItCtState ?? state.revNonItCt;
+    const costItSource = sources?.costItState ?? state.costIt;
+    const costCtSource = sources?.costCtState ?? state.costCt;
+    const costMixSource = sources?.costMixState ?? state.costMix;
+
+    const resolveItem = (subject: IctSubjectDefinition): TaxItem | null => {
+      if (subject.groupId === "revIt") return revItSource[subject.key as keyof typeof revItSource] || null;
+      if (subject.groupId === "revCt") return revCtSource[subject.key as keyof typeof revCtSource] || null;
+      if (subject.groupId === "revNonItCt") return revNonItCtSource;
+      if (subject.groupId === "costIt") return costItSource[subject.key as keyof typeof costItSource] || null;
+      if (subject.groupId === "costCt") return costCtSource[subject.key as keyof typeof costCtSource] || null;
+      if (subject.groupId === "costMix") return costMixSource[subject.key as keyof typeof costMixSource] || null;
+      return null;
+    };
+
+    return ICT_SUBJECT_DEFINITIONS.map(subject => {
+      const item = resolveItem(subject);
+      return {
+        subjectRef: {
+          side: subject.side,
+          groupId: subject.groupId,
+          key: subject.key,
+        },
+        displayName: getSubjectExcelDisplayName(subject, item),
+        subjectAmountIncl: Number(item?.incl ?? 0),
+        taxRate: Number(item?.tax ?? 0),
+        isItScope: subject.groupId === "revIt" || subject.groupId === "costIt",
+      };
+    });
+  };
+
+  const subjectFundingCoverageSubjects = buildSubjectFundingCoverageSubjects();
+  const subjectFundingCoverage = validateSubjectFundingPlanCoverage(
+    subjectFundingCoverageSubjects,
+    state.subjectFundingPlans,
+  );
+  const subjectFundingAnnualCashflow = buildAnnualCashflowFromSubjectFundingPlans(
+    subjectFundingCoverageSubjects,
+    state.subjectFundingPlans,
+  );
+  const subjectFundingCalculationBlocked =
+    state.cashflowCalculationSource === "subject_funding_plans" && !subjectFundingCoverage.valid;
+
   const buildInputDataPayload = (options?: {
     segments?: CashflowSegment[];
     revItState?: typeof state.revIt;
@@ -165,6 +224,21 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     const costItForPayload = options?.costItState ?? state.costIt;
     const costCtForPayload = options?.costCtState ?? state.costCt;
     const costMixForPayload = options?.costMixState ?? state.costMix;
+    const calculationSource = state.cashflowCalculationSource || "legacy_model";
+    const subjectRowsForPayload = buildSubjectFundingCoverageSubjects({
+      revItState: revItForPayload,
+      revCtState: revCtForPayload,
+      revNonItCtState: revNonItCtForPayload,
+      costItState: costItForPayload,
+      costCtState: costCtForPayload,
+      costMixState: costMixForPayload,
+    });
+    const coverageForPayload = validateSubjectFundingPlanCoverage(subjectRowsForPayload, state.subjectFundingPlans);
+    const annualCashflowForPayload = buildAnnualCashflowFromSubjectFundingPlans(subjectRowsForPayload, state.subjectFundingPlans);
+    const useSubjectFundingCashflow = calculationSource === "subject_funding_plans" && coverageForPayload.valid;
+    const useLegacyDirectSegments = calculationSource === "legacy_model"
+      && state.cashflowModel === 'model_e'
+      && state.segmentValueMode === "amount";
 
     return {
       project_name: state.projName,
@@ -173,6 +247,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       discount_rate: String(state.discountRate),
       project_years: state.projectYears,
       cashflow_model: state.cashflowModel,
+      cashflow_calculation_source: calculationSource,
       rev_distribution: revDistributionForPayload,
       cost_distribution: costDistributionForPayload,
       cashflow_segment_value_mode: state.segmentValueMode,
@@ -180,10 +255,27 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       project_background: state.projectBackground,
       revenue_balance_rule: serializeBalanceAllocationRule(state.balanceAllocation.revenue),
       investment_balance_rule: serializeBalanceAllocationRule(state.balanceAllocation.investment),
-      rev_cashflow_excl: state.cashflowModel === 'model_e' && state.segmentValueMode === "amount" ? cashflowPayloadValues(directCashflowForPayload.rev) : null,
-      cost_cashflow_excl: state.cashflowModel === 'model_e' && state.segmentValueMode === "amount" ? cashflowPayloadValues(directCashflowForPayload.cost) : null,
-      it_rev_cashflow_excl: state.cashflowModel === 'model_e' && state.segmentValueMode === "amount" ? cashflowPayloadValues(directCashflowForPayload.itRev) : null,
-      it_cost_cashflow_excl: state.cashflowModel === 'model_e' && state.segmentValueMode === "amount" ? cashflowPayloadValues(directCashflowForPayload.itCost) : null,
+      subject_funding_plans: state.subjectFundingPlans,
+      rev_cashflow_excl: useSubjectFundingCashflow
+        ? cashflowPayloadValues(annualCashflowForPayload.annualRevenueExcl)
+        : useLegacyDirectSegments
+          ? cashflowPayloadValues(directCashflowForPayload.rev)
+          : null,
+      cost_cashflow_excl: useSubjectFundingCashflow
+        ? cashflowPayloadValues(annualCashflowForPayload.annualCostExcl)
+        : useLegacyDirectSegments
+          ? cashflowPayloadValues(directCashflowForPayload.cost)
+          : null,
+      it_rev_cashflow_excl: useSubjectFundingCashflow
+        ? cashflowPayloadValues(annualCashflowForPayload.annualItRevenueExcl)
+        : useLegacyDirectSegments
+          ? cashflowPayloadValues(directCashflowForPayload.itRev)
+          : null,
+      it_cost_cashflow_excl: useSubjectFundingCashflow
+        ? cashflowPayloadValues(annualCashflowForPayload.annualItCostExcl)
+        : useLegacyDirectSegments
+          ? cashflowPayloadValues(directCashflowForPayload.itCost)
+          : null,
       ignore_tail_difference: state.ignoredTailValue !== null,
       tail_difference_value: state.ignoredTailValue || "0",
       rev_it_integration: serializeTaxItemForPayload(revItForPayload.integration),
@@ -220,6 +312,11 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   const getInputDataPayload = () => buildInputDataPayload();
 
   const performCalculation = useCallback(async () => {
+    if (state.cashflowCalculationSource === "subject_funding_plans" && !subjectFundingCoverage.valid) {
+      console.warn("Subject funding plan coverage is invalid. Keeping previous calculation result.");
+      return;
+    }
+
     try {
       const res: any = await invoke('calculate_ict_benefit', { input: getInputDataPayload() });
       if (res) {
@@ -229,7 +326,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     } catch (e) {
       console.error(e);
     }
-  }, [state]);
+  }, [state, subjectFundingCoverage]);
 
   // Recalculate whenever state variables change
   useEffect(() => {
@@ -239,6 +336,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     state.costIt, state.costCt, state.costMix,
     state.projectYears, state.discountRate, state.cashflowModel,
     state.distRev, state.distCost, state.segmentValueMode, state.cashflowSegments,
+    state.cashflowCalculationSource, state.subjectFundingPlans,
     performCalculation
   ]);
 
@@ -262,7 +360,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     state.projectBackground, state.projName, state.customerName, state.propertyRights,
     state.discountRate, state.projectYears, state.cashflowModel,
     state.distRev, state.distCost, state.segmentValueMode, state.cashflowSegments,
-    state.ignoredTailValue, state.balanceAllocation, updateData, buildAiContextPayload
+    state.ignoredTailValue, state.balanceAllocation, state.cashflowCalculationSource, state.subjectFundingPlans, updateData, buildAiContextPayload
   ]);
 
   useEffect(() => {
@@ -284,7 +382,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     state.projectBackground, metrics, cashflowTable, state.projName, state.customerName,
     state.propertyRights, state.discountRate, state.projectYears, state.cashflowModel,
     state.distRev, state.distCost, state.segmentValueMode, state.cashflowSegments,
-    state.ignoredTailValue, state.balanceAllocation, updateData, buildAiContextPayload
+    state.ignoredTailValue, state.balanceAllocation, state.cashflowCalculationSource, state.subjectFundingPlans, updateData, buildAiContextPayload
   ]);
 
   const handleSelFeeChange = async (type: 'quote' | 'markup' | 'limit', val: string) => {
@@ -1053,6 +1151,9 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     costInclTotal,
     segmentRevenueInclTotal,
     segmentCostInclTotal,
+    subjectFundingCoverage,
+    subjectFundingAnnualCashflow,
+    subjectFundingCalculationBlocked,
     performCalculation,
     handleSelFeeChange,
     applySelectionLimit,

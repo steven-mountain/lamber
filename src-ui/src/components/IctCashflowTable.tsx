@@ -31,29 +31,48 @@ export const IctCashflowTable: React.FC<IctCashflowTableProps> = ({ state, calcu
   const {
     cashflowModel,
     segmentValueMode,
+    cashflowCalculationSource,
   } = state;
 
   const {
     cashflowTable,
     directSegmentCashflow,
+    subjectFundingAnnualCashflow,
+    subjectFundingCalculationBlocked,
   } = calculations;
 
   const effectiveDistRev = state.distRev;
   const effectiveDistCost = state.distCost;
 
   const hasDirectSegmentCashflow = cashflowModel === "model_e" && segmentValueMode === "amount";
+  const usesSubjectFundingPlans = cashflowCalculationSource === "subject_funding_plans";
 
   const distributionPreview = (
     <div className="mt-6 mb-4 border-t border-border pt-4 text-sm">
       <div className="font-bold text-foreground mb-2">资金分布预览</div>
       <div className="grid grid-cols-1 gap-1 text-secondary-foreground">
-        <div>当前资金收付模型：{cashflowModelLabels[cashflowModel]}</div>
-        <div>收入分布：{formatDistribution(effectiveDistRev)}</div>
-        <div>成本分布：{formatDistribution(effectiveDistCost)}</div>
-        {hasDirectSegmentCashflow && (
+        <div>当前现金流计算口径：{usesSubjectFundingPlans ? "按科目收付款计划计算" : "沿用原资金模型计算"}</div>
+        {usesSubjectFundingPlans ? (
           <>
-            <div>收入现金流(不含税)：{formatCashflowSeries(directSegmentCashflow.rev)}</div>
-            <div>成本现金流(不含税)：{formatCashflowSeries(directSegmentCashflow.cost)}</div>
+            <div>科目计划现金流入(不含税)：{formatCashflowSeries(subjectFundingAnnualCashflow?.annualRevenueExcl || [])}</div>
+            <div>科目计划现金流出(不含税)：{formatCashflowSeries(subjectFundingAnnualCashflow?.annualCostExcl || [])}</div>
+            {subjectFundingCalculationBlocked && (
+              <div className="text-warning-foreground font-semibold">
+                当前覆盖校验未通过，表格保留上一次有效计算结果。
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div>当前资金收付模型：{cashflowModelLabels[cashflowModel]}</div>
+            <div>收入分布：{formatDistribution(effectiveDistRev)}</div>
+            <div>成本分布：{formatDistribution(effectiveDistCost)}</div>
+            {hasDirectSegmentCashflow && (
+              <>
+                <div>收入现金流(不含税)：{formatCashflowSeries(directSegmentCashflow.rev)}</div>
+                <div>成本现金流(不含税)：{formatCashflowSeries(directSegmentCashflow.cost)}</div>
+              </>
+            )}
           </>
         )}
       </div>

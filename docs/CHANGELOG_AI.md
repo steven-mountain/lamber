@@ -4,6 +4,54 @@ This changelog records structural modifications, business rules, and context cha
 
 ## 2026-06-03
 
+### ICT Subject-Level Funding Plans Phase 2
+
+Created:
+- [test_subject_funding_cashflow.cjs](../src-ui/scripts/test_subject_funding_cashflow.cjs): Added pure Node tests for subject-plan coverage validation, cashflow source normalization, and annual cashflow aggregation with per-subject tax conversion.
+
+Modified:
+- [ictSubjectFundingPlan.ts](../src-ui/src/lib/ictSubjectFundingPlan.ts): Added `CashflowCalculationSource`, coverage issue/result types, full coverage validation, and subject-plan annual cashflow generation helpers. The annual cashflow helper converts each subject's annual tax-inclusive plan values to tax-exclusive values using that subject's tax rate before summing.
+- [useIctState.ts](../src-ui/src/hooks/useIctState.ts): Added `cashflowCalculationSource`, normalized setter, and legacy default behavior.
+- [useIctCalculations.ts](../src-ui/src/hooks/useIctCalculations.ts): Added coverage and annual cashflow derivation, serialized `cashflow_calculation_source`, and routed valid subject-plan annual arrays through existing Rust direct cashflow override fields. Invalid active subject-plan coverage blocks recalculation and keeps the previous result.
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Restores, saves, and clears the calculation source; renders the cashflow source selector and coverage summary; blocks switching into subject-plan mode when coverage is incomplete; blocks official benefit saves and document generation when active subject-plan coverage is invalid; disables smart reverse while subject-plan mode is active.
+- [IctSubjectFundingPlanEditor.tsx](../src-ui/src/components/IctSubjectFundingPlanEditor.tsx) and [IctCashflowTable.tsx](../src-ui/src/components/IctCashflowTable.tsx): Updated UI text and cashflow previews so the active source is visible and stale subject-plan states are explicit.
+- [projectService.ts](../src-ui/src/utils/projectService.ts), [ProjectFilesTab.tsx](../src-ui/src/components/project/ProjectFilesTab.tsx), [models.rs](../src-tauri/src/benefit/models.rs), [calculator.rs](../src-tauri/src/benefit/calculator.rs), and [excel.rs](../src-tauri/src/benefit/excel.rs): Added payload/source compatibility fields and legacy defaults.
+
+Tests:
+- Ran `node scripts/test_subject_funding_plan.cjs` in `src-ui`: passed.
+- Ran `node scripts/test_subject_funding_cashflow.cjs` in `src-ui`: passed.
+- Ran `npm run build` in `src-ui`: TypeScript and Vite build passed.
+- Ran `cargo test` in `src-tauri`: 10 tests passed; only existing compiler warnings were emitted.
+
+Decision:
+- Subject-level funding plans affect official cashflow only after an explicit user switch to `subject_funding_plans`; old projects and projects with plans remain on `legacy_model` unless switched.
+- New-source coverage failures do not fall back to legacy. The app keeps prior cashflow/metrics visible with an invalid/stale warning and blocks benefit saves/doc generation until coverage is repaired or legacy mode is selected.
+- Smart reverse remains a legacy-source feature for now because the current reverse solvers do not update every affected subject-level annual plan.
+
+### ICT Subject-Level Funding Plans Phase 1
+
+Created:
+- [ictSubjectFundingPlan.ts](../src-ui/src/lib/ictSubjectFundingPlan.ts): Added subject-level funding plan types and pure helpers for `side + groupId + key` IDs, default upfront plans, 1-10 year equal splits, custom annual value updates, normalization, advisory validation, upsert, and deleted-subject cleanup.
+- [IctSubjectFundingPlanEditor.tsx](../src-ui/src/components/IctSubjectFundingPlanEditor.tsx): Added inline revenue/cost subject funding plan editor with "收款计划" / "付款计划" wording, three modes (`upfront`, `equal`, `custom`), 10-year tax-inclusive annual inputs, enabled toggling, and difference/status messaging.
+- [test_subject_funding_plan.cjs](../src-ui/scripts/test_subject_funding_plan.cjs): Added a lightweight Node logic test for funding-plan helpers.
+
+Modified:
+- [useIctState.ts](../src-ui/src/hooks/useIctState.ts): Added `subjectFundingPlans` current state plus normalized setter, upsert, and subject-ref cleanup methods.
+- [useIctCalculations.ts](../src-ui/src/hooks/useIctCalculations.ts): Serializes `subject_funding_plans` into the existing lifecycle/AI payload for persisted context. Calculation formulas and reverse solvers are unchanged.
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Restores subject funding plans from lifecycle payloads or cashflow assumptions, persists them under cashflow assumptions, marks cashflow dirty when they change, clears stale plans when entering free/empty contexts, and renders the inline editor below each subject row.
+- [PROJECT_STATUS.md](../docs/PROJECT_STATUS.md), [ARCHITECTURE_MAP.md](../docs/ARCHITECTURE_MAP.md), [AI_CONTEXT.md](../docs/AI_CONTEXT.md): Updated long-term project status and architecture context.
+
+Tests:
+- Ran `node scripts/test_subject_funding_plan.cjs` in `src-ui`: passed.
+- Ran `npm run build` in `src-ui`: TypeScript and Vite build passed.
+- Ran `cargo test` in `src-tauri`: 10 tests passed; only existing compiler warnings were emitted.
+
+Decision:
+- Subject-level funding plans are current business state, not a calculation source in Phase 1.
+- Plans bind to concrete subject instances using `side + groupId + key`, not just `subjectCode`, so future duplicate standard subjects can maintain independent schedules.
+- Existing `cashflowModel`, `CashflowSegment`, NPV/IRR/payback, balance allocation, and smart reverse behavior remain unchanged.
+- Existing projects without `subject_funding_plans` / `subjectFundingPlans` normalize to `{}`. No migration from old funding models or segment schedules is performed in this phase.
+
 ### Custom Accent Color Real-Time Preview Fix
 
 Modified:

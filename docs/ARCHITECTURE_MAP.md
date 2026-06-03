@@ -1,6 +1,6 @@
 # ARCHITECTURE_MAP.md
 
-Last updated: 2026-06-03 (Front-End Advanced Appearance Customization & Accessibility Safeguards Phase 3)
+Last updated: 2026-06-03 (ICT Subject-Level Funding Plans Phase 2)
 
 ## 1. Repository overview
 
@@ -73,6 +73,7 @@ graph TD
 - **`src/lib/ictSubjectCatalog.ts`**: Fixed frontend catalog and shared presentation resolver for ICT billing subject identity. It maps stable `subjectCode`, UI group/key, standard subject name, Excel variable prefix, and document business prefix (`IT`, `CT`, `非IT/CT`, `综合类`) so product/business names and billing subject names remain separate from standard subject identity. `resolveBillingSubjectPresentation` centralizes Excel display names, document business names, and document dedup keys.
 - **`src/lib/ictBalanceAllocation.ts`**: Shared frontend rule helper for ICT revenue/investment total balancing. It normalizes and serializes `revenue_balance_rule` / `investment_balance_rule`, resolves stable `subjectCode + groupId + key` subject references, computes inclusive-amount differences with existing two-decimal money behavior, and reports missing/negative validation states without writing financial amounts itself.
 - **`src/lib/ictReverseCalculation.ts`**: Shared frontend helper for dynamic smart reverse calculation subjects. It builds eligible revenue/cost subject options from `ICT_SUBJECT_DEFINITIONS`, uses stable subject references (`side + subjectCode + groupId + key`), resolves display names through the shared subject resolver, applies candidate tax-inclusive amounts to arbitrary subject groups, mirrors the existing CT revenue-to-cost amount linkage, and resolves reverse modes (`normal`, `locked_total_structure`, `blocked`) for balance-allocation interactions.
+- **`src/lib/ictSubjectFundingPlan.ts`**: Shared frontend helper for subject-level funding plan state. It binds plans to concrete subject instances through `side + groupId + key`, creates default upfront plans, builds cents-exact equal splits over 1-10 years, normalizes legacy/unknown payloads, updates custom annual values, validates annual tax-inclusive totals against subject inclusive amount, validates full calculation-source coverage, and builds yearly subject-plan cashflow arrays with per-subject/per-year tax conversion.
 - **`src/ai/context/`**: AI chat context composer. It builds the per-message context bundle by reading the active project ID, loading saved official context from Workspace SQLite through `aiProjectContextService.ts`, and filtering the current frontend state into an unsaved draft overlay only when dirty scopes match the active project/page.
 - **`src/ai/context/workspaceProjectRouter.ts`**: Deterministic Workspace project-name router used by the composer. It matches explicit project names against the current Workspace project index, limits deep official context loading to two specified projects per turn, resolves one specified template when uniquely named, and returns warnings for ambiguous or unresolved routing.
 - **`src/ai/templateAssetSelection.ts`**: Cross-window event bridge for explicit template image analysis requests. It carries only template asset metadata (`projectId`, `templateId`, `assetId`, field label) and never carries physical file paths or image base64.
@@ -85,6 +86,7 @@ graph TD
   - [IctBasicInfo.tsx](../src-ui/src/components/IctBasicInfo.tsx): Project parameters form.
   - [IctCashflowTable.tsx](../src-ui/src/components/IctCashflowTable.tsx): 10-year present value table.
   - [IctMetricsDashboard.tsx](../src-ui/src/components/IctMetricsDashboard.tsx): Margin and NPV indicators overlay.
+  - [IctSubjectFundingPlanEditor.tsx](../src-ui/src/components/IctSubjectFundingPlanEditor.tsx): Inline editor for per-subject collection/payment plans. It edits 10-year tax-inclusive annual values, shows per-row consistency, and reflects whether the project currently uses legacy cashflow or subject-plan cashflow.
   - [ProjectFilesTab.tsx](../src-ui/src/components/project/ProjectFilesTab.tsx): Handles file binding, scanning, and main doc marking in the Project Board drawer.
   - [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx): The AI assistant drawer interface.
   - [IctSubjectRoleComponents.tsx](../src-ui/src/components/IctSubjectRoleComponents.tsx): UI components for subject role actions (SubjectRoleActions), summaries (SelectedSubjectRoleSummary), and smooth-scroll navigation (scrollToSubject, highlightSubjectElement).
@@ -187,6 +189,19 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 2. Input parameters (`IctInput` containing distributions) are calculated in [calculator.rs](../src-tauri/src/benefit/calculator.rs).
 3. Output results (`IctResult` with 10 cashflow row models containing PV, net cash, payback) are sent back to the frontend.
 4. Toggling tabs to "10年现金流推演" renders the cashflow row objects.
+
+### 4.3.1 Subject-level funding plan cashflow source flow
+
+1. Each subject-row funding plan is keyed by `side + groupId + key` and stored in `useIctState.subjectFundingPlans`.
+2. Opening a plan editor creates a default manual upfront plan whose first-year tax-inclusive value equals the current subject inclusive amount; existing plans are never auto-scaled when subject amounts later change.
+3. `IctSubjectFundingPlanEditor.tsx` updates plan mode, equal-year duration, custom annual values, and enabled state through pure helpers in `ictSubjectFundingPlan.ts`.
+4. `useIctState.cashflowCalculationSource` owns the mutually exclusive calculation source: `legacy_model` or `subject_funding_plans`. Missing/old/new projects default to `legacy_model`, and existing plans never auto-switch the source.
+5. `validateSubjectFundingPlanCoverage()` checks every non-zero revenue/cost subject before the new source can be selected. Required checks are: plan exists, enabled, exactly 10 annual values, no negative values, and tax-inclusive annual total equals the subject tax-inclusive amount. Zero-amount subjects do not require plans, but a non-zero plan on a zero subject is blocking.
+6. In `legacy_model`, `useIctCalculations.ts` preserves the existing model A-E distributions and `model_e` segment direct-cashflow overrides unchanged. Subject funding plans are serialized only.
+7. In `subject_funding_plans`, `buildAnnualCashflowFromSubjectFundingPlans()` converts each subject's annual tax-inclusive plan values to tax-exclusive cashflow per subject and per year using that subject's tax rate, then sums yearly revenue/cost and IT-specific arrays. These arrays are serialized to `rev_cashflow_excl`, `cost_cashflow_excl`, `it_rev_cashflow_excl`, and `it_cost_cashflow_excl` for the existing Rust calculator.
+8. If the new source is active and later edits invalidate coverage, `performCalculation()` refuses to call `calculate_ict_benefit`; the UI keeps the last valid cashflow/metrics visible with a stale warning. It does not fall back to legacy. Benefit-metric saves and document generation are blocked until coverage is valid or the source is switched back to legacy.
+9. Current-state persistence stores plans and the calculation source in `project_cashflow_states.assumptions_json`, and lifecycle/snapshot payloads carry `subject_funding_plans` plus `cashflow_calculation_source`. Rust `IctInput` accepts the source field for serialization compatibility; the formal annual cashflow still enters through the existing override arrays.
+10. Smart reverse calculation remains supported only for `legacy_model` in this phase. When `subject_funding_plans` is active, the UI disables reverse solving and asks users to switch back to legacy first.
 
 ### 4.4 AI Assistant context flow
 1. User types in form fields or switches tabs.

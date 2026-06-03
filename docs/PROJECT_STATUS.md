@@ -1,6 +1,28 @@
 # PROJECT_STATUS.md
 
-Last updated: 2026-06-03 (Front-End Advanced Appearance Customization & Accessibility Safeguards Phase 3)
+Last updated: 2026-06-03 (ICT Subject-Level Funding Plans Phase 2)
+
+## 0. ICT Subject-Level Funding Plans (Phase 2)
+
+The second phase of subject-level funding plans is complete. This phase adds an explicit project-level cashflow calculation source and lets fully covered subject plans drive the official annual cashflow calculation:
+- **Explicit Calculation Source**: Added `cashflowCalculationSource` / `cashflow_calculation_source` with two mutually exclusive modes: `legacy_model` and `subject_funding_plans`. Old, missing, newly created, and un-switched projects default to `legacy_model`; existing plans never auto-switch a project into the new calculation source.
+- **Coverage Validation Gate**: Switching to `subject_funding_plans` requires full coverage for every non-zero revenue/cost subject: plan exists, enabled, exactly 10 annual values, no negative annual values, and annual tax-inclusive total equals the subject tax-inclusive amount. Zero-amount subjects do not need plans, but any non-zero annual plan on a zero subject blocks the new source.
+- **Subject-Based Annual Cashflow**: When the new source is active and coverage is valid, the frontend builds yearly revenue/cost cashflow from subject-level plans. Tax conversion is performed per subject and per year using that subject's tax rate before annual totals are summed. The generated tax-exclusive arrays are passed to the existing Rust calculator through `rev_cashflow_excl`, `cost_cashflow_excl`, `it_rev_cashflow_excl`, and `it_cost_cashflow_excl`.
+- **Legacy Isolation**: `legacy_model` keeps the previous funding models, distributions, and `model_e` segment amount behavior unchanged. In `subject_funding_plans`, `cashflowModel` and `CashflowSegment` are retained for persistence/UI compatibility but are not used for current annual cashflow. There is no implicit mixed calculation.
+- **Invalid-State Behavior**: If a project is already on `subject_funding_plans` and later edits invalidate coverage, the app keeps the last valid result visible with a clear stale/invalid warning, does not recalculate with invalid plans, and does not silently fall back to legacy. Saving official benefit metrics or generating documents is blocked until coverage is fixed or the user switches back to legacy.
+- **Reverse Boundary**: Smart reverse calculation remains unchanged for legacy mode. While `subject_funding_plans` is active, smart reverse is temporarily disabled and the UI asks users to switch back to legacy mode before reverse solving.
+- **Tests**: Added pure Node tests for coverage validation and subject-plan annual cashflow generation, alongside the Phase 1 funding-plan helper tests.
+
+## 0. ICT Subject-Level Funding Plans (Phase 1)
+
+The first phase of subject-level funding plans is complete. This phase adds independent, per-subject collection/payment plan state and editing without changing the official cashflow or benefit calculation chain:
+- **Per-Subject Binding**: Funding plans bind to the concrete subject instance key `side + groupId + key` and use IDs shaped as `revenue:revIt:integration` or `cost:costIt:device`, avoiding `subjectCode` as the sole source of identity.
+- **Plan Data Model**: Added `SubjectFundingPlan` with `mode` (`upfront`, `equal`, `custom`), fixed 10-year tax-inclusive annual values, `enabled`, `source` (`manual`, `template`, `migration`), optional `equalYears`, and `updatedAt`.
+- **Pure Helper Module**: Added reusable creation, normalization, equal-year split, annual-value update, validation, upsert, and cleanup helpers. Equal splits use cents-based tail handling so the annual total strictly equals the subject inclusive amount.
+- **ICT UI Entry**: Each revenue/cost subject row now has a lightweight "收款计划" / "付款计划" entry. Opening an unmaintained plan creates a default first-year upfront plan from the current subject inclusive amount. The editor supports upfront, equal split from year 1 with 1-10 year duration, and custom annual amount editing.
+- **Validation Boundary**: The UI validates `sum(annualInclValues) === subject.incl` and reports consistent, under-planned, and over-planned states. Validation is advisory only in this phase and does not block saving, cashflow viewing, document generation, or existing reconciliation checks.
+- **Persistence Boundary**: Plans are stored in the ICT frontend state as `subjectFundingPlans`, serialized into lifecycle input payloads as `subject_funding_plans`, and persisted in `project_cashflow_states.assumptions_json.subjectFundingPlans` for current-state save/restore. Old projects initialize safely with `{}` and no migration from `cashflowModel` / `CashflowSegment` is attempted.
+- **Calculation Boundary**: Existing cashflow, NPV, IRR, payback, balance allocation, smart reverse calculation, and `model_e` `CashflowSegment` synchronization remain unchanged. Subject funding plans are not yet a calculation input.
 
 ## 0. Front-End Advanced Appearance Customization & Accessibility Safeguards (Phase 3)
 

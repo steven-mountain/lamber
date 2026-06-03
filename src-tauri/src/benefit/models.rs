@@ -58,6 +58,8 @@ pub struct IctInput {
     pub discount_rate: String,
     pub project_years: Option<i32>,
     pub cashflow_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cashflow_calculation_source: Option<String>,
     pub cashflow_segment_value_mode: Option<String>,
     pub cashflow_segments: Option<Vec<CashflowSegment>>,
     pub project_background: Option<String>,
