@@ -67,6 +67,9 @@ type ModelEStructureSyncResult = {
   transfers: ModelEStructureTransfer[];
 };
 
+type SelectionFeeAnchor = "quote" | "limit";
+type SelectionFeeChangeType = SelectionFeeAnchor | "markup";
+
 const getModelEAmountBucketForSubject = (subject: IctSubjectDefinition): ModelEAmountBucket | null => {
   if (subject.groupId === "revIt") return { side: "revenue", scope: "it", label: "收入 IT 板块" };
   if (subject.groupId === "revCt") return { side: "revenue", scope: "ct", label: "收入 CT 板块" };
@@ -106,6 +109,7 @@ const serializeTaxItemForPayload = (item: TaxItem) => {
 export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   const updateData = useAiContextStore(stateStore => stateStore.updateBusinessData);
   const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const selectionFeeRequestSeqRef = useRef(0);
 
   // --- Calculation Results ---
   const [cashflowTable, setCashflowTable] = useState<any[]>([]);
@@ -120,6 +124,12 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   const [selActualCost, setSelActualCost] = useState<string>("");
   const [selFee, setSelFee] = useState<string>("");
   const [selLimit, setSelLimit] = useState<string>("");
+  const [selectionFeeAnchor, setSelectionFeeAnchorState] = useState<SelectionFeeAnchor>("quote");
+
+  const setSelectionFeeAnchor = (anchor: SelectionFeeAnchor) => {
+    selectionFeeRequestSeqRef.current += 1;
+    setSelectionFeeAnchorState(anchor);
+  };
 
   // --- Smart Reverse State ---
   const [revMode, setRevMode] = useState<"cost" | "revenue">("cost");
@@ -365,29 +375,36 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     state.ignoredTailValue, state.balanceAllocation, state.cashflowCalculationSource, state.subjectFundingPlans, updateData, buildAiContextPayload
   ]);
 
-  const handleSelFeeChange = async (type: 'quote' | 'markup' | 'limit', val: string) => {
+  const handleSelFeeChange = async (type: SelectionFeeChangeType, val: string) => {
     if (type === 'quote') setSelQuote(val);
     if (type === 'markup') setSelMarkup(val);
     if (type === 'limit') setSelLimit(val);
+    if (type !== 'markup') setSelectionFeeAnchorState(type);
 
     const currentQuote = type === 'quote' ? val : selQuote;
     const currentMarkup = type === 'markup' ? val : selMarkup;
     const currentLimit = type === 'limit' ? val : selLimit;
+    const currentAnchor = type === 'markup' ? selectionFeeAnchor : type;
+    const requestSeq = ++selectionFeeRequestSeqRef.current;
 
     try {
-      if (type === 'quote' || type === 'markup') {
+      if (currentAnchor === 'quote') {
         const res: any = await invoke('calculate_selection_fee', { quote: currentQuote || "0", markup: currentMarkup || "0" });
+        if (requestSeq !== selectionFeeRequestSeqRef.current) return;
         setSelLimit(res.final_limit);
         setSelActualCost(res.actual_cost);
         setSelFee(res.selection_fee);
-      } else if (type === 'limit') {
+      } else {
         const res: any = await invoke('reverse_calculate_selection_fee', { limit: currentLimit || "0", markup: currentMarkup || "0" });
+        if (requestSeq !== selectionFeeRequestSeqRef.current) return;
         setSelQuote(res.quote);
         setSelActualCost(res.actual_cost);
         setSelFee(res.selection_fee);
       }
     } catch(e) {
-      console.error("甄选限价计算失败:", e);
+      if (requestSeq === selectionFeeRequestSeqRef.current) {
+        console.error("甄选限价计算失败:", e);
+      }
     }
   };
 
@@ -1149,6 +1166,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     selActualCost,
     selFee,
     selLimit, setSelLimit,
+    selectionFeeAnchor, setSelectionFeeAnchor,
     revMode, setRevMode,
     revTargetType, setRevTargetType,
     revTargetValue, setRevTargetValue,

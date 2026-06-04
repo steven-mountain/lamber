@@ -62,6 +62,8 @@ test/
 # Temporary files
 *.tmp
 *.temp
+/test_load.js
+/test_ui_logic.cjs
 
 # Demo directories
 hello_test/

@@ -8,6 +8,22 @@ This changelog records structural modifications, business rules, and context cha
 
 ## 2026-06-04
 
+### ICT Selection Fee: Fixed Quote/Limit Anchor
+
+Modified:
+- [useIctCalculations.ts](../src-ui/src/hooks/useIctCalculations.ts): Added `selectionFeeAnchor` for mutually exclusive quote/limit anchoring. Markup changes now call the forward selection-fee command when quote is fixed and the reverse command when limit is fixed. Added request-sequence protection so stale async invoke results cannot overwrite newer user input.
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Added compact fixed-state dot buttons beside supplier quote and selection limit labels, wired with `aria-pressed`, and added accessible labels to the selection-fee inputs.
+- [selection-fee.md](../docs/modules/selection-fee.md), [PROJECT_INDEX.md](../docs/PROJECT_INDEX.md), and [CURRENT_TASK.md](../docs/CURRENT_TASK.md): Recorded the anchor model, UI behavior, and validation status.
+
+Tests:
+- Ran `npx tsc --noEmit` in `src-ui`: passed.
+- Ran `npm run build` in `src-ui`: passed.
+- Ran `cargo test` in `src-tauri`: passed (11/11; existing warnings only).
+- Browser smoke-tested the local Vite page: fixed-dot default, mutual exclusion, and edit-to-anchor state passed. Numeric invoke calculation requires the Tauri runtime and was not executed in the plain browser page.
+
+Decision:
+- The root cause was that markup edits always used supplier quote as the implicit source of truth. Adding another local conditional would preserve the hidden coupling, so the bounded fix makes the quote/limit source of truth explicit and reuses the existing Rust forward/reverse commands.
+
 ### ICT Subject Funding Plans Final: Migration and Single Official Source
 
 Modified:

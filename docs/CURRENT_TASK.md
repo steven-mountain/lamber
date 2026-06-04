@@ -1,37 +1,33 @@
-# ICT 科目级资金计划最终收官
+# 采购甄选费测算固定锚点优化
 
 - **Status:** Done
-- **Objective:** 将 ICT 生命周期资金模型收敛为“按具体科目维护的 10 年收付款计划”单一正式口径，完成旧项目一次性迁移、旧模型 UI 移除、正式计算分支收敛与发布验收。
+- **Objective:** 在 ICT 投入侧“采购甄选费测算”中增加供应商报价与甄选最高限价的互斥固定锚点，使代理服务费上浮变化时按用户固定的金额方向联动另一个金额。
 
 ## Completed
 
-1. [x] **旧项目一次性迁移**
-   - 增加 `subjectFundingPlanMigrationVersion = 1` 标记。
-   - 对缺失计划的非零收入/投入科目生成第一年一次性迁移计划。
-   - 保留已有有效计划，不静默覆盖异常计划。
-2. [x] **单一正式计算口径**
-   - 新建、导入、加载项目均收敛为 `subject_funding_plans`。
-   - 正式现金流、NPV、IRR、回收期和 Excel 多年现金流均来自科目年度计划汇总。
-   - `CashflowSegment` 旧年度金额不再参与正式现金流覆盖。
-3. [x] **旧模型用户入口移除**
-   - 移除模型 A-E / 分板块资金模型配置入口。
-   - 移除“原资金模型 / 科目收付款计划”切换控件和旧模型文案。
-4. [x] **联动能力回归**
-   - 智能反算、差额承接、CT 金额联动继续通过统一金额入口同步科目计划。
-   - custom / equal / upfront 计划保存恢复、覆盖定位、一键清空、项目整体/IT 10 年现金流继续可用。
+1. [x] **固定锚点状态**
+   - 新增 `selectionFeeAnchor`，默认固定“供应商报价”，保持原有“报价 + 上浮 -> 限价”行为。
+   - 点击“固定供应商报价”或“固定甄选最高限价”时互斥切换。
+   - 直接编辑供应商报价或最高限价时，对应金额自动成为当前固定锚点。
+2. [x] **联动方向收敛**
+   - 固定供应商报价时，`markup` 变化走 `calculate_selection_fee` 正向计算并更新最高限价。
+   - 固定最高限价时，`markup` 变化走 `reverse_calculate_selection_fee` 反向计算并更新供应商报价。
+   - 增加请求序号保护，避免连续输入时旧异步计算结果覆盖最新输入。
+3. [x] **简单交互与可访问性**
+   - 在“供应商报价”和“甄选最高限价”标题旁增加圆点按钮表示固定状态。
+   - 为甄选测算输入补充 `aria-label`，便于键盘/辅助技术和自动化验证识别。
 
 ## Validation
 
-- `for f in scripts/test_subject_funding*.cjs; do node "$f"; done` in `src-ui`: passed.
 - `npx tsc --noEmit` in `src-ui`: passed.
 - `npm run build` in `src-ui`: passed.
 - `cargo test` in `src-tauri`: passed (11/11; existing warnings only).
-- `cargo fmt -- --check` in `src-tauri`: passed.
+- Browser smoke test at `http://127.0.0.1:5173/`: fixed-dot default, mutual exclusion, and edit-to-anchor state passed. Plain Vite browser has no Tauri IPC, so backend invoke numeric calculation was not executed there.
 
 ## Remaining
 
-- 页面级手工验收仍需在真实工作区中打开旧项目、执行保存刷新、文档导出并核对 Excel 多年现金流。
+- 在 Tauri 桌面运行态中手工输入一组报价、上浮和限价，确认正向/反向金额联动与“填入集成服务”工作流。
 
 ## Next
 
-- 发布前全流程验收与安装包 smoke test。
+- 若后续需要更清晰的视觉提示，可在不增加说明文案的前提下微调固定圆点的颜色或 hover 状态。

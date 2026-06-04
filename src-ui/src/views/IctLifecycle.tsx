@@ -713,6 +713,7 @@ export default function IctLifecycle() {
     selActualCost,
     selFee,
     selLimit,
+    selectionFeeAnchor, setSelectionFeeAnchor,
     revMode, setRevMode,
     revTargetType, setRevTargetType,
     revTargetValue, setRevTargetValue,
@@ -1737,23 +1738,47 @@ export default function IctLifecycle() {
             <h3 className="font-bold text-foreground mb-4">采购甄选费测算</h3>
             <div className="bg-card border border-border p-4 rounded-xl flex flex-col gap-3">
               <div className="flex flex-col gap-1">
-                 <label className="text-xs font-semibold text-secondary-foreground">供应商报价 (元)</label>
-                 <input type="number" value={selQuote} onChange={e => handleSelFeeChange('quote', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none" />
+                 <div className="flex items-center gap-1.5">
+                   <label className="text-xs font-semibold text-secondary-foreground">供应商报价 (元)</label>
+                   <button
+                     type="button"
+                     aria-label="固定供应商报价"
+                     aria-pressed={selectionFeeAnchor === 'quote'}
+                     title="固定供应商报价"
+                     onClick={() => setSelectionFeeAnchor('quote')}
+                     className={`flex h-5 w-5 items-center justify-center rounded-full transition-colors ${selectionFeeAnchor === 'quote' ? 'bg-primary-soft' : 'bg-muted hover:bg-muted/80'}`}
+                   >
+                     <span className={`h-2.5 w-2.5 rounded-full ${selectionFeeAnchor === 'quote' ? 'bg-primary' : 'bg-secondary-foreground/35'}`} />
+                   </button>
+                 </div>
+                 <input type="number" aria-label="供应商报价" value={selQuote} onChange={e => handleSelFeeChange('quote', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none" />
               </div>
               <div className="flex flex-col gap-1">
                  <label className="text-xs font-semibold text-secondary-foreground">代理服务费浮动 (+)</label>
-                 <input type="number" value={selMarkup} onChange={e => handleSelFeeChange('markup', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none" />
+                 <input type="number" aria-label="代理服务费浮动" value={selMarkup} onChange={e => handleSelFeeChange('markup', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none" />
               </div>
               <div className="flex flex-col gap-1">
                  <label className="text-xs font-semibold text-secondary-foreground">测算甄选费 / 实际测算成本</label>
                  <div className="flex gap-2">
-                   <input type="text" disabled value={selFee} className="bg-muted/50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
-                   <input type="text" disabled value={selActualCost} className="bg-muted/50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
+                   <input type="text" aria-label="测算甄选费" disabled value={selFee} className="bg-muted/50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
+                   <input type="text" aria-label="实际测算成本" disabled value={selActualCost} className="bg-muted/50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
                  </div>
               </div>
               <div className="flex flex-col gap-1 mt-2 border-t border-border pt-3">
-                 <label className="text-xs font-semibold text-primary">甄选最高限价 (反向测算入口)</label>
-                 <input type="number" value={selLimit} onChange={e => handleSelFeeChange('limit', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none text-foreground font-bold" />
+                 <div className="flex items-center gap-1.5">
+                   <label className="text-xs font-semibold text-primary">甄选最高限价 (反向测算入口)</label>
+                   <button
+                     type="button"
+                     aria-label="固定甄选最高限价"
+                     aria-pressed={selectionFeeAnchor === 'limit'}
+                     title="固定甄选最高限价"
+                     onClick={() => setSelectionFeeAnchor('limit')}
+                     className={`flex h-5 w-5 items-center justify-center rounded-full transition-colors ${selectionFeeAnchor === 'limit' ? 'bg-primary-soft' : 'bg-muted hover:bg-muted/80'}`}
+                   >
+                     <span className={`h-2.5 w-2.5 rounded-full ${selectionFeeAnchor === 'limit' ? 'bg-primary' : 'bg-secondary-foreground/35'}`} />
+                   </button>
+                 </div>
+                 <input type="number" aria-label="甄选最高限价" value={selLimit} onChange={e => handleSelFeeChange('limit', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none text-foreground font-bold" />
               </div>
               <button
                 onClick={applySelectionLimit}
