@@ -6,7 +6,64 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-06-05
+
+### Common Preset Quick-Fill Field Header Alignment
+
+Modified:
+- [CommonPresetQuickFill.tsx](../src-ui/src/components/common-presets/CommonPresetQuickFill.tsx): Added `CommonPresetFieldHeader`, a reusable form header that keeps the visible label and preset actions in one responsive row.
+- [IctBasicInfo.tsx](../src-ui/src/components/IctBasicInfo.tsx) and [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Replaced split label/action rows with `CommonPresetFieldHeader` across the first-phase preset-connected fields.
+- [common-presets.md](../docs/modules/common-presets.md) and [CURRENT_TASK.md](../docs/CURRENT_TASK.md): Recorded the form-side layout rule.
+- [CommonPresetQuickFill.tsx](../src-ui/src/components/common-presets/CommonPresetQuickFill.tsx): Added `CommonPresetLabelHeader` for plain fields that need to align with preset-enabled fields, and compacted the quick-fill action buttons.
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Removed the detached sign-off payment preset band and attached the revenue/expenditure preset actions to the actual payment input labels.
+
+Decision:
+- Preset buttons should not be aligned with fixed offsets or separate `justify-end` rows. They now use a shared flex header so normal desktop fields keep the label and actions on the same line, while narrow containers can wrap naturally.
+- Forms that mix preset and non-preset fields should use the shared header components for both variants so neighboring inputs align vertically.
+
 ## 2026-06-04
+
+### Common Materials Quick-Fill Field Coverage Expansion
+
+Modified:
+- [presetFieldKeys.ts](../src-ui/src/lib/presetFieldKeys.ts): Added stable keys for demand-import fields, meeting-review fields, sign-off IT/CT service fields, and shared revenue/expenditure payment method fields.
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Added `CommonPresetQuickFill` controls for project demand unit, demand service content, customer confirmation, deployment environment requirement, onsite support staff, IT/CT construction content, revenue collection method, expenditure payment method, time requirement, and sign-off IT/CT service content.
+- [common-presets.md](../docs/modules/common-presets.md), [CURRENT_TASK.md](../docs/CURRENT_TASK.md), and [test_common_presets.cjs](../src-ui/scripts/test_common_presets.cjs): Recorded and tested the expanded field coverage.
+
+Decision:
+- Revenue collection and expenditure payment methods use shared `payment.*` field keys because meeting-review and sign-off sections write the same formal `revCollection` / `expPayment` state. This lets one saved common material appear in both places without duplicating records.
+
+### Common Materials & Project Presets Phase 1
+
+Created:
+- [common_presets.rs](../src-tauri/src/common_presets.rs): Added workspace-scoped reusable material commands for listing, saving, enabling/disabling, soft deletion, and usage tracking.
+- [PresetCenterView.tsx](../src-ui/src/views/PresetCenterView.tsx): Added the independent "常用资料与项目预设" management page with short-field and long-text tabs.
+- [presetFieldKeys.ts](../src-ui/src/lib/presetFieldKeys.ts): Added stable field-key definitions for reusable content and future project preset binding.
+- [CommonPresetQuickFill.tsx](../src-ui/src/components/common-presets/CommonPresetQuickFill.tsx): Added reusable field-side picker/save control.
+- [commonPresetService.ts](../src-ui/src/services/commonPresetService.ts): Added frontend IPC wrapper for common preset commands.
+- [test_common_presets.cjs](../src-ui/scripts/test_common_presets.cjs): Added field-key catalog tests.
+
+Modified:
+- [db.rs](../src-tauri/src/db.rs): Added `common_presets` table initialization and schema version 6 migration.
+- [main.rs](../src-tauri/src/main.rs): Registered common preset Tauri commands.
+- [App.tsx](../src-ui/src/App.tsx), [useNavigationStore.ts](../src-ui/src/store/useNavigationStore.ts), and [iconMap.ts](../src-ui/src/components/icons/iconMap.ts): Added the first-level Hub entry and route for `preset_center`.
+- [IctBasicInfo.tsx](../src-ui/src/components/IctBasicInfo.tsx): Connected quick fill to customer name and project background.
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Connected quick fill to project background, technical solution, meeting reviewers, branch/department name, and risk/project owner fields.
+- Project context docs were updated to record the module boundary, SQLite structure, fieldKey mechanism, first connected fields, and later-phase exclusions.
+
+Tests:
+- Ran `npx tsc --noEmit` in `src-ui`: passed.
+- Ran `node scripts/test_common_presets.cjs` in `src-ui`: passed.
+- Ran all `scripts/test_subject_funding*.cjs` in `src-ui`: passed.
+- Ran `npm run build` in `src-ui`: passed with the existing Vite chunk-size warning.
+- Ran `cargo fmt -- --check` in `src-tauri`: passed after formatting.
+- Ran `cargo test common_presets::tests` in `src-tauri`: passed.
+- Ran `cargo test benefit::calculator::tests` in `src-tauri`: passed.
+- Ran full `cargo test` in `src-tauri`: 10 passed, 2 failed because the local docfill test template `项目全生命周期文件模版/效益分析表 .xlsx` is missing.
+
+Decision:
+- Presets are only reusable fill sources. After a user applies content, the owning form state is updated through existing setters and save domains; document generation and AI context continue to read official project/template state.
+- Phase 1 deliberately does not implement full project preset templates, project-creation preset selection, one-click multi-field application, automatic history extraction, AI recommendation, or AI auto-fill.
 
 ### ICT Selection Fee: Fixed Quote/Limit Anchor
 

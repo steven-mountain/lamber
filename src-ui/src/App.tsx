@@ -3,6 +3,7 @@ import { emitTo } from "@tauri-apps/api/event";
 import IctLifecycle from "./views/IctLifecycle";
 import ProjectBoard from "./views/ProjectBoard";
 import DataManagement from "./views/DataManagement";
+import PresetCenterView from "./views/PresetCenterView";
 import SettingsView from "./components/settings/SettingsView";
 import AiFloatingLauncher from "./components/ai/AiFloatingLauncher";
 import AiFloatingWindow from "./components/ai/AiFloatingWindow";
@@ -80,6 +81,28 @@ export default function App() {
         <IctLifecycle />
       ) : currentView === "settings" ? (
         <SettingsView onBack={() => navigateTo(settingsReturnView || "hub")} />
+      ) : currentView === "preset_center" ? (
+        isWorkspaceReady ? (
+          <PresetCenterView onBack={() => navigateTo("hub")} />
+        ) : (
+          <div className="flex flex-col flex-1 h-full overflow-hidden bg-background text-foreground animate-in fade-in duration-300">
+            <header className="flex items-center justify-between px-6 py-4 shrink-0 bg-card shadow-sm">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => navigateTo("hub")}
+                  className="text-secondary-foreground hover:text-primary hover:bg-secondary font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors text-body"
+                >
+                  <span>←</span> 返回集市
+                </button>
+                <div>
+                  <h1 className="text-page-title font-bold tracking-tight">常用资料与项目预设</h1>
+                  <p className="text-caption text-secondary-foreground mt-0.5">请先打开工作区后管理可复用资料</p>
+                </div>
+              </div>
+            </header>
+            <WorkspaceGate onBack={() => navigateTo("hub")} backLabel="返回集市" />
+          </div>
+        )
       ) : currentView === "data_management" ? (
         isWorkspaceReady ? (
           <DataManagement onBack={() => navigateTo("hub")} />
@@ -154,6 +177,13 @@ function HubView({ onOpenTool }: { onOpenTool: (view: string) => void }) {
           description="配置根目录、重定位与健康自愈"
           delay="delay-150"
           onClick={() => onOpenTool("data_management")}
+        />
+        <HubCard
+          icon="presets"
+          title="常用资料与项目预设"
+          description="管理可复用字段、文本片段与表单快捷填充"
+          delay="delay-200"
+          onClick={() => onOpenTool("preset_center")}
         />
       </div>
     </div>

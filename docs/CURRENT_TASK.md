@@ -1,33 +1,61 @@
-# 采购甄选费测算固定锚点优化
+# 常用资料与项目预设独立模块第一阶段
 
 - **Status:** Done
-- **Objective:** 在 ICT 投入侧“采购甄选费测算”中增加供应商报价与甄选最高限价的互斥固定锚点，使代理服务费上浮变化时按用户固定的金额方向联动另一个金额。
+- **Objective:** 新增 workspace 作用域的常用资料管理模块，并在典型表单字段中建立主动选择填充与主动保存为常用内容的底座。
 
 ## Completed
 
-1. [x] **固定锚点状态**
-   - 新增 `selectionFeeAnchor`，默认固定“供应商报价”，保持原有“报价 + 上浮 -> 限价”行为。
-   - 点击“固定供应商报价”或“固定甄选最高限价”时互斥切换。
-   - 直接编辑供应商报价或最高限价时，对应金额自动成为当前固定锚点。
-2. [x] **联动方向收敛**
-   - 固定供应商报价时，`markup` 变化走 `calculate_selection_fee` 正向计算并更新最高限价。
-   - 固定最高限价时，`markup` 变化走 `reverse_calculate_selection_fee` 反向计算并更新供应商报价。
-   - 增加请求序号保护，避免连续输入时旧异步计算结果覆盖最新输入。
-3. [x] **简单交互与可访问性**
-   - 在“供应商报价”和“甄选最高限价”标题旁增加圆点按钮表示固定状态。
-   - 为甄选测算输入补充 `aria-label`，便于键盘/辅助技术和自动化验证识别。
+1. [x] **独立模块入口**
+   - Hub 新增“常用资料与项目预设”入口。
+   - 新增 `preset_center` 路由与 `PresetCenterView`。
+   - 未打开工作区时复用 `WorkspaceGate`，不创建 localStorage 临时事实来源。
+
+2. [x] **SQLite 持久化**
+   - 新增 `common_presets` 表，schema version 升至 6。
+   - 当前支持 `workspace` scope，预留 `user` scope 但不实现跨工作区同步。
+   - 支持新增、编辑、启用/停用、软删除、使用次数与最近使用时间更新。
+
+3. [x] **fieldKey 绑定机制**
+   - 新增 `presetFieldKeys.ts`，使用稳定键而非中文标签绑定。
+   - 初始键包括 `project_basic.customer_name`、`project_basic.background`、`project_basic.solution`、`approval.reviewers`、`approval.department`、`approval.project_manager`。
+
+4. [x] **表单快捷填充**
+   - 新增复用组件 `CommonPresetQuickFill`。
+   - 支持选择常用内容填充、长文本替换/追加、保存当前字段为常用内容。
+   - 使用常用内容后更新 `usageCount` 与 `lastUsedAt`。
+
+5. [x] **首批字段接入**
+   - ICT 基础信息：客户单位、项目背景。
+   - 模板表单：项目背景、技术方案、参会人员、分公司/部门名称、风险/项目负责人。
+
+6. [x] **表单字段覆盖扩展**
+   - 项目需求导入表：项目需求单位、服务内容、客户确认、部署环境要求。
+   - 会审纪要：驻点支撑人员、IT建设内容、CT建设内容、收入侧收款方式、支出侧付款方式、时间要求。
+   - 立项签批表：IT服务内容、CT服务内容、收入侧收款方式、支出侧付款方式。
+   - 收入侧收款方式和支出侧付款方式使用共享 fieldKey，便于会审纪要与立项签批表复用同一类常用资料。
+
+7. [x] **Common preset action alignment repair**
+   - Added `CommonPresetFieldHeader` so form labels and preset actions render in one responsive header row.
+   - Replaced split `label` + separate `justify-end` preset action rows in ICT basic info and template forms.
+   - The layout uses normal flex wrapping rather than fixed offsets or hardcoded positioning.
+8. [x] **Preset and non-preset field header normalization**
+   - Added `CommonPresetLabelHeader` for plain fields that need to align with preset-enabled fields.
+   - Compact preset action buttons now avoid increasing normal label-row height.
+   - Removed the detached sign-off payment preset band and attached payment presets to the actual payment input labels.
 
 ## Validation
 
 - `npx tsc --noEmit` in `src-ui`: passed.
-- `npm run build` in `src-ui`: passed.
-- `cargo test` in `src-tauri`: passed (11/11; existing warnings only).
-- Browser smoke test at `http://127.0.0.1:5173/`: fixed-dot default, mutual exclusion, and edit-to-anchor state passed. Plain Vite browser has no Tauri IPC, so backend invoke numeric calculation was not executed there.
+- `node scripts/test_common_presets.cjs` in `src-ui`: passed.
+- Existing `scripts/test_subject_funding*.cjs` in `src-ui`: passed.
+- `npm run build` in `src-ui`: passed; Vite reported the existing large chunk warning.
+- `cargo fmt -- --check` in `src-tauri`: passed.
+- `cargo test common_presets::tests` in `src-tauri`: passed.
+- `cargo test benefit::calculator::tests` in `src-tauri`: passed.
+- Full `cargo test` in `src-tauri`: blocked by existing missing docfill test template `项目全生命周期文件模版/效益分析表 .xlsx` (10 passed, 2 failed).
+- Local Vite service at `http://localhost:5173`: HTTP 200.
 
 ## Remaining
 
-- 在 Tauri 桌面运行态中手工输入一组报价、上浮和限价，确认正向/反向金额联动与“填入集成服务”工作流。
-
-## Next
-
-- 若后续需要更清晰的视觉提示，可在不增加说明文案的前提下微调固定圆点的颜色或 hover 状态。
+- Desktop Tauri runtime manual click-through should be performed with a real workspace to verify CRUD, quick fill, persistence after reload, and usage-count updates end to end.
+- Phase 2 remains out of scope: full project preset templates, project creation from presets, one-click multi-field application, intelligent recommendation, and AI collaboration.

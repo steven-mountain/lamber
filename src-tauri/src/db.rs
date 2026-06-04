@@ -287,6 +287,8 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
         [],
     )?;
 
+    crate::common_presets::ensure_schema(&conn)?;
+
     conn.execute("CREATE INDEX IF NOT EXISTS idx_project_lifecycle_project_id ON project_lifecycle_states(project_id);", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_project_cashflow_project_id ON project_cashflow_states(project_id);", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_project_template_states_project_id ON project_template_states(project_id);", [])?;
@@ -315,7 +317,7 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
                 found
             };
 
-            let initial_version = if has_folder_name { "5" } else { "2" };
+            let initial_version = if has_folder_name { "6" } else { "2" };
             conn.execute(
                 "INSERT INTO app_settings (key, value, updated_at) VALUES ('schema_version', ?1, ?2)",
                 [initial_version, &now],
@@ -613,6 +615,31 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
             let now = chrono::Utc::now().to_rfc3339();
             tx.execute(
                 "UPDATE app_settings SET value = '5', updated_at = ?1 WHERE key = 'schema_version'",
+                [now],
+            )?;
+            tx.commit()?;
+        }
+    }
+
+    // Run migration checks from Version 5 to 6
+    {
+        let version = {
+            let mut stmt =
+                conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
+            let mut rows = stmt.query([])?;
+            if let Some(row) = rows.next()? {
+                let val_str: String = row.get(0)?;
+                val_str.parse::<i32>().unwrap_or(1)
+            } else {
+                1
+            }
+        };
+        if version < 6 {
+            let tx = conn.transaction()?;
+            crate::common_presets::ensure_schema(&tx)?;
+            let now = chrono::Utc::now().to_rfc3339();
+            tx.execute(
+                "UPDATE app_settings SET value = '6', updated_at = ?1 WHERE key = 'schema_version'",
                 [now],
             )?;
             tx.commit()?;

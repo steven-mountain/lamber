@@ -4,7 +4,19 @@
 > **历史兼容性说明**：本文件作为历史开发背景与综合上下文的记录，不再作为 AI 每次任务的默认必读文件。
 > 后续开发请默认阅读入口文件 [PROJECT_INDEX.md](./PROJECT_INDEX.md) 和 [CURRENT_TASK.md](./CURRENT_TASK.md)，并根据任务涉及范围按需加载模块设计文档（如 [docs/modules/appearance.md](./modules/appearance.md)）。
 
-Last updated: 2026-06-04 (ICT Subject-Level Funding Plans Final)
+Last updated: 2026-06-04 (Common Materials & Project Presets Phase 1)
+
+## Common Materials & Project Presets
+
+The app now has an independent "常用资料与项目预设" module for workspace-scoped reusable content. Phase 1 stores reusable short fields and long text snippets in the active workspace SQLite database table `common_presets`; it does not implement full project templates yet.
+
+`common_presets` records use `scope` (currently `workspace`, with `user` reserved), `kind` (`short_value` or `text_snippet`), `category`, `name`, `content`, JSON tags, JSON applicable field keys, usage count, last-used timestamp, enabled flag, timestamps, and soft deletion. CRUD and usage updates are exposed through Tauri commands in `common_presets.rs`, registered in `main.rs`, and initialized/migrated through `db.rs` schema version 6.
+
+Field binding is centralized in `src-ui/src/lib/presetFieldKeys.ts` and must use stable keys rather than display text. Initial keys include project basics, approval reviewers/department/owner, demand-import fields, meeting-review fields, shared payment-method fields, service descriptions, and risk descriptions.
+
+The reusable `CommonPresetQuickFill` component is the only Phase 1 form integration surface. Users must actively choose a common item or actively save the current field value. Filling writes into the existing field state and save domains: ICT basic fields flow through `useIctState` and lifecycle/current-state save, while template fields flow through `TemplateForms` `formData` and the `template-forms` dirty/save handler. Presets are not read during document generation or AI context loading.
+
+Connected fields include ICT customer name and project background; template project background and technical solution; demand import unit, service content, customer confirmation, and deployment environment; meeting reviewers, branch/department name, onsite support staff, IT/CT construction content, revenue/expenditure payment methods, and time requirement; and sign-off IT/CT service content plus the shared revenue/expenditure payment methods. Do not expand this into automatic history extraction, AI recommendation, project-creation preset selection, or multi-field preset application until a later phase.
 
 ## What this project is
 

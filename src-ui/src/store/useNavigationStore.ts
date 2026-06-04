@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type ViewType = "hub" | "project_board" | "ict_lifecycle" | "data_management" | "settings";
+export type ViewType = "hub" | "project_board" | "ict_lifecycle" | "data_management" | "preset_center" | "settings";
 
 interface NavigationState {
   currentView: ViewType;

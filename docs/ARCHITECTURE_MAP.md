@@ -4,7 +4,7 @@
 > **历史兼容性说明**：本文件作为系统架构与模块数据流的详细技术地图，不再作为 AI 每次任务的默认必读文件。
 > 后续开发请默认阅读入口文件 [PROJECT_INDEX.md](./PROJECT_INDEX.md) 和 [CURRENT_TASK.md](./CURRENT_TASK.md)，并仅在需要深入分析架构、启动流程或底层细节时阅读本文件。
 
-Last updated: 2026-06-04 (ICT Subject-Level Funding Plans Final)
+Last updated: 2026-06-04 (Common Materials & Project Presets Phase 1)
 
 ## 1. Repository overview
 
@@ -22,6 +22,8 @@ graph TD
     WS -->|Current workspace root| DB[(.lamber.sqlite)]
     WS -->|Local app config| CFG[(config.json recentWorkspaces)]
     WM -->|Backups / Exports / Health| WSF[(Workspace folder)]
+    Tauri -->|Workspace preset CRUD| CP[Common Presets / common_presets.rs]
+    CP -->|Reusable content| DB
 ```
 
 ## 2. Directory map
@@ -32,6 +34,7 @@ graph TD
 - **`src/workspace.rs`**: Manages Lamber Workspace manifests, recent workspaces, last workspace restore, workspace readiness checks, associated workspace unlinking, the active SQLite connection, and workspace initialization from existing plain directories with candidate subdirectories import.
 - **`src/workspace_maintenance.rs`**: Provides workspace portability commands: daily/manual SQLite backup, backup restore with database connection release/reopen, `.lamber.zip` export/import/validation, read-only workspace health checks, repairable issue execution, external path listing, dry-run internal absolute path conversion, and native file-manager reveal.
 - **`src/db.rs`**: SQLite initialization, table creation, and schema version management.
+- **`src/common_presets.rs`**: Workspace-scoped reusable materials command module. It owns CRUD, enabled/disabled state, soft deletion, usage-count updates, and field-key filtering for `common_presets`.
 - **`src/migration.rs`**: JSON-to-SQLite transactional database migration service and Tauri commands.
 - **`src/docfill.rs`**: Fills Word/Excel lifecycle templates for workspace-backed document generation.
 - **`src/docfill.rs` lifecycle output rule**: `generate_lifecycle_docs` must resolve relative output folders against the active Workspace root, and may use the provided `projectId` to derive the project folder from Workspace SQLite when no explicit output directory is supplied. It must not write generated lifecycle documents into the Tauri process working directory.
@@ -65,6 +68,7 @@ graph TD
   - [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): The main calculator workspace tabs.
   - [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Variable mapping, inquiry vendor quote rows/screenshots, and document filling triggers.
   - [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): Data Management view containing Roots, Health Checker, and Relocator.
+  - [PresetCenterView.tsx](../src-ui/src/views/PresetCenterView.tsx): Independent management page for workspace common fields and text snippets.
 - **`src/theme/`**: Theme specification tokens and runtime switcher:
   - [appearance.ts](../src-ui/src/theme/appearance.ts): Holds type definitions (extended with `ContrastPreference`, `CustomAccentSettings`), config version (v3), and DEFAULT_APPEARANCE_SETTINGS.
   - [presets.ts](../src-ui/src/theme/presets.ts): Holds the HSL light themes and refined HSL dark themes (`DARK_THEMES`) for the 5 presets, plus high contrast overrides.
@@ -78,6 +82,8 @@ graph TD
 - **`src/lib/ictBalanceAllocation.ts`**: Shared frontend rule helper for ICT revenue/investment total balancing. It normalizes and serializes `revenue_balance_rule` / `investment_balance_rule`, resolves stable `subjectCode + groupId + key` subject references, computes inclusive-amount differences with existing two-decimal money behavior, and reports missing/negative validation states without writing financial amounts itself.
 - **`src/lib/ictReverseCalculation.ts`**: Shared frontend helper for dynamic smart reverse calculation subjects. It builds eligible revenue/cost subject options from `ICT_SUBJECT_DEFINITIONS`, uses stable subject references (`side + subjectCode + groupId + key`), resolves display names through the shared subject resolver, applies candidate tax-inclusive amounts to arbitrary subject groups, mirrors the existing CT revenue-to-cost amount linkage, and resolves reverse modes (`normal`, `locked_total_structure`, `blocked`) for balance-allocation interactions.
 - **`src/lib/ictSubjectFundingPlan.ts`**: Shared frontend helper for subject-level funding plan state. It binds plans to concrete subject instances through `side + groupId + key`, creates default upfront plans, builds cents-exact equal splits over 1-10 years, normalizes legacy/unknown payloads, updates custom annual values, validates annual tax-inclusive totals against subject inclusive amount, validates full calculation-source coverage, and builds yearly subject-plan cashflow arrays with per-subject/per-year tax conversion.
+- **`src/lib/presetFieldKeys.ts`**: Stable field-key catalog for common materials and future project presets. It maps reusable content to field keys such as `project_basic.background`, `demand.service_content`, `meeting.it_construction_content`, `approval.it_service_content`, and `payment.revenue_collection_method` instead of UI labels.
+- **`src/components/common-presets/CommonPresetQuickFill.tsx`**: Reusable form-side quick-fill component. It lists matching workspace presets, supports replace/append for long text, saves the current field value as a preset only after user action, and records usage through the preset command.
 - **`src/ai/context/`**: AI chat context composer. It builds the per-message context bundle by reading the active project ID, loading saved official context from Workspace SQLite through `aiProjectContextService.ts`, and filtering the current frontend state into an unsaved draft overlay only when dirty scopes match the active project/page.
 - **`src/ai/context/workspaceProjectRouter.ts`**: Deterministic Workspace project-name router used by the composer. It matches explicit project names against the current Workspace project index, limits deep official context loading to two specified projects per turn, resolves one specified template when uniquely named, and returns warnings for ambiguous or unresolved routing.
 - **`src/ai/templateAssetSelection.ts`**: Cross-window event bridge for explicit template image analysis requests. It carries only template asset metadata (`projectId`, `templateId`, `assetId`, field label) and never carries physical file paths or image base64.
@@ -114,6 +120,7 @@ Phase 3 introduces explicit project-state save domains:
 - `benefit_schemes` / `benefit_snapshots`: named benefit方案 metadata and historical calculation snapshots.
 - `project_template_states`: template form field values, field mappings, template binding metadata, and output configuration.
 - `project_template_assets`: file-backed template images/attachments and metadata.
+- `common_presets`: workspace-level reusable material records used only as fill sources for form fields. They are not project state and are not read by document generation.
 
 ICT revenue/cost tax items may include optional `customSubjectName` / `billingSubjectName` on the frontend and `custom_subject_name` / `billing_subject_name` in serialized lifecycle/snapshot payloads. Amount calculations continue to read only `incl_tax` and `tax_rate`; both custom names are UI/document/Excel metadata and are ignored by financial formula paths. `project_cashflow_states.assumptions_json`, `project_lifecycle_states.input_payload_json`, and benefit snapshots preserve the optional fields for reload and export compatibility.
 
@@ -122,6 +129,15 @@ ICT balance allocation rules are stored as configuration, not as a second source
 Frontend global save goes through `domainSaveService` and `useSaveStore` registered handlers. The save store does not read business component state directly; each mounted page registers the handler responsible for serializing its current local state.
 
 Each save handler returns the dirty scopes it actually persisted. `useSaveStore.saveCurrentProject()` snapshots workspace/project/dirty scopes at save start, rejects unregistered scopes, keeps failed scopes dirty, and re-checks workspace/project before clearing anything. Template forms use the same store: ordinary autosave may clear `template-forms` after success, while Ctrl/Command+S and the global save button must receive a failing handler result if template state or asset-reference persistence fails.
+
+### 4.0.2 Common materials and preset fill flow
+
+1. The Hub opens `preset_center`, which requires an active Workspace because the data lives in the current `.lamber.sqlite`.
+2. `PresetCenterView` manages `common_presets` records through `commonPresetService.ts` and Tauri commands. Records are filtered by kind, category, enabled state, recent use, or usage count.
+3. Form integrations use stable field keys from `presetFieldKeys.ts`. Matching never depends on Chinese display labels.
+4. `CommonPresetQuickFill` reads enabled matching records for one field. A user can replace the field value, append a long text snippet, or save the current field value as a new preset.
+5. After filling, the component calls the owning field setter only. ICT basic fields therefore enter the lifecycle state and existing save handler; template fields enter `TemplateForms` `formData` and the `template-forms` save handler. `common_presets` is never a document-generation fallback source.
+6. Using a preset updates `usage_count` and `last_used_at` through `mark_common_preset_used`.
 
 ### 4.0.1 Workspace portability maintenance flow
 

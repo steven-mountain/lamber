@@ -4,7 +4,19 @@
 > **历史兼容性说明**：本文件作为历史和综合状态的备份记录，不再作为 AI 每次任务的默认必读文件。
 > 后续开发请默认阅读入口文件 [PROJECT_INDEX.md](./PROJECT_INDEX.md) 和 [CURRENT_TASK.md](./CURRENT_TASK.md)，并根据任务涉及范围按需加载模块设计文档（如 [docs/modules/appearance.md](./modules/appearance.md)）。
 
-Last updated: 2026-06-04 (ICT Subject-Level Funding Plans Final)
+Last updated: 2026-06-04 (Common Materials & Project Presets Phase 1)
+
+## 0. Common Materials & Project Presets (Phase 1)
+
+Lamber now includes an independent "常用资料与项目预设" module. Phase 1 focuses on workspace-scoped reusable materials, not full project preset templates.
+
+- **Independent Module**: The Hub exposes a new first-level entry that opens `PresetCenterView`. The page contains two management tabs: short reusable fields (`short_value`) and long text snippets (`text_snippet`).
+- **Workspace SQLite Persistence**: Common materials are stored in the active workspace database table `common_presets`, with `scope`, `kind`, `category`, `name`, `content`, `tags_json`, `applicable_field_keys_json`, `usage_count`, `last_used_at`, `enabled`, timestamps, and soft deletion metadata. The current phase supports `workspace` scope and reserves `user` scope for later.
+- **FieldKey Binding**: `src-ui/src/lib/presetFieldKeys.ts` defines stable field keys for project basics, approval fields, demand-import fields, meeting-review fields, and shared payment-method fields. Matching is based on these stable keys rather than Chinese display labels.
+- **Quick Fill Foundation**: `CommonPresetQuickFill` lets users actively choose a preset for a field, replace or append long text, save the current field value as reusable material, and update usage metadata after use.
+- **First Integrated Fields**: Phase 1 connects quick fill to ICT basic customer name and project background; template project background and technical solution; demand import unit, service content, customer confirmation, deployment environment; meeting reviewers, branch/department name, onsite support staff, IT/CT construction content, revenue/expenditure payment methods, time requirement; and sign-off IT/CT service content plus shared revenue/expenditure payment methods.
+- **Data Flow Boundary**: Presets are only fill sources. Once selected, content is written into the existing React field state (`useIctState` or `TemplateForms` form data) and then follows the existing lifecycle/template save handlers. Document generation and AI project context continue reading official project/template state, not `common_presets`.
+- **Not Implemented Yet**: Full multi-field project preset templates, applying presets during project creation, one-click project preset application, intelligent recommendation, and AI-assisted preset filling are explicitly left for later phases.
 
 ## 0. ICT Subject-Level Funding Plans (Final)
 

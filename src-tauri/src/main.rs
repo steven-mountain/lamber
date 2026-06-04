@@ -2,6 +2,7 @@
 
 mod ai_context;
 mod benefit;
+mod common_presets;
 mod config_manager;
 mod db;
 mod docfill;
@@ -89,6 +90,11 @@ fn main() {
             ai_context::commands::build_ai_project_context,
             ai_context::commands::list_ai_workspace_projects,
             ai_context::commands::load_ai_template_asset,
+            common_presets::list_common_presets,
+            common_presets::save_common_preset,
+            common_presets::set_common_preset_enabled,
+            common_presets::delete_common_preset,
+            common_presets::mark_common_preset_used,
             benefit::reverse_calc_ict_target,
             benefit::reverse_calc_ict_revenue_target,
             benefit::calculate_selection_fee,

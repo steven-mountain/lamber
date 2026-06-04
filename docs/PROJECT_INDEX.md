@@ -1,5 +1,14 @@
 # PROJECT_INDEX.md
 
+## Common Materials & Project Presets
+
+- **Module doc:** [docs/modules/common-presets.md](./modules/common-presets.md)
+- **Frontend page:** [PresetCenterView.tsx](../src-ui/src/views/PresetCenterView.tsx)
+- **FieldKey catalog:** [presetFieldKeys.ts](../src-ui/src/lib/presetFieldKeys.ts)
+- **Quick-fill component:** [CommonPresetQuickFill.tsx](../src-ui/src/components/common-presets/CommonPresetQuickFill.tsx)
+- **Backend commands:** [common_presets.rs](../src-tauri/src/common_presets.rs)
+- **Persistence:** workspace SQLite table `common_presets`
+
 ## 项目定位
 Lamber 是一个基于 **Tauri + React + Rust** 架构的销售支撑桌面工具，旨在规范 5G/ICT 项目全生命周期管理，提供自动化经济效益测算（NPV、利润率、现金流），并支持使用结构化模板生成并填充招投标及项目评审文档（Word/Excel）。
 

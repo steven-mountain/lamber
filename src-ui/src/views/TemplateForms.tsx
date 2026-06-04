@@ -9,6 +9,8 @@ import { projectService } from "../utils/projectService"
 import { domainSaveService } from "../services/domainSaveService"
 import { useSaveStore } from "../store/useSaveStore"
 import { useWorkspaceStore } from "../store/useWorkspaceStore"
+import { CommonPresetFieldHeader, CommonPresetLabelHeader } from "../components/common-presets/CommonPresetQuickFill"
+import { PRESET_FIELD_KEYS } from "../lib/presetFieldKeys"
 import { createTemplateAssetSelection, publishTemplateAssetSelection } from "../ai/templateAssetSelection"
 import {
   buildExcelSubjectVariables,
@@ -1295,37 +1297,90 @@ export default function TemplateForms({
               </div>
               {projectScale === 'large' && (
                 <div className="flex flex-col gap-1 col-span-2">
-                  <label className="text-sm font-semibold">市公司政企部参会人员</label>
+                  <CommonPresetFieldHeader
+                    fieldKey={PRESET_FIELD_KEYS.approvalReviewers}
+                    kind="short_value"
+                    value={formData.gen_city_attendees ?? ""}
+                    onApply={(nextValue) => handleFieldChange("gen_city_attendees", nextValue)}
+                  >
+                    市公司政企部参会人员
+                  </CommonPresetFieldHeader>
                   <input type="text" name="gen_city_attendees" {...getBind("gen_city_attendees")} placeholder="人员A、人员B" className="bg-card border border-input px-3 py-2 rounded-md" />
                 </div>
               )}
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">分公司参会人员</label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.approvalDepartment}
+                  kind="short_value"
+                  value={formData.gen_branch_name ?? "XXXX"}
+                  onApply={(nextValue) => handleFieldChange("gen_branch_name", nextValue)}
+                >
+                  分公司参会人员
+                </CommonPresetFieldHeader>
                 <div className="flex gap-2">
                   <input type="text" name="gen_branch_name" {...getBind("gen_branch_name", "XXXX")} placeholder="分公司名称" className="w-32 bg-card border border-input px-3 py-2 rounded-md" />
                   <input type="text" name="gen_branch_attendees" {...getBind("gen_branch_attendees")} placeholder="人员D、人员E" className="flex-1 bg-card border border-input px-3 py-2 rounded-md" />
                 </div>
               </div>
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">驻点支撑人员</label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.meetingOnsiteSupport}
+                  kind="short_value"
+                  value={formData.gen_onsite_support ?? ""}
+                  onApply={(nextValue) => handleFieldChange("gen_onsite_support", nextValue)}
+                >
+                  驻点支撑人员
+                </CommonPresetFieldHeader>
                 <input type="text" name="gen_onsite_support" {...getBind("gen_onsite_support")} placeholder="如有请填写" className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">项目背景</label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.projectBackground}
+                  kind="text_snippet"
+                  value={projectBackground}
+                  onApply={setProjectBackground}
+                >
+                  项目背景
+                </CommonPresetFieldHeader>
                 <textarea name="gen_proj_bg" rows={3} value={projectBackground} onChange={e => setProjectBackground(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
 
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold flex items-center justify-between">IT建设内容 <span className="text-xs text-secondary-foreground font-normal">根据项目名称自动生成</span></label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.meetingItConstructionContent}
+                  kind="text_snippet"
+                  value={itContent}
+                  onApply={setItContent}
+                  labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
+                >
+                  <span>IT建设内容</span>
+                  <span className="text-xs text-secondary-foreground font-normal">根据项目名称自动生成</span>
+                </CommonPresetFieldHeader>
                 <textarea name="gen_it_content" value={itContent} onChange={e => setItContent(e.target.value)} rows={2} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold flex items-center justify-between">CT建设内容 <span className="text-xs text-secondary-foreground font-normal">中台能力联动修改</span></label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.meetingCtConstructionContent}
+                  kind="text_snippet"
+                  value={ctContent}
+                  onApply={setCtContent}
+                  labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
+                >
+                  <span>CT建设内容</span>
+                  <span className="text-xs text-secondary-foreground font-normal">中台能力联动修改</span>
+                </CommonPresetFieldHeader>
                 <textarea name="gen_ct_content" value={ctContent} onChange={e => setCtContent(e.target.value)} rows={2} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
 
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">技术方案</label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.projectSolution}
+                  kind="text_snippet"
+                  value={formData.gen_tech_solution ?? "采用端-管-云架构..."}
+                  onApply={(nextValue) => handleFieldChange("gen_tech_solution", nextValue)}
+                >
+                  技术方案
+                </CommonPresetFieldHeader>
                 <textarea name="gen_tech_solution" rows={2} {...getBind("gen_tech_solution", "采用端-管-云架构...")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
 
@@ -1442,11 +1497,25 @@ export default function TemplateForms({
               </div>
 
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">收入侧收款方式</label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.paymentRevenueCollectionMethod}
+                  kind="text_snippet"
+                  value={revCollection}
+                  onApply={setRevCollection}
+                >
+                  收入侧收款方式
+                </CommonPresetFieldHeader>
                 <input type="text" name="gen_rev_collection" value={revCollection} onChange={e => setRevCollection(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">支出侧付款方式</label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.paymentExpenditurePaymentMethod}
+                  kind="text_snippet"
+                  value={expPayment}
+                  onApply={setExpPayment}
+                >
+                  支出侧付款方式
+                </CommonPresetFieldHeader>
                 <input type="text" name="gen_exp_payment" value={expPayment} onChange={e => setExpPayment(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
 
@@ -1601,11 +1670,18 @@ export default function TemplateForms({
               )}
 
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">风险点及其他责任人</label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.approvalProjectManager}
+                  kind="short_value"
+                  value={formData.gen_risk_owner ?? "人员A"}
+                  onApply={(nextValue) => handleFieldChange("gen_risk_owner", nextValue)}
+                >
+                  风险点及其他责任人
+                </CommonPresetFieldHeader>
                 <input type="text" name="gen_risk_owner" {...getBind("gen_risk_owner", "人员A")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">是否联合体投标</label>
+                <CommonPresetLabelHeader>是否联合体投标</CommonPresetLabelHeader>
                 <input type="text" name="gen_is_joint" {...getBind("gen_is_joint", "否")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
@@ -1624,7 +1700,7 @@ export default function TemplateForms({
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-bold text-foreground">采购方式</label>
+                <CommonPresetLabelHeader labelClassName="text-sm font-bold text-foreground">采购方式</CommonPresetLabelHeader>
                 <select value={procurementMethod} onChange={e => setProcurementMethod(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md">
                   <option value="短名单甄选">短名单甄选</option>
                   <option value="采购">采购</option>
@@ -1635,7 +1711,14 @@ export default function TemplateForms({
                 )}
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">时间要求</label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.meetingTimeRequirement}
+                  kind="text_snippet"
+                  value={formData.gen_construction_time_req ?? "合同签定后30天内。"}
+                  onApply={(nextValue) => handleFieldChange("gen_construction_time_req", nextValue)}
+                >
+                  时间要求
+                </CommonPresetFieldHeader>
                 <textarea name="gen_construction_time_req" rows={2} {...getBind("gen_construction_time_req", "合同签定后30天内。")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
@@ -1652,7 +1735,14 @@ export default function TemplateForms({
             <h4 className="font-bold text-primary mb-4">《ICT项目立项签批表》专属配置</h4>
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">项目背景</label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.projectBackground}
+                  kind="text_snippet"
+                  value={projectBackground}
+                  onApply={setProjectBackground}
+                >
+                  项目背景
+                </CommonPresetFieldHeader>
                 <textarea
                   name="gen_proj_bg"
                   rows={3}
@@ -1663,10 +1753,16 @@ export default function TemplateForms({
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold flex items-center justify-between">
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.approvalItServiceContent}
+                  kind="text_snippet"
+                  value={formData.gen_sign_it_content ?? defaultSignItContent}
+                  onApply={(nextValue) => handleFieldChange("gen_sign_it_content", nextValue)}
+                  labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
+                >
                   <span>IT服务内容</span>
                   <span className="text-xs text-secondary-foreground font-normal">为空则用系统默认</span>
-                </label>
+                </CommonPresetFieldHeader>
                 <textarea
                   name="gen_sign_it_content"
                   rows={2}
@@ -1676,10 +1772,16 @@ export default function TemplateForms({
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold flex items-center justify-between">
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.approvalCtServiceContent}
+                  kind="text_snippet"
+                  value={formData.gen_sign_ct_content ?? defaultSignCtContent}
+                  onApply={(nextValue) => handleFieldChange("gen_sign_ct_content", nextValue)}
+                  labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
+                >
                   <span>CT服务内容</span>
                   <span className="text-xs text-secondary-foreground font-normal">为空则用系统默认</span>
-                </label>
+                </CommonPresetFieldHeader>
                 <textarea
                   name="gen_sign_ct_content"
                   rows={2}
@@ -1699,7 +1801,14 @@ export default function TemplateForms({
                 </label>
               </div>
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">收入侧收款方式</label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.paymentRevenueCollectionMethod}
+                  kind="text_snippet"
+                  value={revCollection}
+                  onApply={setRevCollection}
+                >
+                  收入侧收款方式
+                </CommonPresetFieldHeader>
                 <input
                   type="text"
                   name="gen_rev_collection"
@@ -1710,7 +1819,14 @@ export default function TemplateForms({
                 />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">支出侧付款方式</label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.paymentExpenditurePaymentMethod}
+                  kind="text_snippet"
+                  value={expPayment}
+                  onApply={setExpPayment}
+                >
+                  支出侧付款方式
+                </CommonPresetFieldHeader>
                 <input
                   type="text"
                   name="gen_exp_payment"
@@ -1730,22 +1846,36 @@ export default function TemplateForms({
             <h4 className="font-bold text-primary mb-4">《ICT项目需求导入表》专属配置</h4>
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">项目需求单位</label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.demandUnit}
+                  kind="short_value"
+                  value={formData.gen_demand_branch_name ?? "XXX分公司"}
+                  onApply={(nextValue) => handleFieldChange("gen_demand_branch_name", nextValue)}
+                >
+                  项目需求单位
+                </CommonPresetFieldHeader>
                 <input type="text" name="gen_demand_branch_name" {...getBind("gen_demand_branch_name", "XXX分公司")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">业务模式</label>
+                <CommonPresetLabelHeader>业务模式</CommonPresetLabelHeader>
                 <select name="gen_demand_it_business_mode" {...getBind("gen_demand_it_business_mode", "服务模式")} className="bg-card border border-input px-3 py-2 rounded-md">
                   <option value="服务模式">服务模式</option>
                   <option value="投资">投资</option>
                 </select>
               </div>
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">服务内容</label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.demandServiceContent}
+                  kind="text_snippet"
+                  value={formData.gen_demand_service_content ?? "IT；CT"}
+                  onApply={(nextValue) => handleFieldChange("gen_demand_service_content", nextValue)}
+                >
+                  服务内容
+                </CommonPresetFieldHeader>
                 <textarea name="gen_demand_service_content" {...getBind("gen_demand_service_content", "IT；CT")} rows={2} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">设备清单</label>
+                <CommonPresetLabelHeader>设备清单</CommonPresetLabelHeader>
                 <input type="text" name="gen_demand_device_list" {...getBind("gen_demand_device_list", "不涉及")} className="bg-card border border-input px-3 py-2 rounded-md" />
               </div>
               <div className="col-span-2 border border-border rounded-lg p-4 bg-background">
@@ -1768,11 +1898,25 @@ export default function TemplateForms({
                 </div>
               </div>
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">客户确认</label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.demandCustomerConfirmation}
+                  kind="short_value"
+                  value={formData.gen_demand_customer_confirm ?? "微信截图"}
+                  onApply={(nextValue) => handleFieldChange("gen_demand_customer_confirm", nextValue)}
+                >
+                  客户确认
+                </CommonPresetFieldHeader>
                 <input type="text" name="gen_demand_customer_confirm" {...getBind("gen_demand_customer_confirm", "微信截图")} className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
               </div>
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">部署环境要求</label>
+                <CommonPresetFieldHeader
+                  fieldKey={PRESET_FIELD_KEYS.demandDeploymentEnvironment}
+                  kind="text_snippet"
+                  value={formData.gen_demand_env_require ?? "客户提供部署环境，不包含在本次项目范围内"}
+                  onApply={(nextValue) => handleFieldChange("gen_demand_env_require", nextValue)}
+                >
+                  部署环境要求
+                </CommonPresetFieldHeader>
                 <input type="text" name="gen_demand_env_require" {...getBind("gen_demand_env_require", "客户提供部署环境，不包含在本次项目范围内")} className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
               </div>
 
