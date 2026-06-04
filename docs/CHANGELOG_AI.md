@@ -1,8 +1,120 @@
 # CHANGELOG_AI.md
 
+> [!NOTE]
+> **历史兼容性说明**：本文件记录 AI 代理所做的结构修改、业务规则和上下文更改，不再作为 AI 每次任务的默认必读文件。
+> 只有在追溯历史回归或用户明确要求时，才需要加载和查看此变更日志。
+
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-06-04
+
+### ICT Subject Funding Plans Final: Migration and Single Official Source
+
+Modified:
+- [ictSubjectFundingPlan.ts](../src-ui/src/lib/ictSubjectFundingPlan.ts): Added migration version `SUBJECT_FUNDING_PLAN_MIGRATION_VERSION = 1`, `legacy_migration` audit reason, migration-plan creation, and `migrateLegacySubjectFundingPlans()` to fill only missing non-zero subject plans while preserving existing valid/custom/equal plans and surfacing invalid plans through coverage validation.
+- [useIctState.ts](../src-ui/src/hooks/useIctState.ts) and [useIctCalculations.ts](../src-ui/src/hooks/useIctCalculations.ts): Defaulted state and payloads to `subject_funding_plans`; official annual cashflow overrides now always come from subject funding plans when coverage is valid, and `CashflowSegment` no longer contributes formal annual cashflow.
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Migrates old project loads after tax-item hydration, writes `subjectFundingPlanMigrationVersion`, removes the calculation-source switch, and keeps coverage summary, batch init, locate, clear-all, balance allocation, CT linkage, and smart reverse flows on the new source.
+- [IctBasicInfo.tsx](../src-ui/src/components/IctBasicInfo.tsx), [IctCashflowTable.tsx](../src-ui/src/components/IctCashflowTable.tsx), and [IctSubjectFundingPlanEditor.tsx](../src-ui/src/components/IctSubjectFundingPlanEditor.tsx): Removed old model A-E / segment funding UI and old-source explanatory text; cashflow preview and drill-down now present only the subject-plan source.
+- [ProjectFilesTab.tsx](../src-ui/src/components/project/ProjectFilesTab.tsx), [projectService.ts](../src-ui/src/utils/projectService.ts), [models.rs](../src-tauri/src/benefit/models.rs), [excel.rs](../src-tauri/src/benefit/excel.rs), and [calculator.rs](../src-tauri/src/benefit/calculator.rs): Added migration-version compatibility and made Excel import payloads use the subject funding source.
+- Added [test_subject_funding_migration.cjs](../src-ui/scripts/test_subject_funding_migration.cjs) and [test_subject_funding_final.cjs](../src-ui/scripts/test_subject_funding_final.cjs).
+
+Tests:
+- Ran `for f in scripts/test_subject_funding*.cjs; do node "$f"; done` in `src-ui`: passed.
+- Ran `npx tsc --noEmit` in `src-ui`: passed.
+- Ran `npm run build` in `src-ui`: passed.
+- Ran `cargo test` and `cargo fmt -- --check` in `src-tauri`: passed; existing warnings remain.
+
+Decision:
+- The root issue was not just a visible source selector. Keeping `legacy_model` as a runnable branch meant old segment schedules could still compete with subject plans as annual cashflow sources. The bounded fix removes the user switch and formal legacy branch while retaining old fields for read/migration compatibility.
+- Existing abnormal subject plans are intentionally not overwritten by migration. The app fills missing non-zero subjects, then lets the canonical coverage validator block formal calculation and saving until the user resolves the invalid rows.
+
+### ICT Funding Plans: Default Activation and Cashflow Source Repair
+
+Modified:
+- [ictSubjectFundingPlan.ts](../src-ui/src/lib/ictSubjectFundingPlan.ts): Changed zero-amount sync from "disable and keep record" to removing the subject plan so the UI returns to "未维护"; plan mode switches and custom annual edits now force `enabled: true`; normalization preserves sync audit fields.
+- [useIctState.ts](../src-ui/src/hooks/useIctState.ts): Removed the old gate that only synced plans when `cashflowCalculationSource === "subject_funding_plans"`. Amount edits now always sync subject plans, create missing upfront plans, backfill other positive missing subjects, and switch the formal cashflow source to `subject_funding_plans` on positive amount input.
+- [IctSubjectFundingPlanEditor.tsx](../src-ui/src/components/IctSubjectFundingPlanEditor.tsx): Opening a zero-amount subject no longer creates a persisted 0 yuan plan; missing plans show an unchecked enable state until explicitly created.
+- [subject-funding-plan.md](../docs/modules/subject-funding-plan.md) and [CURRENT_TASK.md](../docs/CURRENT_TASK.md): Recorded the new default activation and zero-reset behavior.
+
+Tests:
+- Ran `npm run build` in `src-ui`: passed.
+- Ran `for f in scripts/test_subject_funding*.cjs; do node "$f"; done` in `src-ui`: passed.
+
+Decision:
+- The root cause was split ownership between subject amount input and cashflow source selection. Users could maintain a subject annual plan while the official cashflow table still read the legacy global model, so custom year-2 amounts appeared in the editor but not in the 10-year result.
+- The stable bounded fix makes subject amount input the convergence point: positive amounts create/enable default subject plans and activate the subject-plan source; clearing an amount removes that subject's plan and returns it to "未维护".
+
 ## 2026-06-03
+
+### ICT Lifecycle Phase 3.5/4 Regression Repair: Legacy Restore, Clear-All, Coverage Locate, Excel Cashflow
+
+Modified:
+- [models.rs](../src-tauri/src/benefit/models.rs): Added backward-compatible serde defaults for IT cashflow fields and `IctResult.cashflow` alias/default support so legacy snapshots without Phase 4 fields can still deserialize.
+- [calculator.rs](../src-tauri/src/benefit/calculator.rs): Updated test `IctInput` builders for the optional `subject_funding_plans` field.
+- [useIctState.ts](../src-ui/src/hooks/useIctState.ts): Added a unified `clearFinancialSubjects()` state action that clears all revenue/cost amounts, subject names, subject funding plans, Model E segment amount schedules, balance allocation, tail-difference state, and reconciliation prompts.
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Restored tax items from both `incl_tax/tax_rate` and `incl/tax/excl` shapes; added confirmed "一键清空全部收入和支出"; added coverage issue drill-down that reuses `subjectFundingCoverage.issues[0]` and auto-opens the target funding plan editor.
+- [IctSubjectFundingPlanEditor.tsx](../src-ui/src/components/IctSubjectFundingPlanEditor.tsx): Added `forceOpenToken` so coverage locate can expand a collapsed plan editor.
+- [IctCashflowTable.tsx](../src-ui/src/components/IctCashflowTable.tsx): Completed the project-wide vs IT-only 10-year view with IT cumulative net and PV values, avoiding invalid `NaN` display.
+- [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Fixed Excel cashflow variable source from the incorrect `metrics.cashflows` to the formal `metrics.cashflow`; only emits `CASH_IN_Y1..10` and `CASH_OUT_Y1..10` when official cashflow rows exist so template fallback formulas remain intact.
+- [subject-funding-plan.md](../docs/modules/subject-funding-plan.md) and [CURRENT_TASK.md](../docs/CURRENT_TASK.md): Recorded repair rules and current validation status.
+
+Tests:
+- Ran `npm run build` in `src-ui`: passed.
+- Ran `node scripts/test_subject_funding_plan.cjs`, `node scripts/test_subject_funding_cashflow.cjs`, and `node scripts/test_subject_funding_sync.cjs` in `src-ui`: passed.
+- Ran `cargo test` in `src-tauri`: 11/11 passed; existing warnings remain.
+- Ran `cargo fmt -- --check` in `src-tauri`: passed after formatting.
+
+Decision:
+- The old-project zero-amount symptom was addressed at the deserialization boundary rather than masking it in the UI. Legacy output metrics missing new IT fields now load with zero IT defaults, preserving existing project-wide values.
+- Clear-all treats custom subject naming as data on fixed standard subjects because the current catalog has no separate dynamic subject-instance structure. The safe behavior is to restore fixed subject rows to blank initial state and remove all user-entered financial schedules.
+- Coverage locate reuses the canonical validation result so issue ordering and classification cannot drift from the blocking calculation-source logic.
+- Investment-benefit Excel multi-year cashflow uses the official calculator result, not a parallel reconstruction, preserving old-model and subject-plan compatibility.
+
+### ICT Subject-Level Funding Plans Phase 3.5 & 4: Status Semantics, Batch Init, & Drill-Down
+
+Created:
+- [test_subject_funding_phase4.cjs](../src-ui/scripts/test_subject_funding_phase4.cjs): Comprehensive tests for zero-recovery (proportional preservation), exact reason tracking, batch initialization skipping existing plans, and annual cashflow drill-down generation.
+- [docs/modules/subject-funding-plan.md](../docs/modules/subject-funding-plan.md): Modular design doc covering the entire subject funding plan system, rules, and integration boundaries.
+
+Modified:
+- [ictSubjectFundingPlan.ts](../src-ui/src/lib/ictSubjectFundingPlan.ts): Added `lastValidAnnualInclValues`, `lastChangeReason`, and `lastChangedAt` to `SubjectFundingPlan` state for zero-recovery and transparency. Added `initializeMissingSubjectFundingPlans` helper and `buildAnnualCashflowSubjectContributions` drill-down generator. Appended `revenueSubjects` and `costSubjects` arrays to `FundingPlanCoverageResult`.
+- [useIctState.ts](../src-ui/src/hooks/useIctState.ts): Updated `updateTaxItem` and `updateTaxItemsInclBatch` to accept optional `reason` arguments from caller layers, propagating them to the sync algorithm to replace "manual_amount_sync" with accurate business contexts like "reverse_calculation_sync" or "ct_linkage_sync".
+- [useIctCalculations.ts](../src-ui/src/hooks/useIctCalculations.ts): Injected specific update reasons (`reverse_calculation_sync` and `balance_allocation_sync`) into amount update dispatches.
+- [IctSubjectFundingPlanEditor.tsx](../src-ui/src/components/IctSubjectFundingPlanEditor.tsx): Added a subtle, friendly UI status pill displaying the `lastChangeReason` (in Chinese) for auto-adjusted plans.
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Added batch initialization buttons ("一键生成...") visible when `subject_funding_plans` calculation source is active. Re-enabled the smart reverse button while in subject plans mode (removed accidental phase 3 blocking logic).
+- [IctCashflowTable.tsx](../src-ui/src/components/IctCashflowTable.tsx): Implemented an interactive drill-down state `expandedYear` that renders nested per-subject revenue/cost contribution breakdowns natively below each cashflow year row when expanded.
+
+Tests:
+- Ran `node scripts/test_subject_funding_phase4.cjs` in `src-ui`: 4/4 passed.
+- Ran `cargo test` in `src-tauri`: 10/10 passed.
+- Ran `npm run build` in `src-ui`: Build succeeded.
+
+Decision:
+- Zero Recovery: The UI requires subjects to seamlessly toggle on and off. Instead of deleting zeroed plans, we preserve their scale in `lastValidAnnualInclValues`. Re-adding an amount restores the prior timeline proportions precisely.
+- Explicit Sync Reason: Differentiating manual edits from reverse calcs or linkages directly aids user comprehension. Storing `lastChangeReason` at the domain layer ensures the UI displays an accurate origin narrative, increasing trust.
+- Drill-Down Readability: Aggregated NPV values hide composition. Exposing the exact `buildAnnualCashflowSubjectContributions` mappings within the cashflow table removes the "black box" feeling, letting users trace final outputs directly back to input subjects.
+
+### ICT Subject-Level Funding Plans Phase 3: Amount-Change Synchronization
+
+Created:
+- [test_subject_funding_sync.cjs](../src-ui/scripts/test_subject_funding_sync.cjs): 12 pure-function tests covering proportional scaling, tail-difference correction, auto-create upfront, clear-to-zero, zero-total fallback, batch sync, CT linkage, mode preservation, scale-down, negative amounts, and immutability.
+
+Modified:
+- [ictSubjectFundingPlan.ts](../src-ui/src/lib/ictSubjectFundingPlan.ts): Added `syncSubjectFundingPlanToAmount` (single-subject proportional scale with tail correction, auto-create, and zero-clear) and `syncSubjectFundingPlansToAmounts` (batch variant). Uses integer-cents arithmetic internally to avoid floating-point drift.
+- [useIctState.ts](../src-ui/src/hooks/useIctState.ts): Injected funding plan sync into `updateTaxItem` and `updateTaxItemsInclBatch`. When `cashflowCalculationSource === "subject_funding_plans"`, any `incl` or `excl` field change (including CT linkage side-effects) triggers `syncSubjectFundingPlansToAmounts` in the same React state batch. Tax-rate-only changes (`field === "tax"`) do not trigger sync.
+- [useIctCalculations.ts](../src-ui/src/hooks/useIctCalculations.ts): Added `fundingPlansOverride` option to `buildInputDataPayload` so candidate evaluations use simulated-synced plans. Added `buildCandidateSyncUpdates` helper for CT-aware sync update construction. Modified `buildReverseCandidate` and `buildLockedTotalStructureCandidate` to compute and inject synced plans during candidate evaluation.
+- [IctLifecycle.tsx](../src-ui/src/views/IctLifecycle.tsx): Removed the `subject_funding_plans` reverse calculation block — smart reverse now works under both calculation sources.
+
+Tests:
+- Ran `node scripts/test_subject_funding_sync.cjs` in `src-ui`: 12/12 passed.
+- Ran `node scripts/test_subject_funding_plan.cjs` in `src-ui`: passed (existing tests unaffected).
+- Ran `node scripts/test_subject_funding_cashflow.cjs` in `src-ui`: passed (existing tests unaffected).
+- Ran `npx tsc --noEmit` in `src-ui`: zero errors.
+
+Decision:
+- Sync logic centralized in `updateTaxItem` / `updateTaxItemsInclBatch` (the convergence points for all amount writes), rather than scattered across each caller. This ensures all 5 write paths (manual edit, normal reverse, locked-total reverse, balance allocation, CT linkage) are automatically covered.
+- Proportional scaling preserves the user's custom year-by-year distribution shape. Mode (`upfront`, `equal`, `custom`) is preserved across syncs.
+- `legacy_model` mode is completely unaffected; sync is gated by `cashflowCalculationSource`.
 
 ### ICT Subject-Level Funding Plans Phase 2
 

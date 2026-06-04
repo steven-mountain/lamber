@@ -16,10 +16,14 @@ import {
 import {
   normalizeCashflowCalculationSource,
   normalizeSubjectFundingPlans,
+  SUBJECT_FUNDING_PLAN_MIGRATION_VERSION,
+  initializeMissingSubjectFundingPlans,
   removeSubjectFundingPlan,
+  syncSubjectFundingPlansToAmounts,
   upsertSubjectFundingPlan as upsertSubjectFundingPlanRecord,
   type CashflowCalculationSource,
   type SubjectFundingPlan,
+  type SubjectFundingPlanLastChangeReason,
   type SubjectFundingPlans,
   type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
@@ -27,7 +31,8 @@ import {
 export { normalizeProjectYears };
 
 export interface TaxItem { incl: number; tax: number; excl: number; customSubjectName?: string; billingSubjectName?: string; }
-export type TaxItemInclUpdate = { groupId: string; key: string; incl: number };
+
+export type TaxItemInclUpdate = { groupId: string; key: string; incl: number; reason?: SubjectFundingPlanLastChangeReason };
 export const defaultTaxItem = (tax = 6): TaxItem => ({ incl: 0, tax, excl: 0 });
 export type SegmentValueMode = "ratio" | "amount";
 export type SegmentFlowMode = "upfront" | "equal" | "custom";
@@ -292,7 +297,9 @@ export function useIctState() {
   );
   const [subjectFundingPlans, setSubjectFundingPlansState] = useState<SubjectFundingPlans>({});
   const [cashflowCalculationSource, setCashflowCalculationSourceState] =
-    useState<CashflowCalculationSource>("legacy_model");
+    useState<CashflowCalculationSource>("subject_funding_plans");
+  const [subjectFundingPlanMigrationVersion, setSubjectFundingPlanMigrationVersion] =
+    useState<number | undefined>(SUBJECT_FUNDING_PLAN_MIGRATION_VERSION);
 
   // --- Revenue State ---
   const [revIt, setRevIt] = useState({
@@ -403,6 +410,102 @@ export function useIctState() {
     setSubjectFundingPlansState(prev => removeSubjectFundingPlan(prev, subjectRef));
   };
 
+  const collectPositiveFundingSubjects = (sources?: {
+    revItState?: typeof revIt;
+    revCtState?: typeof revCt;
+    revNonItCtState?: typeof revNonItCt;
+    costItState?: typeof costIt;
+    costCtState?: typeof costCt;
+    costMixState?: typeof costMix;
+  }) => {
+    const result: Array<{ subjectRef: SubjectFundingSubjectRef; amountIncl: number }> = [];
+    const addRecordItems = (
+      side: SubjectFundingSubjectRef["side"],
+      groupId: SubjectFundingSubjectRef["groupId"],
+      items: Record<string, TaxItem>,
+    ) => {
+      Object.entries(items).forEach(([itemKey, item]) => {
+        if (item.incl > 0) {
+          result.push({ subjectRef: { side, groupId, key: itemKey }, amountIncl: item.incl });
+        }
+      });
+    };
+
+    addRecordItems("revenue", "revIt", sources?.revItState ?? revIt);
+    addRecordItems("revenue", "revCt", sources?.revCtState ?? revCt);
+    const nonItCt = sources?.revNonItCtState ?? revNonItCt;
+    if (nonItCt.incl > 0) {
+      result.push({ subjectRef: { side: "revenue", groupId: "revNonItCt", key: "item" }, amountIncl: nonItCt.incl });
+    }
+    addRecordItems("cost", "costIt", sources?.costItState ?? costIt);
+    addRecordItems("cost", "costCt", sources?.costCtState ?? costCt);
+    addRecordItems("cost", "costMix", sources?.costMixState ?? costMix);
+    return result;
+  };
+
+  const syncFundingPlansAfterAmountChange = (
+    updates: Array<{ subjectRef: SubjectFundingSubjectRef; newAmountIncl: number; reason?: SubjectFundingPlanLastChangeReason }>,
+    positiveSubjects: Array<{ subjectRef: SubjectFundingSubjectRef; amountIncl: number }>,
+  ) => {
+    if (updates.length === 0) return;
+    const zeroedSubjectKeys = new Set(
+      updates
+        .filter(update => update.newAmountIncl <= 0)
+        .map(update => `${update.subjectRef.side}:${update.subjectRef.groupId}:${update.subjectRef.key}`),
+    );
+    const activePositiveSubjects = positiveSubjects.filter(subject =>
+      !zeroedSubjectKeys.has(`${subject.subjectRef.side}:${subject.subjectRef.groupId}:${subject.subjectRef.key}`),
+    );
+    setSubjectFundingPlansState(prev => {
+      const syncedPlans = syncSubjectFundingPlansToAmounts(prev, updates);
+      return initializeMissingSubjectFundingPlans(syncedPlans, activePositiveSubjects);
+    });
+    setCashflowCalculationSourceState("subject_funding_plans");
+  };
+
+  const clearFinancialSubjects = () => {
+    setRevIt({
+      integration: defaultTaxItem(6), maintenance: defaultTaxItem(6),
+      device_sales: defaultTaxItem(13), device_lease: defaultTaxItem(13),
+      other: defaultTaxItem(6), cloud: defaultTaxItem(6),
+    });
+    setRevCt({ line: defaultTaxItem(9), product: defaultTaxItem(6) });
+    setRevNonItCt(defaultTaxItem(9));
+    setCostIt({
+      device: defaultTaxItem(13), construction: defaultTaxItem(9),
+      survey: defaultTaxItem(6), integration: defaultTaxItem(6),
+      other: defaultTaxItem(6), maintenance: defaultTaxItem(6),
+      running: defaultTaxItem(13), bidding: defaultTaxItem(6),
+      design_eval: defaultTaxItem(6), audit: defaultTaxItem(6),
+    });
+    setCostCt({
+      construction: defaultTaxItem(9), maintenance: defaultTaxItem(9),
+      other: defaultTaxItem(6), bandwidth: defaultTaxItem(9), renewal: defaultTaxItem(9),
+    });
+    setCostMix({
+      non_it_ct: defaultTaxItem(9), marketing: defaultTaxItem(6),
+      channel: defaultTaxItem(6), other: defaultTaxItem(6),
+    });
+    setSubjectFundingPlansState({});
+    setBalanceAllocation(createDefaultBalanceAllocationState());
+    setIgnoredTailValue(null);
+    setIgnoredDataHash(null);
+    setReconciliationErrors([]);
+    setShowReconciliationModal(false);
+    setShowConfirmIgnore(false);
+    setPendingTab(null);
+    setCurrentTotalDifference("0");
+    setCashflowCalculationSourceState("subject_funding_plans");
+    setSubjectFundingPlanMigrationVersion(SUBJECT_FUNDING_PLAN_MIGRATION_VERSION);
+    setCashflowSegments(prev => prev.map(segment => ({
+      ...segment,
+      revenueValue: 0,
+      costValue: 0,
+      revenueAnnualValues: [],
+      costAnnualValues: [],
+    })));
+  };
+
   const updateTaxItemsInclBatch = (updates: TaxItemInclUpdate[]) => {
     if (updates.length === 0) return;
     if (ignoredDataHash !== null) {
@@ -481,15 +584,46 @@ export function useIctState() {
     if (changed.costIt) setCostIt(nextCostIt);
     if (changed.costCt) setCostCt(nextCostCt);
     if (changed.costMix) setCostMix(nextCostMix);
+
+    const syncUpdates: Array<{ subjectRef: SubjectFundingSubjectRef; newAmountIncl: number; reason?: SubjectFundingPlanLastChangeReason }> = [];
+    updates.forEach(update => {
+      const side = (update.groupId === "revIt" || update.groupId === "revCt" || update.groupId === "revNonItCt")
+        ? "revenue" as const : "cost" as const;
+      syncUpdates.push({
+        subjectRef: { side, groupId: update.groupId as SubjectFundingSubjectRef["groupId"], key: update.key },
+        newAmountIncl: update.incl,
+        reason: update.reason,
+      });
+      // CT linkage: revCt.product → costCt.other, revCt.line → costCt.bandwidth
+      if (update.groupId === "revCt" && update.key === "product") {
+        syncUpdates.push({ subjectRef: { side: "cost", groupId: "costCt", key: "other" }, newAmountIncl: update.incl, reason: "ct_linkage_sync" });
+      }
+      if (update.groupId === "revCt" && update.key === "line") {
+        syncUpdates.push({ subjectRef: { side: "cost", groupId: "costCt", key: "bandwidth" }, newAmountIncl: update.incl, reason: "ct_linkage_sync" });
+      }
+    });
+    syncFundingPlansAfterAmountChange(
+      syncUpdates,
+      collectPositiveFundingSubjects({
+        revItState: nextRevIt,
+        revCtState: nextRevCt,
+        revNonItCtState: nextRevNonItCt,
+        costItState: nextCostIt,
+        costCtState: nextCostCt,
+        costMixState: nextCostMix,
+      }),
+    );
   };
 
-  const updateTaxItem = (groupId: string, key: string, field: "incl" | "tax" | "excl", val: number) => {
+  const updateTaxItem = (groupId: string, key: string, field: "incl" | "tax" | "excl", val: number, reason?: SubjectFundingPlanLastChangeReason) => {
     if (ignoredDataHash !== null) {
       setIgnoredDataHash(null);
       setIgnoredTailValue(null);
     }
 
-    const processItem = (groupState: any, setGroupState: any, targetKey: string) => {
+    // Collect effective incl amounts for funding plan sync.
+    // processItem returns the resolved incl value so we can sync plans afterwards.
+    const processItem = (groupState: any, setGroupState: any, targetKey: string): number => {
       const item = { ...groupState[targetKey], [field]: isNaN(val) ? 0 : val };
       if (field === 'incl' || field === 'tax') {
         item.excl = item.incl === 0 ? 0 : Number((item.incl / (1 + item.tax / 100)).toFixed(2));
@@ -497,15 +631,39 @@ export function useIctState() {
         item.incl = item.excl === 0 ? 0 : Number((item.excl * (1 + item.tax / 100)).toFixed(2));
       }
       setGroupState({ ...groupState, [targetKey]: item });
+      return Number(item.incl) || 0;
     };
 
-    if (groupId === 'revIt') processItem(revIt, setRevIt, key);
-    else if (groupId === 'revCt') {
-      processItem(revCt, setRevCt, key);
-      if (key === 'product') processItem(costCt, setCostCt, 'other');
-      if (key === 'line') processItem(costCt, setCostCt, 'bandwidth');
-    }
-    else if (groupId === 'revNonItCt') {
+    // Track incl amounts for subjects that need plan sync
+    const syncUpdates: Array<{ subjectRef: SubjectFundingSubjectRef; newAmountIncl: number; reason?: SubjectFundingPlanLastChangeReason }> = [];
+    const needsSync = field !== "tax";
+
+    const sideForGroup = (gid: string) =>
+      (gid === "revIt" || gid === "revCt" || gid === "revNonItCt") ? "revenue" as const : "cost" as const;
+
+    const trackSync = (gid: string, k: string, effectiveIncl: number, overrideReason?: SubjectFundingPlanLastChangeReason) => {
+      if (!needsSync) return;
+      syncUpdates.push({
+        subjectRef: { side: sideForGroup(gid), groupId: gid as SubjectFundingSubjectRef["groupId"], key: k },
+        newAmountIncl: effectiveIncl,
+        reason: overrideReason || reason,
+      });
+    };
+
+    if (groupId === 'revIt') {
+      trackSync(groupId, key, processItem(revIt, setRevIt, key));
+    } else if (groupId === 'revCt') {
+      const effectiveIncl = processItem(revCt, setRevCt, key);
+      trackSync(groupId, key, effectiveIncl);
+      if (key === 'product') {
+        processItem(costCt, setCostCt, 'other');
+        trackSync('costCt', 'other', effectiveIncl, "ct_linkage_sync");
+      }
+      if (key === 'line') {
+        processItem(costCt, setCostCt, 'bandwidth');
+        trackSync('costCt', 'bandwidth', effectiveIncl, "ct_linkage_sync");
+      }
+    } else if (groupId === 'revNonItCt') {
       const item = { ...revNonItCt, [field]: isNaN(val) ? 0 : val };
       if (field === 'incl' || field === 'tax') {
         item.excl = item.incl === 0 ? 0 : Number((item.incl / (1 + item.tax / 100)).toFixed(2));
@@ -513,10 +671,17 @@ export function useIctState() {
         item.incl = item.excl === 0 ? 0 : Number((item.excl * (1 + item.tax / 100)).toFixed(2));
       }
       setRevNonItCt(item);
+      trackSync(groupId, key, Number(item.incl) || 0);
+    } else if (groupId === 'costIt') {
+      trackSync(groupId, key, processItem(costIt, setCostIt, key));
+    } else if (groupId === 'costCt') {
+      trackSync(groupId, key, processItem(costCt, setCostCt, key));
+    } else if (groupId === 'costMix') {
+      trackSync(groupId, key, processItem(costMix, setCostMix, key));
     }
-    else if (groupId === 'costIt') processItem(costIt, setCostIt, key);
-    else if (groupId === 'costCt') processItem(costCt, setCostCt, key);
-    else if (groupId === 'costMix') processItem(costMix, setCostMix, key);
+
+    // Apply funding plan sync in the same React batch
+    syncFundingPlansAfterAmountChange(syncUpdates, collectPositiveFundingSubjects());
   };
 
   const updateTaxItemTextField = (
@@ -600,7 +765,9 @@ export function useIctState() {
     inqVendors, setInqVendors,
     balanceAllocation, setBalanceAllocation, updateBalanceRule,
     cashflowCalculationSource, setCashflowCalculationSource,
+    subjectFundingPlanMigrationVersion, setSubjectFundingPlanMigrationVersion,
     subjectFundingPlans, setSubjectFundingPlans, upsertSubjectFundingPlan, removeSubjectFundingPlanForRef,
+    clearFinancialSubjects,
     revIt, setRevIt,
     revCt, setRevCt,
     revNonItCt, setRevNonItCt,

@@ -57,9 +57,11 @@ import {
 import IctSubjectFundingPlanEditor from "../components/IctSubjectFundingPlanEditor";
 import {
   createSubjectFundingPlanId,
-  normalizeCashflowCalculationSource,
   normalizeSubjectFundingPlans,
-  type CashflowCalculationSource,
+  initializeMissingSubjectFundingPlans,
+  migrateLegacySubjectFundingPlans,
+  SUBJECT_FUNDING_PLAN_MIGRATION_VERSION,
+  type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
 
 const restoreCustomSubjectName = (item: any) => normalizeCustomSubjectName(item?.customSubjectName ?? item?.custom_subject_name ?? "");
@@ -88,6 +90,21 @@ const taxItemFinancialPart = (item: any) => ({
   excl: Number(item?.excl || 0),
 });
 
+const readFiniteNumber = (...values: unknown[]) => {
+  for (const value of values) {
+    if (value === undefined || value === null || value === "") continue;
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return numeric;
+  }
+  return null;
+};
+
+const restoreTaxItemNumber = (item: any, snakeKey: string, camelKey: string, fallback = 0) => {
+  if (!item) return fallback;
+  const numeric = readFiniteNumber(item[snakeKey], item[camelKey]);
+  return numeric === null ? fallback : numeric;
+};
+
 const buildFinancialStateHash = (data: any) => JSON.stringify({
   revIt: Object.fromEntries(Object.entries(data.revIt || {}).map(([key, item]) => [key, taxItemFinancialPart(item)])),
   revCt: Object.fromEntries(Object.entries(data.revCt || {}).map(([key, item]) => [key, taxItemFinancialPart(item)])),
@@ -99,6 +116,40 @@ const buildFinancialStateHash = (data: any) => JSON.stringify({
 
 const formatReverseCurrency = (value: number) =>
   new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY" }).format(value);
+
+const buildRestoredFundingSubjects = (sources: {
+  revIt: any;
+  revCt: any;
+  revNonItCt: any;
+  costIt: any;
+  costCt: any;
+  costMix: any;
+}) => {
+  const resolveItem = (subject: IctSubjectDefinition) => {
+    if (subject.groupId === "revIt") return sources.revIt[subject.key] || null;
+    if (subject.groupId === "revCt") return sources.revCt[subject.key] || null;
+    if (subject.groupId === "revNonItCt") return sources.revNonItCt;
+    if (subject.groupId === "costIt") return sources.costIt[subject.key] || null;
+    if (subject.groupId === "costCt") return sources.costCt[subject.key] || null;
+    if (subject.groupId === "costMix") return sources.costMix[subject.key] || null;
+    return null;
+  };
+
+  return ICT_SUBJECT_DEFINITIONS.map(subject => {
+    const item = resolveItem(subject);
+    return {
+      subjectRef: {
+        side: subject.side,
+        groupId: subject.groupId,
+        key: subject.key,
+      },
+      displayName: getSubjectExcelDisplayName(subject, item),
+      subjectAmountIncl: Number(item?.incl ?? 0),
+      taxRate: Number(item?.tax ?? 0),
+      isItScope: subject.groupId === "revIt" || subject.groupId === "costIt",
+    };
+  });
+};
 
 export default function IctLifecycle() {
   const { activeProjectId, activeSchemeId, entrySource, navigateTo } = useNavigationStore();
@@ -125,6 +176,7 @@ export default function IctLifecycle() {
   const [showSaveAsModal, setShowSaveAsModal] = useState(false);
   const [saveAsSchemeName, setSaveAsSchemeName] = useState("");
   const [showSelectProjectModal, setShowSelectProjectModal] = useState(false);
+  const [fundingPlanFocus, setFundingPlanFocus] = useState<{ planId: string; token: number } | null>(null);
 
   const buildHydrationInput = useCallback((baseInput: any, cashflowState: any) => {
     const merged = { ...(baseInput || {}) };
@@ -151,13 +203,14 @@ export default function IctLifecycle() {
     if (assumptions.subjectFundingPlans || assumptions.subject_funding_plans) {
       merged.subject_funding_plans = assumptions.subjectFundingPlans || assumptions.subject_funding_plans;
     }
-    const restoredCalculationSource =
-      assumptions.cashflowCalculationSource
-      || assumptions.cashflow_calculation_source
-      || paymentModel.cashflowCalculationSource
-      || paymentModel.cashflow_calculation_source;
-    if (restoredCalculationSource) {
-      merged.cashflow_calculation_source = restoredCalculationSource;
+    const restoredMigrationVersion = readFiniteNumber(
+      assumptions.subjectFundingPlanMigrationVersion,
+      assumptions.subject_funding_plan_migration_version,
+      merged.subjectFundingPlanMigrationVersion,
+      merged.subject_funding_plan_migration_version,
+    );
+    if (restoredMigrationVersion !== null) {
+      merged.subject_funding_plan_migration_version = restoredMigrationVersion;
     }
 
     const applyTaxItem = (key: string, item: any) => {
@@ -216,13 +269,23 @@ export default function IctLifecycle() {
   const fillCalculatorState = useCallback((params: any) => {
     if (!params) return;
 
-    const restoreItem = (item: any, defaultTax = 6) => ({
-      incl: item ? Number(item.incl_tax) : 0,
-      tax: item ? Number(item.tax_rate) : defaultTax,
-      excl: item ? Number((Number(item.incl_tax) / (1 + Number(item.tax_rate) / 100)).toFixed(2)) : 0,
-      customSubjectName: restoreCustomSubjectName(item),
-      billingSubjectName: restoreBillingSubjectName(item),
-    });
+    const restoreItem = (item: any, defaultTax = 6) => {
+      const incl = restoreTaxItemNumber(item, "incl_tax", "incl", 0);
+      const tax = restoreTaxItemNumber(item, "tax_rate", "tax", defaultTax);
+      const explicitExcl = restoreTaxItemNumber(item, "excl_tax", "excl", Number.NaN);
+      const excl = Number.isFinite(explicitExcl)
+        ? explicitExcl
+        : incl === 0
+          ? 0
+          : Number((incl / (1 + tax / 100)).toFixed(2));
+      return {
+        incl,
+        tax,
+        excl,
+        customSubjectName: restoreCustomSubjectName(item),
+        billingSubjectName: restoreBillingSubjectName(item),
+      };
+    };
 
     if (params.project_name) state.setProjName(params.project_name);
     if (params.customer_name) state.setCustomerName(params.customer_name);
@@ -235,10 +298,6 @@ export default function IctLifecycle() {
     if (params.cashflow_segment_value_mode) state.setSegmentValueMode(params.cashflow_segment_value_mode);
     if (params.cashflow_segments) state.setCashflowSegments(params.cashflow_segments);
     if (params.project_background) state.setProjectBackground(params.project_background);
-    state.setCashflowCalculationSource(
-      normalizeCashflowCalculationSource(params.cashflow_calculation_source ?? params.cashflowCalculationSource),
-    );
-    state.setSubjectFundingPlans(normalizeSubjectFundingPlans(params.subject_funding_plans ?? params.subjectFundingPlans));
     state.setBalanceAllocation(normalizeBalanceAllocationState({
       revenue: params.revenue_balance_rule ?? params.revenueBalanceRule,
       investment: params.investment_balance_rule ?? params.investmentBalanceRule,
@@ -293,6 +352,29 @@ export default function IctLifecycle() {
     state.setCostIt(costItRestored);
     state.setCostCt(costCtRestored);
     state.setCostMix(costMixRestored);
+    state.setCashflowCalculationSource("subject_funding_plans");
+    const migrationVersion = readFiniteNumber(
+      params.subject_funding_plan_migration_version,
+      params.subjectFundingPlanMigrationVersion,
+    );
+    const fundingMigration = migrateLegacySubjectFundingPlans(
+      buildRestoredFundingSubjects({
+        revIt: revItRestored,
+        revCt: revCtRestored,
+        revNonItCt: revNonItCtRestored,
+        costIt: costItRestored,
+        costCt: costCtRestored,
+        costMix: costMixRestored,
+      }),
+      normalizeSubjectFundingPlans(params.subject_funding_plans ?? params.subjectFundingPlans),
+      migrationVersion,
+    );
+    state.setSubjectFundingPlans(fundingMigration.plans);
+    state.setSubjectFundingPlanMigrationVersion(
+      fundingMigration.completed
+        ? SUBJECT_FUNDING_PLAN_MIGRATION_VERSION
+        : migrationVersion ?? undefined,
+    );
 
     if (params.ignore_tail_difference) {
       state.setIgnoredTailValue(params.tail_difference_value || "0");
@@ -322,7 +404,8 @@ export default function IctLifecycle() {
       setActiveScheme(null);
       setActiveSnapshot(null);
       setPendingNewSchemeName(null);
-      state.setCashflowCalculationSource("legacy_model");
+      state.setCashflowCalculationSource("subject_funding_plans");
+      state.setSubjectFundingPlanMigrationVersion(SUBJECT_FUNDING_PLAN_MIGRATION_VERSION);
       state.setSubjectFundingPlans({});
       return;
     }
@@ -340,7 +423,8 @@ export default function IctLifecycle() {
         setActiveScheme(null);
         setActiveSnapshot(null);
         setPendingNewSchemeName(null);
-        state.setCashflowCalculationSource("legacy_model");
+        state.setCashflowCalculationSource("subject_funding_plans");
+        state.setSubjectFundingPlanMigrationVersion(SUBJECT_FUNDING_PLAN_MIGRATION_VERSION);
         state.setSubjectFundingPlans({});
         return;
       }
@@ -362,7 +446,8 @@ export default function IctLifecycle() {
         if (project.discount_rate > 0) state.setDiscountRate(project.discount_rate);
         if (project.project_years > 0) state.setProjectYears(project.project_years);
         if (project.cashflow_model) state.setCashflowModel(project.cashflow_model as any);
-        state.setCashflowCalculationSource("legacy_model");
+        state.setCashflowCalculationSource("subject_funding_plans");
+        state.setSubjectFundingPlanMigrationVersion(SUBJECT_FUNDING_PLAN_MIGRATION_VERSION);
         state.setSubjectFundingPlans({});
         setTimeout(() => {
           isHydratingRef.current = false;
@@ -423,7 +508,8 @@ export default function IctLifecycle() {
           if (project.discount_rate > 0) state.setDiscountRate(project.discount_rate);
           if (project.project_years > 0) state.setProjectYears(project.project_years);
           if (project.cashflow_model) state.setCashflowModel(project.cashflow_model as any);
-          state.setCashflowCalculationSource("legacy_model");
+          state.setCashflowCalculationSource("subject_funding_plans");
+          state.setSubjectFundingPlanMigrationVersion(SUBJECT_FUNDING_PLAN_MIGRATION_VERSION);
           state.setSubjectFundingPlans({});
           setTimeout(() => {
             isHydratingRef.current = false;
@@ -444,7 +530,8 @@ export default function IctLifecycle() {
           if (project.discount_rate > 0) state.setDiscountRate(project.discount_rate);
           if (project.project_years > 0) state.setProjectYears(project.project_years);
           if (project.cashflow_model) state.setCashflowModel(project.cashflow_model as any);
-          state.setCashflowCalculationSource("legacy_model");
+          state.setCashflowCalculationSource("subject_funding_plans");
+          state.setSubjectFundingPlanMigrationVersion(SUBJECT_FUNDING_PLAN_MIGRATION_VERSION);
           state.setSubjectFundingPlans({});
         }
         setTimeout(() => {
@@ -462,7 +549,7 @@ export default function IctLifecycle() {
   }, [activeProjectId, activeSchemeId]);
 
   const getSubjectFundingBlockingMessage = useCallback((actionLabel: string) => {
-    if (state.cashflowCalculationSource !== "subject_funding_plans" || calculations.subjectFundingCoverage.valid) {
+    if (calculations.subjectFundingCoverage.valid) {
       return "";
     }
     const issueLines = calculations.subjectFundingCoverage.issues
@@ -471,11 +558,11 @@ export default function IctLifecycle() {
     const extraCount = calculations.subjectFundingCoverage.issues.length - issueLines.length;
     return [
       `当前现金流计算口径为“按科目收付款计划计算”，但覆盖校验未通过，不能${actionLabel}。`,
-      "请补齐或修正科目级收付款计划，或切回“沿用原资金模型计算”。",
+      "请补齐或修正科目级收付款计划后再继续。",
       ...issueLines,
       ...(extraCount > 0 ? [`另有 ${extraCount} 项问题未展开。`] : []),
     ].join("\n");
-  }, [calculations.subjectFundingCoverage, state.cashflowCalculationSource]);
+  }, [calculations.subjectFundingCoverage]);
 
   const handleSaveToSelectedProject = async (targetProjectId: string) => {
     if (!isWorkspaceReady) {
@@ -595,8 +682,6 @@ export default function IctLifecycle() {
     projectYears,
     balanceAllocation,
     updateBalanceRule,
-    cashflowCalculationSource,
-    setCashflowCalculationSource,
     subjectFundingPlans,
     upsertSubjectFundingPlan,
     revIt,
@@ -616,6 +701,7 @@ export default function IctLifecycle() {
     setIgnoredTailValue,
     loadTemplates,
     updateTaxItem,
+    clearFinancialSubjects,
     updateTaxItemCustomSubjectName,
     updateTaxItemBillingSubjectName,
   } = state;
@@ -744,10 +830,6 @@ export default function IctLifecycle() {
   }, [revSubjectRefKey, reverseSubjectOptions, setRevSubjectRefKey]);
 
   const executeReverseCalculation = () => {
-    if (cashflowCalculationSource === "subject_funding_plans") {
-      alert("当前现金流计算口径为“按科目收付款计划计算”。智能反算暂不支持该口径，请先切回“沿用原资金模型计算”后再执行反算。");
-      return;
-    }
     if (blockingBalanceMessages.length > 0) {
       alert(blockingBalanceMessages.join("\n"));
       return;
@@ -784,6 +866,7 @@ export default function IctLifecycle() {
           tailDifferenceValue: state.ignoredTailValue,
           balanceAllocation: serializeBalanceAllocationState(state.balanceAllocation),
           cashflowCalculationSource: state.cashflowCalculationSource,
+          subjectFundingPlanMigrationVersion: state.subjectFundingPlanMigrationVersion,
         },
         backgroundJson: {
           projectBackground: state.projectBackground,
@@ -805,6 +888,7 @@ export default function IctLifecycle() {
           costDistribution: state.distCost,
           segmentValueMode: state.segmentValueMode,
           cashflowCalculationSource: state.cashflowCalculationSource,
+          subjectFundingPlanMigrationVersion: state.subjectFundingPlanMigrationVersion,
         },
         yearlyCashflowJson: {
           cashflowTable: calculations.cashflowTable,
@@ -826,6 +910,7 @@ export default function IctLifecycle() {
           balanceAllocation: state.balanceAllocation,
           cashflowCalculationSource: state.cashflowCalculationSource,
           subjectFundingPlans: state.subjectFundingPlans,
+          subjectFundingPlanMigrationVersion: state.subjectFundingPlanMigrationVersion,
         },
         metricsJson: calculations.metrics,
       });
@@ -899,6 +984,7 @@ export default function IctLifecycle() {
     state.segmentValueMode,
     state.cashflowSegments,
     state.cashflowCalculationSource,
+    state.subjectFundingPlanMigrationVersion,
     state.revIt,
     state.revCt,
     state.revNonItCt,
@@ -990,41 +1076,33 @@ export default function IctLifecycle() {
     return parts.length > 0 ? parts.join("，") : "暂无有效年度金额";
   };
 
-  const getSourceSwitchIssueMessage = () => {
-    const issueLines = subjectFundingCoverage.issues
-      .slice(0, 10)
-      .map((issue, index) => `${index + 1}. ${issue.message}`);
-    const extraCount = subjectFundingCoverage.issues.length - issueLines.length;
-    return [
-      "当前科目级收付款计划覆盖校验未通过，已保持“沿用原资金模型计算”。",
-      ...issueLines,
-      ...(extraCount > 0 ? [`另有 ${extraCount} 项问题未展开。`] : []),
-    ].join("\n");
+  const handleLocateFirstCoverageIssue = () => {
+    const firstIssue = subjectFundingCoverage.issues[0];
+    if (!firstIssue) return;
+    const planId = createSubjectFundingPlanId(firstIssue.subjectRef);
+    setFundingPlanFocus({ planId, token: Date.now() });
+    scrollToSubject(
+      firstIssue.subjectRef.side,
+      firstIssue.subjectRef.groupId,
+      firstIssue.subjectRef.key,
+      activeTab,
+      setActiveTab,
+    );
   };
 
-  const handleCashflowCalculationSourceChange = (source: CashflowCalculationSource) => {
-    if (source === cashflowCalculationSource) return;
-    if (source === "subject_funding_plans" && !subjectFundingCoverage.valid) {
-      alert(getSourceSwitchIssueMessage());
-      return;
-    }
-    setCashflowCalculationSource(source);
+  const handleClearAllFinancialSubjects = () => {
+    const confirmed = window.confirm(
+      "确定要一键清空全部收入和投入吗？\n\n将清空全部收入金额、投入/支出金额、具体业务/产品名称、计费科目名称、科目资金计划、差额承接和反算目标状态；标准科目目录会保留。此操作无法撤销。"
+    );
+    if (!confirmed) return;
+
+    clearFinancialSubjects();
+    setRevSubjectRefKey("");
+    setFundingPlanFocus(null);
   };
 
   const renderCashflowCalculationSourceControl = () => {
     const counts = subjectFundingCoverage.counts;
-    const sourceOptions: Array<{ value: CashflowCalculationSource; label: string; description: string }> = [
-      {
-        value: "legacy_model",
-        label: "沿用原资金模型计算",
-        description: "继续使用模型 A-E、分布比例和分板块金额计划生成年度现金流。",
-      },
-      {
-        value: "subject_funding_plans",
-        label: "按科目收付款计划计算",
-        description: "使用每个收入/投入科目的10年收付计划生成正式年度现金流。",
-      },
-    ];
 
     return (
       <div className="table-card bg-card border border-border rounded-xl p-5 shadow-sm mb-6 flex flex-col gap-4">
@@ -1032,26 +1110,11 @@ export default function IctLifecycle() {
           <div>
             <h3 className="text-sm font-extrabold text-foreground">现金流计算口径</h3>
             <p className="mt-1 text-xs leading-relaxed text-secondary-foreground">
-              当前口径：{cashflowCalculationSource === "subject_funding_plans" ? "按科目收付款计划计算" : "沿用原资金模型计算"}
+              现金流依据：科目收付款计划。各科目的年度收款 / 付款计划会自动汇总为项目现金流并参与效益指标计算。
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 lg:min-w-[520px]">
-            {sourceOptions.map(option => {
-              const active = option.value === cashflowCalculationSource;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => handleCashflowCalculationSourceChange(option.value)}
-                  className={`rounded-lg px-3 py-2 text-left transition-colors ${
-                    active ? "bg-primary-soft text-primary" : "bg-muted/50 text-secondary-foreground hover:bg-secondary"
-                  }`}
-                >
-                  <div className="text-xs font-extrabold">{option.label}</div>
-                  <div className="mt-1 text-[10px] leading-relaxed font-semibold opacity-80">{option.description}</div>
-                </button>
-              );
-            })}
+          <div className="rounded-lg bg-primary-soft px-3 py-2 text-xs font-extrabold text-primary">
+            科目级资金计划
           </div>
         </div>
 
@@ -1067,15 +1130,13 @@ export default function IctLifecycle() {
           </div>
         </div>
 
-        {cashflowCalculationSource === "subject_funding_plans" && (
-          <div className={`rounded-lg p-3 text-xs font-semibold leading-relaxed ${subjectFundingCalculationBlocked ? "bg-warning-soft text-warning-foreground" : "bg-success-soft text-success-foreground"}`}>
-            {subjectFundingCalculationBlocked
-              ? "当前科目级计划已失效，系统保留上一次有效现金流/指标结果，未使用旧模型回退重算。"
-              : "当前正式现金流由科目级收付款计划生成，并按各科目税率逐年换算为不含税现金流。"}
-          </div>
-        )}
+        <div className={`rounded-lg p-3 text-xs font-semibold leading-relaxed ${subjectFundingCalculationBlocked ? "bg-warning-soft text-warning-foreground" : "bg-success-soft text-success-foreground"}`}>
+          {subjectFundingCalculationBlocked
+            ? "当前科目级计划覆盖校验未通过，系统保留上一次有效现金流/指标结果，不会回退到旧模型重算。"
+            : "当前正式现金流由科目级收付款计划生成，并按各科目税率逐年换算为不含税现金流。"}
+        </div>
 
-        {cashflowCalculationSource === "subject_funding_plans" && subjectFundingCoverage.issues.length > 0 && (
+        {subjectFundingCoverage.issues.length > 0 && (
           <div className="rounded-lg bg-warning-soft/70 p-3 text-xs text-warning-foreground">
             <div className="font-extrabold mb-2">需修正的问题</div>
             <div className="flex flex-col gap-1">
@@ -1089,12 +1150,74 @@ export default function IctLifecycle() {
           </div>
         )}
 
-        {cashflowCalculationSource === "subject_funding_plans" && subjectFundingCoverage.valid && (
+        {subjectFundingCoverage.valid && (
           <div className="grid grid-cols-1 gap-1 text-[11px] font-semibold text-secondary-foreground">
             <div>科目计划现金流入(不含税)：{formatAnnualCashflowPreview(subjectFundingAnnualCashflow.annualRevenueExcl)}</div>
             <div>科目计划现金流出(不含税)：{formatAnnualCashflowPreview(subjectFundingAnnualCashflow.annualCostExcl)}</div>
+            <div className="mt-1 opacity-70">提示：完整年度明细及穿透视图将在下方测算结果表格中展示。</div>
           </div>
         )}
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+                type="button"
+                onClick={() => {
+                  const missing: Array<{ subjectRef: SubjectFundingSubjectRef; amountIncl: number }> = [];
+                  for (const subj of subjectFundingCoverage.revenueSubjects) {
+                    const id = createSubjectFundingPlanId(subj.subjectRef);
+                    if (!state.subjectFundingPlans[id] && subj.subjectAmountIncl > 0) {
+                      missing.push({ subjectRef: subj.subjectRef, amountIncl: subj.subjectAmountIncl });
+                    }
+                  }
+                  if (missing.length > 0) {
+                    state.setSubjectFundingPlans(initializeMissingSubjectFundingPlans(state.subjectFundingPlans, missing));
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 rounded-md bg-card px-3 py-1.5 text-[11px] font-bold text-primary shadow-sm hover:bg-primary-soft transition-colors border border-border"
+              >
+                <AppIcon name="quickAction" size={12} />
+                一键生成未配置的收入计划
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const missing: Array<{ subjectRef: SubjectFundingSubjectRef; amountIncl: number }> = [];
+                  for (const subj of subjectFundingCoverage.costSubjects) {
+                    const id = createSubjectFundingPlanId(subj.subjectRef);
+                    if (!state.subjectFundingPlans[id] && subj.subjectAmountIncl > 0) {
+                      missing.push({ subjectRef: subj.subjectRef, amountIncl: subj.subjectAmountIncl });
+                    }
+                  }
+                  if (missing.length > 0) {
+                    state.setSubjectFundingPlans(initializeMissingSubjectFundingPlans(state.subjectFundingPlans, missing));
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 rounded-md bg-card px-3 py-1.5 text-[11px] font-bold text-primary shadow-sm hover:bg-primary-soft transition-colors border border-border"
+              >
+                <AppIcon name="quickAction" size={12} />
+                一键生成未配置的投入计划
+              </button>
+
+          {subjectFundingCoverage.issues.length > 0 && (
+            <button
+              type="button"
+              onClick={handleLocateFirstCoverageIssue}
+              className="inline-flex items-center gap-1.5 rounded-md bg-card px-3 py-1.5 text-[11px] font-bold text-warning shadow-sm hover:bg-warning-soft transition-colors border border-border"
+            >
+              <AppIcon name="search" size={12} />
+              定位到第一个待处理项
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleClearAllFinancialSubjects}
+            className="inline-flex items-center gap-1.5 rounded-md bg-card px-3 py-1.5 text-[11px] font-bold text-destructive shadow-sm hover:bg-destructive/10 transition-colors border border-border"
+          >
+            <AppIcon name="delete" size={12} />
+            一键清空全部收入和支出
+          </button>
+        </div>
       </div>
     );
   };
@@ -1270,7 +1393,7 @@ export default function IctLifecycle() {
                 item={currentItem}
                 plan={fundingPlan}
                 displayName={displayName}
-                calculationSource={cashflowCalculationSource}
+                forceOpenToken={fundingPlanFocus?.planId === fundingPlanId ? fundingPlanFocus.token : 0}
                 onPlanChange={upsertSubjectFundingPlan}
               />
             </div>
@@ -1542,13 +1665,8 @@ export default function IctLifecycle() {
             <h3 className="font-bold text-foreground mb-4">智能反算</h3>
             <div className="bg-card border border-border p-4 rounded-xl flex flex-col gap-4 mb-6">
               <p className="text-xs leading-relaxed text-secondary-foreground">
-                反算结果为含税总额参数值，系统将根据当前资金收付模型自动分摊至各年度现金流。
+                反算结果为含税总额参数值，系统会同步调整科目收付款计划并重新生成年度现金流。
               </p>
-              {cashflowCalculationSource === "subject_funding_plans" && (
-                <div className="rounded-lg bg-warning-soft px-3 py-2 text-[11px] font-semibold leading-relaxed text-warning-foreground">
-                  当前按科目收付款计划计算现金流，智能反算暂不支持自动维护科目级年度计划。请切回原资金模型后执行反算。
-                </div>
-              )}
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-secondary-foreground">反算目标</label>
                 {selectedReverseSubject ? (
@@ -1610,7 +1728,7 @@ export default function IctLifecycle() {
               </div>
               <button
                 className="flex w-full items-center justify-center gap-2 bg-primary text-primary-foreground font-bold py-2 rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!selectedReverseSubject || cashflowCalculationSource === "subject_funding_plans"}
+                disabled={!selectedReverseSubject}
                 onClick={executeReverseCalculation}
               >
                 <AppIcon name="reverse" size={16} /> 智能反算

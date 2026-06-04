@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { IctSubjectDefinition, IctTaxItemLike } from "../lib/ictSubjectCatalog";
 import {
   buildEqualAnnualInclValues,
@@ -8,8 +8,8 @@ import {
   updateSubjectFundingPlanAnnualValue,
   updateSubjectFundingPlanMode,
   validateSubjectFundingPlan,
-  type CashflowCalculationSource,
   type SubjectFundingPlan,
+  type SubjectFundingPlanLastChangeReason,
   type SubjectFundingPlanMode,
   type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
@@ -19,7 +19,7 @@ type IctSubjectFundingPlanEditorProps = {
   item: IctTaxItemLike | null | undefined;
   plan?: SubjectFundingPlan;
   displayName: string;
-  calculationSource?: CashflowCalculationSource;
+  forceOpenToken?: number;
   onPlanChange: (plan: SubjectFundingPlan) => void;
 };
 
@@ -35,12 +35,23 @@ const modeLabels: Record<SubjectFundingPlanMode, string> = {
   custom: "自定义年度金额",
 };
 
+const reasonTexts: Record<SubjectFundingPlanLastChangeReason, string> = {
+  manual_plan_edit: "用户已手工维护计划",
+  manual_amount_sync: "科目金额变更，计划已自动按原年度比例缩放调整",
+  reverse_calculation_sync: "已随智能反算结果，按原年度比例自动调整",
+  balance_allocation_sync: "已随差额承接结果，按原年度比例自动调整",
+  ct_linkage_sync: "因 CT 业务金额联动而自动调整",
+  auto_created_upfront: "系统自动创建默认计划（第一年一次性）",
+  restored_after_zero: "金额从零恢复，已按最近一次有效年度结构自动恢复",
+  legacy_migration: "旧项目已迁移为第一年一次性计划",
+};
+
 export default function IctSubjectFundingPlanEditor({
   subject,
   item,
   plan,
   displayName,
-  calculationSource = "legacy_model",
+  forceOpenToken = 0,
   onPlanChange,
 }: IctSubjectFundingPlanEditorProps) {
   const [open, setOpen] = useState(false);
@@ -58,8 +69,14 @@ export default function IctSubjectFundingPlanEditor({
   const equalYears = activePlan.equalYears || 10;
   const isDisabled = plan && !plan.enabled;
 
+  useEffect(() => {
+    if (forceOpenToken > 0) {
+      setOpen(true);
+    }
+  }, [forceOpenToken]);
+
   const handleToggle = () => {
-    if (!open && !plan) {
+    if (!open && !plan && subjectAmountIncl > 0) {
       onPlanChange(createDefaultSubjectFundingPlan(subjectRef, subjectAmountIncl));
     }
     setOpen(value => !value);
@@ -129,7 +146,7 @@ export default function IctSubjectFundingPlanEditor({
             <label className="inline-flex items-center gap-1.5 text-[11px] font-bold text-secondary-foreground">
               <input
                 type="checkbox"
-                checked={activePlan.enabled}
+                checked={Boolean(plan?.enabled)}
                 onChange={event => onPlanChange(setSubjectFundingPlanEnabled(activePlan, event.target.checked))}
               />
               启用计划
@@ -212,10 +229,15 @@ export default function IctSubjectFundingPlanEditor({
           </div>
 
           <div className="mt-2 text-[10px] leading-relaxed text-secondary-foreground">
-            {calculationSource === "subject_funding_plans"
-              ? "当前已选择按科目收付款计划计算现金流。覆盖校验通过后，本计划会参与正式年度现金流、NPV和回收期测算。"
-              : "当前沿用原资金模型计算现金流。该计划会保存并校验，但不会影响正式年度现金流、NPV或回收期。"}
+            覆盖校验通过后，本计划会参与正式年度现金流、NPV、IRR和回收期测算。
           </div>
+
+          {activePlan.lastChangeReason && activePlan.lastChangeReason !== "manual_plan_edit" && (
+            <div className="mt-2 rounded-md bg-primary-soft/50 px-2.5 py-1.5 text-[10px] font-semibold text-primary">
+              <span className="mr-1">ℹ️</span>
+              {reasonTexts[activePlan.lastChangeReason] || "计划已自动调整"}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -45,6 +45,7 @@ export interface IctInput {
   project_years?: number;
   cashflow_model?: string;
   cashflow_calculation_source?: "legacy_model" | "subject_funding_plans";
+  subject_funding_plan_migration_version?: number;
   cashflow_segment_value_mode?: string;
   cashflow_segments?: CashflowSegment[];
   ignore_tail_difference?: boolean;

@@ -1,6 +1,10 @@
 # ARCHITECTURE_MAP.md
 
-Last updated: 2026-06-03 (ICT Subject-Level Funding Plans Phase 2)
+> [!NOTE]
+> **历史兼容性说明**：本文件作为系统架构与模块数据流的详细技术地图，不再作为 AI 每次任务的默认必读文件。
+> 后续开发请默认阅读入口文件 [PROJECT_INDEX.md](./PROJECT_INDEX.md) 和 [CURRENT_TASK.md](./CURRENT_TASK.md)，并仅在需要深入分析架构、启动流程或底层细节时阅读本文件。
+
+Last updated: 2026-06-04 (ICT Subject-Level Funding Plans Final)
 
 ## 1. Repository overview
 
@@ -193,15 +197,15 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 ### 4.3.1 Subject-level funding plan cashflow source flow
 
 1. Each subject-row funding plan is keyed by `side + groupId + key` and stored in `useIctState.subjectFundingPlans`.
-2. Opening a plan editor creates a default manual upfront plan whose first-year tax-inclusive value equals the current subject inclusive amount; existing plans are never auto-scaled when subject amounts later change.
+2. Opening a plan editor creates a default manual upfront plan whose first-year tax-inclusive value equals the current subject inclusive amount. Later amount changes synchronize through `updateTaxItem` / `updateTaxItemsInclBatch`, preserving existing plan shape where possible.
 3. `IctSubjectFundingPlanEditor.tsx` updates plan mode, equal-year duration, custom annual values, and enabled state through pure helpers in `ictSubjectFundingPlan.ts`.
-4. `useIctState.cashflowCalculationSource` owns the mutually exclusive calculation source: `legacy_model` or `subject_funding_plans`. Missing/old/new projects default to `legacy_model`, and existing plans never auto-switch the source.
-5. `validateSubjectFundingPlanCoverage()` checks every non-zero revenue/cost subject before the new source can be selected. Required checks are: plan exists, enabled, exactly 10 annual values, no negative values, and tax-inclusive annual total equals the subject tax-inclusive amount. Zero-amount subjects do not require plans, but a non-zero plan on a zero subject is blocking.
-6. In `legacy_model`, `useIctCalculations.ts` preserves the existing model A-E distributions and `model_e` segment direct-cashflow overrides unchanged. Subject funding plans are serialized only.
-7. In `subject_funding_plans`, `buildAnnualCashflowFromSubjectFundingPlans()` converts each subject's annual tax-inclusive plan values to tax-exclusive cashflow per subject and per year using that subject's tax rate, then sums yearly revenue/cost and IT-specific arrays. These arrays are serialized to `rev_cashflow_excl`, `cost_cashflow_excl`, `it_rev_cashflow_excl`, and `it_cost_cashflow_excl` for the existing Rust calculator.
-8. If the new source is active and later edits invalidate coverage, `performCalculation()` refuses to call `calculate_ict_benefit`; the UI keeps the last valid cashflow/metrics visible with a stale warning. It does not fall back to legacy. Benefit-metric saves and document generation are blocked until coverage is valid or the source is switched back to legacy.
-9. Current-state persistence stores plans and the calculation source in `project_cashflow_states.assumptions_json`, and lifecycle/snapshot payloads carry `subject_funding_plans` plus `cashflow_calculation_source`. Rust `IctInput` accepts the source field for serialization compatibility; the formal annual cashflow still enters through the existing override arrays.
-10. Smart reverse calculation remains supported only for `legacy_model` in this phase. When `subject_funding_plans` is active, the UI disables reverse solving and asks users to switch back to legacy first.
+4. Loading a project without `subjectFundingPlanMigrationVersion = 1` runs `migrateLegacySubjectFundingPlans()` after tax-item hydration. Missing non-zero subjects receive first-year upfront migration plans; existing valid plans are preserved; invalid plans are not overwritten and remain coverage blockers.
+5. `validateSubjectFundingPlanCoverage()` checks every non-zero revenue/cost subject before formal calculation/save/document generation. Required checks are: plan exists, enabled, exactly 10 annual values, no negative values, and tax-inclusive annual total equals the subject tax-inclusive amount. Zero-amount subjects do not require plans, but a non-zero plan on a zero subject is blocking.
+6. `useIctCalculations.ts` always serializes `cashflow_calculation_source: "subject_funding_plans"` and never uses model A-E distributions or `CashflowSegment` schedules as official annual cashflow.
+7. `buildAnnualCashflowFromSubjectFundingPlans()` converts each subject's annual tax-inclusive plan values to tax-exclusive cashflow per subject and per year using that subject's tax rate, then sums yearly revenue/cost and IT-specific arrays. These arrays are serialized to `rev_cashflow_excl`, `cost_cashflow_excl`, `it_rev_cashflow_excl`, and `it_cost_cashflow_excl` for the existing Rust calculator.
+8. If coverage becomes invalid, `performCalculation()` refuses to call `calculate_ict_benefit`; the UI keeps the last valid cashflow/metrics visible with a stale warning. It does not fall back to legacy. Benefit-metric saves and document generation are blocked until coverage is valid.
+9. Current-state persistence stores plans, the fixed calculation source, and migration version in `project_cashflow_states.assumptions_json`; lifecycle/snapshot payloads carry `subject_funding_plans`, `cashflow_calculation_source`, and `subject_funding_plan_migration_version`. Rust `IctInput` accepts these fields for serialization compatibility; formal annual cashflow still enters through the existing override arrays.
+10. Smart reverse, balance allocation, and CT linkage remain available because final writes flow through subject amount update paths that synchronize subject funding plans.
 
 ### 4.4 AI Assistant context flow
 1. User types in form fields or switches tabs.
@@ -255,7 +259,7 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 2. `useIctCalculations.ts` evaluates reverse candidates by applying the candidate tax-inclusive amount to the selected subject, then building a full lifecycle input payload and invoking `calculate_ict_benefit`. This replaces the old fixed `rev_it_integration` / `cost_it_integration` reverse entry in the frontend.
 3. The solver still uses the existing binary-search shape and target metrics (`margin`, `npv_rate`). Revenue candidates increase the selected revenue subject until the target is reached; cost candidates find the maximum selected cost subject amount that still satisfies the target.
 4. Final write-back calls `updateTaxItem(groupId, key, "incl", amount)` so tax-exclusive amount, tax amount, CT paired revenue-to-cost linkage, dirty tracking, cashflow recalculation, saved assumptions, document generation, and AI context continue to consume the formal tax-item structures.
-5. In `model_e` amount mode, the selected side's chosen cashflow segment is updated with the same tax-inclusive candidate amount and selected subject tax before calculating the payload, preserving the existing segmented cashflow path.
+5. Candidate and final write-back also synchronize the selected subject's funding plan through the same amount-update path. Legacy `model_e` segment data may remain stored, but it is no longer updated as a formal cashflow source.
 6. If a same-side balance allocation rule is valid, the balancing subject is disabled as a reverse target. Other same-side subjects enter locked-total structure reverse, while cross-side reverse is not blocked by the other side's active balance allocation.
 
 ### 4.8.3 ICT locked-total structure reverse flow
@@ -264,9 +268,9 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 2. `ictReverseCalculation.ts` builds the structure context from the locked total `T`, selected target subject `X`, balancing subject `B`, and fixed same-side subjects `F`. The reallocatable pool is `P = T - F`; candidates satisfy `X in [0, P]` and `B = P - X`, so neither amount is negative and the same-side inclusive total remains unchanged.
 3. `useIctCalculations.ts` evaluates structure candidates through the same `calculate_ict_benefit` IPC path as normal reverse. It samples `[0, P]` including 0%, 10%, ..., 100% plus the current target amount, detects metric-insensitive ranges and unreachable target metric ranges, then binary-searches only a crossing interval. If multiple intervals cross the target, it writes the solution closest to the current target amount.
 4. Final write-back uses `useIctState.updateTaxItemsInclBatch`, updating target and balancing inclusive amounts in one bounded state operation. This prevents same-group stale-state overwrites and preserves existing tax-exclusive recomputation plus CT revenue-to-cost paired amount linkage.
-5. In `model_e` amount mode, structure reverse candidates run through a bounded subject-to-segment sync before calling `calculate_ict_benefit`. Stable subject refs (`groupId + key`) map revenue subjects to `CashflowSegment.revenueScope` buckets (`it`, `ct`, `non_it_ct`) and cost subjects to `CashflowSegment.costScope` buckets (`it`, `ct`, `non_it_ct`, `mix`). Candidate evaluation and final write-back reuse the same synced segment array, so reachability, calculation payloads, persisted segment amounts, and AI context stay aligned.
-6. Same-bucket `model_e` structure transfers apply equal and opposite subject deltas inside the same aggregate segment bucket, preserving that bucket's inclusive total. Cross-bucket transfers adjust the target bucket by `+ΔX` and the balancing bucket by `-ΔX`. Segment annual custom plans are adjusted through the existing amount-mode scaling helper; candidates that would require missing buckets, negative segment totals, negative bucket totals, or negative annual values are rejected before calculation.
-7. CT product revenue and CT line revenue retain their paired cost-subject behavior during `model_e` structure reverse: product revenue mirrors to CT other-product cost, and line revenue mirrors to CT bandwidth cost, with cost-side segment buckets synchronized as part of the same candidate. If this cross-side linkage collides with a valid locked-total investment balancing rule, the UI blocks the solve conservatively rather than creating a four-variable cross-side structure reverse.
+5. Structure reverse candidates synchronize target and balancing subject funding plans for candidate evaluation; the accepted final amounts are written through `updateTaxItemsInclBatch`.
+6. `CashflowSegment` amount-mode synchronization from earlier phases is retired as a formal calculation path. Stored segment fields are preserved only for old data compatibility.
+7. CT product revenue and CT line revenue retain their paired cost-subject behavior: product revenue mirrors to CT other-product cost, and line revenue mirrors to CT bandwidth cost. The paired changes also synchronize subject funding plans through the shared amount-update path.
 
 ### 4.9 Inquiry vendor screenshot state flow
 

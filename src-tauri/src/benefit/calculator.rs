@@ -209,6 +209,10 @@ pub fn calculate_ict_benefit(input: IctInput) -> Result<IctResult, String> {
             cum_net_cash: cum_net_cash.to_string(),
             pv: pv_net.to_string(),
             cum_pv: cum_pv.to_string(),
+            it_cash_in: it_cash_in.to_string(),
+            it_cash_out: it_cash_out.to_string(),
+            net_it_cash: (it_cash_in - it_cash_out).to_string(),
+            it_pv: (it_pv_in - it_pv_out).to_string(),
         });
     }
 
@@ -458,6 +462,8 @@ mod tests {
             cashflow_calculation_source: None,
             cashflow_segment_value_mode: None,
             cashflow_segments: None,
+            subject_funding_plans: None,
+            subject_funding_plan_migration_version: None,
             ignore_tail_difference: None,
             tail_difference_value: None,
             revenue_balance_rule: None,
@@ -632,6 +638,8 @@ mod tests {
             cashflow_calculation_source: None,
             cashflow_segment_value_mode: None,
             cashflow_segments: None,
+            subject_funding_plans: None,
+            subject_funding_plan_migration_version: None,
             ignore_tail_difference: None,
             tail_difference_value: None,
             revenue_balance_rule: None,

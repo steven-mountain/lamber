@@ -102,8 +102,8 @@ assert.equal(invalidCoverage.issues.some(issue => issue.type === "amount_mismatc
 assert.equal(invalidCoverage.issues.some(issue => issue.type === "zero_subject_with_nonzero_plan"), true);
 
 assert.equal(normalizeCashflowCalculationSource("subject_funding_plans"), "subject_funding_plans");
-assert.equal(normalizeCashflowCalculationSource("legacy_model"), "legacy_model");
-assert.equal(normalizeCashflowCalculationSource("unexpected"), "legacy_model");
-assert.equal(normalizeCashflowCalculationSource(undefined), "legacy_model");
+assert.equal(normalizeCashflowCalculationSource("legacy_model"), "subject_funding_plans");
+assert.equal(normalizeCashflowCalculationSource("unexpected"), "subject_funding_plans");
+assert.equal(normalizeCashflowCalculationSource(undefined), "subject_funding_plans");
 
 console.log("Subject funding cashflow tests passed.");

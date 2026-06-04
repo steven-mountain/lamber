@@ -1157,6 +1157,23 @@ export default function TemplateForms({
 
       // --- Excel Specific Variable Back-filling ---
       ...excelSubjectVariables,
+      ...(() => {
+        const cfVars: Record<string, string> = {}
+        const cashflows = Array.isArray(metrics?.cashflow)
+          ? metrics.cashflow
+          : Array.isArray(metrics?.cashflows)
+            ? metrics.cashflows
+            : []
+        for (let i = 0; i < 10; i++) {
+          const row = cashflows[i]
+          if (!row) continue
+          cfVars[`CASH_IN_Y${i + 1}`] = String(row.cash_in ?? "0")
+          cfVars[`CASH_OUT_Y${i + 1}`] = String(row.cash_out ?? "0")
+          cfVars[`IT_CASH_IN_Y${i + 1}`] = String(row.it_cash_in ?? "0")
+          cfVars[`IT_CASH_OUT_Y${i + 1}`] = String(row.it_cash_out ?? "0")
+        }
+        return cfVars
+      })(),
 
       'RENEWAL_PROJECT_FLAG': (projectData.cost?.ct?.renewal?.excl ?? 0) > 0 ? "是" : "否",
       'CONTRACT_DURATION': String(projectData.basic?.project_years || 1),

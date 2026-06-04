@@ -1,6 +1,20 @@
 # PROJECT_STATUS.md
 
-Last updated: 2026-06-03 (ICT Subject-Level Funding Plans Phase 2)
+> [!NOTE]
+> **历史兼容性说明**：本文件作为历史和综合状态的备份记录，不再作为 AI 每次任务的默认必读文件。
+> 后续开发请默认阅读入口文件 [PROJECT_INDEX.md](./PROJECT_INDEX.md) 和 [CURRENT_TASK.md](./CURRENT_TASK.md)，并根据任务涉及范围按需加载模块设计文档（如 [docs/modules/appearance.md](./modules/appearance.md)）。
+
+Last updated: 2026-06-04 (ICT Subject-Level Funding Plans Final)
+
+## 0. ICT Subject-Level Funding Plans (Final)
+
+The ICT lifecycle funding model is now finalized around a single official source: concrete subject-level 10-year collection/payment plans.
+- **Single Official Source**: New, imported, loaded, and migrated projects use `subject_funding_plans` for official annual cashflow, NPV, IRR, payback, and Excel multi-year cashflow output. The UI no longer exposes model A-E, segment funding configuration, or a legacy/source switch.
+- **Legacy Migration**: Old projects without `subjectFundingPlanMigrationVersion = 1` are migrated on load. Every non-zero revenue/cost subject missing a plan receives an upfront year-1 migration plan with `source: "migration"` and `lastChangeReason: "legacy_migration"`. Existing valid `custom` / `equal` / `upfront` plans are preserved. Existing invalid plans are not silently overwritten; canonical coverage validation blocks formal use until fixed.
+- **Coverage Gate**: Every non-zero subject must have an enabled 10-year plan whose tax-inclusive annual total equals the subject inclusive amount. Invalid coverage keeps the last valid result visible and never falls back to old model calculations.
+- **CashflowSegment Boundary**: `cashflowModel`, `CashflowSegment`, `paymentModelJson`, and `sectorCashflowJson` can remain in saved legacy data for compatibility and migration context, but they no longer contribute official annual cashflow.
+- **Linked Workflows**: Smart reverse, balance allocation, and CT product/line linkage update subject amounts through the same state entry points, so subject plans stay synchronized. Project-wide and IT 10-year views and annual drill-downs are aggregated from subject plans.
+- **Tests**: Added migration and final-source scripts, and verified all subject funding scripts, TypeScript, frontend build, Rust tests, and Rust format check.
 
 ## 0. ICT Subject-Level Funding Plans (Phase 2)
 

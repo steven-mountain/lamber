@@ -4,11 +4,23 @@ export type SubjectFundingPlanMode = "upfront" | "equal" | "custom";
 export type SubjectFundingPlanSource = "manual" | "template" | "migration";
 export type CashflowCalculationSource = "legacy_model" | "subject_funding_plans";
 
+export const SUBJECT_FUNDING_PLAN_MIGRATION_VERSION = 1;
+
 export type SubjectFundingSubjectRef = {
   side: IctSubjectSide;
   groupId: IctSubjectGroupId;
   key: string;
 };
+
+export type SubjectFundingPlanLastChangeReason =
+  | "manual_plan_edit"
+  | "manual_amount_sync"
+  | "reverse_calculation_sync"
+  | "balance_allocation_sync"
+  | "ct_linkage_sync"
+  | "auto_created_upfront"
+  | "restored_after_zero"
+  | "legacy_migration";
 
 export interface SubjectFundingPlan {
   id: string;
@@ -18,6 +30,9 @@ export interface SubjectFundingPlan {
   enabled: boolean;
   source: SubjectFundingPlanSource;
   equalYears?: number;
+  lastValidAnnualInclValues?: number[];
+  lastChangeReason?: SubjectFundingPlanLastChangeReason;
+  lastChangedAt?: string;
   updatedAt?: string;
 }
 
@@ -71,6 +86,16 @@ export type FundingPlanCoverageResult = {
   valid: boolean;
   issues: FundingPlanCoverageIssue[];
   counts: FundingPlanCoverageCounts;
+  revenueSubjects: SubjectFundingPlanCoverageSubject[];
+  costSubjects: SubjectFundingPlanCoverageSubject[];
+};
+
+export type SubjectFundingPlanMigrationResult = {
+  plans: SubjectFundingPlans;
+  changed: boolean;
+  completed: boolean;
+  migrationVersion?: number;
+  coverage: FundingPlanCoverageResult;
 };
 
 export type SubjectFundingAnnualCashflow = {
@@ -121,8 +146,8 @@ export const clampFundingPlanYears = (value: number) => {
 export const createSubjectFundingPlanId = (ref: SubjectFundingSubjectRef) =>
   `${ref.side}:${ref.groupId}:${ref.key}`;
 
-export const normalizeCashflowCalculationSource = (value: unknown): CashflowCalculationSource =>
-  value === "subject_funding_plans" ? "subject_funding_plans" : "legacy_model";
+export const normalizeCashflowCalculationSource = (_value: unknown): CashflowCalculationSource =>
+  "subject_funding_plans";
 
 export const normalizeAnnualInclValues = (values: unknown): number[] => {
   const source = Array.isArray(values) ? values : [];
@@ -166,6 +191,21 @@ export const createDefaultSubjectFundingPlan = (
   updatedAt: new Date().toISOString(),
 });
 
+export const createLegacyMigrationSubjectFundingPlan = (
+  subjectRef: SubjectFundingSubjectRef,
+  subjectAmountIncl: number,
+): SubjectFundingPlan => ({
+  id: createSubjectFundingPlanId(subjectRef),
+  subjectRef,
+  mode: "upfront",
+  annualInclValues: buildUpfrontAnnualInclValues(subjectAmountIncl),
+  enabled: true,
+  source: "migration",
+  lastChangeReason: "legacy_migration",
+  lastChangedAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+});
+
 export const normalizeSubjectFundingPlan = (value: unknown): SubjectFundingPlan | null => {
   if (!value || typeof value !== "object") return null;
   const raw = value as Partial<SubjectFundingPlan> & {
@@ -193,9 +233,12 @@ export const normalizeSubjectFundingPlan = (value: unknown): SubjectFundingPlan 
     subjectRef,
     mode,
     annualInclValues: normalizeAnnualInclValues(raw.annualInclValues ?? raw.annual_incl_values),
+    lastValidAnnualInclValues: normalizeAnnualInclValues(raw.lastValidAnnualInclValues),
     enabled: raw.enabled !== false,
     source,
     equalYears: clampFundingPlanYears(Number(raw.equalYears ?? raw.equal_years ?? PLAN_YEARS)),
+    lastChangeReason: raw.lastChangeReason,
+    lastChangedAt: typeof raw.lastChangedAt === "string" ? raw.lastChangedAt : undefined,
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : undefined,
   };
 };
@@ -210,29 +253,37 @@ export const normalizeSubjectFundingPlans = (value: unknown): SubjectFundingPlan
   }, {});
 };
 
-export const updateSubjectFundingPlanMode = (
+export function updateSubjectFundingPlanMode(
   plan: SubjectFundingPlan,
   subjectAmountIncl: number,
   mode: SubjectFundingPlanMode,
-  equalYears = plan.equalYears || PLAN_YEARS,
-): SubjectFundingPlan => ({
-  ...plan,
-  mode,
-  equalYears: mode === "equal" ? clampFundingPlanYears(equalYears) : plan.equalYears,
-  annualInclValues: mode === "upfront"
+  equalYears: number = 10,
+  reason: SubjectFundingPlanLastChangeReason = "manual_plan_edit"
+): SubjectFundingPlan {
+  const newValues = mode === "upfront"
     ? buildUpfrontAnnualInclValues(subjectAmountIncl)
     : mode === "equal"
       ? buildEqualAnnualInclValues(subjectAmountIncl, equalYears)
-      : normalizeAnnualInclValues(plan.annualInclValues),
-  enabled: true,
-  updatedAt: new Date().toISOString(),
-});
+      : normalizeAnnualInclValues(plan.annualInclValues);
+  return {
+    ...plan,
+    mode,
+    equalYears: mode === "equal" ? clampFundingPlanYears(equalYears) : plan.equalYears,
+    annualInclValues: newValues,
+    enabled: true,
+    lastValidAnnualInclValues: plan.annualInclValues,
+    lastChangeReason: reason,
+    lastChangedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
 
-export const updateSubjectFundingPlanAnnualValue = (
+export function updateSubjectFundingPlanAnnualValue(
   plan: SubjectFundingPlan,
   yearIndex: number,
   value: number,
-): SubjectFundingPlan => {
+  reason: SubjectFundingPlanLastChangeReason = "manual_plan_edit"
+): SubjectFundingPlan {
   const annualInclValues = normalizeAnnualInclValues(plan.annualInclValues);
   if (yearIndex >= 0 && yearIndex < PLAN_YEARS) {
     annualInclValues[yearIndex] = roundFundingMoney(value);
@@ -242,9 +293,12 @@ export const updateSubjectFundingPlanAnnualValue = (
     mode: "custom",
     annualInclValues,
     enabled: true,
+    lastValidAnnualInclValues: plan.annualInclValues,
+    lastChangeReason: reason,
+    lastChangedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-};
+}
 
 export const setSubjectFundingPlanEnabled = (
   plan: SubjectFundingPlan,
@@ -409,6 +463,8 @@ export const validateSubjectFundingPlanCoverage = (
     valid: issues.length === 0,
     issues,
     counts,
+    revenueSubjects: subjects.filter(s => s.subjectRef.side === "revenue"),
+    costSubjects: subjects.filter(s => s.subjectRef.side === "cost"),
   };
 };
 
@@ -488,4 +544,230 @@ export const removeSubjectFundingPlan = (
   const nextPlans = { ...plans };
   delete nextPlans[id];
   return nextPlans;
+};
+
+/**
+ * Synchronize a single subject's funding plan to a new inclusive amount.
+ *
+ * Rules:
+ * - amount > 0, plan exists:  proportionally scale annualInclValues, preserve mode
+ * - amount > 0, plan missing: auto-create an upfront plan
+ * - amount <= 0, plan exists: remove the plan so the subject returns to "unmaintained"
+ * - amount <= 0, plan missing: no-op
+ *
+ * All arithmetic uses integer-cents internally to avoid floating-point drift.
+ */
+export const syncSubjectFundingPlanToAmount = (
+  plans: SubjectFundingPlans,
+  subjectRef: SubjectFundingSubjectRef,
+  newAmountIncl: number,
+  reason: SubjectFundingPlanLastChangeReason = "manual_amount_sync"
+): SubjectFundingPlans => {
+  const id = createSubjectFundingPlanId(subjectRef);
+  const existing = plans[id] ?? null;
+  const newCents = toMoneyCents(newAmountIncl);
+
+  // amount <= 0
+  if (newCents <= 0) {
+    if (!existing) return plans;
+    const nextPlans = { ...plans };
+    delete nextPlans[id];
+    return nextPlans;
+  }
+
+  // amount > 0, plan missing → auto-create upfront
+  if (!existing) {
+    return {
+      ...plans,
+      [id]: createDefaultSubjectFundingPlan(subjectRef, newCents / 100),
+    };
+  }
+
+  // amount > 0, plan exists → proportional scale
+  const existingTotalCents = existing.annualInclValues.reduce((sum, val) => sum + Math.round(val * 100), 0);
+  const isRecoveringFromZero = existingTotalCents === 0;
+  const baseValues = (isRecoveringFromZero && existing.lastValidAnnualInclValues)
+    ? normalizeAnnualInclValues(existing.lastValidAnnualInclValues)
+    : existing.annualInclValues;
+  const baseTotalCents = baseValues.reduce((sum, val) => sum + Math.round(val * 100), 0);
+
+  if (baseTotalCents === 0) {
+    // Fallback to upfront if even the base is zero
+    return {
+      ...plans,
+      [id]: {
+        ...existing,
+        mode: "upfront",
+        annualInclValues: buildUpfrontAnnualInclValues(newCents / 100),
+        lastValidAnnualInclValues: existing.annualInclValues,
+        enabled: true,
+        lastChangeReason: isRecoveringFromZero ? "restored_after_zero" : reason,
+        lastChangedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  // Proportional scale based on baseValues
+  let currentTotal = 0;
+  const scaledCents = baseValues.map(val => {
+    const centValue = Math.round(val * 100);
+    const scaled = Math.round((centValue / baseTotalCents) * newCents);
+    currentTotal += scaled;
+    return scaled;
+  });
+
+  const diff = newCents - currentTotal;
+  for (let i = PLAN_YEARS - 1; i >= 0; i--) {
+    if (scaledCents[i] !== 0) {
+      scaledCents[i] += diff;
+      break;
+    }
+  }
+  // If no non-zero found, add to first year
+  if (diff !== 0 && scaledCents.every(c => c === 0)) {
+    scaledCents[0] += diff;
+  }
+
+  return {
+    ...plans,
+    [id]: {
+      ...existing,
+      annualInclValues: scaledCents.map(c => c / 100),
+      lastValidAnnualInclValues: existing.annualInclValues,
+      enabled: true,
+      lastChangeReason: isRecoveringFromZero ? "restored_after_zero" : reason,
+      lastChangedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+  };
+};
+
+/**
+ * Batch-synchronize multiple subjects' funding plans in a single pass.
+ * Each update is applied sequentially so later updates see earlier results.
+ */
+export const syncSubjectFundingPlansToAmounts = (
+  plans: SubjectFundingPlans,
+  updates: Array<{ subjectRef: SubjectFundingSubjectRef; newAmountIncl: number; reason?: SubjectFundingPlanLastChangeReason }>
+): SubjectFundingPlans => {
+  return updates.reduce((acc, update) => {
+    return syncSubjectFundingPlanToAmount(acc, update.subjectRef, update.newAmountIncl, update.reason ?? "manual_amount_sync");
+  }, plans);
+};
+
+export const initializeMissingSubjectFundingPlans = (
+  plans: SubjectFundingPlans,
+  subjects: Array<{ subjectRef: SubjectFundingSubjectRef; amountIncl: number }>
+): SubjectFundingPlans => {
+  const result = { ...plans };
+  let changed = false;
+
+  for (const { subjectRef, amountIncl } of subjects) {
+    if (amountIncl <= 0) continue;
+    const id = createSubjectFundingPlanId(subjectRef);
+    if (!result[id]) {
+      result[id] = {
+        id,
+        subjectRef,
+        mode: "upfront",
+        annualInclValues: buildUpfrontAnnualInclValues(amountIncl),
+        enabled: true,
+        source: "manual",
+        lastChangeReason: "auto_created_upfront",
+        lastChangedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      changed = true;
+    }
+  }
+
+  return changed ? result : plans;
+};
+
+export const migrateLegacySubjectFundingPlans = (
+  subjects: SubjectFundingPlanCoverageSubject[],
+  plans: SubjectFundingPlans,
+  currentMigrationVersion?: number | null,
+): SubjectFundingPlanMigrationResult => {
+  const normalizedPlans = normalizeSubjectFundingPlans(plans);
+
+  if (Number(currentMigrationVersion) >= SUBJECT_FUNDING_PLAN_MIGRATION_VERSION) {
+    const coverage = validateSubjectFundingPlanCoverage(subjects, normalizedPlans);
+    return {
+      plans: normalizedPlans,
+      changed: false,
+      completed: true,
+      migrationVersion: SUBJECT_FUNDING_PLAN_MIGRATION_VERSION,
+      coverage,
+    };
+  }
+
+  let changed = false;
+  const migratedPlans: SubjectFundingPlans = { ...normalizedPlans };
+
+  subjects.forEach(subject => {
+    if (toMoneyCents(subject.subjectAmountIncl) <= 0) return;
+    const id = createSubjectFundingPlanId(subject.subjectRef);
+    if (migratedPlans[id]) return;
+    migratedPlans[id] = createLegacyMigrationSubjectFundingPlan(
+      subject.subjectRef,
+      subject.subjectAmountIncl,
+    );
+    changed = true;
+  });
+
+  const coverage = validateSubjectFundingPlanCoverage(subjects, migratedPlans);
+  const completed = coverage.valid;
+
+  return {
+    plans: changed ? migratedPlans : normalizedPlans,
+    changed,
+    completed,
+    migrationVersion: completed ? SUBJECT_FUNDING_PLAN_MIGRATION_VERSION : undefined,
+    coverage,
+  };
+};
+
+export interface SubjectFundingAnnualContribution {
+  yearIndex: number;
+  side: "revenue" | "cost";
+  subjectRef: SubjectFundingSubjectRef;
+  subjectDisplayName: string;
+  annualInclAmount: number;
+  annualExclAmount: number;
+  taxRate: number;
+}
+
+export const buildAnnualCashflowSubjectContributions = (
+  plans: SubjectFundingPlans,
+  activeSubjects: SubjectFundingPlanCoverageSubject[]
+): SubjectFundingAnnualContribution[][] => {
+  const result: SubjectFundingAnnualContribution[][] = Array.from({ length: PLAN_YEARS }, () => []);
+
+  for (const subject of activeSubjects) {
+    if (subject.subjectAmountIncl <= 0) continue;
+    const id = createSubjectFundingPlanId(subject.subjectRef);
+    const plan = plans[id];
+    if (!plan || !plan.enabled) continue; // Should be caught by validation earlier
+
+    const annualValues = normalizeAnnualInclValues(plan.annualInclValues);
+    for (let yearIndex = 0; yearIndex < PLAN_YEARS; yearIndex++) {
+      const incl = annualValues[yearIndex];
+      if (incl === 0) continue;
+
+      const excl = Number((incl / (1 + subject.taxRate / 100)).toFixed(2));
+      result[yearIndex].push({
+        yearIndex,
+        side: subject.subjectRef.side,
+        subjectRef: subject.subjectRef,
+        subjectDisplayName: subject.displayName,
+        annualInclAmount: incl,
+        annualExclAmount: excl,
+        taxRate: subject.taxRate,
+      });
+    }
+  }
+
+  return result;
 };

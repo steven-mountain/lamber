@@ -758,6 +758,13 @@ fn internal_generate_xlsx(
             set_cell(excl_cell, &format!("{}_EXCL", prefix), false);
             set_cell(incl_cell, &format!("{}_INCL", prefix), false);
         }
+
+        for year in 1..=10 {
+            let in_cell = format!("E{}", 33 + year);
+            let out_cell = format!("G{}", 33 + year);
+            set_cell(&in_cell, &format!("CASH_IN_Y{}", year), false);
+            set_cell(&out_cell, &format!("CASH_OUT_Y{}", year), false);
+        }
     }
 
     if let Some(sheet2) = book.get_sheet_by_name_mut("2-ICT项目评估结果") {

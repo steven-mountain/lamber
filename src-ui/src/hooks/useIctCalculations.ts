@@ -35,22 +35,11 @@ import {
 } from "../lib/ictReverseCalculation";
 import {
   buildAnnualCashflowFromSubjectFundingPlans,
+  syncSubjectFundingPlansToAmounts,
   validateSubjectFundingPlanCoverage,
   type SubjectFundingPlanCoverageSubject,
+  type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
-
-// Labels mapping
-const cashflowModelLabels: Record<string, string> = {
-  model_a: "模型 A (100%首年)",
-  model_b: "模型 B (按周期等额)",
-  model_c: "模型 C (首年95%, 末年5%)",
-  model_d: "模型 D (自定义比例)",
-  model_e: "模型 E (分板块计划)",
-};
-
-const formatDistribution = (arr: number[]) => {
-  return "[" + arr.map(v => (v * 100).toFixed(1) + "%").join(", ") + "]";
-};
 
 const formatCurrency = (v: number) => new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(v);
 const formatPercent = (v: number) => (v * 100).toFixed(2) + "%";
@@ -198,8 +187,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     subjectFundingCoverageSubjects,
     state.subjectFundingPlans,
   );
-  const subjectFundingCalculationBlocked =
-    state.cashflowCalculationSource === "subject_funding_plans" && !subjectFundingCoverage.valid;
+  const subjectFundingCalculationBlocked = !subjectFundingCoverage.valid;
 
   const buildInputDataPayload = (options?: {
     segments?: CashflowSegment[];
@@ -209,6 +197,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     costItState?: typeof state.costIt;
     costCtState?: typeof state.costCt;
     costMixState?: typeof state.costMix;
+    fundingPlansOverride?: typeof state.subjectFundingPlans;
   }) => {
     const segmentsForPayload = options?.segments ?? state.cashflowSegments;
     const directCashflowForPayload = buildDirectCashflowFromSegments(segmentsForPayload);
@@ -224,7 +213,8 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     const costItForPayload = options?.costItState ?? state.costIt;
     const costCtForPayload = options?.costCtState ?? state.costCt;
     const costMixForPayload = options?.costMixState ?? state.costMix;
-    const calculationSource = state.cashflowCalculationSource || "legacy_model";
+    const calculationSource = "subject_funding_plans";
+    const plansForPayload = options?.fundingPlansOverride ?? state.subjectFundingPlans;
     const subjectRowsForPayload = buildSubjectFundingCoverageSubjects({
       revItState: revItForPayload,
       revCtState: revCtForPayload,
@@ -233,12 +223,9 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       costCtState: costCtForPayload,
       costMixState: costMixForPayload,
     });
-    const coverageForPayload = validateSubjectFundingPlanCoverage(subjectRowsForPayload, state.subjectFundingPlans);
-    const annualCashflowForPayload = buildAnnualCashflowFromSubjectFundingPlans(subjectRowsForPayload, state.subjectFundingPlans);
-    const useSubjectFundingCashflow = calculationSource === "subject_funding_plans" && coverageForPayload.valid;
-    const useLegacyDirectSegments = calculationSource === "legacy_model"
-      && state.cashflowModel === 'model_e'
-      && state.segmentValueMode === "amount";
+    const coverageForPayload = validateSubjectFundingPlanCoverage(subjectRowsForPayload, plansForPayload);
+    const annualCashflowForPayload = buildAnnualCashflowFromSubjectFundingPlans(subjectRowsForPayload, plansForPayload);
+    const useSubjectFundingCashflow = coverageForPayload.valid;
 
     return {
       project_name: state.projName,
@@ -255,27 +242,20 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       project_background: state.projectBackground,
       revenue_balance_rule: serializeBalanceAllocationRule(state.balanceAllocation.revenue),
       investment_balance_rule: serializeBalanceAllocationRule(state.balanceAllocation.investment),
-      subject_funding_plans: state.subjectFundingPlans,
+      subject_funding_plans: plansForPayload,
+      subject_funding_plan_migration_version: state.subjectFundingPlanMigrationVersion,
       rev_cashflow_excl: useSubjectFundingCashflow
         ? cashflowPayloadValues(annualCashflowForPayload.annualRevenueExcl)
-        : useLegacyDirectSegments
-          ? cashflowPayloadValues(directCashflowForPayload.rev)
-          : null,
+        : null,
       cost_cashflow_excl: useSubjectFundingCashflow
         ? cashflowPayloadValues(annualCashflowForPayload.annualCostExcl)
-        : useLegacyDirectSegments
-          ? cashflowPayloadValues(directCashflowForPayload.cost)
-          : null,
+        : null,
       it_rev_cashflow_excl: useSubjectFundingCashflow
         ? cashflowPayloadValues(annualCashflowForPayload.annualItRevenueExcl)
-        : useLegacyDirectSegments
-          ? cashflowPayloadValues(directCashflowForPayload.itRev)
-          : null,
+        : null,
       it_cost_cashflow_excl: useSubjectFundingCashflow
         ? cashflowPayloadValues(annualCashflowForPayload.annualItCostExcl)
-        : useLegacyDirectSegments
-          ? cashflowPayloadValues(directCashflowForPayload.itCost)
-          : null,
+        : null,
       ignore_tail_difference: state.ignoredTailValue !== null,
       tail_difference_value: state.ignoredTailValue || "0",
       rev_it_integration: serializeTaxItemForPayload(revItForPayload.integration),
@@ -312,7 +292,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   const getInputDataPayload = () => buildInputDataPayload();
 
   const performCalculation = useCallback(async () => {
-    if (state.cashflowCalculationSource === "subject_funding_plans" && !subjectFundingCoverage.valid) {
+    if (!subjectFundingCoverage.valid) {
       console.warn("Subject funding plan coverage is invalid. Keeping previous calculation result.");
       return;
     }
@@ -696,6 +676,24 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     costMix: state.costMix,
   });
 
+  /**
+   * Build funding-plan sync updates for a subject amount change,
+   * including CT linkage (revCt.product → costCt.other, revCt.line → costCt.bandwidth).
+   */
+  const buildCandidateSyncUpdates = (
+    subject: IctSubjectDefinition,
+    amount: number,
+  ): Array<{ subjectRef: SubjectFundingSubjectRef; newAmountIncl: number }> => {
+    const updates: Array<{ subjectRef: SubjectFundingSubjectRef; newAmountIncl: number }> = [
+      { subjectRef: { side: subject.side, groupId: subject.groupId, key: subject.key }, newAmountIncl: amount },
+    ];
+    const pairedCost = getPairedCostSubjectForRevenueSubject(subject);
+    if (pairedCost) {
+      updates.push({ subjectRef: { side: pairedCost.side, groupId: pairedCost.groupId, key: pairedCost.key }, newAmountIncl: amount });
+    }
+    return updates;
+  };
+
   const buildReverseCandidate = (
     selectedSubject: ReverseSubjectOption,
     amount: number,
@@ -715,6 +713,13 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
           amount,
           Number(selectedSubject.item?.tax ?? 0),
         );
+
+    // Simulate synced funding plans for candidate evaluation
+    const syncedPlans = syncSubjectFundingPlansToAmounts(
+          state.subjectFundingPlans,
+          buildCandidateSyncUpdates(selectedSubject.subject, amount),
+        );
+
     const payload = buildInputDataPayload({
       segments: nextSegments,
       revItState: nextSubjectState.revIt as typeof state.revIt,
@@ -723,6 +728,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       costItState: nextSubjectState.costIt as typeof state.costIt,
       costCtState: nextSubjectState.costCt as typeof state.costCt,
       costMixState: nextSubjectState.costMix as typeof state.costMix,
+      fundingPlansOverride: syncedPlans,
     });
 
     return { nextSubjectState, nextSegments, payload };
@@ -734,7 +740,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   ) => {
     const safeTargetAmount = roundMoney(Math.max(0, Math.min(structure.reallocatablePoolInclAmount, targetAmount)));
     const balancingAmount = roundMoney(structure.reallocatablePoolInclAmount - safeTargetAmount);
-    const modelEAmountMode = state.cashflowModel === "model_e" && state.segmentValueMode === "amount";
+    const modelEAmountMode = false;
     const modelESync = modelEAmountMode
       ? applyModelEStructureTransfer({
           segments: state.cashflowSegments,
@@ -762,6 +768,14 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       structure.balancingSubject,
       balancingAmount,
     );
+
+    // Simulate synced funding plans for candidate evaluation
+    const candidateSyncUpdates: Array<{ subjectRef: SubjectFundingSubjectRef; newAmountIncl: number }> = [
+      ...buildCandidateSyncUpdates(structure.targetSubject, safeTargetAmount),
+      ...buildCandidateSyncUpdates(structure.balancingSubject, balancingAmount),
+    ];
+    const syncedPlans = syncSubjectFundingPlansToAmounts(state.subjectFundingPlans, candidateSyncUpdates);
+
     const payload = buildInputDataPayload({
       segments: modelESync.segments,
       revItState: nextSubjectState.revIt as typeof state.revIt,
@@ -770,6 +784,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       costItState: nextSubjectState.costIt as typeof state.costIt,
       costCtState: nextSubjectState.costCt as typeof state.costCt,
       costMixState: nextSubjectState.costMix as typeof state.costMix,
+      fundingPlansOverride: syncedPlans,
     });
 
     return {
@@ -793,7 +808,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     structure: LockedTotalStructureContext,
     target: number,
   ) => {
-    const modelEAmountMode = state.cashflowModel === "model_e" && state.segmentValueMode === "amount";
+    const modelEAmountMode = false;
     if (
       modelEAmountMode
       && structure.side === "revenue"
@@ -928,8 +943,8 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       }
 
       state.updateTaxItemsInclBatch([
-        { groupId: structure.targetSubject.groupId, key: structure.targetSubject.key, incl: finalPoint.targetAmount },
-        { groupId: structure.balancingSubject.groupId, key: structure.balancingSubject.key, incl: finalPoint.balancingAmount },
+        { groupId: structure.targetSubject.groupId, key: structure.targetSubject.key, incl: finalPoint.targetAmount, reason: "reverse_calculation_sync" },
+        { groupId: structure.balancingSubject.groupId, key: structure.balancingSubject.key, incl: finalPoint.balancingAmount, reason: "balance_allocation_sync" },
       ]);
       if (modelEAmountMode) {
         state.setCashflowSegments(finalPoint.nextSegments);
@@ -1005,7 +1020,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       return performLockedTotalStructureReverseCalculation(selectedSubject, reverseContext.structure, target);
     }
 
-    const modelEAmountMode = state.cashflowModel === 'model_e' && state.segmentValueMode === "amount";
+    const modelEAmountMode = false;
     const segmentIndex = modelEAmountMode
       ? selectReverseSegmentIndex(state.cashflowSegments, selectedSubject.subject.side)
       : -1;
@@ -1075,6 +1090,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
         selectedSubject.subject.key,
         "incl",
         finalAmount,
+        "reverse_calculation_sync"
       );
 
       if (revMode === "revenue") {
@@ -1107,14 +1123,6 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
         },
       }));
 
-      const distText = modelEAmountMode
-        ? (() => {
-            const finalDirectCashflow = buildDirectCashflowFromSegments(finalCandidate.nextSegments);
-            return revMode === 'revenue'
-              ? formatDistribution(distributionFromCashflow(finalDirectCashflow.rev))
-              : formatDistribution(distributionFromCashflow(finalDirectCashflow.cost));
-          })()
-        : (revMode === 'revenue' ? formatDistribution(effectiveDistRev) : formatDistribution(effectiveDistCost));
       const targetName = revTargetType === 'margin' ? '目标毛利润率' : '目标净现值率';
       const segmentText = modelEAmountMode
         ? `\n同步板块：${finalCandidate.nextSegments[segmentIndex]?.name ?? "对应板块"}`
@@ -1125,9 +1133,8 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
         `目标：${targetName} ≥ ${formatPercent(target)}\n` +
         `反算科目：“${selectedSubject.displayName}”\n` +
         `反算前金额：${formatCurrency(beforeAmount)}\n` +
-        `该结果为该科目的含税金额，已按当前资金收付模型重新生成现金流。${segmentText}\n` +
-        `当前资金收付模型：${cashflowModelLabels[state.cashflowModel]}\n` +
-        `年度分布：${distText}`
+        `该结果为该科目的含税金额，已按科目收付款计划重新生成现金流。${segmentText}\n` +
+        `现金流依据：科目收付款计划`
       );
     } catch (e) {
       alert("反推失败: " + e);

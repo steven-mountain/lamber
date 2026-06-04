@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+fn default_zero_string() -> String {
+    "0".to_string()
+}
+
 #[derive(Deserialize, Serialize, Clone)]
 pub struct IctItem {
     pub incl_tax: String,
@@ -62,6 +66,10 @@ pub struct IctInput {
     pub cashflow_calculation_source: Option<String>,
     pub cashflow_segment_value_mode: Option<String>,
     pub cashflow_segments: Option<Vec<CashflowSegment>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_funding_plans: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_funding_plan_migration_version: Option<i32>,
     pub project_background: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -128,6 +136,16 @@ pub struct IctCashflowRow {
     pub cum_net_cash: String,
     pub pv: String,
     pub cum_pv: String,
+
+    // New fields for IT Cashflow display
+    #[serde(default = "default_zero_string")]
+    pub it_cash_in: String,
+    #[serde(default = "default_zero_string")]
+    pub it_cash_out: String,
+    #[serde(default = "default_zero_string")]
+    pub net_it_cash: String,
+    #[serde(default = "default_zero_string")]
+    pub it_pv: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -138,10 +156,14 @@ pub struct IctResult {
     pub dynamic_payback: String,
     pub irr: String,
 
+    #[serde(default = "default_zero_string")]
     pub it_npv: String,
+    #[serde(default = "default_zero_string")]
     pub it_npv_rate: String,
+    #[serde(default = "default_zero_string")]
     pub it_margin_rate: String,
 
+    #[serde(default, alias = "cashflows")]
     pub cashflow: Vec<IctCashflowRow>,
 }
 
@@ -249,4 +271,41 @@ pub struct StoreData {
     pub snapshots: Vec<BenefitAnalysisSnapshot>,
     #[serde(default)]
     pub project_files: Vec<ProjectFile>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::IctResult;
+
+    #[test]
+    fn ict_result_deserializes_legacy_cashflow_without_it_fields() {
+        let legacy = serde_json::json!({
+            "npv": "100",
+            "npv_rate": "0.1",
+            "margin_rate": "0.2",
+            "dynamic_payback": "1",
+            "irr": "--",
+            "cashflow": [
+                {
+                    "year": 1,
+                    "cash_in": "1000",
+                    "cash_out": "800",
+                    "net_cash": "200",
+                    "cum_net_cash": "200",
+                    "pv": "189.57",
+                    "cum_pv": "189.57"
+                }
+            ]
+        });
+
+        let result: IctResult = serde_json::from_value(legacy).unwrap();
+
+        assert_eq!(result.it_npv, "0");
+        assert_eq!(result.it_npv_rate, "0");
+        assert_eq!(result.it_margin_rate, "0");
+        assert_eq!(result.cashflow[0].it_cash_in, "0");
+        assert_eq!(result.cashflow[0].it_cash_out, "0");
+        assert_eq!(result.cashflow[0].net_it_cash, "0");
+        assert_eq!(result.cashflow[0].it_pv, "0");
+    }
 }

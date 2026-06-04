@@ -813,7 +813,7 @@ pub fn auto_import_excel_calculation(
             1
         }),
         cashflow_model: Some("model_a".to_string()),
-        cashflow_calculation_source: Some("legacy_model".to_string()),
+        cashflow_calculation_source: Some("subject_funding_plans".to_string()),
         cashflow_segment_value_mode: Some("ratio".to_string()),
         cashflow_segments: Some(vec![]),
         project_background: None,
@@ -827,6 +827,8 @@ pub fn auto_import_excel_calculation(
         cost_cashflow_excl: None,
         it_rev_cashflow_excl: None,
         it_cost_cashflow_excl: None,
+        subject_funding_plans: None,
+        subject_funding_plan_migration_version: Some(1),
 
         rev_it_integration: make_parsed_item("rev_it_integration", it_tax, it_income),
         rev_it_maintenance: make_parsed_item("rev_it_maintenance", 6.0, 0.0),

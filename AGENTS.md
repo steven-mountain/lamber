@@ -6,15 +6,17 @@ This file applies to the entire repository.
 
 ## Context initialization
 
-Before starting any task, read these files in order:
+Before starting any task, follow these on-demand reading rules to load the context:
 
-1. [AI_CONTEXT.md](./docs/AI_CONTEXT.md)
-2. [PROJECT_STATUS.md](./docs/PROJECT_STATUS.md)
-3. [ARCHITECTURE_MAP.md](./docs/ARCHITECTURE_MAP.md)
-4. [CHANGELOG_AI.md](./docs/CHANGELOG_AI.md)
+1. **Every task must read (lightweight entrance)**:
+   * [PROJECT_INDEX.md](./docs/PROJECT_INDEX.md)
+   * [CURRENT_TASK.md](./docs/CURRENT_TASK.md)
+2. **On-demand reads depending on task scope**:
+   * If modifying appearance, style, or themes: Read [docs/modules/appearance.md](./docs/modules/appearance.md) and [DESIGN.md](./DESIGN.md).
+   * If modifying global architecture or core flow: Read [docs/ARCHITECTURE_MAP.md](./docs/ARCHITECTURE_MAP.md).
+   * Do **not** read [docs/CHANGELOG_AI.md](./docs/CHANGELOG_AI.md), [docs/PROJECT_STATUS.md](./docs/PROJECT_STATUS.md), or [docs/AI_CONTEXT.md](./docs/AI_CONTEXT.md) unless tracing history/regressions or specifically instructed.
 
-Do not perform a full repository scan at the beginning of a task.
-Use the context files first, then read only the source files relevant to the current task.
+Do not perform a full repository scan at the beginning of a task. Use the entry files first, then read only the source files relevant to the current task.
 
 ## Project principles
 
@@ -74,12 +76,12 @@ In short: **do not optimize for the smallest diff; optimize for the most stable,
 
 ## Required documentation updates
 
-After meaningful code changes, update these files in order:
+After meaningful code or visual changes, update documentation as follows:
 
-* [PROJECT_STATUS.md](./docs/PROJECT_STATUS.md)
-* [ARCHITECTURE_MAP.md](./docs/ARCHITECTURE_MAP.md)
-* [CHANGELOG_AI.md](./docs/CHANGELOG_AI.md)
-* [AI_CONTEXT.md](./docs/AI_CONTEXT.md)
+* Update [CURRENT_TASK.md](./docs/CURRENT_TASK.md) to record progress.
+* Update corresponding [docs/modules/*.md](./docs/modules/) design documentation (e.g., [appearance.md](./docs/modules/appearance.md)) for key modular designs/rules.
+* Add a summary record in [CHANGELOG_AI.md](./docs/CHANGELOG_AI.md).
+* Do **not** update `PROJECT_STATUS.md` or `AI_CONTEXT.md` unless explicitly required; these files are now kept for historical reference only.
 
 Record only long-term valuable project knowledge. Do not log transient debugging details.
 

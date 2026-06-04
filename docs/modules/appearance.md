@@ -1,0 +1,77 @@
+# 外观设置与视觉设计系统 (Appearance Module)
+
+本模块记录 Lamber 仓库前端外观体系的设计规范、功能实现以及后续扩展规则。
+
+## 1. 视觉系统基准 (Phase 1)
+Lamber 采用 **“建筑账本 (The Architectural Ledger)”** 创意方向，旨在呈现清晰、稳重、可信赖的业务视觉。
+
+### 1.1 设计 Token 与 CSS 变量
+核心颜色变量采用 HSL 分量形式存储在 `:root` 中，以便进行动态色值微调和不透明度混合。例如：
+* `--primary`: `221 83% 53%` (对应 Tailwind `bg-primary`)
+* `--background`: `210 40% 98%` (底色)
+* `--card`: `0 0% 100%` (卡片表面)
+* `--border`: `214 32% 91%` (常规边界)
+* 状态颜色：`--success`、`--warning`、`--destructive` (与主品牌色隔离)。
+
+### 1.2 "无边框" 规则 (No-Line Rule)
+* 避免使用传统高对比度的 `1px` 深色实线框作为区块分割；
+* 优先使用浅色色差背景（如在 `bg-background` 中嵌套 `bg-card` 或 `bg-muted/30` 容器）来实现视觉分区；
+* 配合微妙投影（`shadow-sm` / `shadow-md`）突出悬浮面板或活动状态。
+
+### 1.3 字体与财务对齐
+* **财务字体规范**：所有涉及金额、比例、测算数值的单元格和展示字段，必须使用 `.numeric-value` 类，应用以下样式以确保数值垂直对齐：
+  ```css
+  font-variant-numeric: tabular-nums;
+  ```
+* **字号计算**：所有字体大小均与 CSS 变量 `--font-scale` 绑定计算，支持等比伸缩而不破坏排版。
+
+---
+
+## 2. 主题切换与设置中心 (Phase 2)
+通过 `SettingsView.tsx` 统一控制整站主题和页面排版参数。
+
+### 2.1 预设主题 (Presets)
+系统提供 5 套内置浅色主题预设：
+1. **Lamber 默认 (`lamber`)**：皇家蓝强调色 + 浅蓝灰底色。
+2. **石墨灰 (`graphite`)**：木炭黑强调色 + 纯灰底色。
+3. **海军蓝 (`navy`)**：深蓝强调色 + 蓝灰底色。
+4. **森林绿 (`forest`)**：林地绿强调色 + 浅绿灰底色。
+5. **暖石色 (`warmStone`)**：暖泥土强调色 + 暖灰底色。
+
+### 2.2 统一深色基底 (Dark Mode Base)
+* 所有主题预设在深色模式下共享一个深灰色/深蓝色基底（`#0f172a` / `#1e293b`），配合细微的 Preset 特征色点缀；
+* Graphite 使用纯中性深灰，Navy 使用偏蓝深灰，Forest 使用偏绿深灰，WarmStone 使用偏暖褐深灰，维持各自视觉特质。
+
+### 2.3 字号缩放与版面密度
+* **字号缩放比例**：紧凑 (`0.93`)、标准 (`1.00`)、舒适 (`1.08`)、大字号 (`1.16`)，行高按比例缩放防止重叠。
+* **间距密度定义**：
+  * 紧凑 (`compact`)：卡片 Padding `1rem`，组件高度 `2rem`，表格 Vertical Padding `0.5rem`。
+  * 标准 (`standard`)：卡片 Padding `1.5rem`，组件高度 `2.25rem`，表格 Vertical Padding `0.75rem`。
+  * 宽松 (`comfortable`)：卡片 Padding `2rem`，组件高度 `2.5rem`，表格 Vertical Padding `1rem`。
+
+### 2.4 持久化与跨窗口同步
+* **Early Hydration**：偏好存在 `localStorage` 中，并在 `main.tsx` 加载 React 之前同步解析注入，彻底解决页面加载时的色彩闪烁（Flash）。
+* **跨窗口广播**： workbench 主窗口与 AI 顾问独立悬浮窗口之间通过 Tauri 事件 `appearance-settings-updated` 实现多窗口样式实时双向同步。
+
+---
+
+## 3. 高级自定义与对比度无障碍防护 (Phase 3)
+为用户自定义色值提供符合 WCAG 标准的无障碍保护。
+
+### 3.1 自定义强调色与 HSL 转换
+* 用户可提供 HEX 格式颜色，由 `deriveAccentTokens.ts` 解析转换为 HSL 变量写入 Root，覆盖 `--primary`、`--primary-foreground`、`--primary-soft`、`--ring`、`--accent` 及其前景色。
+
+### 3.2 WCAG 对比度实时检测与亮度纠偏
+* 在标准对比度模式下，强调色需与背景保持至少 **4.5:1** 的对比度；
+* 实时校验：如果对比度不达标，系统将自动降低（浅色模式下）或提高（深色模式下）强调色的 HSL 亮度分量 `L`，并推导安全的替代色，展示对比度修正警告。
+* 动态前景色：前景色 `--primary-foreground` 自动计算（在轻 slate `#f8fafc` 和深 slate `#0f172a` 之间选择），确保文字高 legible。
+
+### 3.3 高对比度 Preference overrides
+* 当 `contrastPreference === "high"` 时，强制应用纯黑/纯白画布、强化边框可见度，且强调色对比度检测阈值提升至 strict **7.0:1**（WCAG AAA 级）。
+
+---
+
+## 4. 后续开发与扩展约束 (Constraints)
+1. **应用级偏好定位**：外观主题设置属于应用偏好，**严禁**写入 workspace project SQLite 数据库表格或项目本地 `project.json` 中，仅可保存在应用 `localStorage` 里。
+2. **状态色隔离**：`success` (绿)、`warning` (黄/橙)、`destructive` (红) 的语义配色是具备业务含义的逻辑状态，**严禁**被用户自定义的主品牌强调色覆盖，防止业务语义重叠。
+3. **响应式及多窗口一致**：所有新增的弹窗、副视图、Tauri Webview 窗口必须在 mount 时订阅 appearance store 事件监听，确保样式同步，且新组件必须消费 semantic HSL 主题变量，不得直接硬编码 HEX 颜色。
