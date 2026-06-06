@@ -4,7 +4,22 @@
 > **历史兼容性说明**：本文件作为历史和综合状态的备份记录，不再作为 AI 每次任务的默认必读文件。
 > 后续开发请默认阅读入口文件 [PROJECT_INDEX.md](./PROJECT_INDEX.md) 和 [CURRENT_TASK.md](./CURRENT_TASK.md)，并根据任务涉及范围按需加载模块设计文档（如 [docs/modules/appearance.md](./modules/appearance.md)）。
 
-Last updated: 2026-06-04 (Common Materials & Project Presets Phase 1)
+Last updated: 2026-06-06 (Common Materials & Project Presets Phase 1.5)
+
+## 0. Common Materials & Project Presets (Phase 1.5)
+
+Phase 1.5 upgrades common materials into a reusable field-level preset capability while preserving the Phase 1 SQLite data and formal form save paths.
+
+- **Field Metadata Registry**: `presetFieldKeys.ts` now describes stable keys with user-facing labels, template ownership, business groups, field types, eligibility, recommended categories, aliases, and default enable behavior.
+- **Opt-In Field Capability**: `CommonPresetQuickFill` renders “+ 预设” for eligible fields that are not enabled. Enabled fields expose explicit choose, save-current, replace/append, and disable actions.
+- **Workspace Persistence**: Schema version 7 adds `preset_field_settings`. User overrides survive workspace reload/reopen and do not create another project-data source of truth.
+- **Business Presentation**: The preset center, binding selector, picker, and save UI show field names, templates, and groups instead of raw fieldKey values. Income/expenditure payment fields are presented as “收入条款 / 支出条款”, owned by “立项签批表、会审纪要 / 商务条款”.
+- **Financial Safety**: Unregistered fields default to ineligible. Amount, percent, tax, cashflow, NPV, margin, reverse-calculation, balancing, and other computed fields are explicitly excluded in the registry and rejected by Rust command validation.
+- **Initial Coverage**: Existing Phase 1 fields remain enabled by default. ICT “产权归属” is the first default-off representative field proving user-driven activation.
+- **Close Capability**: Enabled fields expose a compact more menu and panel action for “关闭预设”. Closing persists `enabled = false` in `preset_field_settings`, leaves current form content and all `common_presets` records/bindings unchanged, and restores the field to its opt-in state.
+- **Icon Semantics**: “选择常用” uses a bookmark/library semantic icon rather than the former lightning quick-action icon. No icon dependency was added.
+- **Boundary**: Applying content still calls the owning React setter, then follows existing lifecycle/template dirty and save handlers. Presets do not participate in calculations or document generation.
+- **Still Not Implemented**: Full project preset sets, project creation from presets, one-click multi-field application, AI recommendation, AI auto-fill, and automatic history learning remain Phase 2+ work.
 
 ## 0. Common Materials & Project Presets (Phase 1)
 

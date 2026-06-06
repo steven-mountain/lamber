@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 
 pub(crate) const MANIFEST_FILE: &str = ".lamber.workspace.json";
@@ -554,7 +554,13 @@ fn ensure_workspace_root_registered(
     Ok(())
 }
 
-pub fn try_restore_last_workspace(app: &AppHandle, runtime: &WorkspaceRuntime, config: &AppConfig) {
+pub const WORKSPACE_STATE_CHANGED_EVENT: &str = "lamber-workspace-state-changed";
+
+fn restore_last_workspace_blocking(
+    app: &AppHandle,
+    runtime: &WorkspaceRuntime,
+    config: &AppConfig,
+) {
     if let Some(path) = &config.last_opened_workspace_path {
         let root = PathBuf::from(path);
         if let Err(err) = open_workspace_internal(app, runtime, &root) {
@@ -564,6 +570,26 @@ pub fn try_restore_last_workspace(app: &AppHandle, runtime: &WorkspaceRuntime, c
             ));
         }
     }
+}
+
+pub fn spawn_restore_last_workspace(
+    app: AppHandle,
+    runtime: Arc<WorkspaceRuntime>,
+    config: AppConfig,
+) {
+    if config.last_opened_workspace_path.is_none() {
+        return;
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        restore_last_workspace_blocking(&app, &runtime, &config);
+        if let Err(err) = app.emit(WORKSPACE_STATE_CHANGED_EVENT, ()) {
+            eprintln!(
+                "Failed to emit workspace state change after startup restore: {}",
+                err
+            );
+        }
+    });
 }
 
 #[tauri::command]

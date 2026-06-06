@@ -4,7 +4,21 @@
 > **历史兼容性说明**：本文件作为历史开发背景与综合上下文的记录，不再作为 AI 每次任务的默认必读文件。
 > 后续开发请默认阅读入口文件 [PROJECT_INDEX.md](./PROJECT_INDEX.md) 和 [CURRENT_TASK.md](./CURRENT_TASK.md)，并根据任务涉及范围按需加载模块设计文档（如 [docs/modules/appearance.md](./modules/appearance.md)）。
 
-Last updated: 2026-06-04 (Common Materials & Project Presets Phase 1)
+Last updated: 2026-06-06 (Common Materials & Project Presets Phase 1.5)
+
+## Common Materials & Project Presets Phase 1.5
+
+Field-level presets are now controlled by a central frontend metadata registry in `src-ui/src/lib/presetFieldKeys.ts`. The registry is the UI source for business labels, descriptions, template ownership, groups, field types, eligibility, recommended categories, aliases, and default enabled state. Raw field keys remain persistence/matching identifiers and must not be shown in user-facing binding or picker UI. Unknown fields are ineligible and display a neutral “未命名字段 / 暂未配置” fallback.
+
+Workspace-specific field activation is persisted in schema v7 table `preset_field_settings`. `CommonPresetQuickFill` loads this state and provides opt-in enable, choose, save-current, replace/append, and disable actions. Existing Phase 1 fields default to enabled for compatibility; ICT property rights is the initial default-off representative field.
+
+Rust `common_presets.rs` keeps a matching eligible key allowlist and rejects both field activation and preset binding for unknown or forbidden keys. Financial amounts, tax rates, percentages, annual cashflow, NPV/margin results, smart reverse targets, balancing amounts, and other computed fields must remain preset-ineligible.
+
+Preset application still writes only through the owning field setter and existing lifecycle/template save domain. No calculation, project persistence, AI write, or document generation path reads field settings or common presets as formal business data.
+
+Phase 1.5 close behavior is explicit: enabled fields provide a compact more menu plus a panel-level “关闭预设” action. Closing writes only `preset_field_settings.enabled = false`; it does not call the form setter, clear the current value, delete a common preset, or rewrite `applicableFieldKeys`. The disabled field returns to the lightweight “+ 预设” state and remains disabled after workspace reload.
+
+The “选择常用” action uses the `presetLibrary` bookmark icon. Do not use lightning, magic-wand, or AI-generation semantics for reusable-material selection.
 
 ## Common Materials & Project Presets
 

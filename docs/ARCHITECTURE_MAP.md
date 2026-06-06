@@ -4,7 +4,7 @@
 > **历史兼容性说明**：本文件作为系统架构与模块数据流的详细技术地图，不再作为 AI 每次任务的默认必读文件。
 > 后续开发请默认阅读入口文件 [PROJECT_INDEX.md](./PROJECT_INDEX.md) 和 [CURRENT_TASK.md](./CURRENT_TASK.md)，并仅在需要深入分析架构、启动流程或底层细节时阅读本文件。
 
-Last updated: 2026-06-04 (Common Materials & Project Presets Phase 1)
+Last updated: 2026-06-06 (Common Materials & Project Presets Phase 1.5)
 
 ## 1. Repository overview
 
@@ -34,7 +34,7 @@ graph TD
 - **`src/workspace.rs`**: Manages Lamber Workspace manifests, recent workspaces, last workspace restore, workspace readiness checks, associated workspace unlinking, the active SQLite connection, and workspace initialization from existing plain directories with candidate subdirectories import.
 - **`src/workspace_maintenance.rs`**: Provides workspace portability commands: daily/manual SQLite backup, backup restore with database connection release/reopen, `.lamber.zip` export/import/validation, read-only workspace health checks, repairable issue execution, external path listing, dry-run internal absolute path conversion, and native file-manager reveal.
 - **`src/db.rs`**: SQLite initialization, table creation, and schema version management.
-- **`src/common_presets.rs`**: Workspace-scoped reusable materials command module. It owns CRUD, enabled/disabled state, soft deletion, usage-count updates, and field-key filtering for `common_presets`.
+- **`src/common_presets.rs`**: Workspace-scoped reusable materials command module. It owns CRUD, enabled/disabled state, soft deletion, usage-count updates, field-key filtering, workspace field activation settings, and backend eligibility validation for `common_presets` / `preset_field_settings`.
 - **`src/migration.rs`**: JSON-to-SQLite transactional database migration service and Tauri commands.
 - **`src/docfill.rs`**: Fills Word/Excel lifecycle templates for workspace-backed document generation.
 - **`src/docfill.rs` lifecycle output rule**: `generate_lifecycle_docs` must resolve relative output folders against the active Workspace root, and may use the provided `projectId` to derive the project folder from Workspace SQLite when no explicit output directory is supplied. It must not write generated lifecycle documents into the Tauri process working directory.
@@ -82,8 +82,8 @@ graph TD
 - **`src/lib/ictBalanceAllocation.ts`**: Shared frontend rule helper for ICT revenue/investment total balancing. It normalizes and serializes `revenue_balance_rule` / `investment_balance_rule`, resolves stable `subjectCode + groupId + key` subject references, computes inclusive-amount differences with existing two-decimal money behavior, and reports missing/negative validation states without writing financial amounts itself.
 - **`src/lib/ictReverseCalculation.ts`**: Shared frontend helper for dynamic smart reverse calculation subjects. It builds eligible revenue/cost subject options from `ICT_SUBJECT_DEFINITIONS`, uses stable subject references (`side + subjectCode + groupId + key`), resolves display names through the shared subject resolver, applies candidate tax-inclusive amounts to arbitrary subject groups, mirrors the existing CT revenue-to-cost amount linkage, and resolves reverse modes (`normal`, `locked_total_structure`, `blocked`) for balance-allocation interactions.
 - **`src/lib/ictSubjectFundingPlan.ts`**: Shared frontend helper for subject-level funding plan state. It binds plans to concrete subject instances through `side + groupId + key`, creates default upfront plans, builds cents-exact equal splits over 1-10 years, normalizes legacy/unknown payloads, updates custom annual values, validates annual tax-inclusive totals against subject inclusive amount, validates full calculation-source coverage, and builds yearly subject-plan cashflow arrays with per-subject/per-year tax conversion.
-- **`src/lib/presetFieldKeys.ts`**: Stable field-key catalog for common materials and future project presets. It maps reusable content to field keys such as `project_basic.background`, `demand.service_content`, `meeting.it_construction_content`, `approval.it_service_content`, and `payment.revenue_collection_method` instead of UI labels.
-- **`src/components/common-presets/CommonPresetQuickFill.tsx`**: Reusable form-side quick-fill component. It lists matching workspace presets, supports replace/append for long text, saves the current field value as a preset only after user action, and records usage through the preset command.
+- **`src/lib/presetFieldKeys.ts`**: Central field metadata registry for common materials and future project presets. Stable keys map to business labels, template/group ownership, field types, eligibility, recommended categories, aliases, and default activation. Unregistered fields are ineligible by default.
+- **`src/components/common-presets/CommonPresetQuickFill.tsx`**: Reusable field capability component. It loads workspace activation state, renders opt-in or enabled actions, lists matching presets, supports explicit replace/append, saves current values after user action, and records usage.
 - **`src/ai/context/`**: AI chat context composer. It builds the per-message context bundle by reading the active project ID, loading saved official context from Workspace SQLite through `aiProjectContextService.ts`, and filtering the current frontend state into an unsaved draft overlay only when dirty scopes match the active project/page.
 - **`src/ai/context/workspaceProjectRouter.ts`**: Deterministic Workspace project-name router used by the composer. It matches explicit project names against the current Workspace project index, limits deep official context loading to two specified projects per turn, resolves one specified template when uniquely named, and returns warnings for ambiguous or unresolved routing.
 - **`src/ai/templateAssetSelection.ts`**: Cross-window event bridge for explicit template image analysis requests. It carries only template asset metadata (`projectId`, `templateId`, `assetId`, field label) and never carries physical file paths or image base64.
@@ -103,8 +103,8 @@ graph TD
 
 ## 3. Main application flow
 
-1. **Boot**: `main.rs` starts the Tauri runtime, loads local `config.json`, and attempts to restore `lastOpenedWorkspacePath`. It does not create or open an AppData primary database.
-2. **Mount**: `main.tsx` mounts React. It queries `localStorage` to recover previous navigation context (e.g. active project/scheme IDs) but always defaults the current view to `"hub"`.
+1. **Boot**: `main.rs` starts the Tauri runtime, loads local `config.json`, creates `WorkspaceRuntime`, and schedules `lastOpenedWorkspacePath` restore on a blocking background task. It does not create or open an AppData primary database, and startup must not synchronously wait for workspace SQLite initialization or daily backup.
+2. **Mount**: `main.tsx` mounts React. It queries `localStorage` to recover previous navigation context (e.g. active project/scheme IDs) but always defaults the current view to `"hub"`. `App.tsx` subscribes to `lamber-workspace-state-changed` before the initial workspace-state refresh so background startup restore can update `useWorkspaceStore` after the WebView is already responsive.
 3. **Routing**: `App.tsx` reads `currentView` from `useNavigationStore`. Toggling views changes the displayed view container.
 4. **State Load**: If a workspace is ready and a project was active, `IctLifecycle.tsx` invokes `get_schemes` and `get_snapshots` against the current workspace database to restore calculations.
 
@@ -121,6 +121,18 @@ Phase 3 introduces explicit project-state save domains:
 - `project_template_states`: template form field values, field mappings, template binding metadata, and output configuration.
 - `project_template_assets`: file-backed template images/attachments and metadata.
 - `common_presets`: workspace-level reusable material records used only as fill sources for form fields. They are not project state and are not read by document generation.
+- `preset_field_settings`: workspace-level field activation overrides keyed by stable fieldKey. It controls UI capability only and is not project form data.
+
+### 4.0.2 Field-level preset flow
+
+1. A form header passes a registered stable fieldKey, current text value, and its existing setter to `CommonPresetQuickFill`.
+2. The frontend registry resolves business metadata and rejects unregistered or `presetEligible: false` fields before rendering an action.
+3. Existing Phase 1 fields use registry defaults; explicit workspace overrides load from `preset_field_settings`.
+4. Enabling/disabling calls Rust commands that validate the eligible key allowlist and persist the workspace setting.
+5. Saving a preset validates every `applicableFieldKeys` entry in Rust. Financial/unknown keys cannot be bound through direct IPC.
+6. Applying a preset calls only the owning setter. Existing dirty tracking and lifecycle/template save handlers remain the formal persistence path.
+7. Closing field presets is a capability-state update only: the UI confirms retention, writes `preset_field_settings.enabled = false`, synchronizes mounted controls with the same fieldKey, and does not mutate form values or `common_presets` records/bindings.
+8. Field actions use business-semantic icons: reusable-material selection uses `presetLibrary` (bookmark), while `quickAction` remains reserved for actual fast-execution workflows.
 
 ICT revenue/cost tax items may include optional `customSubjectName` / `billingSubjectName` on the frontend and `custom_subject_name` / `billing_subject_name` in serialized lifecycle/snapshot payloads. Amount calculations continue to read only `incl_tax` and `tax_rate`; both custom names are UI/document/Excel metadata and are ignored by financial formula paths. `project_cashflow_states.assumptions_json`, `project_lifecycle_states.input_payload_json`, and benefit snapshots preserve the optional fields for reload and export compatibility.
 
@@ -130,7 +142,7 @@ Frontend global save goes through `domainSaveService` and `useSaveStore` registe
 
 Each save handler returns the dirty scopes it actually persisted. `useSaveStore.saveCurrentProject()` snapshots workspace/project/dirty scopes at save start, rejects unregistered scopes, keeps failed scopes dirty, and re-checks workspace/project before clearing anything. Template forms use the same store: ordinary autosave may clear `template-forms` after success, while Ctrl/Command+S and the global save button must receive a failing handler result if template state or asset-reference persistence fails.
 
-### 4.0.2 Common materials and preset fill flow
+### 4.0.3 Common materials and preset fill flow
 
 1. The Hub opens `preset_center`, which requires an active Workspace because the data lives in the current `.lamber.sqlite`.
 2. `PresetCenterView` manages `common_presets` records through `commonPresetService.ts` and Tauri commands. Records are filtered by kind, category, enabled state, recent use, or usage count.
@@ -141,7 +153,7 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 
 ### 4.0.1 Workspace portability maintenance flow
 
-- Opening a workspace registers the active workspace root if needed and attempts one daily SQLite backup at `.backups/lamber-YYYY-MM-DD.sqlite`; backup failure is surfaced as a warning and must not block workspace opening.
+- Opening a workspace registers the active workspace root if needed and attempts one daily SQLite backup at `.backups/lamber-YYYY-MM-DD.sqlite`; backup failure is surfaced as a warning and must not block workspace opening. Startup auto-restore performs the same open path in a background task and emits `lamber-workspace-state-changed` when finished so slow disk, SQLite migration, or backup work cannot blank or freeze the main window.
 - Manual backup runs `VACUUM INTO` to create `.backups/lamber-YYYY-MM-DD-HH-MM-SS.sqlite` and does not modify the live database.
 - Backup list cleanup in `DataManagement.tsx` can delete individual backup files or clear the currently listed backups through `delete_workspace_backup`; it does not touch the live `.lamber.sqlite` database.
 - Backup restore validates the selected SQLite backup, creates a pre-restore backup, closes the active `WorkspaceRuntime` database connection, replaces `.lamber.sqlite`, and reopens the current workspace. If replacement or reopen fails, it attempts to restore the original database and reopen it.

@@ -6,7 +6,90 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-06-06
+
+### Common Preset Phase 1.5 Close and Icon Polish
+
+Modified:
+- [CommonPresetQuickFill.tsx](../src-ui/src/components/common-presets/CommonPresetQuickFill.tsx): Added a compact more-actions menu with “关闭预设”, retained the panel-level close action, and added a confirmation that field content and reusable materials remain intact.
+- [iconMap.ts](../src-ui/src/components/icons/iconMap.ts): Added `presetLibrary` using the existing Lucide `Bookmark` icon and `more` using `MoreHorizontal`.
+- [common_presets.rs](../src-tauri/src/common_presets.rs): Extended tests to verify enable → disable persistence while preserving the bound common preset record.
+- [test_common_presets.cjs](../src-ui/scripts/test_common_presets.cjs): Added regression assertions that preset selection no longer uses `quickAction` and that close/retention semantics remain present.
+- Phase 1.5 project and module documentation was updated.
+
+Decision:
+- Closing a field preset is not an unbind/delete operation. It updates only workspace capability state in `preset_field_settings`; current form values, reusable materials, and shared applicable-field bindings remain unchanged.
+- The close action must be discoverable without opening the full common-content picker, so it lives in a compact more menu aligned with the field label actions.
+- Reusable-material selection uses bookmark/library semantics. Lightning remains available only for genuine quick-execution actions elsewhere.
+- Phase 2 project preset templates and one-click multi-field application remain out of scope.
+
+Tests:
+- Frontend TypeScript, targeted ESLint, common-preset tests, subject-funding regression scripts, and production build passed.
+- Rust formatting, common-preset persistence tests, and schema v6-to-v7 migration test passed.
+- Full Rust suite: 12 passed; two existing docfill tests remain blocked by the missing local Excel template.
+- Local Vite returned HTTP 200; browser visual automation was unavailable in this session.
+
+### Common Materials & Project Presets Phase 1.5
+
+Created/modified:
+- [presetFieldKeys.ts](../src-ui/src/lib/presetFieldKeys.ts): Expanded the stable key catalog into a field metadata registry with business labels, templates, groups, field types, eligibility, recommended categories, aliases, defaults, and explicit financial exclusions.
+- [CommonPresetQuickFill.tsx](../src-ui/src/components/common-presets/CommonPresetQuickFill.tsx): Added workspace-persisted opt-in field activation, synchronized duplicate field controls, business metadata display, and explicit choose/save/replace/append/disable actions.
+- [PresetCenterView.tsx](../src-ui/src/views/PresetCenterView.tsx): Replaced raw fieldKey display in cards and binding selection with field name, applicable templates, and business groups.
+- [IctBasicInfo.tsx](../src-ui/src/components/IctBasicInfo.tsx): Added “产权归属” as the first default-off representative field.
+- [common_presets.rs](../src-tauri/src/common_presets.rs), [db.rs](../src-tauri/src/db.rs), and [main.rs](../src-tauri/src/main.rs): Added schema v7 `preset_field_settings`, list/set commands, and backend eligible-key validation for field activation and preset binding.
+- [commonPresetService.ts](../src-ui/src/services/commonPresetService.ts) and [test_common_presets.cjs](../src-ui/scripts/test_common_presets.cjs): Added typed IPC access and registry/exclusion tests.
+- Project/module context documents were updated for the Phase 1.5 architecture and Phase 2 exclusions.
+
+Decision:
+- Field activation is workspace UI configuration, not project form data. Formal values continue through existing field setters and save domains.
+- Existing Phase 1 fields remain default-enabled for compatibility; newly connected ordinary text fields can default off and require explicit activation.
+- Financial safety is enforced in both layers. The UI registry hides ineligible fields, while Rust rejects unknown, amount, percent, and computed field bindings even through direct IPC.
+- Raw fieldKey values are internal identifiers. User-facing surfaces must show business metadata and neutral fallback text when metadata is missing.
+
+Tests:
+- Frontend TypeScript, targeted ESLint, common-preset tests, subject-funding regression scripts, and production build passed.
+- Rust formatting, common-preset tests, and schema v6-to-v7 migration test passed.
+- Full Rust suite ran 12 successful tests; the two existing docfill tests remain blocked by the missing local Excel template.
+- Browser visual automation was unavailable in this session because its execution tool was not exposed.
+
 ## 2026-06-05
+
+### Tauri Startup Workspace Restore Hang Repair
+
+Modified:
+- [main.rs](../src-tauri/src/main.rs): Stopped synchronously restoring `lastOpenedWorkspacePath` during Tauri `setup`; startup now creates `WorkspaceRuntime` and schedules restore work in the background.
+- [workspace.rs](../src-tauri/src/workspace.rs): Added `spawn_restore_last_workspace`, kept the existing workspace open path for restore, and emits `lamber-workspace-state-changed` after restore success or failure.
+- [App.tsx](../src-ui/src/App.tsx): Subscribes to `lamber-workspace-state-changed` before the initial workspace-state refresh so the frontend updates after background restore completes.
+- [ARCHITECTURE_MAP.md](./ARCHITECTURE_MAP.md) and [CURRENT_TASK.md](./CURRENT_TASK.md): Documented the startup restore lifecycle.
+
+Decision:
+- Startup must not synchronously wait for workspace SQLite initialization, daily backup, hidden-attribute updates, or filesystem checks. These operations can touch user-controlled disks and should not block WebView creation, rendering, or title-bar close handling.
+- Restore failures continue to flow through `WorkspaceRuntime.startup_error`; this keeps the existing `WorkspaceGate`/workspace error UX without adding a parallel frontend source of truth.
+
+Tests:
+- Ran `npm run build --prefix src-ui`: passed with the existing Vite chunk-size warning.
+- Ran `cargo fmt -- --check` in `src-tauri`: passed.
+- Ran `cargo check` in `src-tauri`: passed with existing warnings unrelated to this change.
+- Tauri dev startup smoke test with the configured last workspace showed WebView2 creation immediately alongside the app process, replacing the previous delayed initialization behavior.
+
+### Common Preset Center List-First Layout
+
+Modified:
+- [PresetCenterView.tsx](../src-ui/src/views/PresetCenterView.tsx): Reworked the management page into a list-first layout with an on-demand create/edit side panel, search toolbar, denser preset cards, collapsible applicable-field selection, fixed panel actions, and discard confirmation for unsaved drafts.
+- [PresetCenterView.tsx](../src-ui/src/views/PresetCenterView.tsx): Constrained the side panel to viewport height so bottom actions are not clipped, and added desktop/mobile outside-click close behavior that respects unsaved-change confirmation.
+- [common-presets.md](../docs/modules/common-presets.md) and [CURRENT_TASK.md](../docs/CURRENT_TASK.md): Recorded the management-page layout rule and validation status.
+
+Decision:
+- The preset center should not reserve permanent space for an empty create form. Create and edit are explicit user actions that open an auxiliary panel; the list remains the primary scanning surface.
+- Search stays as a frontend filter over already loaded workspace presets, so category filtering, sort order, CRUD commands, enabled/disabled state, and the SQLite `common_presets` schema remain unchanged.
+
+Tests:
+- Ran `npx tsc --noEmit` in `src-ui`: passed.
+- Ran `npx eslint src/views/PresetCenterView.tsx` in `src-ui`: passed.
+- Ran `node scripts/test_common_presets.cjs` in `src-ui`: passed.
+- Ran `npm run build` in `src-ui`: passed with the existing Vite chunk-size warning.
+- Full `npm run lint` remains blocked by pre-existing lint errors in `useAiContextStore.ts` and `useAppearanceStore.ts`.
+- `npm run typecheck` is not available in `src-ui`; the project uses `npx tsc --noEmit` / `npm run build` for TypeScript validation.
 
 ### Common Preset Quick-Fill Field Header Alignment
 

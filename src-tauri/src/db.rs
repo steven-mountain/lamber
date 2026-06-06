@@ -317,7 +317,7 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
                 found
             };
 
-            let initial_version = if has_folder_name { "6" } else { "2" };
+            let initial_version = if has_folder_name { "7" } else { "2" };
             conn.execute(
                 "INSERT INTO app_settings (key, value, updated_at) VALUES ('schema_version', ?1, ?2)",
                 [initial_version, &now],
@@ -646,5 +646,77 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
         }
     }
 
+    // Run migration checks from Version 6 to 7
+    {
+        let version = {
+            let mut stmt =
+                conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
+            let mut rows = stmt.query([])?;
+            if let Some(row) = rows.next()? {
+                let val_str: String = row.get(0)?;
+                val_str.parse::<i32>().unwrap_or(1)
+            } else {
+                1
+            }
+        };
+        if version < 7 {
+            let tx = conn.transaction()?;
+            crate::common_presets::ensure_schema(&tx)?;
+            let now = chrono::Utc::now().to_rfc3339();
+            tx.execute(
+                "UPDATE app_settings SET value = '7', updated_at = ?1 WHERE key = 'schema_version'",
+                [now],
+            )?;
+            tx.commit()?;
+        }
+    }
+
     Ok(conn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn schema_v6_migrates_preset_field_settings_to_v7() {
+        let path = std::env::temp_dir().join(format!(
+            "lamber-schema-v7-{}.sqlite",
+            uuid::Uuid::new_v4().simple()
+        ));
+
+        {
+            let conn = init_db(&path).unwrap();
+            conn.execute(
+                "UPDATE app_settings SET value = '6' WHERE key = 'schema_version'",
+                [],
+            )
+            .unwrap();
+            conn.execute("DROP TABLE preset_field_settings", [])
+                .unwrap();
+        }
+
+        {
+            let conn = init_db(&path).unwrap();
+            let version: String = conn
+                .query_row(
+                    "SELECT value FROM app_settings WHERE key = 'schema_version'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(version, "7");
+            let table_exists: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master
+                     WHERE type = 'table' AND name = 'preset_field_settings'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(table_exists, 1);
+        }
+
+        let _ = std::fs::remove_file(path);
+    }
 }

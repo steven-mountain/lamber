@@ -38,7 +38,15 @@ export const IctBasicInfo: React.FC<IctBasicInfoProps> = ({ state }) => {
           <input id="ict-customer-name" type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="bg-card border border-input px-3.5 py-2.5 rounded-md outline-none focus:border-ring" />
         </div>
         <div className="flex flex-col gap-2">
-          <CommonPresetLabelHeader labelClassName="text-sm font-bold text-secondary-foreground">产权归属</CommonPresetLabelHeader>
+          <CommonPresetFieldHeader
+            fieldKey={PRESET_FIELD_KEYS.projectPropertyRights}
+            kind="short_value"
+            value={propertyRights}
+            onApply={setPropertyRights}
+            labelClassName="text-sm font-bold text-secondary-foreground"
+          >
+            产权归属
+          </CommonPresetFieldHeader>
           <input id="ict-property-rights" type="text" value={propertyRights} onChange={e => setPropertyRights(e.target.value)} className="bg-card border border-input px-3.5 py-2.5 rounded-md outline-none focus:border-ring" />
         </div>
         <div className="flex flex-col gap-2">

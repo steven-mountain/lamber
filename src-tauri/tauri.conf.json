@@ -11,25 +11,9 @@
   "app": {
     "withGlobalTauri": true,
     "macOSPrivateApi": true,
-    "windows": [
-      {
-        "label": "main",
-        "title": "云数中心工具集",
-        "width": 1024,
-        "height": 768
-      }
-    ],
+    "windows": [],
     "security": {
-      "csp": null,
-      "assetProtocol": {
-        "enable": true,
-        "scope": {
-          "allow": [
-            "**/*"
-          ],
-          "requireLiteralLeadingDot": false
-        }
-      }
+      "csp": null
     }
   },
   "bundle": {
