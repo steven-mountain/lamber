@@ -256,8 +256,12 @@ export const projectService = {
     return invoke<void>("save_project_setting", { projectId, key, value });
   },
 
-  async createProjectInWorkspace(name: string, customerName: string): Promise<Project> {
-    return invoke<Project>("create_project_in_workspace", { name, customerName });
+  async createProjectInWorkspace(name: string, customerName: string, projectPresetTemplateId?: string | null): Promise<Project> {
+    return invoke<Project>("create_project_in_workspace", {
+      name,
+      customerName,
+      projectPresetTemplateId: projectPresetTemplateId || null,
+    });
   },
 
   async listWorkspaceProjects(): Promise<WorkspaceProjectInfo[]> {

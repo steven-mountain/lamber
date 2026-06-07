@@ -4,9 +4,12 @@ export type PresetFieldType =
   | "short_text"
   | "long_text"
   | "select"
+  | "radio"
+  | "checkbox"
   | "number"
   | "amount"
   | "percent"
+  | "date"
   | "computed";
 
 export interface PresetFieldDefinition {
@@ -17,6 +20,7 @@ export interface PresetFieldDefinition {
   groups: string[];
   fieldType: PresetFieldType;
   presetEligible: boolean;
+  dictionaryKey?: string | null;
   recommendedCategories: string[];
   aliases?: string[];
   kind: CommonPresetKind;
@@ -32,6 +36,7 @@ export const PRESET_FIELD_KEYS = {
 
   approvalReviewers: "approval.reviewers",
   approvalDepartment: "approval.department",
+  approvalBranchAttendees: "approval.branch_attendees",
   approvalProjectManager: "approval.project_manager",
   approvalItServiceContent: "approval.it_service_content",
   approvalCtServiceContent: "approval.ct_service_content",
@@ -45,9 +50,26 @@ export const PRESET_FIELD_KEYS = {
   meetingItConstructionContent: "meeting.it_construction_content",
   meetingCtConstructionContent: "meeting.ct_construction_content",
   meetingTimeRequirement: "meeting.time_requirement",
+  meetingThreeization: "meeting.threeization",
+  meetingStrategicValue: "meeting.strategic_value",
+  meetingTechnicalConclusion: "meeting.technical_conclusion",
+  meetingReviewAccuracy: "meeting.review_accuracy",
 
   paymentRevenueCollectionMethod: "payment.revenue_collection_method",
   paymentExpenditurePaymentMethod: "payment.expenditure_payment_method",
+
+  procurementSingleSourceBasis: "procurement.single_source_basis",
+  procurementOtherMethod: "procurement.other_method",
+  implementationConstructionInterface: "implementation.construction_interface",
+  demandDeviceList: "demand.device_list",
+  demandSecurityDetail: "demand.security_detail",
+
+  templateItBusinessMode: "template.it_business_mode",
+  templateItFundingSource: "template.it_funding_source",
+  demandItBusinessMode: "demand.it_business_mode",
+  procurementMethod: "procurement.method",
+  tenderIsJoint: "tender.is_joint",
+  procurementSingleSource: "procurement.single_source",
 
   serviceDescription: "service.description",
   riskDescription: "risk.description",
@@ -74,6 +96,7 @@ function eligibleField(
   return {
     ...definition,
     presetEligible: true,
+    dictionaryKey: null,
     recommendedCategories: definition.recommendedCategories ?? [definition.category],
   };
 }
@@ -83,6 +106,23 @@ function excludedField(
     PresetFieldDefinition,
     "presetEligible" | "recommendedCategories" | "defaultEnabled"
   >,
+): PresetFieldDefinition {
+  return {
+    ...definition,
+    presetEligible: false,
+    dictionaryKey: null,
+    recommendedCategories: [],
+    defaultEnabled: false,
+  };
+}
+
+function controlledField(
+  definition: Omit<
+    PresetFieldDefinition,
+    "presetEligible" | "recommendedCategories" | "defaultEnabled" | "dictionaryKey"
+  > & {
+    dictionaryKey: string;
+  },
 ): PresetFieldDefinition {
   return {
     ...definition,
@@ -155,6 +195,16 @@ export const PRESET_FIELD_REGISTRY: PresetFieldDefinition[] = [
     category: "部门名称",
     kind: "short_value",
     defaultEnabled: true,
+  }),
+  eligibleField({
+    fieldKey: PRESET_FIELD_KEYS.approvalBranchAttendees,
+    label: "分公司参会人员",
+    templates: ["会审纪要"],
+    groups: ["参会与审核"],
+    fieldType: "short_text",
+    category: "审核人员",
+    kind: "short_value",
+    defaultEnabled: false,
   }),
   eligibleField({
     fieldKey: PRESET_FIELD_KEYS.approvalProjectManager,
@@ -266,6 +316,157 @@ export const PRESET_FIELD_REGISTRY: PresetFieldDefinition[] = [
     category: "时间要求",
     kind: "text_snippet",
     defaultEnabled: true,
+  }),
+  eligibleField({
+    fieldKey: PRESET_FIELD_KEYS.meetingThreeization,
+    label: "三化方案",
+    templates: ["会审纪要"],
+    groups: ["技术方案"],
+    fieldType: "short_text",
+    category: "方案说明",
+    kind: "short_value",
+    defaultEnabled: false,
+  }),
+  eligibleField({
+    fieldKey: PRESET_FIELD_KEYS.meetingStrategicValue,
+    label: "战略价值",
+    templates: ["会审纪要"],
+    groups: ["项目价值"],
+    fieldType: "long_text",
+    category: "价值说明",
+    kind: "text_snippet",
+    defaultEnabled: false,
+  }),
+  eligibleField({
+    fieldKey: PRESET_FIELD_KEYS.meetingTechnicalConclusion,
+    label: "技术结论",
+    templates: ["会审纪要"],
+    groups: ["技术方案"],
+    fieldType: "long_text",
+    category: "结论说明",
+    kind: "text_snippet",
+    defaultEnabled: false,
+  }),
+  eligibleField({
+    fieldKey: PRESET_FIELD_KEYS.meetingReviewAccuracy,
+    label: "项目评审表准确完整说明",
+    templates: ["会审纪要"],
+    groups: ["审核结论"],
+    fieldType: "long_text",
+    category: "审核说明",
+    kind: "text_snippet",
+    defaultEnabled: false,
+  }),
+  eligibleField({
+    fieldKey: PRESET_FIELD_KEYS.procurementSingleSourceBasis,
+    label: "单一来源决策依据",
+    templates: ["会审纪要"],
+    groups: ["采购信息"],
+    fieldType: "long_text",
+    category: "采购说明",
+    kind: "text_snippet",
+    defaultEnabled: false,
+  }),
+  eligibleField({
+    fieldKey: PRESET_FIELD_KEYS.procurementOtherMethod,
+    label: "其他采购方式",
+    templates: ["会审纪要"],
+    groups: ["采购信息"],
+    fieldType: "short_text",
+    category: "采购说明",
+    kind: "short_value",
+    defaultEnabled: false,
+  }),
+  eligibleField({
+    fieldKey: PRESET_FIELD_KEYS.implementationConstructionInterface,
+    label: "售中建设及施工界面",
+    templates: ["会审纪要"],
+    groups: ["实施与交付"],
+    fieldType: "long_text",
+    category: "实施说明",
+    recommendedCategories: ["实施说明", "服务说明"],
+    kind: "text_snippet",
+    defaultEnabled: false,
+  }),
+  eligibleField({
+    fieldKey: PRESET_FIELD_KEYS.demandDeviceList,
+    label: "设备清单说明",
+    templates: ["ICT项目需求导入表"],
+    groups: ["设备需求"],
+    fieldType: "long_text",
+    category: "设备说明",
+    kind: "text_snippet",
+    defaultEnabled: false,
+  }),
+  eligibleField({
+    fieldKey: PRESET_FIELD_KEYS.demandSecurityDetail,
+    label: "信息安全及密评说明",
+    templates: ["ICT项目需求导入表"],
+    groups: ["安全要求"],
+    fieldType: "long_text",
+    category: "安全说明",
+    kind: "text_snippet",
+    defaultEnabled: false,
+  }),
+  controlledField({
+    fieldKey: PRESET_FIELD_KEYS.templateItBusinessMode,
+    label: "IT部分商务模式",
+    templates: ["效益分析表"],
+    groups: ["商务信息"],
+    fieldType: "select",
+    dictionaryKey: "business_model",
+    category: "业务选项",
+    kind: "short_value",
+  }),
+  controlledField({
+    fieldKey: PRESET_FIELD_KEYS.templateItFundingSource,
+    label: "IT部分资金来源",
+    templates: ["效益分析表"],
+    groups: ["商务信息"],
+    fieldType: "select",
+    dictionaryKey: "funding_source",
+    category: "业务选项",
+    kind: "short_value",
+  }),
+  controlledField({
+    fieldKey: PRESET_FIELD_KEYS.demandItBusinessMode,
+    label: "需求导入业务模式",
+    templates: ["ICT项目需求导入表"],
+    groups: ["商务信息"],
+    fieldType: "select",
+    dictionaryKey: "business_model",
+    category: "业务选项",
+    kind: "short_value",
+  }),
+  controlledField({
+    fieldKey: PRESET_FIELD_KEYS.procurementMethod,
+    label: "采购方式",
+    templates: ["会审纪要"],
+    groups: ["采购信息"],
+    fieldType: "select",
+    dictionaryKey: "procurement_method",
+    category: "业务选项",
+    kind: "short_value",
+  }),
+  controlledField({
+    fieldKey: PRESET_FIELD_KEYS.tenderIsJoint,
+    label: "是否联合体投标",
+    templates: ["会审纪要"],
+    groups: ["投标信息"],
+    fieldType: "select",
+    dictionaryKey: "yes_no",
+    category: "业务选项",
+    kind: "short_value",
+  }),
+  controlledField({
+    fieldKey: PRESET_FIELD_KEYS.procurementSingleSource,
+    label: "是否涉及单一来源",
+    templates: ["会审纪要"],
+    groups: ["采购信息"],
+    fieldType: "select",
+    dictionaryKey: "yes_no",
+    category: "业务选项",
+    kind: "short_value",
   }),
   eligibleField({
     fieldKey: PRESET_FIELD_KEYS.paymentRevenueCollectionMethod,
@@ -426,6 +627,7 @@ export function getPresetFieldDisplay(fieldKey: string) {
     groups: ["暂未配置"],
     fieldType: "short_text" as const,
     presetEligible: false,
+    dictionaryKey: null,
     recommendedCategories: [],
     kind: "short_value" as const,
     category: "未分类",

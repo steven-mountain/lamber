@@ -4,7 +4,37 @@
 > **历史兼容性说明**：本文件作为系统架构与模块数据流的详细技术地图，不再作为 AI 每次任务的默认必读文件。
 > 后续开发请默认阅读入口文件 [PROJECT_INDEX.md](./PROJECT_INDEX.md) 和 [CURRENT_TASK.md](./CURRENT_TASK.md)，并仅在需要深入分析架构、启动流程或底层细节时阅读本文件。
 
-Last updated: 2026-06-06 (Common Materials & Project Presets Phase 1.5)
+Last updated: 2026-06-07 (Common Materials & Project Presets Phase 2)
+
+## 0.0 Project Preset Template Architecture
+
+- `project_presets.rs` owns schema v9 CRUD, soft deletion, safety validation, and new-project initialization.
+- `project_preset_templates` stores template metadata; `project_preset_template_entries` stores stable field keys, JSON values, value/source types, and ordering.
+- `projectPresetService.ts` is the typed IPC boundary.
+- `ProjectPresetManager.tsx` is the management surface.
+- `ProjectPresetProjectActions.tsx` owns extraction and mandatory preview/application strategies.
+- `projectPresetFields.ts` derives eligibility and value type from the Phase 1.5 registry.
+- `TemplateForms.tsx` exposes controlled bindings for the mounted template; `IctLifecycle.tsx` combines them with lifecycle fields.
+
+Existing projects are never directly updated by the preset backend. Confirmed entries update owning setters and then call unified save. New-project creation passes an optional preset ID, initializes lifecycle state, and stores remaining safe entries under `project_settings.project_preset_seed`; matching template forms consume that seed through their normal state/save flow. Initialization errors compensate by deleting the project row and directory.
+
+## 0.1 Business Dictionary Architecture
+
+- `src-tauri/src/business_dictionaries.rs` owns schema creation/seeding and workspace-scoped dictionary item commands.
+- Schema v8 tables are `business_dictionaries` and `business_dictionary_items`; they are part of the active workspace `.lamber.sqlite`.
+- `src-ui/src/services/businessDictionaryService.ts` is the typed IPC boundary.
+- `BusinessDictionaryManager.tsx` is the management surface inside `PresetCenterView`.
+- `BusinessDictionarySelect.tsx` is the form integration surface. It reads enabled options, uses fixed fallbacks only when IPC loading fails, and injects a saved inactive value for display compatibility.
+- `presetFieldKeys.ts` maps controlled form fields to `dictionaryKey` while keeping `presetEligible: false`.
+
+Business dictionary flow:
+
+1. The form owns the current project/template value.
+2. `BusinessDictionarySelect` requests enabled options for the field metadata `dictionaryKey`.
+3. Selecting an option calls the existing field setter; existing dirty tracking and save handlers persist it.
+4. Dictionary maintenance changes only the option catalog.
+5. Disabled/deleted options are omitted from new choices, but a currently saved unmatched value is preserved in the select.
+6. Document generation, calculations, and AI context do not query dictionary tables.
 
 ## 1. Repository overview
 
@@ -24,6 +54,8 @@ graph TD
     WM -->|Backups / Exports / Health| WSF[(Workspace folder)]
     Tauri -->|Workspace preset CRUD| CP[Common Presets / common_presets.rs]
     CP -->|Reusable content| DB
+    Tauri -->|Business dictionary CRUD| BD[Business Dictionaries / business_dictionaries.rs]
+    BD -->|Controlled option catalogs| DB
 ```
 
 ## 2. Directory map

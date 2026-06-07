@@ -2,12 +2,14 @@
 
 mod ai_context;
 mod benefit;
+mod business_dictionaries;
 mod common_presets;
 mod config_manager;
 mod db;
 mod docfill;
 mod migration;
 mod project_files;
+mod project_presets;
 mod project_state;
 mod workspace;
 mod workspace_maintenance;
@@ -167,6 +169,16 @@ fn main() {
             common_presets::set_common_preset_enabled,
             common_presets::delete_common_preset,
             common_presets::mark_common_preset_used,
+            business_dictionaries::list_business_dictionaries,
+            business_dictionaries::get_business_dictionary_options,
+            business_dictionaries::save_business_dictionary_item,
+            business_dictionaries::set_business_dictionary_item_enabled,
+            business_dictionaries::delete_business_dictionary_item,
+            business_dictionaries::reorder_business_dictionary_items,
+            project_presets::list_project_preset_templates,
+            project_presets::save_project_preset_template,
+            project_presets::set_project_preset_template_enabled,
+            project_presets::delete_project_preset_template,
             benefit::reverse_calc_ict_target,
             benefit::reverse_calc_ict_revenue_target,
             benefit::calculate_selection_fee,

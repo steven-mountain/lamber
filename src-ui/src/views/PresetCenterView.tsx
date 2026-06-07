@@ -3,6 +3,8 @@ import AppIcon from "../components/icons/AppIcon";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
+import BusinessDictionaryManager from "../components/business-dictionaries/BusinessDictionaryManager";
+import ProjectPresetManager from "../components/project-presets/ProjectPresetManager";
 import {
   getPresetFieldDisplay,
   getPresetFieldCategories,
@@ -21,6 +23,7 @@ interface PresetCenterViewProps {
 
 type SortMode = "recent" | "usage";
 type PanelMode = "create" | "edit" | null;
+type CenterSection = "presets" | "dictionary" | "projectPresets";
 
 const EMPTY_FORM: CommonPresetInput = {
   scope: "workspace",
@@ -101,6 +104,7 @@ function matchesSearch(item: CommonPreset, query: string) {
 export default function PresetCenterView({ onBack }: PresetCenterViewProps) {
   const panelRef = useRef<HTMLElement | null>(null);
   const [kind, setKind] = useState<CommonPresetKind>("short_value");
+  const [section, setSection] = useState<CenterSection>("presets");
   const [category, setCategory] = useState("");
   const [sortBy, setSortBy] = useState<SortMode>("recent");
   const [searchText, setSearchText] = useState("");
@@ -299,7 +303,7 @@ export default function PresetCenterView({ onBack }: PresetCenterViewProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground" onMouseDownCapture={handleMainMouseDownCapture}>
-      <header className="flex shrink-0 items-center justify-between bg-card px-6 py-4 shadow-sm">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 bg-card px-6 py-4 shadow-sm">
         <div className="flex items-center gap-3">
           <Button type="button" variant="ghost" onClick={onBack}>
             <span>←</span>
@@ -310,31 +314,80 @@ export default function PresetCenterView({ onBack }: PresetCenterViewProps) {
             <p className="mt-0.5 text-caption text-secondary-foreground">管理工作区内可复用的短字段与长文本片段</p>
           </div>
         </div>
+        <div className="inline-flex rounded-lg bg-muted p-1">
+          <Button
+            type="button"
+            variant={section === "presets" && kind === "short_value" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => {
+              if (!confirmDiscard()) return;
+              setSection("presets");
+              handleKindChange("short_value");
+            }}
+          >
+            常用字段
+          </Button>
+          <Button
+            type="button"
+            variant={section === "presets" && kind === "text_snippet" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => {
+              if (!confirmDiscard()) return;
+              setSection("presets");
+              handleKindChange("text_snippet");
+            }}
+          >
+            常用文本
+          </Button>
+          <Button
+            type="button"
+            variant={section === "dictionary" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => {
+              if (!confirmDiscard()) return;
+              setPanelMode(null);
+              setSection("dictionary");
+            }}
+          >
+            业务字典
+          </Button>
+          <Button
+            type="button"
+            variant={section === "projectPresets" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => {
+              if (!confirmDiscard()) return;
+              setPanelMode(null);
+              setSection("projectPresets");
+            }}
+          >
+            项目预设模板
+          </Button>
+        </div>
       </header>
 
       <main className="min-h-0 flex-1 overflow-hidden p-6">
+        {section === "dictionary" ? (
+          <div className="mx-auto flex h-full min-h-0 max-w-7xl">
+            <BusinessDictionaryManager />
+          </div>
+        ) : section === "projectPresets" ? (
+          <div className="mx-auto flex h-full min-h-0 max-w-7xl">
+            <ProjectPresetManager />
+          </div>
+        ) : (
         <div className={`mx-auto grid h-full min-h-0 max-w-7xl gap-5 ${panelMode ? "xl:grid-cols-[minmax(0,1fr)_minmax(360px,400px)]" : "grid-cols-1"}`}>
           <section className="min-h-0">
             <Card className="flex h-full min-h-0 flex-col overflow-hidden">
               <CardHeader className="shrink-0 pb-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="inline-flex rounded-lg bg-muted p-1">
-                    <Button
-                      type="button"
-                      variant={kind === "short_value" ? "default" : "ghost"}
-                      size="sm"
-                      onClick={() => handleKindChange("short_value")}
-                    >
-                      常用字段
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={kind === "text_snippet" ? "default" : "ghost"}
-                      size="sm"
-                      onClick={() => handleKindChange("text_snippet")}
-                    >
-                      常用文本
-                    </Button>
+                  <div>
+                    <CardTitle className="text-section-title">
+                      {kind === "short_value" ? "常用字段" : "常用文本"}
+                    </CardTitle>
+                    <p className="mt-1 text-caption text-muted-foreground">
+                      自由文本预设与受控业务选项分开管理
+                    </p>
                   </div>
                   <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
                     <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
@@ -564,6 +617,7 @@ export default function PresetCenterView({ onBack }: PresetCenterViewProps) {
             </>
           ) : null}
         </div>
+        )}
       </main>
     </div>
   );

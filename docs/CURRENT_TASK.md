@@ -1,3 +1,85 @@
+# 常用资料与项目预设中心 - 阶段 2
+
+- **Status:** Done
+- **Objective:** 实现工作区级整套项目预设模板、当前项目保存/预览应用和新建项目初始化。
+- **Release:** Windows desktop package version `1.1.0`.
+
+## Phase 2 Completed
+
+1. [x] schema v9 项目预设模板与字段项持久化。
+2. [x] 项目预设管理页签、CRUD、启停、软删除和业务字段元数据展示。
+3. [x] 从当前项目提取非空安全字段，逐项选择并保存。
+4. [x] 已有项目应用预览，支持仅填空、覆盖、逐项选择；覆盖需要确认。
+5. [x] 应用通过当前表单 setter 和统一保存链路。
+6. [x] 新建项目可选项目预设，初始化失败回滚数据库记录和目录。
+7. [x] 前后端双重排除金额、税率、比例、现金流和计算结果字段。
+
+## Phase 2 Validation
+
+- TypeScript, targeted ESLint, project/common/dictionary/subject-funding scripts, and frontend build passed.
+- `cargo fmt -- --check` and full `cargo test` passed (19 tests).
+- schema v8 -> v9 migration test passed.
+- Browser click-through was unavailable because the Browser JavaScript execution tool was not exposed.
+
+## Phase 2 Remaining
+
+- Desktop Tauri manual click-through should verify CRUD, three application strategies, reload persistence, new-project initialization, and appearance combinations.
+
+# 常用资料与项目预设阶段 1.5 最终补齐
+
+## Interaction Follow-up
+
+- Field-side preset panels now close when clicking outside the quick-fill control.
+- Enabled fields show a direct “关闭预设” icon button instead of a one-item three-dot menu.
+- The existing confirmation and retention behavior is unchanged.
+
+- **Status:** Done
+- **Objective:** 补齐可跨项目复用的自由文本字段预设，并将固定选项字段迁移到独立的工作区业务字典。
+
+## Completed
+
+1. [x] **自由文本字段预设扩展**
+   - 新增分公司参会人员、售中建设及施工界面、单一来源决策依据、其他采购方式、三化方案、战略价值、技术结论、评审完整性说明、设备清单说明、信息安全及密评说明等稳定 fieldKey。
+   - 所有新增字段复用 `CommonPresetFieldHeader` 与原有启用、选择常用、保存当前、关闭预设流程。
+   - 金额、税率、比例、日期、计算字段和受控选项继续不进入常用预设。
+2. [x] **业务字典持久化**
+   - schema v8 新增 `business_dictionaries` 与 `business_dictionary_items`。
+   - 支持工作区作用域、默认字典种子、字典项新增/编辑/启停/软删除/排序；预留 `user` scope。
+   - 字典数据随 `.lamber.sqlite` 参与现有工作区备份、导出和迁移。
+3. [x] **业务字典管理**
+   - “常用资料与项目预设”增加“业务字典”页签。
+   - 可查看适用业务字段，维护选项值、显示名称、说明、启用状态和顺序。
+4. [x] **首批表单接入**
+   - IT 部分商务模式、需求导入业务模式、IT 部分资金来源、采购方式、是否联合体投标、是否涉及单一来源从业务字典读取。
+   - 字典读取失败时使用原固定选项；已保存值被停用或删除后仍作为当前值显示，不改写项目数据。
+   - 文档生成、项目保存和 AI 上下文仍读取原项目/模板正式字段值。
+
+## Validation
+
+- `npx tsc --noEmit`: passed.
+- Targeted ESLint: passed with only existing `TemplateForms` hook warnings.
+- `node scripts/test_common_presets.cjs`: passed.
+- `node scripts/test_business_dictionaries.cjs`: passed.
+- All `scripts/test_subject_funding*.cjs`: passed.
+- `npm run build`: passed; existing Vite large-chunk warning remains.
+- `cargo fmt -- --check`: passed.
+- `cargo test business_dictionaries::tests`: passed.
+- `cargo test schema_v7_migrates_business_dictionaries_to_v8`: passed.
+- `cargo test common_presets::tests`: passed.
+- Full `cargo test`: passed after test template discovery was aligned with the configured module template workspace.
+- Browser automation was unavailable because the Browser plugin execution tool was not exposed.
+
+## Remaining
+
+- Desktop Tauri click-through should verify dictionary CRUD, option refresh, inactive legacy values, light/dark themes, font scales, and density combinations.
+- Phase 2 has not started; full project preset templates, project-creation application, and one-click multi-field application remain future work.
+
+## Follow-up Repair
+
+- Confirmed the active template workspace at `D:\HermesJang\CMCC\tools\workspace`, including `templates\效益分析表 .xlsx`.
+- Docfill tests now resolve `LAMBER_TEMPLATE_ROOT`, the legacy repository-adjacent template directory, and the current module template workspace in order.
+- The meeting-review “分公司名称 / 分公司参会人员” row now uses a responsive proportional grid. The name column has enough minimum width for its preset actions, and the two fields stack on narrow screens instead of compressing or misaligning the action row.
+
 # 常用资料与项目预设阶段 1.5 收尾修复
 
 - **Status:** Done
@@ -164,9 +246,46 @@
    - Preset cards now show denser business metadata: category, enabled state, content摘要, tags, applicable-field summary, usage count, and last-used time.
    - Fixed the create/edit panel viewport height so bottom actions are not clipped, and desktop/mobile outside clicks now request panel close.
 
+10. [x] **Field preset picker visual hierarchy**
+   - Compressed the field context header to the field name, applicable templates, and business group.
+   - Promoted matching common content to the primary panel region with clickable cards, content摘要, category/tags, usage count, and last-used time.
+   - Added a lightweight empty state that opens the existing first-save form.
+   - Kept save-current collapsed by default and moved disable-field-preset to a low-emphasis footer action without changing persistence or retention behavior.
+
+11. [x] **Compact preset rows and per-item actions**
+   - Replaced tall picker cards with compact rows: short values use one-line摘要 and long text uses at most two lines.
+   - Added explicit insert and append actions for every row; short values append with a space and long text appends with a newline.
+   - Added a per-item more menu with confirmed soft delete and list refresh.
+   - Preserved the existing owner-state update path, usage tracking, save-current flow, field-preset disabling, and business dictionaries.
+
+12. [x] **Preset row click and action visibility repair**
+   - Restored whole-row insert through mouse click and Enter/Space keyboard activation.
+   - Added event propagation guards to insert, append, and delete actions so child actions cannot trigger row insertion.
+   - Strengthened the compact action hierarchy with primary insert, outlined append, and directly visible weak-destructive delete buttons.
+   - Removed the redundant per-item more menu while retaining confirmed soft delete and list refresh.
+
+13. [x] **Picker and save interaction split**
+   - “选择常用” now opens only the list-first picker with replace, append, delete, disable-field-preset, and a secondary save entry.
+   - “保存当前” opens a separate portal modal instead of expanding save inputs inside the picker.
+   - The modal shows field/template/group context, an exact read-only value preview, and clearly labeled name/category/tags inputs.
+   - Save success closes the modal and refreshes the existing matching-preset list without backend or schema changes.
+
+14. [x] **Replace semantics and preset editing**
+   - Renamed the visible primary row action from “插入” to “替换”; whole-row click and keyboard activation keep the same replacement path and usage tracking.
+   - Added a compact secondary “编辑” action with an independent modal for preset name, content, category, and tags.
+   - Editing preserves the original preset id, kind, scope, field bindings, and enabled state, does not write the current project field, and refreshes the still-open picker after save.
+   - Append and delete behavior remain unchanged, and all child actions stop row-event propagation.
+
+15. [x] **Unified field preset panel views**
+   - Replaced global save/edit modals with one anchored panel state: `select`, `save`, or `edit`.
+   - “保存当前” opens the field panel directly in save view; list footer and empty-state save actions switch to the same view.
+   - Editing switches from the list to the edit view while preserving update identity/bindings and never writing the project field.
+   - Save/edit success refreshes presets and returns to selection; return/cancel stays in the panel while close exits it entirely.
+
 ## Validation
 
 - `npx tsc --noEmit` in `src-ui`: passed.
+- `npx eslint src/components/common-presets/CommonPresetQuickFill.tsx` in `src-ui`: passed.
 - `npx eslint src/views/PresetCenterView.tsx` in `src-ui`: passed.
 - `node scripts/test_common_presets.cjs` in `src-ui`: passed.
 - Existing `scripts/test_subject_funding*.cjs` in `src-ui`: passed.

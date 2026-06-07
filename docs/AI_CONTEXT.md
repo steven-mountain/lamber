@@ -4,7 +4,25 @@
 > **历史兼容性说明**：本文件作为历史开发背景与综合上下文的记录，不再作为 AI 每次任务的默认必读文件。
 > 后续开发请默认阅读入口文件 [PROJECT_INDEX.md](./PROJECT_INDEX.md) 和 [CURRENT_TASK.md](./CURRENT_TASK.md)，并根据任务涉及范围按需加载模块设计文档（如 [docs/modules/appearance.md](./modules/appearance.md)）。
 
-Last updated: 2026-06-06 (Common Materials & Project Presets Phase 1.5)
+Last updated: 2026-06-07 (Common Materials & Project Presets Phase 2)
+
+## Common Materials & Project Presets Phase 2
+
+Workspace schema v9 adds full project preset templates. Metadata lives in `project_preset_templates`; multi-field entries live in `project_preset_template_entries`. Entries use the Phase 1.5 stable registry and carry JSON value, value type, source type, and ordering.
+
+Safety allows reusable text fields plus controlled fields with `dictionaryKey`. Dictionary entries store business values as `dictionary_value`. Amount, tax-rate, percentage, cashflow, NPV/IRR, reverse, balancing, and computed fields are rejected in both frontend and Rust.
+
+Existing-project application is user-confirmed and frontend-owned: preview first, fill-empty by default, explicit overwrite confirmation, controlled setters, then unified save. New project creation may initialize lifecycle fields and a template seed because no previous project state exists; template values still enter formal state through existing form save handlers. AI recommendation, history extraction, user scope, and cross-workspace sharing remain future extensions.
+
+## Common Materials Phase 1.5 Final Coverage
+
+The field registry now models both reusable free text and controlled business options. `presetEligible` is the only gate for common-preset UI; `dictionaryKey` is the only gate for business-dictionary option loading. Controlled `select` / boolean option fields must remain preset-ineligible.
+
+Workspace schema v8 adds `business_dictionaries` and `business_dictionary_items`. The initial dictionaries are business model, funding source, procurement method, and yes/no. Item maintenance supports create, edit, enable/disable, soft delete, and ordering. Because these tables live in `.lamber.sqlite`, existing workspace backup/export/import behavior includes them.
+
+`BusinessDictionarySelect` supplies options to existing template form fields. It keeps the existing field setter and save path as the source of formal project data. Dictionary load failure uses the former fixed options. A saved value absent from enabled options remains visible as an inactive current value.
+
+Additional reusable text fields now include construction interface, single-source basis, other procurement method, threeization statement, strategic value, technical conclusion, review completeness, device-list explanation, and security assessment explanation. Phase 2 full-project preset sets are still not implemented.
 
 ## Common Materials & Project Presets Phase 1.5
 

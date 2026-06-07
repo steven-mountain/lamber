@@ -6,7 +6,144 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-06-07
+
+### Windows Release Version 1.1.0
+
+- Unified the Tauri bundle, Rust crate, root npm package, and frontend npm package versions as `1.1.0`.
+- The Windows NSIS installer filename now carries `1.1.0` instead of repeatedly producing `1.0.0`.
+- Version `1.1.0` is a minor release for the completed common-material, business-dictionary, and full project-preset capabilities.
+
+### Full Project Preset Templates Phase 2
+
+Created/modified:
+- Added `project_presets.rs` and schema v9 tables `project_preset_templates` / `project_preset_template_entries`.
+- Added typed frontend service, field safety/value helpers, management UI, current-project save/application preview, and three application strategies.
+- Added optional project preset selection to project creation with compensating rollback.
+- Extended `TemplateForms` with controlled project-preset bindings and seed consumption through the existing save path.
+- Added Rust and frontend regression tests and updated project documentation.
+
+Decision:
+- Existing-project application never uses a backend direct-write command; it updates mounted formal form state and invokes unified save.
+- Dictionary fields store business values. Financial and computed fields are forbidden by frontend registry checks and a Rust allowlist.
+- New-project template values use a seed only until the matching controlled form persists them through its existing save handler.
+
+Tests:
+- TypeScript, targeted ESLint, related frontend scripts, production build, Rust formatting, schema v9 migration, and full Rust tests passed.
+- Browser automation was unavailable because its JavaScript execution tool was not exposed.
+
+### Unified Field Preset Panel Views
+
+Modified:
+- `CommonPresetQuickFill.tsx`: Removed portal-based save/edit modals and introduced one anchored panel view state for selection, save-current, and edit.
+- `test_common_presets.cjs`: Replaced modal assertions with regression checks for the three panel views, absence of portal/overlay rendering, and return-to-selection after save/update.
+- Common preset module and current-task documentation were updated.
+
+Decision:
+- All field-preset operations stay in the field-local panel context. Selection, save, and edit are mutually exclusive views rather than simultaneously rendered surfaces.
+- Existing create/update/delete services, preset data shape, usage tracking, field replacement/append behavior, and field-preset persistence remain unchanged.
+
+### Preset Replace Semantics and Editing
+
+Modified:
+- `CommonPresetQuickFill.tsx`: Renamed the primary row action from “插入” to “替换” and added a dedicated edit modal for preset name, content, category, and tags.
+- `test_common_presets.cjs`: Added regression checks for replace wording, edit fields, update identity/binding preservation, list refresh, and removal of the old visible insert label.
+- Common preset module and current-task documentation were updated.
+
+Decision:
+- Whole-row activation and the “替换” button share the existing replacement and usage-tracking path.
+- Editing reuses `save_common_preset` with the original record id and non-editable metadata. It never calls the owning form setter and therefore cannot change the current project field.
+- The picker remains open behind the edit modal so a successful update returns the user to the refreshed list.
+
+### Common Preset Picker and Save Dialog Split
+
+Modified:
+- `CommonPresetQuickFill.tsx`: Separated list selection from preset creation. The picker now contains only list operations plus a secondary save entry, while “保存当前” opens a dedicated portal modal with field context, read-only content preview, and labeled metadata inputs.
+- `test_common_presets.cjs`: Added regression checks for the modal, semantic labels, default-name generation, and removal of the inline expandable save form.
+- Common preset module and current-task documentation were updated.
+
+Decision:
+- Selection and creation are distinct user intents and must not share the same expanded panel.
+- Save still writes the existing `CommonPresetInput` shape and refreshes through the existing list service. No backend command, database table, or business-state path changed.
+
+### Preset Row Click and Direct Action Repair
+
+Modified:
+- `CommonPresetQuickFill.tsx`: Restored whole-row insertion with keyboard support, strengthened insert/append button visibility, exposed delete directly, and removed the redundant per-item more menu.
+- `test_common_presets.cjs`: Added regression checks for row insertion, child-action propagation guards, weak-destructive delete styling, and removal of menu state.
+- Common preset module and current-task documentation were updated.
+
+Decision:
+- The row and insert button share the existing replacement path, including usage metadata updates.
+- Insert, append, and delete buttons stop propagation to prevent accidental replacement.
+- Delete remains a confirmed soft delete followed by list reload and never mutates current project field content.
+
+### Compact Field Preset Rows and Item Actions
+
+Modified:
+- `CommonPresetQuickFill.tsx`: Replaced tall preset cards with compact list rows, added explicit insert/append actions, and added confirmed soft deletion in a per-item more menu.
+- `test_common_presets.cjs`: Added regression checks for field-type-aware append separators, soft delete, list refresh, and item action visibility.
+- Common preset module and current-task documentation were updated.
+
+Decision:
+- `text_snippet` append uses a newline; `short_value` append uses a space. Empty-field append remains equivalent to insert.
+- Insert and append continue through the owning form setter and update preset usage metadata.
+- Item deletion uses the existing soft-delete service, never clears current project content, and refreshes the matching list after success.
+
 ## 2026-06-06
+
+### Field Preset Picker Visual Hierarchy
+
+Modified:
+- `CommonPresetQuickFill.tsx`: Reframed the field panel as a list-first common-content picker, added clickable preset cards with business metadata, introduced a compact first-save empty state, and downgraded save/disable controls to secondary bottom regions.
+- `test_common_presets.cjs`: Added source-level regression checks for the picker heading, empty-state action, usage metadata, tags, and removal of duplicated bound-field details.
+- Common preset module and current-task documentation were updated.
+
+Decision:
+- Field context is supporting information; matching reusable content is the panel's primary task and visual region.
+- The existing save, apply, usage tracking, and disable persistence paths remain unchanged. Disabling a field preset continues to preserve current field content and common materials.
+
+### Field Preset Interaction Simplification
+
+Modified:
+- `CommonPresetQuickFill.tsx`: Added outside-pointer closing for the field preset picker/save panel and replaced the one-item more menu with a direct close-preset button.
+- `test_common_presets.cjs`: Added regression checks for outside-close handling and removal of the redundant menu state.
+- Common preset module and current-task documentation were updated.
+
+Decision:
+- A one-item overflow menu adds interaction cost without adding organization value. Closing the field capability is now directly available while retaining the existing confirmation and data-retention semantics.
+
+### Common Preset Phase 1.5 Final Coverage and Business Dictionaries
+
+Created/modified:
+- Added `business_dictionaries.rs`, schema v8 tables `business_dictionaries` / `business_dictionary_items`, default dictionaries, workspace-scoped item CRUD, enable/disable, soft delete, and ordering commands.
+- Added `businessDictionaryService.ts`, `BusinessDictionarySelect.tsx`, and `BusinessDictionaryManager.tsx`.
+- Extended `presetFieldKeys.ts` with `dictionaryKey`, radio/checkbox/date field types, controlled-field metadata, and additional reusable free-text field definitions.
+- Updated `TemplateForms.tsx` so representative controlled fields read dictionary options while formal values remain in existing template state.
+- Added the business-dictionary tab to `PresetCenterView.tsx` and expanded free-text preset headers.
+- Added frontend and Rust regression tests plus schema v7-to-v8 migration coverage.
+
+Decision:
+- Common presets apply only to reusable free text. Select/radio/checkbox-like business options use dictionaries and cannot be bound as common presets.
+- Dictionaries are option sources only. They do not overwrite project values, participate in document generation, or become an AI write path.
+- Disabled/deleted options disappear from new choices, while an old saved value remains visible as the current inactive value.
+- Phase 2 full-project templates and one-click multi-field application remain out of scope.
+
+Tests:
+- TypeScript, targeted ESLint, frontend production build, common-preset tests, business-dictionary tests, subject-funding tests, Rust formatting, dictionary CRUD tests, preset tests, and schema v8 migration test passed.
+- Automated Browser visual verification was unavailable because the execution tool was not exposed.
+
+### Template Path Verification and Branch Attendee Layout Repair
+
+Modified:
+- `TemplateForms.tsx`: Replaced the fixed-width branch-name/attendee flex row with a responsive proportional grid so both labels and preset actions align without wrapping into the input row.
+- `docfill.rs`: Added test-template discovery through `LAMBER_TEMPLATE_ROOT`, the legacy repository directory, and the current module workspace template directory.
+- `CURRENT_TASK.md`: Replaced the stale missing-template test result with the verified template location and passing docfill tests.
+
+Tests:
+- TypeScript passed.
+- Targeted ESLint produced only the existing `TemplateForms` hook warnings.
+- Both docfill Excel tests passed using `D:\HermesJang\CMCC\tools\workspace\templates\效益分析表 .xlsx`.
 
 ### Common Preset Phase 1.5 Close and Icon Polish
 

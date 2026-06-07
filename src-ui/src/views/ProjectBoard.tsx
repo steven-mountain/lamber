@@ -14,6 +14,10 @@ import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { domainSaveService } from "../services/domainSaveService";
 import GlobalSaveButton from "../components/GlobalSaveButton";
 import { useNavigationStore } from "../store/useNavigationStore";
+import {
+  projectPresetService,
+  type ProjectPresetTemplate,
+} from "../services/projectPresetService";
 
 interface CandidateFile {
   name: string;
@@ -118,6 +122,8 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [newCustomerName, setNewCustomerName] = useState("");
+  const [newProjectPresetId, setNewProjectPresetId] = useState("");
+  const [projectPresetTemplates, setProjectPresetTemplates] = useState<ProjectPresetTemplate[]>([]);
 
 
   // Import Scanner State
@@ -360,6 +366,12 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
 
   const openCreateProjectModal = () => {
     setShowCreateModal(true);
+    void projectPresetService.list(false)
+      .then(setProjectPresetTemplates)
+      .catch(error => {
+        console.error("Failed to load project presets for project creation", error);
+        setProjectPresetTemplates([]);
+      });
   };
 
   const handleCreateProject = async (e: React.FormEvent) => {
@@ -374,7 +386,8 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     try {
       const newProj = await projectService.createProjectInWorkspace(
         projectName,
-        newCustomerName.trim() || "未知客户"
+        newCustomerName.trim() || "未知客户",
+        newProjectPresetId || null,
       );
       const projWithExists = { ...newProj, directoryExists: true };
       setProjects((prev) => [projWithExists, ...prev]);
@@ -387,6 +400,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       setShowCreateModal(false);
       setNewProjectName("");
       setNewCustomerName("");
+      setNewProjectPresetId("");
       // Automatically open the details of the newly created project
       handleOpenDetails(projWithExists);
     } catch (err) {
@@ -467,6 +481,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     setShowCreateModal(false);
     setNewProjectName("");
     setNewCustomerName("");
+    setNewProjectPresetId("");
   };
 
   const handleOpenDetails = async (project: Project) => {
@@ -1808,6 +1823,24 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                   onChange={(e) => setNewCustomerName(e.target.value)}
                   className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring w-full"
                 />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-secondary-foreground">项目预设</label>
+                <select
+                  value={newProjectPresetId}
+                  onChange={event => setNewProjectPresetId(event.target.value)}
+                  className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring w-full"
+                >
+                  <option value="">空白项目</option>
+                  {projectPresetTemplates.map(template => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-muted-foreground">
+                  创建失败时会回滚项目记录和目录，不会留下半初始化项目。
+                </span>
               </div>
             </div>
 

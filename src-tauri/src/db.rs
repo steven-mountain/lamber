@@ -288,6 +288,8 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
     )?;
 
     crate::common_presets::ensure_schema(&conn)?;
+    crate::business_dictionaries::ensure_schema(&conn)?;
+    crate::project_presets::ensure_schema(&conn)?;
 
     conn.execute("CREATE INDEX IF NOT EXISTS idx_project_lifecycle_project_id ON project_lifecycle_states(project_id);", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_project_cashflow_project_id ON project_cashflow_states(project_id);", [])?;
@@ -317,7 +319,7 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
                 found
             };
 
-            let initial_version = if has_folder_name { "7" } else { "2" };
+            let initial_version = if has_folder_name { "9" } else { "2" };
             conn.execute(
                 "INSERT INTO app_settings (key, value, updated_at) VALUES ('schema_version', ?1, ?2)",
                 [initial_version, &now],
@@ -671,6 +673,56 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
         }
     }
 
+    // Run migration checks from Version 7 to 8
+    {
+        let version = {
+            let mut stmt =
+                conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
+            let mut rows = stmt.query([])?;
+            if let Some(row) = rows.next()? {
+                let val_str: String = row.get(0)?;
+                val_str.parse::<i32>().unwrap_or(1)
+            } else {
+                1
+            }
+        };
+        if version < 8 {
+            let tx = conn.transaction()?;
+            crate::business_dictionaries::ensure_schema(&tx)?;
+            let now = chrono::Utc::now().to_rfc3339();
+            tx.execute(
+                "UPDATE app_settings SET value = '8', updated_at = ?1 WHERE key = 'schema_version'",
+                [now],
+            )?;
+            tx.commit()?;
+        }
+    }
+
+    // Run migration checks from Version 8 to 9
+    {
+        let version = {
+            let mut stmt =
+                conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
+            let mut rows = stmt.query([])?;
+            if let Some(row) = rows.next()? {
+                let val_str: String = row.get(0)?;
+                val_str.parse::<i32>().unwrap_or(1)
+            } else {
+                1
+            }
+        };
+        if version < 9 {
+            let tx = conn.transaction()?;
+            crate::project_presets::ensure_schema(&tx)?;
+            let now = chrono::Utc::now().to_rfc3339();
+            tx.execute(
+                "UPDATE app_settings SET value = '9', updated_at = ?1 WHERE key = 'schema_version'",
+                [now],
+            )?;
+            tx.commit()?;
+        }
+    }
+
     Ok(conn)
 }
 
@@ -705,7 +757,7 @@ mod tests {
                     |row| row.get(0),
                 )
                 .unwrap();
-            assert_eq!(version, "7");
+            assert_eq!(version, "9");
             let table_exists: i64 = conn
                 .query_row(
                     "SELECT COUNT(*) FROM sqlite_master
@@ -717,6 +769,88 @@ mod tests {
             assert_eq!(table_exists, 1);
         }
 
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn schema_v7_migrates_business_dictionaries_to_v8() {
+        let path = std::env::temp_dir().join(format!(
+            "lamber-schema-v8-{}.sqlite",
+            uuid::Uuid::new_v4().simple()
+        ));
+
+        {
+            let conn = init_db(&path).unwrap();
+            conn.execute(
+                "UPDATE app_settings SET value = '7' WHERE key = 'schema_version'",
+                [],
+            )
+            .unwrap();
+            conn.execute("DROP TABLE business_dictionary_items", [])
+                .unwrap();
+            conn.execute("DROP TABLE business_dictionaries", [])
+                .unwrap();
+        }
+
+        {
+            let conn = init_db(&path).unwrap();
+            let version: String = conn
+                .query_row(
+                    "SELECT value FROM app_settings WHERE key = 'schema_version'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(version, "9");
+            let dictionary_count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM business_dictionaries", [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(dictionary_count, 4);
+        }
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn schema_v8_migrates_project_presets_to_v9() {
+        let path = std::env::temp_dir().join(format!(
+            "lamber-schema-v9-{}.sqlite",
+            uuid::Uuid::new_v4().simple()
+        ));
+        {
+            let conn = init_db(&path).unwrap();
+            conn.execute(
+                "UPDATE app_settings SET value = '8' WHERE key = 'schema_version'",
+                [],
+            )
+            .unwrap();
+            conn.execute("DROP TABLE project_preset_template_entries", [])
+                .unwrap();
+            conn.execute("DROP TABLE project_preset_templates", [])
+                .unwrap();
+        }
+        {
+            let conn = init_db(&path).unwrap();
+            let version: String = conn
+                .query_row(
+                    "SELECT value FROM app_settings WHERE key = 'schema_version'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(version, "9");
+            let table_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master
+                     WHERE type = 'table' AND name LIKE 'project_preset_template%'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(table_count, 2);
+        }
         let _ = std::fs::remove_file(path);
     }
 }

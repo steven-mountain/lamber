@@ -1,10 +1,30 @@
 # PROJECT_STATUS.md
 
+## 2026-06-07 - Common Materials & Project Presets Phase 2
+
+Phase 2 is implemented. Workspace schema v9 persists full project templates in `project_preset_templates` and `project_preset_template_entries`. The preset center supports CRUD, enable/disable, soft deletion, metadata, and field-entry maintenance.
+
+Current projects can be saved as presets from non-empty safe bindings. Application requires a current/preset/action preview, defaults to `fill_empty_only`, confirms overwrites, supports per-field selection, and persists through owning setters plus the unified save path.
+
+New project creation can optionally initialize from an enabled preset. Lifecycle fields initialize immediately; remaining safe template values use a project seed and enter formal template state through the existing form save path. Initialization failure removes the project row and created directory.
+
+Dictionary fields store business values. Financial amounts, tax rates, percentages, cashflow, NPV/IRR, reverse targets, balancing values, and computed fields remain excluded.
+
 > [!NOTE]
 > **历史兼容性说明**：本文件作为历史和综合状态的备份记录，不再作为 AI 每次任务的默认必读文件。
 > 后续开发请默认阅读入口文件 [PROJECT_INDEX.md](./PROJECT_INDEX.md) 和 [CURRENT_TASK.md](./CURRENT_TASK.md)，并根据任务涉及范围按需加载模块设计文档（如 [docs/modules/appearance.md](./modules/appearance.md)）。
 
 Last updated: 2026-06-06 (Common Materials & Project Presets Phase 1.5)
+
+## 0. Common Materials & Project Presets (Phase 1.5 Final Coverage)
+
+- **Free-text coverage**: The shared field preset mechanism now covers additional reusable template text, including construction interface, procurement basis/other method, technical conclusions, strategic value, device-list explanation, and security explanation.
+- **Registry contract**: Field metadata now distinguishes text/select/radio/checkbox/number/amount/percent/date/computed and supports nullable `dictionaryKey`. Common presets only consume `presetEligible`.
+- **Business dictionaries**: Schema v8 adds workspace dictionary definitions and items with seeded business model, funding source, procurement method, and yes/no dictionaries.
+- **Management UI**: The preset center now has common field, common text, and business dictionary views. Dictionary items support create/edit, enable/disable, soft delete, and ordering.
+- **Initial form integration**: IT business mode, demand-import business mode, IT funding source, procurement method, joint-bid flag, and single-source flag read dictionary options.
+- **Compatibility**: Dictionaries are option sources only. Existing project values are never overwritten; inactive values remain visible. Existing `common_presets` and `preset_field_settings` data are unchanged.
+- **Boundary**: Document generation, project persistence, calculations, and AI context continue reading formal project/template state. Phase 2 project template sets remain unimplemented.
 
 ## 0. Common Materials & Project Presets (Phase 1.5)
 

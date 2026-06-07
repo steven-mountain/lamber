@@ -1,6 +1,7 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import AppIcon from "../icons/AppIcon";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import {
   getPresetFieldDisplay,
@@ -35,6 +36,8 @@ interface CommonPresetLabelHeaderProps {
   labelClassName?: string;
 }
 
+type PresetPanelView = "select" | "save" | "edit";
+
 const fieldSettingsCache = new Map<string, Map<string, PresetFieldSetting>>();
 const fieldSettingsRequests = new Map<string, Promise<Map<string, PresetFieldSetting>>>();
 const fieldSettingListeners = new Set<(workspaceId: string, setting: PresetFieldSetting) => void>();
@@ -46,14 +49,16 @@ function splitTags(raw: string): string[] {
     .filter(Boolean);
 }
 
-function appendContent(current: string, incoming: string) {
+function appendContent(current: string, incoming: string, kind: CommonPresetKind) {
   if (!current.trim()) return incoming;
-  return `${current.trimEnd()}\n${incoming}`;
+  const separator = kind === "text_snippet" ? "\n" : " ";
+  return `${current.trimEnd()}${separator}${incoming.trimStart()}`;
 }
 
-function listBusinessFields(fieldKeys: string[]) {
-  if (fieldKeys.length === 0) return [];
-  return fieldKeys.map(getPresetFieldDisplay);
+function buildDefaultPresetName(content: string, fallback: string) {
+  const summary = content.trim().replace(/\s+/g, " ");
+  if (!summary) return fallback;
+  return summary.length > 24 ? `${summary.slice(0, 24)}...` : summary;
 }
 
 async function loadWorkspaceFieldSettings(workspaceId: string) {
@@ -97,19 +102,25 @@ export default function CommonPresetQuickFill({
   onApply,
   className = "",
 }: CommonPresetQuickFillProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const workspaceId = useWorkspaceStore(state => state.workspaceId);
   const field = useMemo(() => getPresetFieldDisplay(fieldKey), [fieldKey]);
   const [fieldEnabled, setFieldEnabled] = useState(Boolean(field.defaultEnabled));
   const [fieldSettingLoading, setFieldSettingLoading] = useState(field.presetEligible);
-  const [open, setOpen] = useState(false);
+  const [panelView, setPanelView] = useState<PresetPanelView | null>(null);
   const [presets, setPresets] = useState<CommonPreset[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [saveOpen, setSaveOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [saveName, setSaveName] = useState("");
   const [saveCategory, setSaveCategory] = useState(field.category);
   const [saveTags, setSaveTags] = useState("");
+  const [editingPreset, setEditingPreset] = useState<CommonPreset | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [editCategory, setEditCategory] = useState("");
+  const [editTags, setEditTags] = useState("");
+  const [editError, setEditError] = useState("");
 
   useEffect(() => {
     setSaveCategory(field.category);
@@ -117,8 +128,7 @@ export default function CommonPresetQuickFill({
 
   useEffect(() => {
     let cancelled = false;
-    setOpen(false);
-    setMoreOpen(false);
+    setPanelView(null);
     setError("");
     if (!field.presetEligible || !workspaceId) {
       setFieldEnabled(false);
@@ -154,8 +164,7 @@ export default function CommonPresetQuickFill({
       if (changedWorkspaceId === workspaceId && setting.fieldKey === field.fieldKey) {
         setFieldEnabled(setting.enabled);
         if (!setting.enabled) {
-          setOpen(false);
-          setMoreOpen(false);
+          setPanelView(null);
         }
       }
     };
@@ -164,6 +173,29 @@ export default function CommonPresetQuickFill({
       fieldSettingListeners.delete(listener);
     };
   }, [field.fieldKey, workspaceId]);
+
+  useEffect(() => {
+    if (!panelView) return;
+
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      if (rootRef.current?.contains(event.target as Node)) return;
+      setPanelView(null);
+    };
+
+    document.addEventListener("pointerdown", handleOutsidePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsidePointerDown);
+    };
+  }, [panelView]);
+
+  useEffect(() => {
+    if (!panelView) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPanelView(null);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [panelView]);
 
   if (!field.presetEligible) return null;
 
@@ -201,8 +233,7 @@ export default function CommonPresetQuickFill({
       setFieldEnabled(setting.enabled);
       fieldSettingListeners.forEach(listener => listener(workspaceId, setting));
       if (!setting.enabled) {
-        setOpen(false);
-        setMoreOpen(false);
+        setPanelView(null);
       }
     } catch (err) {
       console.error("Failed to update preset field setting", err);
@@ -213,13 +244,40 @@ export default function CommonPresetQuickFill({
   };
 
   const handleToggle = async () => {
-    const nextOpen = !open;
-    setOpen(nextOpen);
-    setMoreOpen(false);
-    setSaveOpen(false);
-    if (nextOpen) {
-      await loadPresets();
+    if (panelView === "select") {
+      setPanelView(null);
+      return;
     }
+    setEditingPreset(null);
+    setPanelView("select");
+    await loadPresets();
+  };
+
+  const openSaveView = () => {
+    setEditingPreset(null);
+    setError("");
+    setSaveError("");
+    setSaveName(buildDefaultPresetName(value, field.label));
+    setSaveCategory(field.category || field.label);
+    setSaveTags("");
+    setPanelView("save");
+    void loadPresets();
+  };
+
+  const returnToSelect = () => {
+    setEditingPreset(null);
+    setPanelView("select");
+  };
+
+  const openEditView = (preset: CommonPreset) => {
+    setError("");
+    setEditError("");
+    setEditingPreset(preset);
+    setEditName(preset.name);
+    setEditContent(preset.content);
+    setEditCategory(preset.category);
+    setEditTags(preset.tags.join(" "));
+    setPanelView("edit");
   };
 
   const closeFieldPreset = async () => {
@@ -235,7 +293,7 @@ export default function CommonPresetQuickFill({
       const ok = window.confirm("当前字段已有内容，确定用所选常用内容替换吗？");
       if (!ok) return;
     }
-    const nextValue = mode === "append" ? appendContent(value, preset.content) : preset.content;
+    const nextValue = mode === "append" ? appendContent(value, preset.content, kind) : preset.content;
     onApply(nextValue);
     try {
       const updated = await commonPresetService.markUsed(preset.id);
@@ -243,18 +301,33 @@ export default function CommonPresetQuickFill({
     } catch (err) {
       console.warn("Failed to update preset usage", err);
     }
-    setOpen(false);
+    setPanelView(null);
+  };
+
+  const deletePreset = async (preset: CommonPreset) => {
+    const confirmed = window.confirm(
+      `确定删除常用内容“${preset.name}”吗？\n\n删除只影响常用资料库，当前字段内容不会被清空。`,
+    );
+    if (!confirmed) return;
+    setError("");
+    try {
+      await commonPresetService.delete(preset.id);
+      await loadPresets();
+    } catch (err) {
+      console.error("Failed to delete common preset", err);
+      setError("删除常用内容失败。");
+    }
   };
 
   const saveCurrent = async () => {
     const content = value.trim();
     if (!content) {
-      setError("当前字段为空，不能保存为常用内容。");
+      setSaveError("当前字段为空，不能保存为常用内容。");
       return;
     }
     const name = saveName.trim() || field.label;
     const category = saveCategory.trim() || field.category;
-    setError("");
+    setSaveError("");
     try {
       await commonPresetService.save({
         scope: "workspace",
@@ -268,17 +341,48 @@ export default function CommonPresetQuickFill({
       });
       setSaveName("");
       setSaveTags("");
-      setSaveOpen(false);
       await loadPresets();
+      setPanelView("select");
     } catch (err) {
       console.error("Failed to save common preset", err);
-      setError("保存常用内容失败，请确认字段允许使用预设且工作区已打开。");
+      setSaveError("保存常用内容失败，请确认字段允许使用预设且工作区已打开。");
+    }
+  };
+
+  const saveEditedPreset = async () => {
+    if (!editingPreset) return;
+    const name = editName.trim();
+    const content = editContent.trim();
+    const category = editCategory.trim();
+    if (!name || !content || !category) {
+      setEditError("请填写预设名称、预设内容和分类。");
+      return;
+    }
+    setEditError("");
+    try {
+      await commonPresetService.save({
+        id: editingPreset.id,
+        scope: editingPreset.scope,
+        kind: editingPreset.kind,
+        category,
+        name,
+        content,
+        tags: splitTags(editTags),
+        applicableFieldKeys: editingPreset.applicableFieldKeys,
+        enabled: editingPreset.enabled,
+      });
+      await loadPresets();
+      setEditingPreset(null);
+      setPanelView("select");
+    } catch (err) {
+      console.error("Failed to update common preset", err);
+      setEditError("更新常用内容失败，请检查名称、分类和内容。");
     }
   };
 
   if (!fieldEnabled) {
     return (
-      <div className={`relative inline-flex items-center ${className}`}>
+      <div ref={rootRef} className={`relative inline-flex items-center ${className}`}>
         <Button
           type="button"
           variant="ghost"
@@ -300,7 +404,7 @@ export default function CommonPresetQuickFill({
   }
 
   return (
-    <div className={`relative inline-flex items-center gap-1 ${className}`}>
+    <div ref={rootRef} className={`relative inline-flex items-center gap-1 ${className}`}>
       <Button
         type="button"
         variant="ghost"
@@ -316,11 +420,7 @@ export default function CommonPresetQuickFill({
         variant="ghost"
         size="sm"
         className="h-6 px-2 text-xs"
-        onClick={() => {
-          setOpen(true);
-          setSaveOpen(true);
-          void loadPresets();
-        }}
+        onClick={openSaveView}
       >
         <AppIcon name="save" size={13} />
         保存当前
@@ -330,132 +430,304 @@ export default function CommonPresetQuickFill({
         variant="ghost"
         size="icon"
         className="h-6 w-6 text-muted-foreground"
-        aria-label={`管理“${field.label}”字段预设`}
-        aria-expanded={moreOpen}
-        onClick={() => {
-          setMoreOpen(current => !current);
-          setOpen(false);
-        }}
+        aria-label={`关闭“${field.label}”字段预设`}
+        title="关闭预设"
+        disabled={fieldSettingLoading}
+        onClick={() => void closeFieldPreset()}
       >
-        <AppIcon name="more" size={14} />
+        <AppIcon name="close" size={14} />
       </Button>
 
-      {moreOpen ? (
-        <div className="absolute right-0 top-8 z-40 w-52 rounded-lg bg-popover p-1.5 text-popover-foreground shadow-lg ring-1 ring-border/60">
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-secondary-foreground transition-colors hover:bg-muted hover:text-foreground"
-            disabled={fieldSettingLoading}
-            onClick={() => void closeFieldPreset()}
-          >
-            <AppIcon name="close" size={13} />
-            <span>
-              <span className="block font-medium">关闭预设</span>
-              <span className="mt-0.5 block text-[11px] text-muted-foreground">保留字段内容和资料库</span>
-            </span>
-          </button>
-        </div>
-      ) : null}
-
-      {open && (
-        <div className="absolute right-0 top-10 z-40 w-[min(30rem,calc(100vw-2rem))] rounded-xl bg-popover p-3 text-popover-foreground shadow-lg ring-1 ring-border/60">
-          <div className="mb-3 flex items-start justify-between gap-3 rounded-lg bg-muted/35 p-3">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground">{field.label}</div>
-              {field.description ? <div className="mt-1 text-xs text-secondary-foreground">{field.description}</div> : null}
-              <div className="mt-2">
-                <FieldBusinessMeta field={field} compact />
-              </div>
-            </div>
-            <Button type="button" variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="关闭常用内容面板">
-              <AppIcon name="close" size={14} />
-            </Button>
-          </div>
-
-          <div className="max-h-72 space-y-2 overflow-y-auto">
-            {loading ? (
-              <div className="rounded-lg bg-muted/50 px-3 py-4 text-sm text-secondary-foreground">正在读取常用内容...</div>
-            ) : presets.length === 0 ? (
-              <div className="rounded-lg bg-muted/50 px-3 py-4 text-sm text-secondary-foreground">暂无可用于该字段的常用内容。</div>
-            ) : (
-              presets.map(preset => {
-                const businessFields = listBusinessFields(preset.applicableFieldKeys);
-                return (
-                  <div key={preset.id} className="rounded-lg bg-muted/40 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-foreground">{preset.name}</div>
-                        <div className="mt-1 max-h-16 overflow-hidden whitespace-pre-wrap text-xs leading-5 text-secondary-foreground">
-                          {preset.content}
-                        </div>
-                        <div className="mt-2 text-[11px] leading-4 text-muted-foreground">
-                          {businessFields.length > 0
-                            ? `适用字段：${businessFields.map(item => item.label).join("、")}`
-                            : "适用字段：通用"}
-                        </div>
-                        <div className="mt-1 text-[11px] text-muted-foreground">
-                          使用 {preset.usageCount} 次
-                          {preset.lastUsedAt ? ` · 最近 ${new Date(preset.lastUsedAt).toLocaleString()}` : ""}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 flex-col gap-1">
-                        <Button type="button" size="sm" onClick={() => void applyPreset(preset, "replace")}>
-                          替换
-                        </Button>
-                        {kind === "text_snippet" && (
-                          <Button type="button" variant="outline" size="sm" onClick={() => void applyPreset(preset, "append")}>
-                            追加
-                          </Button>
-                        )}
-                      </div>
-                    </div>
+      {panelView && (
+        <div className="absolute right-0 top-10 z-40 w-[min(32rem,calc(100vw-2rem))] rounded-xl bg-popover p-3 text-popover-foreground shadow-lg ring-1 ring-border/60">
+          {panelView === "select" ? (
+            <>
+              <div className="mb-2 flex items-start justify-between gap-3 px-1 pb-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-foreground">{field.label}</div>
+                  <div className="mt-1">
+                    <FieldBusinessMeta field={field} compact />
                   </div>
-                );
-              })
-            )}
-          </div>
-
-          <div className="mt-3 rounded-lg bg-muted/30 p-3">
-            <button
-              type="button"
-              className="flex w-full items-center justify-between text-left text-sm font-semibold text-foreground"
-              onClick={() => setSaveOpen(current => !current)}
-            >
-              <span>保存当前字段为常用内容</span>
-              <AppIcon name={saveOpen ? "chevronUp" : "chevronDown"} size={14} />
-            </button>
-            {saveOpen && (
-              <div className="mt-3 grid gap-2">
-                <div className="rounded-md bg-card/70 px-3 py-2">
-                  <div className="text-xs font-semibold text-secondary-foreground">绑定字段：{field.label}</div>
-                  <div className="mt-1 text-[11px] text-muted-foreground">适用模板：{field.templates.join("、")}</div>
-                  <div className="text-[11px] text-muted-foreground">所属分组：{field.groups.join("、")}</div>
                 </div>
-                <Input value={saveName} onChange={event => setSaveName(event.target.value)} placeholder={field.label} />
-                <Input value={saveCategory} onChange={event => setSaveCategory(event.target.value)} placeholder="分类" />
-                <Input value={saveTags} onChange={event => setSaveTags(event.target.value)} placeholder="标签，可选" />
-                <Button type="button" onClick={() => void saveCurrent()}>
-                  保存为常用
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0"
+                  onClick={() => setPanelView(null)}
+                  aria-label="关闭常用内容面板"
+                >
+                  <AppIcon name="close" size={14} />
                 </Button>
               </div>
-            )}
-          </div>
 
-          <div className="mt-3 flex items-center justify-between rounded-lg bg-muted/25 px-3 py-2">
-            <span className="text-xs text-muted-foreground">该设置保存在当前工作区</span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs"
-              disabled={fieldSettingLoading}
-              onClick={() => void closeFieldPreset()}
-            >
-              关闭字段预设
-            </Button>
-          </div>
+              <div className="mb-2 flex items-center justify-between px-1">
+                <div className="text-xs font-semibold text-secondary-foreground">选择已有常用内容</div>
+                {!loading && presets.length > 0 ? (
+                  <div className="text-[11px] tabular-nums text-muted-foreground">{presets.length} 条</div>
+                ) : null}
+              </div>
 
-          {error ? <div className="mt-3 rounded-lg bg-destructive-soft px-3 py-2 text-xs text-destructive">{error}</div> : null}
+              <div className="max-h-[min(22rem,calc(100vh-18rem))] space-y-1.5 overflow-y-auto pr-1">
+                {loading ? (
+                  <div className="flex min-h-36 items-center justify-center rounded-lg bg-muted/35 px-3 py-4 text-sm text-secondary-foreground">
+                    正在读取常用内容...
+                  </div>
+                ) : presets.length === 0 ? (
+                  <div className="flex min-h-36 flex-col items-center justify-center rounded-lg bg-muted/30 px-4 py-6 text-center">
+                    <div className="text-sm text-secondary-foreground">暂无可用于该字段的常用内容</div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="mt-3"
+                      disabled={!value.trim()}
+                      onClick={openSaveView}
+                    >
+                      保存当前内容为第一条常用内容
+                    </Button>
+                    {!value.trim() ? (
+                      <div className="mt-2 text-[11px] text-muted-foreground">当前字段为空，填写内容后即可保存</div>
+                    ) : null}
+                  </div>
+                ) : (
+                  presets.map(preset => (
+                    <Card
+                      key={preset.id}
+                      role="button"
+                      tabIndex={0}
+                      className="cursor-pointer border-0 bg-muted/30 px-2.5 py-2 shadow-none transition-colors hover:bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                      onClick={() => void applyPreset(preset, "replace")}
+                      onKeyDown={event => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          void applyPreset(preset, "replace");
+                        }
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <div className="truncate text-sm font-semibold text-foreground">{preset.name}</div>
+                            <div className="shrink-0 truncate text-[11px] text-muted-foreground">
+                              {preset.category} · {field.label}
+                            </div>
+                          </div>
+                          <div className={`mt-0.5 whitespace-pre-wrap text-xs leading-4 text-secondary-foreground ${
+                            kind === "text_snippet" ? "line-clamp-2" : "truncate"
+                          }`}>
+                            {preset.content}
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] tabular-nums text-muted-foreground">
+                            使用 {preset.usageCount} 次
+                            {preset.lastUsedAt ? ` · 最近使用 ${new Date(preset.lastUsedAt).toLocaleString()}` : ""}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-0.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-7 px-2.5 shadow-none"
+                            onClick={event => {
+                              event.stopPropagation();
+                              void applyPreset(preset, "replace");
+                            }}
+                          >
+                            替换
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2.5 shadow-none"
+                            onClick={event => {
+                              event.stopPropagation();
+                              void applyPreset(preset, "append");
+                            }}
+                          >
+                            追加
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 shadow-none"
+                            onClick={event => {
+                              event.stopPropagation();
+                              openEditView(preset);
+                            }}
+                          >
+                            <AppIcon name="edit" size={13} />
+                            编辑
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 bg-destructive-soft px-2 text-destructive hover:bg-destructive-soft/80 hover:text-destructive"
+                            onClick={event => {
+                              event.stopPropagation();
+                              void deletePreset(preset);
+                            }}
+                          >
+                            <AppIcon name="delete" size={13} />
+                            删除
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  ))
+                )}
+              </div>
+
+              <div className="mt-3 flex items-center justify-between rounded-lg bg-muted/20 px-3 py-2">
+                <span className="text-xs text-muted-foreground">没有合适的常用内容？</span>
+                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={openSaveView}>
+                  保存当前内容为常用
+                </Button>
+              </div>
+
+              {error ? <div className="mt-2 rounded-lg bg-destructive-soft px-3 py-2 text-xs text-destructive">{error}</div> : null}
+
+              <div className="mt-2 flex items-center justify-between px-1 pt-1">
+                <span className="text-xs text-muted-foreground">该设置保存在当前工作区</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                  disabled={fieldSettingLoading}
+                  onClick={() => void closeFieldPreset()}
+                >
+                  关闭字段预设
+                </Button>
+              </div>
+            </>
+          ) : panelView === "save" ? (
+            <>
+              <div className="flex items-center justify-between gap-2 px-1 pb-2">
+                <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={returnToSelect}>
+                  返回
+                </Button>
+                <div className="text-sm font-semibold text-foreground">保存当前内容为常用</div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => setPanelView(null)}
+                  aria-label="关闭字段预设面板"
+                >
+                  <AppIcon name="close" size={14} />
+                </Button>
+              </div>
+
+              <div className="max-h-[min(30rem,calc(100vh-10rem))] overflow-y-auto px-1 pr-2">
+                <div className="rounded-lg bg-muted/30 px-3 py-2">
+                  <div className="text-sm font-semibold text-foreground">{field.label}</div>
+                  <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                    <div><span className="font-medium text-secondary-foreground">所属模板：</span>{field.templates.join("、")}</div>
+                    <div><span className="font-medium text-secondary-foreground">所属分组：</span>{field.groups.join("、")}</div>
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <div className="mb-1 text-xs font-medium text-secondary-foreground">将保存的内容</div>
+                  <div className="max-h-24 overflow-y-auto rounded-md bg-muted/35 px-3 py-2 text-sm leading-5 text-foreground whitespace-pre-wrap">
+                    {value.trim() || "当前字段为空"}
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-2.5">
+                  <label className="grid gap-1">
+                    <span className="text-xs font-medium text-secondary-foreground">常用名称</span>
+                    <Input value={saveName} onChange={event => setSaveName(event.target.value)} placeholder={field.label} autoFocus />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="text-xs font-medium text-secondary-foreground">分类</span>
+                    <Input value={saveCategory} onChange={event => setSaveCategory(event.target.value)} placeholder={field.category || field.label} />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="text-xs font-medium text-secondary-foreground">标签（可选）</span>
+                    <Input value={saveTags} onChange={event => setSaveTags(event.target.value)} placeholder="多个标签可用空格或逗号分隔" />
+                  </label>
+                </div>
+              </div>
+
+              {saveError ? (
+                <div className="mt-2 rounded-lg bg-destructive-soft px-3 py-2 text-xs text-destructive">{saveError}</div>
+              ) : null}
+
+              <div className="mt-3 flex justify-end gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={returnToSelect}>
+                  取消
+                </Button>
+                <Button type="button" size="sm" disabled={!value.trim()} onClick={() => void saveCurrent()}>
+                  保存为常用内容
+                </Button>
+              </div>
+            </>
+          ) : panelView === "edit" && editingPreset ? (
+            <>
+              <div className="flex items-center justify-between gap-2 px-1 pb-2">
+                <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={returnToSelect}>
+                  返回
+                </Button>
+                <div className="text-sm font-semibold text-foreground">编辑常用内容</div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => setPanelView(null)}
+                  aria-label="关闭字段预设面板"
+                >
+                  <AppIcon name="close" size={14} />
+                </Button>
+              </div>
+
+              <div className="max-h-[min(30rem,calc(100vh-10rem))] overflow-y-auto px-1 pr-2">
+                <div className="mb-3 rounded-lg bg-muted/25 px-3 py-2 text-xs text-muted-foreground">
+                  修改常用资料本身，不会改写当前项目字段。
+                </div>
+                <div className="grid gap-2.5">
+                  <label className="grid gap-1">
+                    <span className="text-xs font-medium text-secondary-foreground">常用名称</span>
+                    <Input value={editName} onChange={event => setEditName(event.target.value)} autoFocus />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="text-xs font-medium text-secondary-foreground">预设内容</span>
+                    <textarea
+                      value={editContent}
+                      onChange={event => setEditContent(event.target.value)}
+                      rows={editingPreset.kind === "text_snippet" ? 6 : 3}
+                      className="min-h-20 w-full resize-y rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                    />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="text-xs font-medium text-secondary-foreground">分类</span>
+                    <Input value={editCategory} onChange={event => setEditCategory(event.target.value)} />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="text-xs font-medium text-secondary-foreground">标签（可选）</span>
+                    <Input value={editTags} onChange={event => setEditTags(event.target.value)} placeholder="多个标签可用空格或逗号分隔" />
+                  </label>
+                </div>
+              </div>
+
+              {editError ? (
+                <div className="mt-2 rounded-lg bg-destructive-soft px-3 py-2 text-xs text-destructive">{editError}</div>
+              ) : null}
+
+              <div className="mt-3 flex justify-end gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={returnToSelect}>
+                  取消
+                </Button>
+                <Button type="button" size="sm" onClick={() => void saveEditedPreset()}>
+                  保存修改
+                </Button>
+              </div>
+            </>
+          ) : null}
         </div>
       )}
     </div>
