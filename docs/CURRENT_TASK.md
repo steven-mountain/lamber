@@ -1,3 +1,16 @@
+# Windows 自动版本打包规则
+
+- **Status:** Done
+- **Objective:** Windows 安装包构建前自动递增并同步应用版本，构建失败时回滚版本文件。
+
+## Completed
+
+1. [x] 默认 `npm run package:windows` 按 patch 规则递增版本。
+2. [x] 提供 `package:windows:minor` 和 `package:windows:major` 显式版本通道。
+3. [x] 同步根 npm、前端 npm、Tauri 和 Cargo 版本及 lock 文件。
+4. [x] 打包失败恢复原版本，成功后输出安装包路径、大小和 SHA-256。
+5. [x] 增加无第三方依赖的版本规则测试和发布文档。
+
 # 常用资料与项目预设中心 - 阶段 2
 
 - **Status:** Done

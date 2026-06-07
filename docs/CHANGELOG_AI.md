@@ -8,6 +8,13 @@ This changelog records structural modifications, business rules, and context cha
 
 ## 2026-06-07
 
+### Automatic Windows Package Versioning
+
+- Added `scripts/package-windows.mjs` as the standard Windows release entry.
+- Routine packaging now increments the patch version and synchronizes npm, Tauri, Cargo, and lock-file versions before invoking the existing Tauri build.
+- Minor and major release commands are explicit. Failed builds restore the original version files.
+- Successful builds print versioned artifact paths, sizes, and SHA-256 checksums.
+
 ### Windows Release Version 1.1.0
 
 - Unified the Tauri bundle, Rust crate, root npm package, and frontend npm package versions as `1.1.0`.

@@ -1,5 +1,11 @@
 # PROJECT_INDEX.md
 
+## Windows Release Packaging
+
+- **Module doc:** [docs/modules/release-packaging.md](./modules/release-packaging.md)
+- **Release script:** [scripts/package-windows.mjs](../scripts/package-windows.mjs)
+- **Default command:** `npm run package:windows` increments the patch version and builds NSIS
+
 ## Common Materials & Project Presets
 
 - **Module doc:** [docs/modules/common-presets.md](./modules/common-presets.md)
