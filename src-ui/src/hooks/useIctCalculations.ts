@@ -40,6 +40,10 @@ import {
   type SubjectFundingPlanCoverageSubject,
   type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
+import {
+  buildCostReverseFeasibilityProbeAmounts,
+  selectHighestMetricProbe,
+} from "../lib/ictReverseSearch";
 
 const formatCurrency = (v: number) => new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(v);
 const formatPercent = (v: number) => (v * 100).toFixed(2) + "%";
@@ -1054,6 +1058,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       const metricValue = Number(revTargetType === "margin" ? result.margin_rate : result.npv_rate);
       return {
         ...candidate,
+        amount,
         result,
         metricValue: Number.isFinite(metricValue) ? metricValue : 0,
       };
@@ -1065,15 +1070,20 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
         state.setIgnoredTailValue(null);
       }
 
-      const zeroPoint = await evaluate(0);
-      if (revMode === "cost" && zeroPoint.metricValue < target) {
-        return alert(`当前收入和其他成本条件下，即使“${selectedSubject.displayName}”为 0，也无法达到目标值。`);
-      }
-
       let low = 0;
       let high = 10_000_000_000;
 
-      if (revMode === "revenue") {
+      if (revMode === "cost") {
+        const boundaryPoints = [];
+        for (const amount of buildCostReverseFeasibilityProbeAmounts(revTargetType)) {
+          boundaryPoints.push(await evaluate(amount));
+        }
+        const bestBoundaryPoint = selectHighestMetricProbe(boundaryPoints);
+        if (!bestBoundaryPoint || bestBoundaryPoint.metricValue < target) {
+          return alert(`当前收入和其他成本条件下，即使“${selectedSubject.displayName}”降至最低可计算金额，也无法达到目标值。`);
+        }
+        low = bestBoundaryPoint.amount;
+      } else {
         const highPoint = await evaluate(high);
         if (highPoint.metricValue < target) {
           return alert(`当前成本和现金流条件下，即使“${selectedSubject.displayName}”达到反算上限，也无法达到目标值。`);

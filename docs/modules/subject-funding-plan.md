@@ -11,6 +11,17 @@
 5. 金额变更统一由 `updateTaxItem` / `updateTaxItemsInclBatch` 汇入资金计划同步逻辑。正金额缺失计划时默认创建第一年一次性计划；已有计划按原年度比例缩放；金额清零时移除该科目计划并回到“未维护”。
 6. 智能反算、差额承接、CT 产品/专线联动均通过同一金额更新入口同步资金计划，并写入 `lastChangeReason` 供 UI 解释。
 
+## 智能反算边界
+
+普通成本反算通过前端候选金额构造完整科目状态和同步后的科目资金计划，再调用 Rust 计算器评估指标。净现值率定义为 `NPV / 折现后现金流出`；当现金流出恰好为 0 时，后端为避免除零按既有约定返回 0，该值不能直接代表成本反算的最大可达净现值率。
+
+因此净现值率成本反算必须同时探测：
+
+- `0` 元，用于存在其他现金流出时的正常边界；
+- `0.01` 元，即系统最小货币单位，用于总现金流出为 0 时进入可计算区间。
+
+二分搜索从两者中指标更高的有效候选开始。毛利润率没有分母为零的同类问题，继续使用 `0` 元边界。该规则只修正反算搜索边界，不修改 NPV、NPVR、税率、年度现金流或科目资金计划公式。
+
 ## 旧项目迁移
 
 迁移版本标记为：
@@ -63,6 +74,7 @@ subjectFundingPlanMigrationVersion = 1
 - `scripts/test_subject_funding_phase4.cjs`
 - `scripts/test_subject_funding_migration.cjs`
 - `scripts/test_subject_funding_final.cjs`
+- `scripts/test_ict_reverse_search.cjs`
 
 构建验收：
 
@@ -70,4 +82,4 @@ subjectFundingPlanMigrationVersion = 1
 - `npm run build`
 - `cargo test`
 
-最后更新：2026-06-04。
+最后更新：2026-06-10。

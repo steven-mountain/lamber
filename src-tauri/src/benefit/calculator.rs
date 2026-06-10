@@ -607,6 +607,35 @@ mod tests {
     }
 
     #[test]
+    fn zero_cost_npv_rate_requires_a_positive_reverse_probe() {
+        let zero_cost =
+            calculate_ict_benefit(input_with("78000", "0", dist(&[1.0]), dist(&[1.0]))).unwrap();
+        let minimum_positive_cost =
+            calculate_ict_benefit(input_with("78000", "0.01", dist(&[1.0]), dist(&[1.0]))).unwrap();
+
+        assert_eq!(decimal(&zero_cost.npv_rate), Decimal::ZERO);
+        assert!(decimal(&minimum_positive_cost.npv_rate) > Decimal::from_str("0.10").unwrap());
+    }
+
+    #[test]
+    fn reverse_cost_reaches_ten_percent_with_it_and_ct_revenue() {
+        let mut input = input_with("78000", "0", dist(&[1.0]), dist(&[1.0]));
+        input.rev_ct_product = item("500");
+        input.cost_ct_other = item("500");
+
+        let reversed_cost =
+            reverse_calc_ict_target(input.clone(), "npv_rate".to_string(), "0.10".to_string())
+                .unwrap();
+        input.cost_it_integration.incl_tax = reversed_cost;
+        let result = calculate_ict_benefit(input).unwrap();
+
+        assert!(
+            (decimal(&result.npv_rate) - Decimal::from_str("0.10").unwrap()).abs()
+                <= Decimal::from_str("0.0001").unwrap()
+        );
+    }
+
+    #[test]
     fn reverse_revenue_uses_distribution_cashflow_for_npv_rate() {
         let year_one_revenue = reverse_calc_ict_revenue_target(
             input_with("0", "600000", dist(&[1.0]), dist(&[1.0])),

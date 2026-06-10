@@ -6,6 +6,26 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-06-10
+
+### ICT NPV-Rate Cost Reverse Boundary Fix
+
+Modified:
+- [useIctCalculations.ts](../src-ui/src/hooks/useIctCalculations.ts): Replaced the single zero-cost reachability check with boundary probing that evaluates both `0` and `0.01` yuan for NPV-rate cost reverse calculation, then starts binary search from the higher-metric valid boundary.
+- [ictReverseSearch.ts](../src-ui/src/lib/ictReverseSearch.ts): Added pure helpers for reverse boundary probe selection.
+- [calculator.rs](../src-tauri/src/benefit/calculator.rs): Added regression tests for the zero-outflow NPV-rate convention and the `78000` IT integration revenue plus `500` CT product revenue/cost scenario targeting `0.10`.
+- [subject-funding-plan.md](../docs/modules/subject-funding-plan.md): Recorded the reverse boundary rule.
+
+Decision:
+- The backend financial definition remains unchanged: NPV rate is `NPV / discounted cash outflow`, and a zero denominator returns 0. The frontend must not treat that sentinel value as the mathematical maximum for cost reverse calculation. The minimum positive currency probe enters the valid ratio domain without changing formulas or persisted business data.
+
+Tests:
+- `node scripts/test_ict_reverse_search.cjs`: passed.
+- All `scripts/test_subject_funding_*.cjs`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed with the existing Vite chunk-size warning.
+- `cargo test benefit::calculator::tests`: passed, 9 tests.
+
 ## 2026-06-05
 
 ### Common Preset Quick-Fill Field Header Alignment
