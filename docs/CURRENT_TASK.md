@@ -1,25 +1,31 @@
-# ICT 净现值率成本反算边界修复
+# macOS 1.0.1 发布
 
 - **Status:** Done
-- **Objective:** 修复普通成本反算在零现金流出边界错误提示“无法达到目标值”的问题，不改变现有 NPV/NPVR 公式和科目资金计划口径。
+- **Objective:** 将净现值率成本反算修复打包为 Apple Silicon macOS `1.0.1` 版本，并生成可分发 DMG。
 
-## Completed
+## Progress
 
-1. [x] 回退所有既有本地修改，并同步到 GitHub `origin/master` 的 `9d65b10`。
-2. [x] 定位根因：当折现后现金流出为 0 时，Rust 计算器按既有约定返回 `npv_rate = 0`；前端误把该特殊值当作成本反算的最大可达净现值率。
-3. [x] 净现值率成本反算现在同时探测 `0` 和最小货币单位 `0.01` 元，从指标更高的有效边界开始二分搜索。
-4. [x] 毛利润率反算仍使用原有零成本边界；财务公式、税率换算、科目计划同步和 CT 收入投入联动均未修改。
-5. [x] 新增前端纯函数回归脚本，并增加 Rust 测试覆盖 IT 集成收入 `78000`、CT 产品收入/投入 `500`、目标净现值率 `0.10` 的可达场景。
+1. [x] 将根 npm 包、Tauri 配置和 Rust 包版本统一从 `1.0.0` / `0.1.0` 更新为 `1.0.1`。
+2. [x] 运行发布前测试与前端生产构建。
+3. [x] 使用显式 ad hoc 身份对完整应用包签名，并执行 Tauri macOS DMG 打包。
+4. [x] 校验应用版本、CPU 架构、代码签名和 DMG 完整性。
+5. [x] 生成发布产物：
+   - `src-tauri/target/release/bundle/dmg/云数中心工具集_1.0.1_aarch64.dmg`
+   - SHA-256: `8c036dda1111d43a967fd3e3820820f699c9f17bf37f07eca17996a9ae47f8c9`
 
 ## Validation
 
-- `node scripts/test_ict_reverse_search.cjs`: passed.
-- All `scripts/test_subject_funding_*.cjs`: passed.
+- ICT reverse-search and all subject-funding scripts: passed.
 - `npx tsc --noEmit`: passed.
-- `npm run build`: passed; existing Vite large-chunk warning remains.
-- `cargo fmt -- --check`: passed after formatting.
+- `cargo fmt -- --check`: passed.
 - `cargo test benefit::calculator::tests`: passed, 9 tests.
+- Tauri release build: passed.
+- DMG checksum verification: passed.
+- Bundle versions: `CFBundleShortVersionString = 1.0.1`, `CFBundleVersion = 1.0.1`.
+- Executable architecture: Apple Silicon `arm64`.
+- `codesign --verify --deep --strict`: passed with ad hoc signature.
 
-## Remaining
+## Distribution Note
 
-- 使用 Tauri 桌面运行时和真实项目资金计划做一次交互点击验证，确认提示文案、反算结果写回和年度计划同步符合实际项目数据。
+- 当前构建环境没有 Apple Developer 代码签名身份。
+- 本次产物为 Apple Silicon `aarch64` DMG，使用临时签名，不包含 Developer ID 签名或 Apple 公证。

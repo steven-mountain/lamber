@@ -8,6 +8,20 @@ This changelog records structural modifications, business rules, and context cha
 
 ## 2026-06-10
 
+### macOS 1.0.1 Release Packaging
+
+Modified:
+- Root npm package, Tauri app configuration, and Rust package versions were aligned to `1.0.1`.
+- The Apple Silicon macOS release is packaged as a DMG through the Tauri release build.
+
+Distribution:
+- The local build environment has no Apple Developer signing identity. The generated application uses ad hoc signing and is not Apple-notarized.
+- The full `.app` bundle was signed with the explicit ad hoc identity before DMG creation, and strict deep signature verification passed.
+- Artifact: `云数中心工具集_1.0.1_aarch64.dmg`.
+- SHA-256: `8c036dda1111d43a967fd3e3820820f699c9f17bf37f07eca17996a9ae47f8c9`.
+
+## 2026-06-10
+
 ### ICT NPV-Rate Cost Reverse Boundary Fix
 
 Modified:
