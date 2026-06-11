@@ -6,6 +6,57 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-06-11
+
+### 智算公式 Token 光标定位
+
+Created:
+- `formulaTokenEditing.ts`: pure helpers for cursor clamping, insertion at an arbitrary Token boundary, token deletion, and backspace-before-cursor behavior.
+
+Modified:
+- `QuoteFormulaCalculator.tsx`: added `N+1` clickable insertion positions, active caret presentation, Token-click positioning, cursor-relative insertion, deletion cursor correction, and cursor-relative backspace.
+- Token delete controls are visually hidden by default and appear only on Token hover or keyboard focus.
+- Formula and result preview now render at the top of the expanded calculator before the Token editing area.
+- Formula preview references no longer use brace characters; parameters, calculated results, and constants use inline-code-style semantic emphasis.
+- `test_ai_compute_quote.cjs`: added regression coverage for middle insertion and cursor movement after deletion.
+
+Decision:
+- Cursor position remains local UI state and is not persisted as part of the quote formula or project blueprint.
+
+## 2026-06-11
+
+### 智算报价折叠式 DIY 计算器
+
+Modified:
+- `types.ts`, `formulaEngine.ts`, and `calculations.ts`: upgraded quote formulas to ID-backed Version 2 tokens, added safe parsing for arithmetic/parentheses/`SUM`, line-item dependency calculation, disabled-reference warnings, missing-reference errors, and circular-reference isolation.
+- `AiComputeQuoteView.tsx` and `QuoteFormulaCalculator.tsx`: changed every revenue/cost calculation process to a default-collapsed editor with parameter/result/fixed-value insertion, operators, parentheses, `SUM`, comma, clear, undo, token removal, formula preview, and result/error preview.
+- `presets.ts`: expressed the H200 preset with Version 2 formulas and changed capital cost to depend on the calculated machine, maintenance, and networking costs.
+- `test_ai_compute_quote.cjs`: added coverage for dependency updates, `SUM`, cycles, divide-by-zero, missing references, disabled references, legacy compatibility, and expansion-state isolation.
+
+Decisions:
+- Formulas persist stable business IDs; display names are resolved at render time.
+- No formula path uses JavaScript `eval`.
+- Formula expansion is local component state and never becomes a second business-state source.
+- Cycles fail only the involved items; unrelated quote calculations remain available.
+
+## 2026-06-11
+
+### 智算报价测算 Phase 1
+
+Created:
+- `src-ui/src/features/ai-compute-quote/`: added data types, H200 preset, pure calculation/output/sensitivity functions, Zustand draft/persistence store, and the independent quote blueprint page.
+- `src-ui/scripts/test_ai_compute_quote.cjs`: covers formulas, percentage scaling, invalid inputs, H200 totals, output merging/filtering, and non-mutating sensitivity analysis.
+- `docs/modules/ai-compute-quote.md`: records module ownership, financial units, persistence, ICT safety boundary, and future adapter rules.
+
+Modified:
+- `App.tsx` and `useNavigationStore.ts`: added the Hub card and `ai_compute_quote` route with Workspace gating.
+- `package.json`: added the focused `test:ai-compute-quote` command.
+
+Decisions:
+- Project persistence reuses `project_settings` under `ai_compute_quote::active`; no schema or Rust change is needed.
+- The first-stage ICT action is output-package preview only. It does not write formal ICT subjects, subject funding plans, cashflow, or benefit state.
+- NPV, NPV rate, IRR, and payback are not reimplemented in the quote module. They remain pending a read-only ICT preview adapter.
+
 ## 2026-06-10
 
 ### macOS 1.0.1 Release Packaging

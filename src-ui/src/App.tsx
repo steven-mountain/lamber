@@ -4,6 +4,7 @@ import IctLifecycle from "./views/IctLifecycle";
 import ProjectBoard from "./views/ProjectBoard";
 import DataManagement from "./views/DataManagement";
 import PresetCenterView from "./views/PresetCenterView";
+import AiComputeQuoteView from "./features/ai-compute-quote/AiComputeQuoteView";
 import SettingsView from "./components/settings/SettingsView";
 import AiFloatingLauncher from "./components/ai/AiFloatingLauncher";
 import AiFloatingWindow from "./components/ai/AiFloatingWindow";
@@ -54,6 +55,8 @@ export default function App() {
       setActiveModule("project_board.core");
     } else if (currentView === "ict_lifecycle") {
       setActiveModule("ict");
+    } else if (currentView === "ai_compute_quote") {
+      setActiveModule("ai_compute_quote");
     } else {
       setActiveModule(currentView);
     }
@@ -79,6 +82,25 @@ export default function App() {
         />
       ) : currentView === "ict_lifecycle" ? (
         <IctLifecycle />
+      ) : currentView === "ai_compute_quote" ? (
+        isWorkspaceReady ? (
+          <AiComputeQuoteView />
+        ) : (
+          <div className="flex flex-col flex-1 h-full overflow-hidden bg-background text-foreground animate-in fade-in duration-300">
+            <header className="flex items-center justify-between px-6 py-4 shrink-0 bg-card shadow-sm">
+              <div className="flex items-center gap-3">
+                <button onClick={() => navigateTo("hub")} className="text-secondary-foreground hover:text-primary hover:bg-secondary font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors text-body">
+                  <span>←</span> 返回集市
+                </button>
+                <div>
+                  <h1 className="text-page-title font-bold tracking-tight">智算报价测算</h1>
+                  <p className="text-caption text-secondary-foreground mt-0.5">请先打开工作区后维护项目级智算蓝图</p>
+                </div>
+              </div>
+            </header>
+            <WorkspaceGate onBack={() => navigateTo("hub")} backLabel="返回集市" />
+          </div>
+        )
       ) : currentView === "settings" ? (
         <SettingsView onBack={() => navigateTo(settingsReturnView || "hub")} />
       ) : currentView === "preset_center" ? (
@@ -170,6 +192,13 @@ function HubView({ onOpenTool }: { onOpenTool: (view: string) => void }) {
           description="测算、现金流推演与智能反算"
           delay="delay-75"
           onClick={() => onOpenTool("ict_lifecycle")}
+        />
+        <HubCard
+          icon="calculator"
+          title="智算报价测算"
+          description="智算报价蓝图、科目输出包与敏感性分析"
+          delay="delay-100"
+          onClick={() => onOpenTool("ai_compute_quote")}
         />
         <HubCard
           icon="settings"
