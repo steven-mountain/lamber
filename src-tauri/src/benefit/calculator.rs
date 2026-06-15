@@ -250,6 +250,11 @@ pub fn calculate_ict_benefit(input: IctInput) -> Result<IctResult, String> {
 }
 
 #[tauri::command]
+pub fn calculate_ict_benefit_batch(inputs: Vec<IctInput>) -> Result<Vec<IctResult>, String> {
+    inputs.into_iter().map(calculate_ict_benefit).collect()
+}
+
+#[tauri::command]
 pub fn reverse_calc_ict_target(
     input: IctInput,
     target_type: String,

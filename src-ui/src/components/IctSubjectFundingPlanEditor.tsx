@@ -44,6 +44,7 @@ const reasonTexts: Record<SubjectFundingPlanLastChangeReason, string> = {
   auto_created_upfront: "系统自动创建默认计划（第一年一次性）",
   restored_after_zero: "金额从零恢复，已按最近一次有效年度结构自动恢复",
   legacy_migration: "旧项目已迁移为第一年一次性计划",
+  ai_compute_quote_import: "已从智算报价测算写入金额和年度计划",
 };
 
 export default function IctSubjectFundingPlanEditor({

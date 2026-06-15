@@ -6,6 +6,89 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-06-13
+
+### 智算参数类别与自由排序
+
+Created:
+- `parameterLayout.ts`：参数类别默认配置、旧蓝图迁移、类别/参数排序和删除规则纯函数。
+
+Modified:
+- 蓝图持久化升级到 Version 3，增加 `parameterGroups`，参数增加 `groupId` 与 `isKey`。
+- 参数区支持新增、重命名、排序类别，以及参数跨类别移动、同类排序和类别内新增。
+- 内置类别不可删除；自定义类别只有清空参数后才可删除。筛选或搜索时禁用拖拽，菜单操作保留为键盘和触屏备用路径。
+- 移除固定参数说明侧栏和高级参数折叠，参数说明改为卡片内按需展开。
+- 同步指纹忽略类别归属、排序和关键标记，布局调整不触发 ICT 正式计算。
+
+Validation:
+- 专项测试覆盖旧蓝图迁移、H200 参数归属、类别持久化往返、类别删除规则、参数跨类别与同类排序，以及同步指纹稳定性。
+- 浏览器验证新增类别、类别内新增参数、菜单跨类别移动、类别菜单排序、卡片说明、搜索和 `1440px / 760px` 无横向溢出。
+
+### 智算参数区视觉回调
+
+Modified:
+- 参数区调整为参考稿的分组折叠结构：规模、定价、投入默认展开，运营、财务显示单行摘要。
+- 关键参数集调整为 12 个主要业务参数，其余参数由“更多参数 / 高级参数”承载。
+- 参数卡移除多类型彩色左边框和常驻字段 key/操作区，只保留名称、值、单位、状态与影响提示。
+- 字段 key、敏感性开关及复制/删除移入次级设置菜单；参数说明改为右侧窄卡。
+
+Validation:
+- 浏览器验证分组展开、字段 key 搜索及 `1440px / 760px` 页面无横向溢出。
+
+### 智算测算工作台布局优化
+
+Modified:
+- `AiComputeQuoteView.tsx`：重组为 compact header、四 Tab 主编辑画布和可收起效益结论抽屉。
+- 参数按规模、定价、投入、运营、财务分组，默认只展示关键参数，并支持已修改、敏感性、全部筛选及中文名/字段 key/单位搜索。
+- 参数卡改为轻量决策卡，增加状态与影响提示；普通参数进入高级折叠区，参数说明可随卡片交互切换。
+- 收入和成本项增加占比与轻量进度条；敏感性分析独立成分析工具 Tab。
+
+Decision:
+- 页面筛选、搜索、Tab、说明选择、抽屉和折叠状态均为本地 UI 状态，不修改蓝图持久化结构或计算输入。
+- 保持报价公式、资金计划、ICT 映射、自动同步、保存、输出包和正式 Rust 效益计算逻辑不变。
+
+Validation:
+- 在 `1440px` 与 `760px` 浏览器视口检查页面级横向溢出、关键参数默认态、筛选、搜索、四 Tab 和抽屉展开/收起。
+- 通过智算专项测试、TypeScript 检查和生产构建。
+
+## 2026-06-12
+
+### 智算与 ICT 实时双向联动
+
+Created:
+- `ictCalculationInput.ts`: shared formal ICT funding-plan validation and cashflow input builder.
+- `ictSync.ts`: revision fingerprints, subject snapshots, ICT override reconciliation, merge conflicts, and formula-control restoration.
+- `sync_ai_compute_quote_to_ict`: Rust command that calculates through the existing ICT engine and atomically persists quote/ICT/formal metrics.
+
+Modified:
+- 智算参数、公式、映射、税率和计划停止编辑 `500ms` 后自动同步；ICT 折现率和正式财务假设保持原值，智算年份覆盖项目周期。
+- 智算右侧效益指标和敏感性分析改为直接使用 Rust ICT 计算结果，不再展示本地近似正式指标。
+- 异常、停用或关闭输出的已映射项目按零同步；其他有效科目继续提交。
+- ICT 保存单来源人工修改时反写为 `ict_override`，多来源人工修改标记 `merge_conflict`；恢复公式控制后重新自动同步。
+- Revision 冲突会合并最新持久化联动状态并重试，旧请求不能覆盖新编辑。
+- 智算同步适配器会补齐旧版/不完整 lifecycle 快照缺失的项目身份、产权、分布数组和标准科目字段，避免 `IctInput` 在 Tauri IPC 反序列化阶段失败，并在成功同步后自修复持久化输入。
+
+Decision:
+- ICT 是正式财务参数、现金流和效益指标的唯一数据源；智算只拥有业务公式、参数、业务项金额和业务项计划。
+
+Tests:
+- 前端专项测试覆盖折现率保留、共享现金流输入、异常清零、单来源覆盖、恢复控制和多来源冲突。
+- Rust 测试覆盖 revision 拦截及蓝图、ICT 状态、正式指标的原子提交。
+
+## 2026-06-12
+
+### 智算与 ICT 测算口径对齐
+
+Modified:
+- `calculations.ts`: quote totals remain tax-inclusive, while gross profit, gross margin, and per-device monthly cost now use tax-exclusive values, matching the ICT calculator.
+- `AiComputeQuoteView.tsx`: metric labels explicitly distinguish tax-inclusive quote totals from ICT tax-exclusive benefit metrics.
+- `ictExport.ts`: confirmed ICT exports now carry the quote blueprint project cycle and overwrite stale ICT cycle values in lifecycle and cashflow payloads.
+- `project_state/mod.rs`: the import transaction now synchronizes project aggregate revenue/cost and project years, and clears stale project summary metrics.
+- Frontend and Rust tests cover the H200 `21.13%` ICT margin, cycle synchronization, project metadata, and stale-cache invalidation.
+
+Decision:
+- ICT financial formulas remain authoritative and unchanged. The adapter aligns quote presentation and imported state with that existing tax-exclusive calculation contract.
+
 ## 2026-06-11
 
 ### 智算公式 Token 光标定位
@@ -1125,3 +1208,86 @@ Risks:
 Open questions:
 - Should the local JSON-based storage layer be migrated to SQLite in the next phase to improve transactional consistency?
 - Do we need to support dynamic annual discount rates rather than flat project-wide rates?
+## 2026-06-11
+
+### 智算报价业务项资金计划
+
+Created:
+- `src-ui/src/features/ai-compute-quote/fundingPlans.ts`：智算计划生成、模式切换、年度编辑、归一化与一致性校验纯函数。
+- `src-ui/src/features/ai-compute-quote/AiComputeFundingPlanEditor.tsx`：参考 ICT 科目计划交互的独立折叠式业务项资金计划面板。
+
+Modified:
+- 智算行项目增加可持久化的 10 年资金计划，支持第一年一次性、按项目周期平均分年和自定义年度金额。
+- 公式重算会同步自动模式计划，手工模式保持用户年度输入和可见差额。
+- 智算输出包增加按 `side + ictSubjectCode` 合并的年度计划，并在预览弹窗展示第 1-10 年、合计和来源项。
+- 专项测试增加计划生成、差额识别、同科目年度合并和禁用/未输出/未映射过滤覆盖。
+
+Decisions:
+- 智算计划只属于报价蓝图和输出预览；ICT 科目计划继续作为正式现金流与效益指标的唯一来源。
+- 计划不一致仅提示，不阻止智算蓝图保存，也不会触发 ICT 正式状态写入。
+## 2026-06-11
+
+### 智算报价三 Tab 工作区与紧凑参数面板
+
+Modified:
+- 智算主编辑区拆分为参数、收入计算项、成本计算项三个独立 Tab，每个 Tab 使用独立滚动容器并保留自身滚动位置。
+- 参数卡改为两列紧凑网格，常用参数优先，默认显示 8 项并支持展开全部和收起。
+- 参数用途标签与公式引用统计直接从蓝图类别和公式 Token 推导，显示收入/成本引用数量并提供具体引用项提示。
+- 单变量敏感性分析归入参数 Tab，收入与成本编辑页不再连续堆叠。
+- 效益预览作为右侧独立区域持续可见，并增加输出包操作入口。
+
+Decisions:
+- Tab、展开和滚动位置只属于 UI 状态，不写入项目 setting，也不影响公式、资金计划或 ICT 输出。
+- 保持现有计算项编辑器和资金计划组件不变，仅重组页面布局和参数信息密度。
+## 2026-06-12
+
+### 智算输出到 ICT 显式确认写入
+
+Created:
+- `src-ui/src/features/ai-compute-quote/ictExport.ts`：构建 ICT 差异预览、合并科目输出和正式 lifecycle/cashflow payload。
+
+Modified:
+- “输出到 ICT”改为加载正式快照、显示差异、确认后真实写入，不再只弹安全提示。
+- 新增事务命令 `apply_ai_compute_quote_to_ict`，同时更新项目 lifecycle 和 cashflow 状态并使旧效益指标失效。
+- 正式科目资金计划支持 `ai_compute_quote` 来源和导入追踪元数据。
+- ICT 导航支持从智算进入后返回同一项目和场景。
+- 专项测试覆盖同科目合并、原值差异、金额/年度计划 payload、来源追踪和未映射过滤。
+
+Decisions:
+- 安全边界从“禁止写入”调整为“禁止静默写入”；用户明确确认后允许正式提交。
+- 差异预览与最终 payload 使用同一个纯函数模型，避免展示结果和实际写入不一致。
+- lifecycle/cashflow 必须事务提交，禁止金额和资金计划出现半成功状态。
+
+## 2026-06-15
+
+### 智算统一控制 ICT 项目折现率
+
+Modified:
+- 智算新增稳定 `discount-rate / discount_rate` 参数和醒目折现率输入框，按百分数输入并转换为 ICT 小数口径。
+- 蓝图持久化升级到 Version 4；Version 1-3 项目从项目当前正式折现率强制初始化一次，后续由智算值覆盖 ICT。
+- 同步同时覆盖 lifecycle 输入、lifecycle parameters、cashflow assumptions、Rust 正式计算输入和项目表 `discount_rate`。
+- 智算效益结论增加 ICT 项目净现值率，直接使用 Rust 返回的 `npv_rate`。
+- 专项测试覆盖折现率归一化、旧蓝图迁移、同步覆盖和 SQLite 原子事务。
+
+Decisions:
+- 项目周期和折现率由智算优先控制；其他 ICT 财务状态继续沿用现有所有权。
+- 不修改 NPV 等财务公式，仅消除同一参数在 lifecycle、cashflow 和项目汇总中的数据分叉。
+
+### 智算到 ICT 科目释放与项目周期一致性
+
+Modified:
+- 智算自动同步新增旧映射释放：业务项取消映射、删除或改映射后，原 ICT 科目金额和 10 年计划在同一正式事务中清零。
+- 同一 ICT 科目仍有其他智算来源时只写入剩余来源的金额和逐年计划，避免误清整个科目。
+- 成功同步快照改为增量维护；释放科目删除，正常科目更新，人工覆盖和合并冲突科目保留原比较快照。
+- 修改带 `ict_override` / `merge_conflict` 的业务项映射会恢复公式控制，避免旧人工覆盖阻断新映射。
+- `years` 固定为 1-10 年项目周期唯一参数，并在参数区增加独立周期入口；同步继续覆盖 ICT lifecycle、cashflow、正式输入和项目汇总年限。
+- 同步明细增加计划模式、释放旧映射和当前受控/释放科目统计；导入审计增加 `releasedSubjectCodes`。
+- 专项测试覆盖甲供材料改映射到其他投入、删除映射、剩余来源合并、逐年计划 `[50,40] + [40,0] = [90,40]`、周期边界和暂停覆盖快照。
+- 修复历史项目缺少旧科目同步快照时的释放遗漏：从同项目、同蓝图、同场景且未被人工修改的 ICT 资金计划导入痕迹恢复旧受控科目。
+- 兜底恢复跳过已人工维护和已归零科目，避免误清 ICT 人工值或重复生成释放记录。
+- 使用真实项目状态复核机器成本改映射：`cost_it_device` 与原十年付款计划归零，`cost_it_other` 保留 `211200000`。
+- 增加完整 ICT 标准科目目录参数化测试，验证收入与成本任意旧科目改映射后均生成释放记录并清零，不依赖甲供材料特例。
+
+Decisions:
+- 项目周期变化不自动改变业务计划语义；仅平均分年模式重算，首年一次性和自定义计划保持原安排。
+- 本阶段继续以智算到 ICT 为正式同步方向，保留现有 ICT 人工覆盖标记，但不增加完整反向同步。

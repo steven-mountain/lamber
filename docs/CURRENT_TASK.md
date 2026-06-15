@@ -1,29 +1,28 @@
-# 智算公式 Token 光标定位
+# 智算统一控制 ICT 项目周期与折现率
 
 - **Status:** Done
-- **Objective:** 为折叠式 DIY 计算器增加 Token 间插入点，使参数、计算结果、固定值和运算符可以插入公式任意位置。
+- **Objective:** 将项目周期和折现率统一为智算稳定参数，消除 ICT 页面与智算后台因输入来源不同产生的 NPV 偏差。
 
 ## Progress
 
-1. [x] 将光标建模为 `0..tokens.length` 的本地位置索引。
-2. [x] 在所有 Token 前后渲染可点击插入槽，当前槽显示主色竖线。
-3. [x] 点击 Token 将插入点移动到该 Token 之后。
-4. [x] 所有插入操作改为在当前光标位置写入，插入后自动前移。
-5. [x] Token 删除后按相对位置修正光标。
-6. [x] “回退”改为删除光标前一个 Token；清空后光标归零。
-7. [x] 新增纯函数测试覆盖中间插入、删除和光标边界。
-8. [x] Token 删除按钮默认隐藏，仅在 Token 悬停或删除按钮键盘聚焦时显示。
-9. [x] 将公式预览与计算结果移动到展开计算区域顶部，优先展示当前计算状态。
-10. [x] 公式预览不再使用花括号包裹引用，改为 Markdown 行内代码风格的语义强调块。
+1. [x] 新增稳定参数 `discount-rate / discount_rate`，智算按百分数输入，ICT 按小数接收。
+2. [x] 参数区增加项目折现率醒目入口，与项目周期共同作为 ICT 核心参数。
+3. [x] 蓝图升级为 Version 4；Version 1-3 项目从当前正式折现率强制初始化一次，避免默认值或热更新时序意外覆盖。
+4. [x] 同步无条件覆盖 lifecycle 输入、lifecycle parameters、cashflow assumptions 和 Rust 正式计算输入中的折现率。
+5. [x] SQLite 原子事务同步更新项目表 `discount_rate`，避免项目汇总保留旧值。
+6. [x] 智算效益结论增加 ICT 项目净现值率。
+7. [x] 回归测试覆盖百分数归一化、旧项目初始化、折现率覆盖和项目表原子更新。
 
 ## Validation
 
 - `npm run test:ai-compute-quote`
 - `npx tsc --noEmit`
-- `npx eslint src/features/ai-compute-quote`
+- 定向 ESLint
 - `npm run build`
+- Rust 项目状态测试
 
 ## Scope Boundary
 
-- 光标和展开状态均为组件本地 UI 状态，不写入蓝图或项目持久化数据。
-- 未修改公式语义、ICT 联动或其他智算页面区域。
+- 项目周期和折现率由智算优先控制。
+- ICT 仍负责产权、现金流模型、科目人工覆盖及其他正式财务状态。
+- 未修改 Rust 财务公式，只统一计算输入来源。

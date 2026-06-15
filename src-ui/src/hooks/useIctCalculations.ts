@@ -9,7 +9,6 @@ import {
   type TaxItem,
   buildDirectCashflowFromSegments,
   distributionFromCashflow,
-  cashflowPayloadValues,
   sumInclTaxItems,
   clampCashflowYear,
   useIctState
@@ -34,12 +33,11 @@ import {
   type ReverseSubjectState,
 } from "../lib/ictReverseCalculation";
 import {
-  buildAnnualCashflowFromSubjectFundingPlans,
   syncSubjectFundingPlansToAmounts,
-  validateSubjectFundingPlanCoverage,
   type SubjectFundingPlanCoverageSubject,
   type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
+import { buildIctFundingCashflowFields } from "../lib/ictCalculationInput";
 import {
   buildCostReverseFeasibilityProbeAmounts,
   selectHighestMetricProbe,
@@ -193,14 +191,12 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   };
 
   const subjectFundingCoverageSubjects = buildSubjectFundingCoverageSubjects();
-  const subjectFundingCoverage = validateSubjectFundingPlanCoverage(
+  const subjectFundingFinalized = buildIctFundingCashflowFields(
     subjectFundingCoverageSubjects,
     state.subjectFundingPlans,
   );
-  const subjectFundingAnnualCashflow = buildAnnualCashflowFromSubjectFundingPlans(
-    subjectFundingCoverageSubjects,
-    state.subjectFundingPlans,
-  );
+  const subjectFundingCoverage = subjectFundingFinalized.coverage;
+  const subjectFundingAnnualCashflow = subjectFundingFinalized.annualCashflow;
   const subjectFundingCalculationBlocked = !subjectFundingCoverage.valid;
 
   const buildInputDataPayload = (options?: {
@@ -237,9 +233,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       costCtState: costCtForPayload,
       costMixState: costMixForPayload,
     });
-    const coverageForPayload = validateSubjectFundingPlanCoverage(subjectRowsForPayload, plansForPayload);
-    const annualCashflowForPayload = buildAnnualCashflowFromSubjectFundingPlans(subjectRowsForPayload, plansForPayload);
-    const useSubjectFundingCashflow = coverageForPayload.valid;
+    const finalizedFunding = buildIctFundingCashflowFields(subjectRowsForPayload, plansForPayload);
 
     return {
       project_name: state.projName,
@@ -258,18 +252,10 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       investment_balance_rule: serializeBalanceAllocationRule(state.balanceAllocation.investment),
       subject_funding_plans: plansForPayload,
       subject_funding_plan_migration_version: state.subjectFundingPlanMigrationVersion,
-      rev_cashflow_excl: useSubjectFundingCashflow
-        ? cashflowPayloadValues(annualCashflowForPayload.annualRevenueExcl)
-        : null,
-      cost_cashflow_excl: useSubjectFundingCashflow
-        ? cashflowPayloadValues(annualCashflowForPayload.annualCostExcl)
-        : null,
-      it_rev_cashflow_excl: useSubjectFundingCashflow
-        ? cashflowPayloadValues(annualCashflowForPayload.annualItRevenueExcl)
-        : null,
-      it_cost_cashflow_excl: useSubjectFundingCashflow
-        ? cashflowPayloadValues(annualCashflowForPayload.annualItCostExcl)
-        : null,
+      rev_cashflow_excl: finalizedFunding.fields.rev_cashflow_excl,
+      cost_cashflow_excl: finalizedFunding.fields.cost_cashflow_excl,
+      it_rev_cashflow_excl: finalizedFunding.fields.it_rev_cashflow_excl,
+      it_cost_cashflow_excl: finalizedFunding.fields.it_cost_cashflow_excl,
       ignore_tail_difference: state.ignoredTailValue !== null,
       tail_difference_value: state.ignoredTailValue || "0",
       rev_it_integration: serializeTaxItemForPayload(revItForPayload.integration),

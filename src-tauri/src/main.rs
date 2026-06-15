@@ -87,6 +87,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             benefit::calculate_ict_benefit,
+            benefit::calculator::calculate_ict_benefit_batch,
             ai_context::commands::build_ai_project_context,
             ai_context::commands::list_ai_workspace_projects,
             ai_context::commands::load_ai_template_asset,
@@ -157,6 +158,8 @@ fn main() {
             project_state::get_lifecycle_state,
             project_state::save_cashflow_state,
             project_state::get_cashflow_state,
+            project_state::apply_ai_compute_quote_to_ict,
+            project_state::sync_ai_compute_quote_to_ict,
             project_state::save_benefit_analysis,
             project_state::get_benefit_schemes,
             project_state::save_template_state,

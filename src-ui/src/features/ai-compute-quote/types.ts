@@ -15,8 +15,17 @@ export interface AiComputeQuoteParameter {
   value: number;
   unit?: string;
   category?: AiComputeQuoteParameterCategory;
+  groupId?: string;
+  isKey?: boolean;
   sensitivityEnabled?: boolean;
   locked?: boolean;
+}
+
+export interface AiComputeQuoteParameterGroup {
+  id: string;
+  name: string;
+  description?: string;
+  builtin: boolean;
 }
 
 export type AiComputeQuoteFormulaOperand =
@@ -45,6 +54,24 @@ export type AiComputeQuoteExpressionFormula = {
 
 export type AiComputeQuoteFormula = AiComputeQuoteLegacyFormula | AiComputeQuoteExpressionFormula;
 
+export type AiComputeLineItemFundingPlanMode = "first_year" | "even" | "manual";
+
+export type AiComputeLineItemFundingPlan = {
+  enabled: boolean;
+  mode: AiComputeLineItemFundingPlanMode;
+  yearlyAmounts: Record<string, number>;
+};
+
+export type AiComputeFormulaControlStatus = "formula" | "ict_override" | "merge_conflict";
+
+export type AiComputeIctOverride = {
+  ictSubjectCode: string;
+  amountInclTax: number;
+  taxRate: number;
+  yearlyAmounts: number[];
+  modifiedAt: string;
+};
+
 export interface AiComputeQuoteLineItem {
   id: string;
   side: AiComputeQuoteSide;
@@ -58,6 +85,10 @@ export interface AiComputeQuoteLineItem {
   calculationStatus?: "valid" | "incomplete" | "error";
   calculationError?: string;
   calculationWarnings?: string[];
+  fundingPlan?: AiComputeLineItemFundingPlan;
+  formulaControlStatus?: AiComputeFormulaControlStatus;
+  ictOverride?: AiComputeIctOverride;
+  ictControlMessage?: string;
 }
 
 export interface AiComputeQuoteSubjectMapping {
@@ -71,13 +102,33 @@ export interface AiComputeQuoteSubjectMapping {
 
 export interface AiComputeQuoteBlueprint {
   id: string;
+  scenarioId?: string;
   name: string;
   description?: string;
+  parameterGroups: AiComputeQuoteParameterGroup[];
   parameters: AiComputeQuoteParameter[];
   revenueItems: AiComputeQuoteLineItem[];
   costItems: AiComputeQuoteLineItem[];
   mappings: AiComputeQuoteSubjectMapping[];
+  syncState?: AiComputeQuoteSyncState;
 }
+
+export type AiComputeSyncedSubjectSnapshot = {
+  side: AiComputeQuoteSide;
+  ictSubjectCode: string;
+  amountInclTax: number;
+  taxRate: number;
+  yearlyAmounts: number[];
+  sourceLineItemIds: string[];
+};
+
+export type AiComputeQuoteSyncState = {
+  revision: number;
+  status: "idle" | "syncing" | "synced" | "error" | "conflict";
+  syncedAt?: string;
+  error?: string;
+  subjects: Record<string, AiComputeSyncedSubjectSnapshot>;
+};
 
 export interface AiComputeQuoteOutputSubjectAmount {
   side: AiComputeQuoteSide;
@@ -88,9 +139,20 @@ export interface AiComputeQuoteOutputSubjectAmount {
   sourceLineItemIds: string[];
 }
 
+export interface AiComputeOutputSubjectFundingPlan {
+  side: AiComputeQuoteSide;
+  ictSubjectCode: string;
+  ictSubjectName: string;
+  totalAmount: number;
+  yearlyAmounts: Record<string, number>;
+  sourceLineItemIds: string[];
+}
+
 export interface AiComputeQuoteSummary {
   totalRevenue: number;
   totalCost: number;
+  totalRevenueExclTax: number;
+  totalCostExclTax: number;
   grossProfit: number;
   grossMarginRate: number;
   costPerDeviceMonth: number;
@@ -115,7 +177,7 @@ export interface FormulaEvaluationResult {
 }
 
 export interface AiComputeQuotePersistedState {
-  version: 1;
+  version: 1 | 2 | 3 | 4;
   blueprint: AiComputeQuoteBlueprint;
   savedAt: string;
 }

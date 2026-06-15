@@ -15,6 +15,7 @@ import { IctMetricsDashboard } from "../components/IctMetricsDashboard";
 import {
   projectService,
   type Project,
+  type IctInput,
   type BenefitAnalysisScheme,
   type BenefitAnalysisSnapshot
 } from "../utils/projectService";
@@ -23,6 +24,9 @@ import { useProjectStore } from "../store/useProjectStore";
 import { useSaveStore } from "../store/useSaveStore";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { domainSaveService } from "../services/domainSaveService";
+import { AI_COMPUTE_QUOTE_SETTING_KEY } from "../features/ai-compute-quote/store";
+import { reconcileAiComputeBlueprintFromIct } from "../features/ai-compute-quote/ictSync";
+import type { AiComputeQuotePersistedState } from "../features/ai-compute-quote/types";
 import {
   ICT_SUBJECT_DEFINITIONS,
   ICT_SUBJECT_GROUPS,
@@ -152,7 +156,7 @@ const buildRestoredFundingSubjects = (sources: {
 };
 
 export default function IctLifecycle() {
-  const { activeProjectId, activeSchemeId, entrySource, navigateTo } = useNavigationStore();
+  const { activeProjectId, activeSchemeId, activeScenarioId, entrySource, navigateTo } = useNavigationStore();
   const isWorkspaceReady = useWorkspaceStore(state => state.isWorkspaceReady);
   const workspaceId = useWorkspaceStore(state => state.workspaceId);
   const state = useIctState();
@@ -881,7 +885,8 @@ export default function IctLifecycle() {
       if (context.workspaceId !== workspaceId || context.projectId !== activeProject.id) {
         throw new Error("项目或工作区已切换");
       }
-      await domainSaveService.saveCashflowState(activeProject.id, {
+      const inputPayload = calculations.buildInputDataPayload();
+      const cashflowState = {
         cashflowModel: state.cashflowModel,
         paymentModelJson: {
           cashflowModel: state.cashflowModel,
@@ -914,7 +919,75 @@ export default function IctLifecycle() {
           subjectFundingPlanMigrationVersion: state.subjectFundingPlanMigrationVersion,
         },
         metricsJson: calculations.metrics,
-      });
+      };
+      const rawQuote = await projectService.getProjectSetting(
+        activeProject.id,
+        AI_COMPUTE_QUOTE_SETTING_KEY,
+      );
+      const persistedQuote = rawQuote
+        ? JSON.parse(rawQuote) as AiComputeQuotePersistedState
+        : null;
+      const hasLinkedSubjects = Boolean(
+        persistedQuote?.blueprint.syncState
+        && Object.keys(persistedQuote.blueprint.syncState.subjects || {}).length > 0,
+      );
+      if (persistedQuote && hasLinkedSubjects) {
+        const reconciled = reconcileAiComputeBlueprintFromIct(
+          persistedQuote.blueprint,
+          inputPayload,
+          cashflowState.assumptionsJson,
+        );
+        if (reconciled.changed) {
+          const expectedRevision = persistedQuote.blueprint.syncState?.revision || 0;
+          const nextRevision = expectedRevision + 1;
+          const syncedAt = new Date().toISOString();
+          const nextBlueprint = {
+            ...reconciled.blueprint,
+            syncState: {
+              ...(reconciled.blueprint.syncState || {
+                status: "synced" as const,
+                subjects: {},
+              }),
+              revision: nextRevision,
+              status: reconciled.conflicts.length > 0 ? "conflict" as const : "synced" as const,
+              syncedAt,
+            },
+          };
+          await domainSaveService.syncAiComputeQuoteToIct(activeProject.id, {
+            expectedRevision,
+            nextRevision,
+            blueprintSettingJson: {
+              version: 4,
+              blueprint: nextBlueprint,
+              savedAt: syncedAt,
+            },
+            lifecycleState: {
+              profileJson: {
+                projectName: state.projName,
+                customerName: state.customerName,
+                propertyRights: state.propertyRights,
+              },
+              parametersJson: {
+                projectYears: state.projectYears,
+                discountRate: state.discountRate,
+                ignoreTailDifference: state.ignoredTailValue !== null,
+                tailDifferenceValue: state.ignoredTailValue,
+                balanceAllocation: serializeBalanceAllocationState(state.balanceAllocation),
+                cashflowCalculationSource: state.cashflowCalculationSource,
+                subjectFundingPlanMigrationVersion: state.subjectFundingPlanMigrationVersion,
+              },
+              backgroundJson: {
+                projectBackground: state.projectBackground,
+              },
+              inputPayloadJson: inputPayload,
+            },
+            cashflowState,
+            calculationInput: inputPayload as IctInput,
+          });
+          return { success: true, savedScopes: ["cashflow"] };
+        }
+      }
+      await domainSaveService.saveCashflowState(activeProject.id, cashflowState);
       return { success: true, savedScopes: ["cashflow"] };
     });
 
@@ -1418,11 +1491,14 @@ export default function IctLifecycle() {
       <WorkspaceHeader
         moduleId="ict_lifecycle"
         title="ICT项目全生命周期"
+        backLabel={entrySource === "ai_compute_quote" ? "返回智算报价" : "返回集市"}
         onBack={async () => {
           const canProceed = await confirmOrSave();
           if (!canProceed) return;
           if (entrySource === "project_board") {
             navigateTo("project_board", activeProjectId, activeSchemeId);
+          } else if (entrySource === "ai_compute_quote") {
+            navigateTo("ai_compute_quote", activeProjectId, null, activeScenarioId);
           } else {
             navigateTo("hub");
           }

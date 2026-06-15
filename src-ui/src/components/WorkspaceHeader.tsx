@@ -8,11 +8,19 @@ interface WorkspaceHeaderProps {
   moduleId: string;
   title: string;
   onBack: () => void;
+  backLabel?: string;
   onPathChange?: (newPath: string) => void;
   contextContent?: ReactNode;
 }
 
-export default function WorkspaceHeader({ moduleId, title, onBack, onPathChange, contextContent }: WorkspaceHeaderProps) {
+export default function WorkspaceHeader({
+  moduleId,
+  title,
+  onBack,
+  backLabel = "返回集市",
+  onPathChange,
+  contextContent,
+}: WorkspaceHeaderProps) {
   const { path, isLoading, updatePath } = useModulePath(moduleId);
 
   const handleUpdate = async () => {
@@ -29,7 +37,7 @@ export default function WorkspaceHeader({ moduleId, title, onBack, onPathChange,
           onClick={onBack} 
           className="text-secondary-foreground hover:text-primary hover:bg-secondary font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors"
         >
-          <span>←</span> 返回集市
+          <span>←</span> {backLabel}
         </button>
         <h2 className="m-0 text-lg font-bold text-foreground border-l-2 border-border pl-4">{title}</h2>
         {contextContent && (

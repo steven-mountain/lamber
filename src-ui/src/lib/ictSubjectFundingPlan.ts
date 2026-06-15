@@ -1,7 +1,7 @@
 import type { IctSubjectGroupId, IctSubjectSide } from "./ictSubjectCatalog";
 
 export type SubjectFundingPlanMode = "upfront" | "equal" | "custom";
-export type SubjectFundingPlanSource = "manual" | "template" | "migration";
+export type SubjectFundingPlanSource = "manual" | "template" | "migration" | "ai_compute_quote";
 export type CashflowCalculationSource = "legacy_model" | "subject_funding_plans";
 
 export const SUBJECT_FUNDING_PLAN_MIGRATION_VERSION = 1;
@@ -20,7 +20,18 @@ export type SubjectFundingPlanLastChangeReason =
   | "ct_linkage_sync"
   | "auto_created_upfront"
   | "restored_after_zero"
-  | "legacy_migration";
+  | "legacy_migration"
+  | "ai_compute_quote_import";
+
+export type SubjectFundingPlanImportTrace = {
+  source: "ai_compute_quote";
+  sourceLabel: string;
+  projectId: string;
+  scenarioId: string;
+  blueprintId: string;
+  sourceLineItemIds: string[];
+  importedAt: string;
+};
 
 export interface SubjectFundingPlan {
   id: string;
@@ -34,6 +45,7 @@ export interface SubjectFundingPlan {
   lastChangeReason?: SubjectFundingPlanLastChangeReason;
   lastChangedAt?: string;
   updatedAt?: string;
+  importTrace?: SubjectFundingPlanImportTrace;
 }
 
 export type SubjectFundingPlans = Record<string, SubjectFundingPlan>;
@@ -226,7 +238,12 @@ export const normalizeSubjectFundingPlan = (value: unknown): SubjectFundingPlan 
   const mode: SubjectFundingPlanMode =
     raw.mode === "equal" || raw.mode === "custom" || raw.mode === "upfront" ? raw.mode : "upfront";
   const source: SubjectFundingPlanSource =
-    raw.source === "template" || raw.source === "migration" || raw.source === "manual" ? raw.source : "manual";
+    raw.source === "template"
+    || raw.source === "migration"
+    || raw.source === "manual"
+    || raw.source === "ai_compute_quote"
+      ? raw.source
+      : "manual";
 
   return {
     id: createSubjectFundingPlanId(subjectRef),
@@ -240,6 +257,7 @@ export const normalizeSubjectFundingPlan = (value: unknown): SubjectFundingPlan 
     lastChangeReason: raw.lastChangeReason,
     lastChangedAt: typeof raw.lastChangedAt === "string" ? raw.lastChangedAt : undefined,
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : undefined,
+    importTrace: raw.importTrace,
   };
 };
 

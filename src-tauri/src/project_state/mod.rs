@@ -25,6 +25,44 @@ fn json_string(value: &Value) -> Result<String, String> {
     serde_json::to_string(value).map_err(|e| e.to_string())
 }
 
+fn json_f64(value: Option<&Value>) -> Option<f64> {
+    match value {
+        Some(Value::Number(number)) => number.as_f64(),
+        Some(Value::String(text)) => text.parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
+fn input_subject_incl(input: &Value, subject_code: &str) -> f64 {
+    json_f64(
+        input
+            .get(subject_code)
+            .and_then(|subject| subject.get("incl_tax").or_else(|| subject.get("incl"))),
+    )
+    .unwrap_or(0.0)
+}
+
+fn calculate_ict_risk_level(result: &IctResult) -> String {
+    let parse_ratio = |value: &str| {
+        let parsed = value.trim_end_matches('%').parse::<f64>().unwrap_or(0.0);
+        if value.contains('%') {
+            parsed / 100.0
+        } else {
+            parsed
+        }
+    };
+    let npv = result.npv.parse::<f64>().unwrap_or(0.0);
+    let margin = parse_ratio(&result.margin_rate);
+    let npv_rate = parse_ratio(&result.npv_rate);
+    if npv < 0.0 || margin < 0.0 {
+        "高风险".to_string()
+    } else if margin < 0.08 || npv_rate < 0.04 {
+        "中风险".to_string()
+    } else {
+        "低风险".to_string()
+    }
+}
+
 fn ensure_project_exists(conn: &rusqlite::Connection, project_id: &str) -> Result<(), String> {
     let exists: bool = conn
         .query_row(
@@ -95,7 +133,7 @@ fn get_project_locked(
     .map_err(|e| e.to_string())
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectDetailPatch {
     pub name: Option<String>,
@@ -141,7 +179,7 @@ pub struct TemplateStatePayload {
     pub output_config_json: Value,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StoredLifecycleState {
     pub id: String,
@@ -169,6 +207,34 @@ pub struct StoredCashflowState {
     pub metrics_json: Value,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiComputeIctImportResult {
+    pub lifecycle_state: StoredLifecycleState,
+    pub cashflow_state: StoredCashflowState,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiComputeRealtimeSyncPayload {
+    pub expected_revision: i64,
+    pub next_revision: i64,
+    pub blueprint_setting_json: Value,
+    pub lifecycle_state: LifecycleStatePayload,
+    pub cashflow_state: CashflowStatePayload,
+    pub calculation_input: IctInput,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiComputeRealtimeSyncResult {
+    pub revision: i64,
+    pub synced_at: String,
+    pub ict_result: IctResult,
+    pub lifecycle_state: StoredLifecycleState,
+    pub cashflow_state: StoredCashflowState,
 }
 
 #[derive(Debug, Serialize)]
@@ -744,6 +810,296 @@ pub async fn get_cashflow_state(
 }
 
 #[tauri::command]
+pub async fn apply_ai_compute_quote_to_ict(
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
+    project_id: String,
+    lifecycle_state: LifecycleStatePayload,
+    cashflow_state: CashflowStatePayload,
+) -> Result<AiComputeIctImportResult, String> {
+    runtime.require_workspace()?;
+    let db = runtime.require_db()?;
+    let mut conn = db.lock().map_err(|e| e.to_string())?;
+    apply_ai_compute_quote_to_ict_locked(
+        &mut conn,
+        &project_id,
+        lifecycle_state,
+        cashflow_state,
+        None,
+        None,
+    )
+}
+
+#[tauri::command]
+pub async fn sync_ai_compute_quote_to_ict(
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
+    project_id: String,
+    payload: AiComputeRealtimeSyncPayload,
+) -> Result<AiComputeRealtimeSyncResult, String> {
+    runtime.require_workspace()?;
+    let db = runtime.require_db()?;
+    let mut conn = db.lock().map_err(|e| e.to_string())?;
+    let ict_result =
+        crate::benefit::calculator::calculate_ict_benefit(payload.calculation_input.clone())?;
+    let mut cashflow_state = payload.cashflow_state;
+    cashflow_state.yearly_cashflow_json = serde_json::json!({
+        "cashflowTable": ict_result.cashflow,
+        "source": "ai_compute_quote_realtime_sync",
+    });
+    cashflow_state.metrics_json = serde_json::to_value(&ict_result).map_err(|e| e.to_string())?;
+    let synced_at = now_iso();
+    let stored = apply_ai_compute_quote_to_ict_locked(
+        &mut conn,
+        &project_id,
+        payload.lifecycle_state,
+        cashflow_state,
+        Some((
+            payload.expected_revision,
+            payload.next_revision,
+            payload.blueprint_setting_json,
+        )),
+        Some(&ict_result),
+    )?;
+    Ok(AiComputeRealtimeSyncResult {
+        revision: payload.next_revision,
+        synced_at,
+        ict_result,
+        lifecycle_state: stored.lifecycle_state,
+        cashflow_state: stored.cashflow_state,
+    })
+}
+
+fn apply_ai_compute_quote_to_ict_locked(
+    conn: &mut rusqlite::Connection,
+    project_id: &str,
+    lifecycle_state: LifecycleStatePayload,
+    cashflow_state: CashflowStatePayload,
+    blueprint_setting: Option<(i64, i64, Value)>,
+    ict_result: Option<&IctResult>,
+) -> Result<AiComputeIctImportResult, String> {
+    ensure_project_exists(conn, project_id)?;
+    const REVENUE_SUBJECT_CODES: [&str; 9] = [
+        "rev_it_integration",
+        "rev_it_maintenance",
+        "rev_it_device_sales",
+        "rev_it_device_lease",
+        "rev_it_other",
+        "rev_it_cloud",
+        "rev_ct_line",
+        "rev_ct_product",
+        "rev_non_it_ct",
+    ];
+    const COST_SUBJECT_CODES: [&str; 19] = [
+        "cost_it_device",
+        "cost_it_construction",
+        "cost_it_survey",
+        "cost_it_integration",
+        "cost_it_other",
+        "cost_it_maintenance",
+        "cost_it_running",
+        "cost_it_bidding",
+        "cost_it_design_eval",
+        "cost_it_audit",
+        "cost_ct_construction",
+        "cost_ct_maintenance",
+        "cost_ct_other",
+        "cost_ct_bandwidth",
+        "cost_ct_renewal",
+        "cost_non_it_ct",
+        "cost_mix_marketing",
+        "cost_mix_channel",
+        "cost_mix_other",
+    ];
+    let total_revenue_incl = REVENUE_SUBJECT_CODES
+        .iter()
+        .map(|code| input_subject_incl(&lifecycle_state.input_payload_json, code))
+        .sum::<f64>();
+    let total_cost_incl = COST_SUBJECT_CODES
+        .iter()
+        .map(|code| input_subject_incl(&lifecycle_state.input_payload_json, code))
+        .sum::<f64>();
+    let project_years = json_f64(
+        lifecycle_state
+            .input_payload_json
+            .get("project_years")
+            .or_else(|| lifecycle_state.parameters_json.get("projectYears")),
+    )
+    .map(|years| years.round().clamp(1.0, 10.0) as i64);
+    let discount_rate = json_f64(
+        lifecycle_state
+            .input_payload_json
+            .get("discount_rate")
+            .or_else(|| lifecycle_state.parameters_json.get("discountRate")),
+    )
+    .map(|rate| rate.clamp(0.0, 1.0));
+    let lifecycle_profile = json_string(&lifecycle_state.profile_json)?;
+    let lifecycle_parameters = json_string(&lifecycle_state.parameters_json)?;
+    let lifecycle_background = json_string(&lifecycle_state.background_json)?;
+    let lifecycle_input = json_string(&lifecycle_state.input_payload_json)?;
+    let cashflow_payment = json_string(&cashflow_state.payment_model_json)?;
+    let cashflow_yearly = json_string(&cashflow_state.yearly_cashflow_json)?;
+    let cashflow_sector = json_string(&cashflow_state.sector_cashflow_json)?;
+    let cashflow_assumptions = json_string(&cashflow_state.assumptions_json)?;
+    let cashflow_metrics = json_string(&cashflow_state.metrics_json)?;
+    let now = now_iso();
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    if let Some((expected_revision, _, _)) = &blueprint_setting {
+        let current_setting: Option<String> = tx
+            .query_row(
+                "SELECT value FROM project_settings WHERE project_id = ?1 AND key = 'ai_compute_quote::active'",
+                [&project_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        let current_revision = current_setting
+            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+            .and_then(|value| {
+                value
+                    .get("blueprint")
+                    .and_then(|blueprint| blueprint.get("syncState"))
+                    .and_then(|sync| sync.get("revision"))
+                    .and_then(Value::as_i64)
+            })
+            .unwrap_or(0);
+        if current_revision != *expected_revision {
+            return Err(format!(
+                "AiComputeSyncRevisionConflict::expected={}::current={}",
+                expected_revision, current_revision
+            ));
+        }
+    }
+    let lifecycle_id: Option<String> = tx
+        .query_row(
+            "SELECT id FROM project_lifecycle_states WHERE project_id = ?1",
+            [&project_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let lifecycle_id = lifecycle_id.unwrap_or_else(|| generate_id("lifecycle"));
+    tx.execute(
+        "INSERT INTO project_lifecycle_states (
+            id, project_id, lifecycle_version, profile_json, parameters_json, background_json,
+            input_payload_json, created_at, updated_at
+         ) VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT(project_id) DO UPDATE SET
+            lifecycle_version = lifecycle_version + 1,
+            profile_json = excluded.profile_json,
+            parameters_json = excluded.parameters_json,
+            background_json = excluded.background_json,
+            input_payload_json = excluded.input_payload_json,
+            updated_at = excluded.updated_at",
+        params![
+            lifecycle_id,
+            project_id,
+            lifecycle_profile,
+            lifecycle_parameters,
+            lifecycle_background,
+            lifecycle_input,
+            now,
+            now,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let cashflow_id: Option<String> = tx
+        .query_row(
+            "SELECT id FROM project_cashflow_states WHERE project_id = ?1",
+            [&project_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let cashflow_id = cashflow_id.unwrap_or_else(|| generate_id("cashflow"));
+    tx.execute(
+        "INSERT INTO project_cashflow_states (
+            id, project_id, cashflow_version, cashflow_model, payment_model_json, yearly_cashflow_json,
+            sector_cashflow_json, assumptions_json, metrics_json, created_at, updated_at
+         ) VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+         ON CONFLICT(project_id) DO UPDATE SET
+            cashflow_version = cashflow_version + 1,
+            cashflow_model = excluded.cashflow_model,
+            payment_model_json = excluded.payment_model_json,
+            yearly_cashflow_json = excluded.yearly_cashflow_json,
+            sector_cashflow_json = excluded.sector_cashflow_json,
+            assumptions_json = excluded.assumptions_json,
+            metrics_json = excluded.metrics_json,
+            updated_at = excluded.updated_at",
+        params![
+            cashflow_id,
+            project_id,
+            cashflow_state.cashflow_model,
+            cashflow_payment,
+            cashflow_yearly,
+            cashflow_sector,
+            cashflow_assumptions,
+            cashflow_metrics,
+            now,
+            now,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    if let Some((_, _, setting_value)) = &blueprint_setting {
+        tx.execute(
+            "INSERT OR REPLACE INTO project_settings (project_id, key, value, updated_at)
+             VALUES (?1, 'ai_compute_quote::active', ?2, ?3)",
+            params![project_id, json_string(setting_value)?, now],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    let summary_metrics = ict_result.map(|result| {
+        serde_json::json!({
+            "margin_rate": result.margin_rate,
+            "npv": result.npv,
+            "npv_rate": result.npv_rate,
+            "irr": result.irr,
+            "dynamic_payback": result.dynamic_payback,
+            "risk_level": calculate_ict_risk_level(result),
+        })
+    });
+    let benefit_status = if ict_result.is_some() {
+        "normal"
+    } else {
+        "outdated"
+    };
+    tx.execute(
+        "UPDATE projects
+         SET benefit_status = ?1,
+             total_revenue_incl = ?2,
+             total_cost_incl = ?3,
+             project_years = COALESCE(?4, project_years),
+             discount_rate = COALESCE(?5, discount_rate),
+             summary_metrics = ?6,
+             updated_at = ?7
+         WHERE id = ?8",
+        params![
+            benefit_status,
+            total_revenue_incl,
+            total_cost_incl,
+            project_years,
+            discount_rate,
+            summary_metrics.as_ref().map(json_string).transpose()?,
+            now,
+            project_id
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+
+    let lifecycle_state = get_lifecycle_state_locked(conn, project_id)?
+        .ok_or_else(|| "LifecycleStateSaveFailed".to_string())?;
+    let cashflow_state = get_cashflow_state_locked(conn, project_id)?
+        .ok_or_else(|| "CashflowStateSaveFailed".to_string())?;
+    Ok(AiComputeIctImportResult {
+        lifecycle_state,
+        cashflow_state,
+    })
+}
+
+#[tauri::command]
 pub async fn save_template_state(
     runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     project_id: String,
@@ -943,36 +1299,7 @@ pub async fn save_benefit_analysis(
     )
     .map_err(|e| e.to_string())?;
 
-    let risk_level = {
-        let npv_val = output_metrics.npv.parse::<f64>().unwrap_or(0.0);
-        let margin_val = output_metrics
-            .margin_rate
-            .trim_end_matches('%')
-            .parse::<f64>()
-            .unwrap_or(0.0)
-            / if output_metrics.margin_rate.contains('%') {
-                100.0
-            } else {
-                1.0
-            };
-        let npv_rate_val = output_metrics
-            .npv_rate
-            .trim_end_matches('%')
-            .parse::<f64>()
-            .unwrap_or(0.0)
-            / if output_metrics.npv_rate.contains('%') {
-                100.0
-            } else {
-                1.0
-            };
-        if npv_val < 0.0 || margin_val < 0.0 {
-            "高风险".to_string()
-        } else if margin_val < 0.08 || npv_rate_val < 0.04 {
-            "中风险".to_string()
-        } else {
-            "低风险".to_string()
-        }
-    };
+    let risk_level = calculate_ict_risk_level(&output_metrics);
     project.default_scheme_id = Some(scheme_id);
     project.benefit_status = "normal".to_string();
     project.summary_metrics = Some(SummaryMetrics {
@@ -1138,4 +1465,253 @@ pub async fn get_project_full_state(
         template_states: list_template_states_locked(&conn, &project_id)?,
         template_assets: list_template_assets_locked(&conn, &project_id, None)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn create_import_test_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("open in-memory database");
+        conn.execute_batch(
+            "
+            CREATE TABLE projects (
+                id TEXT PRIMARY KEY,
+                benefit_status TEXT NOT NULL,
+                total_revenue_incl REAL NOT NULL,
+                total_cost_incl REAL NOT NULL,
+                project_years INTEGER NOT NULL,
+                discount_rate REAL NOT NULL,
+                summary_metrics TEXT,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE project_lifecycle_states (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL UNIQUE,
+                lifecycle_version INTEGER NOT NULL,
+                profile_json TEXT NOT NULL,
+                parameters_json TEXT NOT NULL,
+                background_json TEXT NOT NULL,
+                input_payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE project_cashflow_states (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL UNIQUE,
+                cashflow_version INTEGER NOT NULL,
+                cashflow_model TEXT,
+                payment_model_json TEXT NOT NULL,
+                yearly_cashflow_json TEXT NOT NULL,
+                sector_cashflow_json TEXT NOT NULL,
+                assumptions_json TEXT NOT NULL,
+                metrics_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE project_settings (
+                project_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(project_id, key)
+            );
+            INSERT INTO projects (
+                id, benefit_status, total_revenue_incl, total_cost_incl,
+                project_years, discount_rate, summary_metrics, updated_at
+            )
+            VALUES ('project-1', 'normal', 10, 20, 1, 0.055, '{\"margin_rate\":\"old\"}', 'before');
+            ",
+        )
+        .expect("create import test schema");
+        conn
+    }
+
+    #[test]
+    fn ai_compute_import_writes_amount_and_funding_plan_atomically() {
+        let mut conn = create_import_test_db();
+        let lifecycle_state = LifecycleStatePayload {
+            profile_json: json!({"projectName": "测试项目"}),
+            parameters_json: json!({"cashflowCalculationSource": "subject_funding_plans"}),
+            background_json: json!({}),
+            input_payload_json: json!({
+                "project_years": 5,
+                "discount_rate": "0.05",
+                "cost_it_device": {
+                    "incl_tax": "450",
+                    "tax_rate": "13"
+                }
+            }),
+        };
+        let cashflow_state = CashflowStatePayload {
+            cashflow_model: Some("model_a".to_string()),
+            payment_model_json: json!({"cashflowCalculationSource": "subject_funding_plans"}),
+            yearly_cashflow_json: json!({}),
+            sector_cashflow_json: json!({}),
+            assumptions_json: json!({
+                "costIt": {
+                    "device": {
+                        "incl": 450,
+                        "tax": 13
+                    }
+                },
+                "subjectFundingPlans": {
+                    "cost:costIt:device": {
+                        "id": "cost:costIt:device",
+                        "subjectRef": {
+                            "side": "cost",
+                            "groupId": "costIt",
+                            "key": "device"
+                        },
+                        "mode": "custom",
+                        "annualInclValues": [400, 50, 0, 0, 0, 0, 0, 0, 0, 0],
+                        "enabled": true,
+                        "source": "ai_compute_quote"
+                    }
+                }
+            }),
+            metrics_json: json!({}),
+        };
+
+        let result = apply_ai_compute_quote_to_ict_locked(
+            &mut conn,
+            "project-1",
+            lifecycle_state,
+            cashflow_state,
+            None,
+            None,
+        )
+        .expect("apply AI compute import");
+
+        assert_eq!(
+            result.lifecycle_state.input_payload_json["cost_it_device"]["incl_tax"],
+            "450"
+        );
+        assert_eq!(
+            result.cashflow_state.assumptions_json["costIt"]["device"]["incl"],
+            450
+        );
+        assert_eq!(
+            result.cashflow_state.assumptions_json["subjectFundingPlans"]["cost:costIt:device"]
+                ["annualInclValues"][0],
+            400
+        );
+        assert_eq!(
+            result.cashflow_state.assumptions_json["subjectFundingPlans"]["cost:costIt:device"]
+                ["annualInclValues"][1],
+            50
+        );
+        let benefit_status: String = conn
+            .query_row(
+                "SELECT benefit_status FROM projects WHERE id = 'project-1'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read project status");
+        assert_eq!(benefit_status, "outdated");
+        let project_summary: (f64, f64, i64, f64, Option<String>) = conn
+            .query_row(
+                "SELECT total_revenue_incl, total_cost_incl, project_years, discount_rate, summary_metrics
+                 FROM projects WHERE id = 'project-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .expect("read imported project summary");
+        assert_eq!(project_summary.0, 0.0);
+        assert_eq!(project_summary.1, 450.0);
+        assert_eq!(project_summary.2, 5);
+        assert_eq!(project_summary.3, 0.05);
+        assert_eq!(project_summary.4, None);
+    }
+
+    #[test]
+    fn ai_compute_realtime_sync_checks_revision_and_commits_metrics() {
+        let mut conn = create_import_test_db();
+        let lifecycle_state = LifecycleStatePayload {
+            profile_json: json!({"projectName": "测试项目"}),
+            parameters_json: json!({"projectYears": 5, "discountRate": 0.05}),
+            background_json: json!({}),
+            input_payload_json: json!({
+                "project_years": 5,
+                "discount_rate": "0.05",
+                "rev_it_cloud": {"incl_tax": "1000", "tax_rate": "6"}
+            }),
+        };
+        let cashflow_state = CashflowStatePayload {
+            cashflow_model: Some("model_a".to_string()),
+            payment_model_json: json!({}),
+            yearly_cashflow_json: json!({}),
+            sector_cashflow_json: json!({}),
+            assumptions_json: json!({"projectYears": 5, "discountRate": 0.05}),
+            metrics_json: json!({}),
+        };
+        let result = IctResult {
+            npv: "900".to_string(),
+            npv_rate: "1".to_string(),
+            margin_rate: "1".to_string(),
+            dynamic_payback: "1".to_string(),
+            irr: "--".to_string(),
+            it_npv: "900".to_string(),
+            it_npv_rate: "1".to_string(),
+            it_margin_rate: "1".to_string(),
+            cashflow: vec![],
+        };
+        let setting = json!({
+            "version": 2,
+            "blueprint": {
+                "syncState": {"revision": 1, "status": "synced", "subjects": {}}
+            }
+        });
+
+        apply_ai_compute_quote_to_ict_locked(
+            &mut conn,
+            "project-1",
+            lifecycle_state.clone(),
+            cashflow_state.clone(),
+            Some((0, 1, setting)),
+            Some(&result),
+        )
+        .expect("commit realtime sync");
+
+        let stored_setting: String = conn
+            .query_row(
+                "SELECT value FROM project_settings
+                 WHERE project_id = 'project-1' AND key = 'ai_compute_quote::active'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read quote setting");
+        assert_eq!(
+            serde_json::from_str::<Value>(&stored_setting).unwrap()["blueprint"]["syncState"]
+                ["revision"],
+            1
+        );
+        let project_summary: (String, i64, f64, Option<String>) = conn
+            .query_row(
+                "SELECT benefit_status, project_years, discount_rate, summary_metrics
+                 FROM projects WHERE id = 'project-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("read realtime project summary");
+        assert_eq!(project_summary.0, "normal");
+        assert_eq!(project_summary.1, 5);
+        assert_eq!(project_summary.2, 0.05);
+        assert!(project_summary.3.unwrap().contains("\"npv\":\"900\""));
+
+        let conflict = apply_ai_compute_quote_to_ict_locked(
+            &mut conn,
+            "project-1",
+            lifecycle_state,
+            cashflow_state,
+            Some((0, 1, json!({}))),
+            Some(&result),
+        );
+        let conflict = match conflict {
+            Ok(_) => panic!("stale revision must fail"),
+            Err(error) => error,
+        };
+        assert!(conflict.contains("AiComputeSyncRevisionConflict"));
+    }
 }

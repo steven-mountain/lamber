@@ -35,6 +35,23 @@ export interface CashflowStatePayload {
   metricsJson: Record<string, unknown>;
 }
 
+export interface AiComputeRealtimeSyncPayload {
+  expectedRevision: number;
+  nextRevision: number;
+  blueprintSettingJson: Record<string, unknown>;
+  lifecycleState: LifecycleStatePayload;
+  cashflowState: CashflowStatePayload;
+  calculationInput: IctInput;
+}
+
+export interface AiComputeRealtimeSyncResult {
+  revision: number;
+  syncedAt: string;
+  ictResult: IctResult;
+  lifecycleState: any;
+  cashflowState: any;
+}
+
 export interface TemplateStatePayload {
   templateName?: string | null;
   templateType?: string | null;
@@ -100,6 +117,32 @@ export const domainSaveService = {
 
   loadCashflowState(projectId: string): Promise<any | null> {
     return invoke("get_cashflow_state", { projectId });
+  },
+
+  applyAiComputeQuoteToIct(
+    projectId: string,
+    lifecycleState: LifecycleStatePayload,
+    cashflowState: CashflowStatePayload,
+  ): Promise<any> {
+    return invoke("apply_ai_compute_quote_to_ict", {
+      projectId,
+      lifecycleState,
+      cashflowState,
+    });
+  },
+
+  syncAiComputeQuoteToIct(
+    projectId: string,
+    payload: AiComputeRealtimeSyncPayload,
+  ): Promise<AiComputeRealtimeSyncResult> {
+    return invoke<AiComputeRealtimeSyncResult>("sync_ai_compute_quote_to_ict", {
+      projectId,
+      payload,
+    });
+  },
+
+  calculateIctBenefitBatch(inputs: IctInput[]): Promise<IctResult[]> {
+    return invoke<IctResult[]>("calculate_ict_benefit_batch", { inputs });
   },
 
   saveBenefitAnalysis(

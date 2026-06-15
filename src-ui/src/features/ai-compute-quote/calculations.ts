@@ -4,10 +4,16 @@ import {
   evaluateExpressionFormula,
   getFormulaLineItemReferences,
 } from "./formulaEngine";
+import {
+  createEmptyAiComputeYearlyAmounts,
+  getAiComputeProjectCycleYears,
+  normalizeAiComputeFundingPlan,
+} from "./fundingPlans";
 import type {
   AiComputeQuoteBlueprint,
   AiComputeQuoteFormula,
   AiComputeQuoteLineItem,
+  AiComputeOutputSubjectFundingPlan,
   AiComputeQuoteOutputSubjectAmount,
   AiComputeQuoteParameter,
   AiComputeQuoteSensitivityConfig,
@@ -78,12 +84,35 @@ export function calculateQuoteLineItem(
   parameters: AiComputeQuoteParameter[],
   lineItems: AiComputeQuoteLineItem[] = [],
   lineItemValues: Map<string, number> = new Map(),
+  projectCycleYears = 10,
 ): AiComputeQuoteLineItem {
+  if (item.formulaControlStatus === "ict_override" && item.ictOverride) {
+    return {
+      ...item,
+      amountInclTax: item.ictOverride.amountInclTax,
+      amountExclTax: calculateExclTax(item.ictOverride.amountInclTax, item.ictOverride.taxRate),
+      taxRate: item.ictOverride.taxRate,
+      calculationStatus: "valid",
+      calculationError: undefined,
+      calculationWarnings: ["已被 ICT 人工修改，当前公式失效"],
+    };
+  }
+
+  if (item.formulaControlStatus === "merge_conflict") {
+    return {
+      ...item,
+      calculationStatus: "error",
+      calculationError: item.ictControlMessage || "多个智算项合并到同一 ICT 科目，无法自动反写",
+      calculationWarnings: [],
+    };
+  }
+
   if (!item.enabled) {
     return {
       ...item,
       amountInclTax: 0,
       amountExclTax: 0,
+      fundingPlan: normalizeAiComputeFundingPlan(item.fundingPlan, 0, projectCycleYears),
       calculationStatus: "valid",
       calculationError: undefined,
       calculationWarnings: ["当前计算项已禁用，金额按 0 处理"],
@@ -96,6 +125,7 @@ export function calculateQuoteLineItem(
     ...item,
     amountInclTax,
     amountExclTax: calculateExclTax(amountInclTax, item.taxRate),
+    fundingPlan: normalizeAiComputeFundingPlan(item.fundingPlan, amountInclTax, projectCycleYears),
     calculationStatus: evaluated.status,
     calculationError: evaluated.errors[0],
     calculationWarnings: evaluated.warnings,
@@ -108,6 +138,7 @@ export function calculateQuoteBlueprint(blueprint: AiComputeQuoteBlueprint): AiC
   const cycleErrors = detectCircularReferences(sourceItems);
   const calculatedItems = new Map<string, AiComputeQuoteLineItem>();
   const lineItemValues = new Map<string, number>();
+  const projectCycleYears = getAiComputeProjectCycleYears(blueprint.parameters);
 
   const calculateItem = (itemId: string): AiComputeQuoteLineItem | undefined => {
     const cached = calculatedItems.get(itemId);
@@ -121,6 +152,7 @@ export function calculateQuoteBlueprint(blueprint: AiComputeQuoteBlueprint): AiC
         ...source,
         amountInclTax: 0,
         amountExclTax: 0,
+        fundingPlan: normalizeAiComputeFundingPlan(source.fundingPlan, 0, projectCycleYears),
         calculationStatus: "error" as const,
         calculationError: cycleError,
         calculationWarnings: [],
@@ -132,7 +164,13 @@ export function calculateQuoteBlueprint(blueprint: AiComputeQuoteBlueprint): AiC
 
     getFormulaLineItemReferences(source.formula).forEach(calculateItem);
     const contextItems = sourceItems.map(item => calculatedItems.get(item.id) || item);
-    const calculated = calculateQuoteLineItem(source, blueprint.parameters, contextItems, lineItemValues);
+    const calculated = calculateQuoteLineItem(
+      source,
+      blueprint.parameters,
+      contextItems,
+      lineItemValues,
+      projectCycleYears,
+    );
     calculatedItems.set(itemId, calculated);
     lineItemValues.set(itemId, calculated.amountInclTax);
     return calculated;
@@ -150,18 +188,32 @@ export function summarizeQuote(blueprint: AiComputeQuoteBlueprint): AiComputeQuo
   const calculated = calculateQuoteBlueprint(blueprint);
   const totalRevenue = money(calculated.revenueItems.reduce((sum, item) => sum.add(item.amountInclTax), ZERO));
   const totalCost = money(calculated.costItems.reduce((sum, item) => sum.add(item.amountInclTax), ZERO));
-  const grossProfit = money(new Decimal(totalRevenue).sub(totalCost));
-  const grossMarginRate = totalRevenue === 0
+  const totalRevenueExclTax = money(
+    calculated.revenueItems.reduce((sum, item) => sum.add(item.amountExclTax), ZERO),
+  );
+  const totalCostExclTax = money(
+    calculated.costItems.reduce((sum, item) => sum.add(item.amountExclTax), ZERO),
+  );
+  const grossProfit = money(new Decimal(totalRevenueExclTax).sub(totalCostExclTax));
+  const grossMarginRate = totalRevenueExclTax === 0
     ? 0
-    : new Decimal(grossProfit).div(totalRevenue).mul(100).toDecimalPlaces(2).toNumber();
+    : new Decimal(grossProfit).div(totalRevenueExclTax).mul(100).toDecimalPlaces(2).toNumber();
   const deviceCount = finiteNumber(calculated.parameters.find(parameter => parameter.key === "device_count")?.value);
   const years = finiteNumber(calculated.parameters.find(parameter => parameter.key === "years")?.value);
   const denominator = new Decimal(deviceCount).mul(years).mul(12);
   const costPerDeviceMonth = denominator.lte(0)
     ? 0
-    : money(new Decimal(totalCost).div(denominator));
+    : money(new Decimal(totalCostExclTax).div(denominator));
 
-  return { totalRevenue, totalCost, grossProfit, grossMarginRate, costPerDeviceMonth };
+  return {
+    totalRevenue,
+    totalCost,
+    totalRevenueExclTax,
+    totalCostExclTax,
+    grossProfit,
+    grossMarginRate,
+    costPerDeviceMonth,
+  };
 }
 
 export function buildAiComputeQuoteOutput(
@@ -180,6 +232,8 @@ export function buildAiComputeQuoteOutput(
       || !item
       || !item.enabled
       || !item.outputEnabled
+      || item.formulaControlStatus === "ict_override"
+      || item.formulaControlStatus === "merge_conflict"
       || item.side !== mapping.side
       || item.calculationStatus !== "valid"
     ) {
@@ -201,6 +255,60 @@ export function buildAiComputeQuoteOutput(
       ictSubjectName: mapping.ictSubjectName,
       amountInclTax: item.amountInclTax,
       amountExclTax: item.amountExclTax,
+      sourceLineItemIds: [item.id],
+    });
+  });
+
+  return Array.from(grouped.values());
+}
+
+export function buildAiComputeQuoteOutputFundingPlans(
+  blueprint: AiComputeQuoteBlueprint,
+): AiComputeOutputSubjectFundingPlan[] {
+  const calculated = calculateQuoteBlueprint(blueprint);
+  const lineItems = [...calculated.revenueItems, ...calculated.costItems];
+  const lineItemMap = new Map(lineItems.map(item => [item.id, item]));
+  const grouped = new Map<string, AiComputeOutputSubjectFundingPlan>();
+
+  calculated.mappings.forEach(mapping => {
+    const item = lineItemMap.get(mapping.lineItemId);
+    if (
+      !mapping.enabled
+      || !mapping.ictSubjectCode
+      || !item
+      || !item.enabled
+      || !item.outputEnabled
+      || item.formulaControlStatus === "ict_override"
+      || item.formulaControlStatus === "merge_conflict"
+      || !item.fundingPlan?.enabled
+      || item.side !== mapping.side
+      || item.calculationStatus !== "valid"
+    ) {
+      return;
+    }
+
+    const key = `${mapping.side}:${mapping.ictSubjectCode}`;
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.totalAmount = money(new Decimal(existing.totalAmount).add(item.amountInclTax));
+      Object.keys(existing.yearlyAmounts).forEach(year => {
+        existing.yearlyAmounts[year] = money(
+          new Decimal(existing.yearlyAmounts[year]).add(item.fundingPlan?.yearlyAmounts[year] || 0),
+        );
+      });
+      existing.sourceLineItemIds.push(item.id);
+      return;
+    }
+
+    grouped.set(key, {
+      side: mapping.side,
+      ictSubjectCode: mapping.ictSubjectCode,
+      ictSubjectName: mapping.ictSubjectName,
+      totalAmount: item.amountInclTax,
+      yearlyAmounts: {
+        ...createEmptyAiComputeYearlyAmounts(),
+        ...item.fundingPlan.yearlyAmounts,
+      },
       sourceLineItemIds: [item.id],
     });
   });
