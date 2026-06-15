@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import AppIcon, { type AppIconName } from "../../components/icons/AppIcon";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { ICT_SUBJECT_DEFINITIONS } from "../../lib/ictSubjectCatalog";
 import { useNavigationStore } from "../../store/useNavigationStore";
 import { useProjectStore } from "../../store/useProjectStore";
 import { projectService, type IctResult, type Project } from "../../utils/projectService";
@@ -14,7 +13,9 @@ import {
   runAiComputeQuoteSensitivity,
   summarizeQuote,
 } from "./calculations";
-import { getFormulaParameterReferences, normalizeQuoteFormula } from "./formulaEngine";
+import BenefitConclusionSidebar from "./BenefitConclusionSidebar";
+import CalculationItemCard from "./CalculationItemCard";
+import { getFormulaParameterReferences } from "./formulaEngine";
 import {
   getAiComputeDiscountRatePercent,
   getAiComputeProjectCycleYears,
@@ -32,14 +33,11 @@ import {
   getAiComputeSyncFingerprint,
   mergePersistedAiComputeControlState,
 } from "./ictSync";
-import AiComputeFundingPlanEditor from "./AiComputeFundingPlanEditor";
 import { PARAMETER_GROUP_IDS } from "./parameterLayout";
 import { createH200Blueprint } from "./presets";
-import QuoteFormulaCalculator from "./QuoteFormulaCalculator";
 import { useAiComputeQuoteStore } from "./store";
 import type {
   AiComputeLineItemFundingPlanMode,
-  AiComputeQuoteExpressionFormula,
   AiComputeQuoteLineItem,
   AiComputeQuoteParameter,
   AiComputeQuoteParameterCategory,
@@ -190,7 +188,6 @@ export default function AiComputeQuoteView() {
   const [syncNonce, setSyncNonce] = useState(0);
   const syncRequestRef = useRef(0);
   const [activeTab, setActiveTab] = useState<QuoteWorkspaceTab>("parameters");
-  const [conclusionOpen, setConclusionOpen] = useState(true);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [sensitivityParameterId, setSensitivityParameterId] = useState("gpu-service-price");
   const [sensitivityMin, setSensitivityMin] = useState(72000);
@@ -496,17 +493,14 @@ export default function AiComputeQuoteView() {
         </div>
       </header>
 
-      <main className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4">
+      <main className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 xl:overflow-hidden">
         {(store.error || ictExportError) && (
           <div className="shrink-0 rounded-lg bg-destructive-soft px-3 py-2 text-caption text-destructive">
             {store.error || ictExportError}
           </div>
         )}
-        <div
-          className="grid min-h-0 flex-1 gap-3 transition-[grid-template-columns] duration-200"
-          style={{ gridTemplateColumns: `minmax(0, 1fr) ${conclusionOpen ? "280px" : "44px"}` }}
-        >
-          <section className="flex min-h-0 flex-col overflow-hidden rounded-xl bg-card shadow-sm">
+        <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_292px]">
+          <section className="flex min-h-[560px] min-w-0 flex-col overflow-hidden rounded-xl bg-card shadow-sm xl:min-h-0">
             <QuoteWorkspaceTabs
               activeTab={activeTab}
               parameterCount={store.blueprint.parameters.length}
@@ -528,14 +522,14 @@ export default function AiComputeQuoteView() {
                 role="tabpanel"
                 className={`h-full overflow-y-auto p-4 ${activeTab === "revenue" ? "block" : "hidden"}`}
               >
-                <LineItemPanel side="revenue" title="收入计算项" />
+                <LineItemPanel side="revenue" title="收入计算项" syncStatus={syncStatus} />
               </div>
               <div
                 id="ai-compute-tab-panel-cost"
                 role="tabpanel"
                 className={`h-full overflow-y-auto p-4 ${activeTab === "cost" ? "block" : "hidden"}`}
               >
-                <LineItemPanel side="cost" title="成本计算项" />
+                <LineItemPanel side="cost" title="成本计算项" syncStatus={syncStatus} />
               </div>
               <div
                 id="ai-compute-tab-panel-sensitivity"
@@ -556,9 +550,7 @@ export default function AiComputeQuoteView() {
               </div>
             </div>
           </section>
-          <ConclusionDrawer
-            open={conclusionOpen}
-            onToggle={() => setConclusionOpen(value => !value)}
+          <BenefitConclusionSidebar
             summary={summary}
             ictResult={ictResult}
             syncStatus={syncStatus}
@@ -1591,10 +1583,19 @@ function SensitivityPanel({
   );
 }
 
-function LineItemPanel({ side, title }: { side: AiComputeQuoteSide; title: string }) {
+function LineItemPanel({
+  side,
+  title,
+  syncStatus,
+}: {
+  side: AiComputeQuoteSide;
+  title: string;
+  syncStatus: "idle" | "syncing" | "synced" | "error" | "conflict";
+}) {
   const store = useAiComputeQuoteStore();
   const items = side === "revenue" ? store.blueprint.revenueItems : store.blueprint.costItems;
   const total = items.reduce((sum, item) => sum + item.amountInclTax, 0);
+  const projectCycleYears = getAiComputeProjectCycleYears(store.blueprint.parameters);
 
   const addItem = () => {
     const firstParameter = store.blueprint.parameters[0];
@@ -1623,264 +1624,29 @@ function LineItemPanel({ side, title }: { side: AiComputeQuoteSide; title: strin
   };
 
   return (
-    <section className="rounded-xl bg-card p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
+    <section className="mx-auto w-full max-w-[1180px]">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted/45 p-4">
         <div>
           <h2 className="text-section-title">{title}</h2>
-          <p className="text-caption text-secondary-foreground">含税合计 <span className="numeric-value font-bold text-foreground">{formatWan(total)} 万元</span></p>
+          <p className="text-caption text-secondary-foreground">
+            默认展示金额、占比、同步和计划摘要，展开后进行详细编辑。
+            <span className="ml-2 numeric-value font-bold text-foreground">含税合计 {formatWan(total)} 万元</span>
+          </p>
         </div>
         <Button size="sm" onClick={addItem}>新增{side === "revenue" ? "收入" : "成本"}</Button>
       </div>
       <div className="space-y-3">
-        {items.map(item => <LineItemEditor key={item.id} item={item} totalAmount={total} />)}
+        {items.map(item => (
+          <CalculationItemCard
+            key={item.id}
+            item={item}
+            totalAmount={total}
+            projectCycleYears={projectCycleYears}
+            syncStatus={syncStatus}
+          />
+        ))}
       </div>
     </section>
-  );
-}
-
-function LineItemEditor({ item, totalAmount }: { item: AiComputeQuoteLineItem; totalAmount: number }) {
-  const store = useAiComputeQuoteStore();
-  const [expanded, setExpanded] = useState(false);
-  const mapping = store.blueprint.mappings.find(candidate => candidate.lineItemId === item.id);
-  const subjects = ICT_SUBJECT_DEFINITIONS.filter(subject => subject.side === item.side);
-  const normalizedFormula = normalizeQuoteFormula(item.formula, store.blueprint.parameters);
-  const projectCycleYears = getAiComputeProjectCycleYears(store.blueprint.parameters);
-  const amountShare = totalAmount > 0
-    ? Math.max(0, Math.min(100, item.amountInclTax / totalAmount * 100))
-    : 0;
-  const setFormula = (formula: AiComputeQuoteExpressionFormula) => store.updateFormula(item.side, item.id, formula);
-  const selectMapping = (subjectCode: string) => {
-    const subject = subjects.find(candidate => candidate.subjectCode === subjectCode);
-    if (!subject) {
-      store.updateMapping(item.id, null);
-      return;
-    }
-    store.updateMapping(item.id, {
-      id: mapping?.id || createId("mapping"),
-      lineItemId: item.id,
-      side: item.side,
-      ictSubjectCode: subject.subjectCode,
-      ictSubjectName: subject.standardSubjectName,
-      enabled: true,
-    });
-  };
-
-  return (
-    <article className="rounded-lg bg-muted/45 p-3">
-      <div className="grid gap-2 lg:grid-cols-[auto_minmax(150px,1fr)_94px_120px_120px_auto] lg:items-center">
-        <input type="checkbox" checked={item.enabled} onChange={event => store.updateLineItem(item.side, item.id, { enabled: event.target.checked })} title="启用" />
-        <Input value={item.name} onChange={event => store.updateLineItem(item.side, item.id, { name: event.target.value })} />
-        <label className="flex items-center gap-2 text-caption text-secondary-foreground">
-          税率<Input className="w-16 numeric-value" type="number" min="0" value={item.taxRate || 0} onChange={event => store.updateLineItem(item.side, item.id, { taxRate: toNumber(event.target.value) })} />
-        </label>
-        <div className="text-right">
-          <div className="text-[10px] text-secondary-foreground">含税（万元）</div>
-          <div className="numeric-value text-body-strong">{formatWan(item.amountInclTax)}</div>
-        </div>
-        <div className="text-right">
-          <div className="text-[10px] text-secondary-foreground">不含税（万元）</div>
-          <div className="numeric-value text-body-strong">{formatWan(item.amountExclTax)}</div>
-        </div>
-        <Button variant="ghost" size="sm" onClick={() => store.removeLineItem(item.side, item.id)}><AppIcon name="delete" /></Button>
-      </div>
-
-      <div className="mt-2 flex items-center gap-3 text-[10px] text-secondary-foreground">
-        <span className="shrink-0 font-semibold">
-          占总{item.side === "revenue" ? "收入" : "成本"} {formatNumber(amountShare, 1)}%
-        </span>
-        <div className="h-1.5 min-w-24 flex-1 overflow-hidden rounded-full bg-card">
-          <div
-            className={`h-full rounded-full ${item.side === "revenue" ? "bg-success/70" : "bg-destructive/65"}`}
-            style={{ width: `${amountShare}%` }}
-          />
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-2 md:grid-cols-[auto_minmax(180px,1fr)_auto] md:items-center">
-        <label className="flex items-center gap-2 text-caption font-semibold text-secondary-foreground">
-          <input type="checkbox" checked={item.outputEnabled !== false} onChange={event => store.updateLineItem(item.side, item.id, { outputEnabled: event.target.checked })} />
-          参与 ICT 自动同步
-        </label>
-        <select
-          className="h-[var(--density-input-height)] rounded-md border border-input bg-card px-3 text-sm"
-          value={mapping?.ictSubjectCode || ""}
-          onChange={event => selectMapping(event.target.value)}
-        >
-          <option value="">未映射</option>
-          {subjects.map(subject => <option key={subject.subjectCode} value={subject.subjectCode}>{subject.standardSubjectName}</option>)}
-        </select>
-        <Button variant="ghost" size="sm" onClick={() => setExpanded(value => !value)}>
-          {expanded ? "收起计算过程" : "展开计算过程"}
-          <AppIcon name={expanded ? "chevronUp" : "chevronDown"} />
-        </Button>
-      </div>
-
-      {item.calculationStatus !== "valid" && !expanded && (
-        <div className={`mt-2 rounded-md px-3 py-2 text-caption font-semibold ${
-          item.calculationStatus === "error"
-            ? "bg-destructive-soft text-destructive"
-            : "bg-warning-soft text-warning-foreground"
-        }`}>
-          {item.calculationError || "公式不完整"}
-        </div>
-      )}
-
-      {(item.formulaControlStatus === "ict_override" || item.formulaControlStatus === "merge_conflict") && (
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-destructive-soft px-3 py-2 text-caption text-destructive">
-          <span className="font-bold">
-            {item.ictControlMessage || "已被 ICT 人工修改，当前公式失效"}
-          </span>
-          <Button size="sm" variant="outline" onClick={() => store.restoreFormulaControl(item.id)}>
-            恢复公式控制
-          </Button>
-        </div>
-      )}
-
-      {expanded && (
-        <div className="mt-3">
-          <QuoteFormulaCalculator
-            blueprint={store.blueprint}
-            item={{ ...item, formula: normalizedFormula }}
-            onChange={setFormula}
-          />
-        </div>
-      )}
-
-      <AiComputeFundingPlanEditor
-        item={item}
-        projectCycleYears={projectCycleYears}
-        onChange={fundingPlan => store.updateLineItem(item.side, item.id, { fundingPlan })}
-      />
-    </article>
-  );
-}
-
-function ConclusionDrawer({
-  open,
-  onToggle,
-  summary,
-  ictResult,
-  syncStatus,
-  majorRevenue,
-  majorCost,
-  outputCount,
-  syncDetailsAvailable,
-  onShowOutput,
-  onShowSyncDetails,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  summary: ReturnType<typeof summarizeQuote>;
-  ictResult: IctResult | null;
-  syncStatus: "idle" | "syncing" | "synced" | "error" | "conflict";
-  majorRevenue: string;
-  majorCost: string;
-  outputCount: number;
-  syncDetailsAvailable: boolean;
-  onShowOutput: () => void;
-  onShowSyncDetails: () => void;
-}) {
-  const margin = ictResult ? Number(ictResult.margin_rate) : Number.NaN;
-  const npv = ictResult ? Number(ictResult.npv) : Number.NaN;
-  const conclusion = !ictResult
-    ? { label: "待同步", tone: "text-secondary-foreground", surface: "bg-muted" }
-    : npv < 0 || margin < 0
-      ? { label: "风险较高", tone: "text-destructive", surface: "bg-destructive-soft" }
-      : margin < 0.08
-        ? { label: "需关注", tone: "text-warning-foreground", surface: "bg-warning-soft" }
-        : { label: "收益良好", tone: "text-success-foreground", surface: "bg-success-soft" };
-
-  if (!open) {
-    return (
-      <aside className="flex min-h-0 items-start justify-center rounded-xl bg-card py-3 shadow-sm">
-        <button
-          type="button"
-          className="flex w-8 flex-col items-center gap-2 rounded-lg py-3 text-primary hover:bg-primary-soft"
-          aria-label="展开效益结论"
-          onClick={onToggle}
-        >
-          <span className="text-lg">‹</span>
-          <span className="[writing-mode:vertical-rl] text-xs font-bold tracking-widest">效益结论</span>
-        </button>
-      </aside>
-    );
-  }
-
-  return (
-    <aside className="min-h-0 overflow-y-auto rounded-xl bg-card p-3 shadow-sm">
-      <div className="mb-3 flex items-start gap-2">
-        <button
-          type="button"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-secondary-foreground hover:bg-muted hover:text-foreground"
-          aria-label="收起效益结论"
-          onClick={onToggle}
-        >
-          ›
-        </button>
-        <div>
-          <h2 className="text-section-title">效益结论</h2>
-          <p className="text-caption text-secondary-foreground">可收起，不影响主编辑区操作</p>
-        </div>
-      </div>
-      <div className={`mb-3 rounded-lg px-3 py-3 ${conclusion.surface}`}>
-        <div className="text-caption text-secondary-foreground">收益结论</div>
-        <div className={`mt-1 text-lg font-extrabold ${conclusion.tone}`}>{conclusion.label}</div>
-      </div>
-      <div className="space-y-2">
-        <Metric label="总收入（含税）" value={`${formatWan(summary.totalRevenue)} 万元`} />
-        <Metric label="总成本（含税）" value={`${formatWan(summary.totalCost)} 万元`} />
-        <Metric
-          label="ICT 毛利率"
-          value={ictResult ? `${formatNumber(Number(ictResult.margin_rate) * 100)}%` : "--"}
-          tone={ictResult && Number(ictResult.margin_rate) >= 0 ? "success" : undefined}
-        />
-        <Metric label="ICT NPV" value={ictResult ? `${formatWan(Number(ictResult.npv))} 万元` : "--"} />
-        <Metric
-          label="ICT 净现值率"
-          value={ictResult ? `${formatNumber(Number(ictResult.npv_rate) * 100)}%` : "--"}
-          tone={ictResult && Number(ictResult.npv_rate) >= 0 ? "success" : undefined}
-        />
-        <Metric label="ICT 动态回收期" value={ictResult ? `${ictResult.dynamic_payback} 年` : "--"} />
-        <Metric label="主要收入" value={majorRevenue} compact />
-        <Metric label="主要成本" value={majorCost} compact />
-      </div>
-      <div className="mt-3 grid gap-2">
-        <Button variant="secondary" onClick={onShowOutput}>查看输出包</Button>
-        <Button variant="outline" disabled={!syncDetailsAvailable} onClick={onShowSyncDetails}>查看同步明细</Button>
-      </div>
-      <div className="mt-3 rounded-lg bg-muted/55 p-3 text-caption text-secondary-foreground">
-        输出 ICT 科目：<span className="numeric-value font-bold text-foreground">{outputCount} 项</span>
-        <div className="mt-1">
-        {syncStatus === "syncing"
-          ? "正在使用 ICT 正式参数重新计算。"
-          : syncStatus === "error"
-            ? "同步失败，指标可能不是最新结果。"
-            : syncStatus === "conflict"
-              ? "存在 ICT 人工修改冲突。"
-              : "正式效益指标来自 ICT 测算引擎。"}
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  tone,
-  compact = false,
-}: {
-  label: string;
-  value: string;
-  tone?: "success" | "danger";
-  compact?: boolean;
-}) {
-  const toneClass = tone === "success" ? "text-success-foreground" : tone === "danger" ? "text-destructive" : "text-foreground";
-  return (
-    <div className="rounded-lg bg-muted/55 px-3 py-2.5">
-      <div className="text-caption text-secondary-foreground">{label}</div>
-      <div className={`${compact ? "text-sm font-bold" : "numeric-value text-lg font-bold"} ${toneClass}`}>{value}</div>
-    </div>
   );
 }
 
