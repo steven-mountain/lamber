@@ -171,6 +171,8 @@ fn main() {
             intelligent_compute::save_intelligent_compute_project_state,
             intelligent_compute::save_intelligent_amount_source,
             intelligent_compute::delete_intelligent_amount_source,
+            intelligent_compute::export_intelligent_amount_source_package,
+            intelligent_compute::select_and_read_intelligent_amount_source_package,
             workspace::get_workspace_state,
             workspace::inspect_workspace_path,
             workspace::select_workspace_folder,

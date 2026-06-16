@@ -81,11 +81,24 @@ const {
 } = loadTs("ictExport.ts");
 const {
   applySuccessfulAiComputeSync,
+  buildIntelligentComputeSyncLock,
   clearAiComputeControlForMappingChange,
   getAiComputeSyncFingerprint,
   reconcileAiComputeBlueprintFromIct,
   restoreAiComputeFormulaControl,
 } = loadTs("ictSync.ts");
+const {
+  canDeleteIntelligentAmountSource,
+  getDefaultCreateAmountSourceBaseMode,
+  isH200BaselineAmountSource,
+} = loadTs("amountSources.ts");
+const {
+  AMOUNT_SOURCE_PACKAGE_KIND,
+  buildAmountSourcePackage,
+  buildBlueprintFromAmountSourcePackage,
+  getDefaultImportedAmountSourceName,
+  normalizeAmountSourcePackage,
+} = loadTs("amountSourceExchange.ts");
 const {
   finalizeIctInputWithFundingPlans,
 } = loadTsFile(path.join(__dirname, "../src/lib/ictCalculationInput.ts"));
@@ -168,6 +181,147 @@ navigation.getState().openIctFromIntelligentCompute({
 navigation.getState().clearContext();
 assert.equal(navigation.getState().activeProjectId, null);
 assert.equal(navigation.getState().ictOrigin, null);
+
+// 金额来源管理：H200 标准作为默认基底和受保护基准，普通来源可删除。
+const h200BaselineSource = {
+  id: "source-h200",
+  description: null,
+  metadata: { sourceRole: "h200_baseline" },
+  sourceVersion: 1,
+  createdAt: "2026-06-01T00:00:00Z",
+};
+const legacyH200BaselineSource = {
+  id: "source-h200-legacy",
+  description: "智算项目默认金额来源",
+  metadata: {},
+  sourceVersion: 1,
+  createdAt: "2026-06-01T00:00:00Z",
+};
+const normalAmountSource = {
+  id: "source-quote",
+  description: "普通报价来源",
+  metadata: {},
+  sourceVersion: 4,
+  createdAt: "2026-06-02T00:00:00Z",
+};
+const h200PresetCopySource = {
+  id: "source-h200-copy",
+  description: "64 台 H200、5 年服务期的标准报价预设。金额口径为元、含税。",
+  metadata: {},
+  sourceVersion: 2,
+  createdAt: "2026-06-03T00:00:00Z",
+};
+assert.equal(getDefaultCreateAmountSourceBaseMode(), "h200");
+assert.equal(isH200BaselineAmountSource(h200BaselineSource), true);
+assert.equal(isH200BaselineAmountSource(legacyH200BaselineSource), true);
+assert.equal(isH200BaselineAmountSource(normalAmountSource), false);
+assert.equal(canDeleteIntelligentAmountSource([normalAmountSource], normalAmountSource.id), false);
+assert.equal(
+  canDeleteIntelligentAmountSource([h200BaselineSource, normalAmountSource], h200BaselineSource.id),
+  false,
+);
+assert.equal(
+  canDeleteIntelligentAmountSource([h200BaselineSource, normalAmountSource], normalAmountSource.id),
+  true,
+);
+assert.equal(
+  canDeleteIntelligentAmountSource([h200BaselineSource, h200PresetCopySource], h200PresetCopySource.id),
+  true,
+);
+const staleSyncLock = buildIntelligentComputeSyncLock(
+  { projectId: "project-1", syncRevision: 2 },
+  [h200BaselineSource, normalAmountSource],
+);
+assert.equal(staleSyncLock.expectedSyncRevision, 2);
+assert.equal(
+  JSON.stringify(staleSyncLock.sourceVersions),
+  JSON.stringify({ "source-h200": 1, "source-quote": 4 }),
+);
+const returnedSyncLock = buildIntelligentComputeSyncLock(
+  { projectId: "project-1", syncRevision: 3 },
+  [h200BaselineSource, normalAmountSource],
+);
+assert.equal(returnedSyncLock.expectedSyncRevision, 3);
+
+// 金额来源交换包：只导出当前来源业务结构，不携带项目身份、版本或同步控制状态。
+const h200ForExchange = createH200Blueprint();
+const exchangeBlueprint = {
+  ...h200ForExchange,
+  revenueItems: h200ForExchange.revenueItems.map((lineItem, index) => index === 0
+    ? {
+        ...lineItem,
+        formulaControlStatus: "ict_override",
+        ictOverride: {
+          ictSubjectCode: "revenue_it_service",
+          amountInclTax: 123,
+          taxRate: 0.06,
+          yearlyAmounts: [123, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          modifiedAt: "2026-06-16T00:00:00Z",
+        },
+        ictControlMessage: "历史 ICT 覆盖",
+      }
+    : lineItem),
+  syncState: { revision: 9, status: "synced", subjects: {} },
+};
+const sourceForExchange = {
+  id: "source-h200",
+  projectId: "project-source",
+  name: "H200 标准",
+  description: "来源描述",
+  enabled: true,
+  sourceVersion: 7,
+  metadata: { sourceRole: "h200_baseline", scenarioId: "old-scenario", customTag: "keep" },
+  parameterGroups: exchangeBlueprint.parameterGroups,
+  parameters: exchangeBlueprint.parameters,
+  revenueItems: exchangeBlueprint.revenueItems,
+  costItems: exchangeBlueprint.costItems,
+  mappings: exchangeBlueprint.mappings,
+  calculationSnapshot: {
+    syncState: { revision: 9 },
+    formalResult: { npv: 1 },
+    summary: { totalRevenue: 1 },
+  },
+  createdAt: "2026-06-01T00:00:00Z",
+  updatedAt: "2026-06-02T00:00:00Z",
+};
+const exportedPackage = buildAmountSourcePackage(sourceForExchange, exchangeBlueprint, {
+  projectId: "project-source",
+  projectYears: 5,
+  discountRate: 0.05,
+});
+assert.equal(exportedPackage.kind, AMOUNT_SOURCE_PACKAGE_KIND);
+assert.equal(Object.prototype.hasOwnProperty.call(exportedPackage.source, "projectId"), false);
+assert.equal(Object.prototype.hasOwnProperty.call(exportedPackage.source, "sourceVersion"), false);
+assert.equal(exportedPackage.source.metadata.sourceRole, undefined);
+assert.equal(exportedPackage.source.metadata.scenarioId, undefined);
+assert.equal(exportedPackage.source.metadata.customTag, "keep");
+assert.equal(exportedPackage.source.calculationSnapshot.syncState, undefined);
+assert.equal(exportedPackage.source.calculationSnapshot.formalResult, undefined);
+assert.equal(exportedPackage.source.revenueItems[0].formulaControlStatus, undefined);
+assert.equal(exportedPackage.source.revenueItems[0].ictOverride, undefined);
+assert.equal(exportedPackage.source.revenueItems[0].ictControlMessage, undefined);
+const normalizedPackage = normalizeAmountSourcePackage(exportedPackage);
+assert.equal(getDefaultImportedAmountSourceName(normalizedPackage), `${exportedPackage.source.name}（导入）`);
+const importedBlueprint = buildBlueprintFromAmountSourcePackage(normalizedPackage, {
+  sourceId: "source-imported",
+  name: "导入副本",
+  projectYears: 3,
+  discountRate: 0.08,
+});
+assert.equal(importedBlueprint.id, "source-imported");
+assert.equal(importedBlueprint.scenarioId, "source-imported");
+assert.equal(importedBlueprint.name, "导入副本");
+assert.equal(getAiComputeProjectCycleYears(importedBlueprint.parameters), 3);
+assert.equal(getAiComputeDiscountRatePercent(importedBlueprint.parameters), 8);
+assert.equal(importedBlueprint.syncState, undefined);
+const importedWithCurrentProjectSettings = buildBlueprintFromAmountSourcePackage(normalizedPackage, {
+  sourceId: "source-imported-current-project",
+  name: "保留当前项目参数",
+  projectYears: 4,
+  discountRate: 0.06,
+});
+assert.equal(getAiComputeProjectCycleYears(importedWithCurrentProjectSettings.parameters), 4);
+assert.equal(getAiComputeDiscountRatePercent(importedWithCurrentProjectSettings.parameters), 6);
 
 // 1. 参数 × 参数 × 固定值。
 const multiplyResult = evaluateQuoteFormula(expression([

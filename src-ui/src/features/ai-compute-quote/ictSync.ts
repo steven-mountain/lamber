@@ -5,6 +5,8 @@ import type {
   AiComputeQuoteBlueprint,
   AiComputeQuoteLineItem,
   AiComputeSyncedSubjectSnapshot,
+  IntelligentAmountSource,
+  IntelligentComputeProjectState,
 } from "./types";
 
 type UnknownRecord = Record<string, any>;
@@ -32,6 +34,16 @@ export function getAiComputeSyncFingerprint(blueprint: AiComputeQuoteBlueprint) 
     .map(({ groupId: _groupId, isKey: _isKey, category: _category, ...parameter }) => parameter)
     .sort((left, right) => left.id.localeCompare(right.id));
   return JSON.stringify({ ...businessState, parameters: businessParameters });
+}
+
+export function buildIntelligentComputeSyncLock(
+  projectState: IntelligentComputeProjectState,
+  amountSources: IntelligentAmountSource[],
+) {
+  return {
+    expectedSyncRevision: projectState.syncRevision,
+    sourceVersions: Object.fromEntries(amountSources.map(source => [source.id, source.sourceVersion])),
+  };
 }
 
 export function applySuccessfulAiComputeSync(

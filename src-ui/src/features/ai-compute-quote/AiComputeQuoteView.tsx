@@ -7,6 +7,7 @@ import { useProjectStore } from "../../store/useProjectStore";
 import { useWorkspaceStore } from "../../store/useWorkspaceStore";
 import { projectService, type IctResult, type Project } from "../../utils/projectService";
 import { domainSaveService } from "../../services/domainSaveService";
+import { intelligentComputeService } from "../../services/intelligentComputeService";
 import { finalizeIctInputWithFundingPlans } from "../../lib/ictCalculationInput";
 import {
   buildAiComputeQuoteOutput,
@@ -34,12 +35,22 @@ import {
 import { PARAMETER_GROUP_IDS } from "./parameterLayout";
 import { createH200Blueprint } from "./presets";
 import {
+  buildAmountSourcePackage,
+  getDefaultImportedAmountSourceName,
+  normalizeAmountSourcePackage,
+  sanitizeAmountSourceFileName,
+  type AiComputeAmountSourcePackage,
+} from "./amountSourceExchange";
+import {
   buildBlueprintForAmountSource,
+  canDeleteIntelligentAmountSource,
   type CreateAmountSourceBaseMode,
   type CreateAmountSourceRequest,
+  getDefaultCreateAmountSourceBaseMode,
+  isH200BaselineAmountSource,
   useAiComputeQuoteStore,
 } from "./store";
-import { getAiComputeSyncFingerprint } from "./ictSync";
+import { buildIntelligentComputeSyncLock, getAiComputeSyncFingerprint } from "./ictSync";
 import type {
   AiComputeLineItemFundingPlanMode,
   AiComputeQuoteLineItem,
@@ -207,6 +218,8 @@ export default function AiComputeQuoteView() {
 	  const hasLoadedAutoSyncBaselineRef = useRef(false);
   const [activeTab, setActiveTab] = useState<QuoteWorkspaceTab>("parameters");
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [showSaveAsModal, setShowSaveAsModal] = useState(false);
+  const [pendingImportPackage, setPendingImportPackage] = useState<AiComputeAmountSourcePackage | null>(null);
   const [sensitivityParameterId, setSensitivityParameterId] = useState("gpu-service-price");
   const [sensitivityMin, setSensitivityMin] = useState(72000);
   const [sensitivityMax, setSensitivityMax] = useState(108000);
@@ -249,7 +262,10 @@ export default function AiComputeQuoteView() {
   useEffect(() => {
     if (!projectId || !store.isDirty || store.isLoading || store.isSaving) return;
     const timer = window.setTimeout(() => {
-      void useAiComputeQuoteStore.getState().save(projectId);
+      const latest = useAiComputeQuoteStore.getState();
+      if (latest.projectId === projectId && latest.isDirty && !latest.isLoading && !latest.isSaving) {
+        void latest.save(projectId);
+      }
     }, 650);
     return () => window.clearTimeout(timer);
   }, [projectId, store.blueprint, store.isDirty, store.isLoading, store.isSaving]);
@@ -348,6 +364,72 @@ export default function AiComputeQuoteView() {
 	    return useAiComputeQuoteStore.getState().save(projectId);
 	  }, [projectId]);
 
+	  const clearSyncPreview = useCallback(() => {
+	    setIctExportPreview(null);
+	    setIctExportError(null);
+	    setShowSyncDetails(false);
+	    setSyncStatus(status => status === "syncing" ? status : "idle");
+	  }, []);
+
+  const saveCurrentAsAmountSource = useCallback(async (name: string) => {
+    const ok = await useAiComputeQuoteStore.getState().saveCurrentAsAmountSource(name);
+    if (ok) {
+      clearSyncPreview();
+      setShowSaveAsModal(false);
+    }
+    return ok;
+  }, [clearSyncPreview]);
+
+  const exportCurrentAmountSource = useCallback(async () => {
+    const latest = useAiComputeQuoteStore.getState();
+    if (!projectId || !latest.projectState) {
+      setIctExportError("请先打开智算项目后再导出金额来源。");
+      return;
+    }
+    const source = latest.amountSources.find(item => item.id === latest.activeAmountSourceId);
+    if (!source) {
+      setIctExportError("当前金额来源不存在，无法导出。");
+      return;
+    }
+    try {
+      const pkg = buildAmountSourcePackage(source, latest.blueprint, latest.projectState);
+      const exportedPath = await intelligentComputeService.exportAmountSourcePackage(
+        projectId,
+        pkg,
+        sanitizeAmountSourceFileName(`智算金额来源-${pkg.source.name}`),
+      );
+      if (exportedPath) {
+        window.alert(`金额来源已导出：${exportedPath}`);
+      }
+      setIctExportError(null);
+    } catch (error) {
+      setIctExportError(`金额来源导出失败：${String(error)}`);
+    }
+  }, [projectId]);
+
+  const selectImportAmountSourcePackage = useCallback(async () => {
+    try {
+      const raw = await intelligentComputeService.selectAndReadAmountSourcePackage();
+      if (!raw) return;
+      setPendingImportPackage(normalizeAmountSourcePackage(raw));
+      setIctExportError(null);
+    } catch (error) {
+      setIctExportError(`金额来源导入文件读取失败：${String(error)}`);
+    }
+  }, []);
+
+  const confirmImportAmountSourcePackage = useCallback(async (
+    pkg: AiComputeAmountSourcePackage,
+    options: { name: string; applyProjectSettings: boolean },
+  ) => {
+    const ok = await useAiComputeQuoteStore.getState().importAmountSourcePackage(pkg, options);
+    if (ok) {
+      clearSyncPreview();
+      setPendingImportPackage(null);
+    }
+    return ok;
+  }, [clearSyncPreview]);
+
 	  const syncToIct = useCallback(async (options: {
 	    confirmed?: boolean;
 	    silent?: boolean;
@@ -417,21 +499,23 @@ export default function AiComputeQuoteView() {
             sourceLineItemIds: row.sourceLineItemIds,
           }]),
       );
+      const syncLock = buildIntelligentComputeSyncLock(latest.projectState, latest.amountSources);
       const result = await domainSaveService.syncIntelligentComputeToIct(projectId, {
-        expectedSyncRevision: latest.projectState.syncRevision,
-        sourceVersions: Object.fromEntries(latest.amountSources.map(source => [source.id, source.sourceVersion])),
+        expectedSyncRevision: syncLock.expectedSyncRevision,
+        sourceVersions: syncLock.sourceVersions,
         controlledSubjects,
         lifecycleState: payloads.lifecycleState,
         cashflowState: payloads.cashflowState,
         calculationInput: finalized.input,
       });
 	      if (requestId !== syncRequestRef.current) return;
-	      setIctExportPreview(preview);
+	      useAiComputeQuoteStore.getState().applyProjectState(result.projectState);
+	      setIctExportPreview(null);
 	      setIctResult(result.ictResult);
 	      setSyncStatus("synced");
 	      setShowSyncDetails(false);
+	      setIctExportError(null);
 	      lastAutoSyncFingerprintRef.current = autoFingerprint || buildAutoSyncFingerprint();
-	      await useAiComputeQuoteStore.getState().load(projectId);
 	      return true;
 	    } catch (error) {
 	      if (requestId !== syncRequestRef.current) return;
@@ -525,9 +609,16 @@ export default function AiComputeQuoteView() {
 	              variant="outline"
 	              disabled={!projectId || syncStatus === "syncing"}
 	              onClick={() => void syncToIct()}
-	            >
+            >
               <AppIcon name={syncStatus === "syncing" ? "loading" : "reverse"} className={syncStatus === "syncing" ? "animate-spin" : ""} />
               {syncStatus === "syncing" ? "同步中..." : "同步到 ICT"}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!projectId || store.isSaving}
+              onClick={() => setShowSaveAsModal(true)}
+            >
+              <AppIcon name="copy" />另存为来源
             </Button>
             <Button onClick={() => void store.save(projectId)}>
               <AppIcon name="save" />保存金额来源
@@ -565,11 +656,37 @@ export default function AiComputeQuoteView() {
 	                </button>
                 <button
                   type="button"
-                  disabled={store.amountSources.length <= 1}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
+                  onClick={() => {
+                    void exportCurrentAmountSource();
+                    setMoreMenuOpen(false);
+                  }}
+                >
+                  <AppIcon name="exportReport" />导出当前来源
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
+                  onClick={() => {
+                    void selectImportAmountSourcePackage();
+                    setMoreMenuOpen(false);
+                  }}
+                >
+                  <AppIcon name="importExcel" />导入来源
+                </button>
+                <button
+                  type="button"
+                  disabled={!canDeleteIntelligentAmountSource(store.amountSources, store.activeAmountSourceId)}
                   className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-45"
                   onClick={() => {
-                    if (store.activeAmountSourceId && window.confirm("确认删除当前智算金额来源吗？")) {
-                      void store.deleteAmountSource(store.activeAmountSourceId);
+                    if (
+                      store.activeAmountSourceId
+                      && canDeleteIntelligentAmountSource(store.amountSources, store.activeAmountSourceId)
+                      && window.confirm("确认删除当前智算金额来源吗？")
+                    ) {
+                      void (async () => {
+                        if (await store.deleteAmountSource(store.activeAmountSourceId!)) clearSyncPreview();
+                      })();
                     }
                     setMoreMenuOpen(false);
                   }}
@@ -647,7 +764,12 @@ export default function AiComputeQuoteView() {
             <select
               className="min-w-0 flex-1 bg-transparent text-sm font-bold text-foreground outline-none"
               value={store.activeAmountSourceId || ""}
-              onChange={event => void store.setActiveAmountSource(event.target.value)}
+              onChange={event => {
+                const nextSourceId = event.target.value;
+                void (async () => {
+                  if (await store.setActiveAmountSource(nextSourceId)) clearSyncPreview();
+                })();
+              }}
             >
               {store.amountSources.map(source => (
                 <option key={source.id} value={source.id}>
@@ -756,6 +878,24 @@ export default function AiComputeQuoteView() {
         </div>
       </main>
 
+      {showSaveAsModal && (
+        <SaveAsAmountSourceModal
+          currentName={store.blueprint.name}
+          busy={store.isSaving}
+          onClose={() => setShowSaveAsModal(false)}
+          onSave={saveCurrentAsAmountSource}
+        />
+      )}
+      {pendingImportPackage && store.projectState && (
+        <ImportAmountSourceModal
+          pkg={pendingImportPackage}
+          currentProjectYears={store.projectState.projectYears}
+          currentDiscountRate={store.projectState.discountRate}
+          busy={store.isSaving}
+          onClose={() => setPendingImportPackage(null)}
+          onImport={confirmImportAmountSourcePackage}
+        />
+      )}
       {showOutput && (
         <OutputPackageModal
           onClose={() => setShowOutput(false)}
@@ -771,9 +911,21 @@ export default function AiComputeQuoteView() {
 	          activeSourceId={store.activeAmountSourceId}
 	          onClose={() => setShowAmountSourceManager(false)}
 	          onRename={renameAmountSource}
+            onSelect={async sourceId => {
+              const ok = await useAiComputeQuoteStore.getState().setActiveAmountSource(sourceId);
+              if (ok) clearSyncPreview();
+              return ok;
+            }}
 	          onCreate={async request => {
-	            return useAiComputeQuoteStore.getState().createAmountSource(request);
+	            const ok = await useAiComputeQuoteStore.getState().createAmountSource(request);
+              if (ok) clearSyncPreview();
+              return ok;
 	          }}
+            onDelete={async sourceId => {
+              const ok = await useAiComputeQuoteStore.getState().deleteAmountSource(sourceId);
+              if (ok) clearSyncPreview();
+              return ok;
+            }}
 	        />
 	      )}
 	      {showSyncDetails && ictExportPreview && (
@@ -797,31 +949,194 @@ export default function AiComputeQuoteView() {
   );
 	}
 
+function SaveAsAmountSourceModal({
+  currentName,
+  busy,
+  onClose,
+  onSave,
+}: {
+  currentName: string;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (name: string) => Promise<boolean>;
+}) {
+  const [name, setName] = useState(`${currentName || "当前金额来源"} 副本`);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    const nextName = name.trim();
+    if (!nextName) {
+      setError("请填写金额来源名称。");
+      return;
+    }
+    setError(null);
+    const ok = await onSave(nextName);
+    if (!ok) {
+      setError("当前测算另存失败，请检查项目状态后重试。");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-xl bg-card p-5 shadow-xl ring-1 ring-border/60">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-section-title font-bold">当前测算另存为来源</h2>
+            <p className="text-caption text-secondary-foreground">复制当前画布，不覆盖原金额来源。</p>
+          </div>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>关闭</Button>
+        </div>
+        <div className="rounded-lg bg-muted/45 p-3.5">
+          <div className="mb-2 text-caption font-extrabold text-foreground">新来源名称</div>
+          <Input
+            value={name}
+            disabled={busy}
+            onChange={event => setName(event.target.value)}
+            className="bg-card"
+          />
+        </div>
+        {error && (
+          <div className="mt-3 rounded-lg bg-destructive-soft px-3 py-2 text-caption font-semibold text-destructive">
+            {error}
+          </div>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" disabled={busy} onClick={onClose}>取消</Button>
+          <Button disabled={busy || !name.trim()} onClick={() => void handleSave()}>
+            <AppIcon name={busy ? "loading" : "copy"} className={busy ? "animate-spin" : ""} />
+            {busy ? "另存中..." : "另存为来源"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ImportAmountSourceModal({
+  pkg,
+  currentProjectYears,
+  currentDiscountRate,
+  busy,
+  onClose,
+  onImport,
+}: {
+  pkg: AiComputeAmountSourcePackage;
+  currentProjectYears: number;
+  currentDiscountRate: number;
+  busy: boolean;
+  onClose: () => void;
+  onImport: (pkg: AiComputeAmountSourcePackage, options: { name: string; applyProjectSettings: boolean }) => Promise<boolean>;
+}) {
+  const [name, setName] = useState(getDefaultImportedAmountSourceName(pkg));
+  const [applyProjectSettings, setApplyProjectSettings] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleImport = async () => {
+    const nextName = name.trim();
+    if (!nextName) {
+      setError("请填写导入后的金额来源名称。");
+      return;
+    }
+    setError(null);
+    const ok = await onImport(pkg, { name: nextName, applyProjectSettings });
+    if (!ok) {
+      setError("金额来源导入失败，请检查当前项目状态后重试。");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-xl rounded-xl bg-card p-5 shadow-xl ring-1 ring-border/60">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-section-title font-bold">导入金额来源</h2>
+            <p className="text-caption text-secondary-foreground">导入后生成一个新来源，并设为当前同步来源。</p>
+          </div>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>关闭</Button>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg bg-muted/45 p-3.5">
+            <div className="text-caption font-extrabold text-foreground">文件来源</div>
+            <div className="mt-2 text-sm font-bold text-foreground">{pkg.source.name}</div>
+            <div className="mt-1 text-caption text-secondary-foreground">
+              导出时间：{new Date(pkg.exportedAt).toLocaleString("zh-CN")}
+            </div>
+          </div>
+          <div className="rounded-lg bg-muted/45 p-3.5">
+            <div className="text-caption font-extrabold text-foreground">项目参数</div>
+            <div className="mt-2 space-y-1 text-caption text-secondary-foreground">
+              <div>当前项目：{currentProjectYears} 年 / {formatNumber(currentDiscountRate * 100)}%</div>
+              <div>导入文件：{pkg.projectSettings.projectYears} 年 / {formatNumber(pkg.projectSettings.discountRate * 100)}%</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 rounded-lg bg-muted/45 p-3.5">
+          <div className="mb-2 text-caption font-extrabold text-foreground">导入后名称</div>
+          <Input
+            value={name}
+            disabled={busy}
+            onChange={event => setName(event.target.value)}
+            className="bg-card"
+          />
+          <label className="mt-3 flex items-center gap-2 text-caption font-semibold text-secondary-foreground">
+            <input
+              type="checkbox"
+              checked={applyProjectSettings}
+              disabled={busy}
+              onChange={event => setApplyProjectSettings(event.target.checked)}
+            />
+            使用导入文件的项目周期和折现率
+          </label>
+        </div>
+
+        {error && (
+          <div className="mt-3 rounded-lg bg-destructive-soft px-3 py-2 text-caption font-semibold text-destructive">
+            {error}
+          </div>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" disabled={busy} onClick={onClose}>取消</Button>
+          <Button disabled={busy || !name.trim()} onClick={() => void handleImport()}>
+            <AppIcon name={busy ? "loading" : "importExcel"} className={busy ? "animate-spin" : ""} />
+            {busy ? "导入中..." : "导入为新来源"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AmountSourceManagerModal({
   sources,
   activeSourceId,
   onClose,
   onRename,
+  onSelect,
   onCreate,
+  onDelete,
 }: {
   sources: IntelligentAmountSource[];
   activeSourceId: string | null;
   onClose: () => void;
   onRename: (name: string) => Promise<boolean>;
+  onSelect: (sourceId: string) => Promise<boolean>;
   onCreate: (request: CreateAmountSourceRequest) => Promise<boolean>;
+  onDelete: (sourceId: string) => Promise<boolean>;
 }) {
   const activeSource = sources.find(source => source.id === activeSourceId) || null;
   const [renameName, setRenameName] = useState(activeSource?.name || "");
   const [newName, setNewName] = useState("");
   const [baseValue, setBaseValue] = useState<CreateAmountSourceBaseMode | `source:${string}`>(
-    activeSource ? "current" : "blank",
+    getDefaultCreateAmountSourceBaseMode(),
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     setRenameName(activeSource?.name || "");
-    setBaseValue(activeSource ? "current" : "blank");
+    setBaseValue(getDefaultCreateAmountSourceBaseMode());
   }, [activeSource?.id, activeSource?.name]);
 
   const resolveBase = (): Pick<CreateAmountSourceRequest, "baseMode" | "baseSourceId"> => {
@@ -871,9 +1186,37 @@ function AmountSourceManagerModal({
     setError("金额来源创建失败，请检查当前来源是否已保存。");
   };
 
+  const handleSelect = async (sourceId: string) => {
+    if (sourceId === activeSourceId) return;
+    setBusy(true);
+    setError(null);
+    const ok = await onSelect(sourceId);
+    setBusy(false);
+    if (!ok) {
+      setError("切换金额来源失败，请先检查当前来源是否已保存。");
+    }
+  };
+
+  const handleDelete = async (source: IntelligentAmountSource) => {
+    if (!canDeleteIntelligentAmountSource(sources, source.id)) {
+      setError(isH200BaselineAmountSource(source, sources)
+        ? "H200 标准基准来源不能删除，可复制后基于副本报价。"
+        : "当前金额来源不能删除。");
+      return;
+    }
+    if (!window.confirm(`确认删除金额来源“${source.name}”吗？`)) return;
+    setBusy(true);
+    setError(null);
+    const ok = await onDelete(source.id);
+    setBusy(false);
+    if (!ok) {
+      setError("金额来源删除失败，请稍后重试。");
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-xl rounded-xl bg-card p-5 shadow-xl ring-1 ring-border/60">
+      <div className="w-full max-w-2xl rounded-xl bg-card p-5 shadow-xl ring-1 ring-border/60">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h2 className="text-section-title font-bold">金额来源管理</h2>
@@ -889,6 +1232,61 @@ function AmountSourceManagerModal({
         )}
 
         <section className="rounded-lg bg-muted/45 p-3.5">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="text-caption font-extrabold text-foreground">来源列表</div>
+            <div className="text-caption font-semibold text-secondary-foreground">
+              当前同步来源：{activeSource?.name || "--"}
+            </div>
+          </div>
+          <div className="space-y-2">
+            {sources.map(source => {
+              const active = source.id === activeSourceId;
+              const protectedBaseline = isH200BaselineAmountSource(source, sources);
+              const canDelete = canDeleteIntelligentAmountSource(sources, source.id);
+              return (
+                <div key={source.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-card px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="truncate text-sm font-bold text-foreground">{source.name}</span>
+                      {active && (
+                        <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-bold text-primary">
+                          当前来源
+                        </span>
+                      )}
+                      {protectedBaseline && (
+                        <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-bold text-secondary-foreground">
+                          H200 基准
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 text-caption text-secondary-foreground">
+                      {protectedBaseline ? "系统保护的标准基准，可复制但不可删除" : "普通报价来源，可设为当前或删除"}
+                    </div>
+                  </div>
+                  <Button
+                    variant={active ? "secondary" : "outline"}
+                    size="sm"
+                    disabled={busy || active}
+                    onClick={() => void handleSelect(source.id)}
+                  >
+                    <AppIcon name={active ? "check" : "reverse"} />{active ? "已选中" : "设为当前"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy || !canDelete}
+                    title={protectedBaseline ? "H200 标准基准来源不可删除" : sources.length <= 1 ? "至少保留一个金额来源" : "删除来源"}
+                    onClick={() => void handleDelete(source)}
+                  >
+                    <AppIcon name="delete" />删除
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="mt-3 rounded-lg bg-muted/45 p-3.5">
           <div className="mb-2 text-caption font-extrabold text-foreground">当前来源名称</div>
           <div className="flex gap-2">
             <Input
@@ -919,8 +1317,8 @@ function AmountSourceManagerModal({
               onChange={event => setBaseValue(event.target.value as typeof baseValue)}
               className="h-10 rounded-md bg-card px-3 text-sm font-semibold outline-none ring-1 ring-input focus:ring-ring"
             >
-              <option value="blank">空白来源</option>
               <option value="h200">H200 标准</option>
+              <option value="blank">空白来源</option>
               {activeSource && <option value="current">当前来源</option>}
               {sources.map(source => (
                 <option key={source.id} value={`source:${source.id}`}>
@@ -2133,7 +2531,7 @@ function IctExportConfirmModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/25 p-6 backdrop-blur-sm">
-      <div className="flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-card shadow-xl">
+      <div className="flex max-h-[88vh] w-full max-w-[1480px] flex-col overflow-hidden rounded-xl bg-card shadow-xl">
         <div className="shrink-0 p-6 pb-4">
           <h2 className="text-page-title">ICT 同步明细</h2>
           <p className="mt-1 text-body text-secondary-foreground">
@@ -2164,53 +2562,72 @@ function IctExportConfirmModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto px-6">
-          <div className="min-w-[1100px] overflow-hidden rounded-lg bg-muted/40">
-            <table className="w-full text-left text-sm">
+          <div
+            className="overflow-hidden rounded-lg bg-muted/40"
+            style={{ minWidth: showAllYears ? 2160 : 1360 }}
+          >
+            <table className="w-full table-fixed text-left text-sm">
+              <colgroup>
+                <col className="w-[52px]" />
+                <col className="w-[170px]" />
+                <col className="w-[120px]" />
+                <col className="w-[120px]" />
+                <col className="w-[128px]" />
+                {Array.from({ length: visibleYears }, (_, index) => (
+                  <col key={index} className="w-[96px]" />
+                ))}
+                {!showAllYears && <col className="w-[150px]" />}
+                <col className="w-[108px]" />
+                <col className="w-[230px]" />
+                <col className="w-[240px]" />
+              </colgroup>
               <thead className="text-caption text-secondary-foreground">
                 <tr>
-                  <th className="px-3">类型</th>
-                  <th className="px-3">ICT 科目</th>
-                  <th className="px-3">原金额</th>
-                  <th className="px-3">智算金额</th>
-                  <th className="px-3">写入后金额</th>
+                  <th className="px-3 py-3">类型</th>
+                  <th className="px-3 py-3">ICT 科目</th>
+                  <th className="px-3 py-3">原金额</th>
+                  <th className="px-3 py-3">智算金额</th>
+                  <th className="px-3 py-3">写入后金额</th>
                   {Array.from({ length: visibleYears }, (_, index) => (
-                    <th key={index} className="px-3">第{index + 1}年</th>
+                    <th key={index} className="px-3 py-3">第{index + 1}年</th>
                   ))}
-                  {!showAllYears && <th className="px-3">其余年度</th>}
-                  <th className="px-3">计划模式</th>
-                  <th className="px-3">来源项</th>
-                  <th className="px-3">状态</th>
+                  {!showAllYears && <th className="px-3 py-3">其余年度</th>}
+                  <th className="px-3 py-3">计划模式</th>
+                  <th className="px-3 py-3">来源项</th>
+                  <th className="px-3 py-3">状态</th>
                 </tr>
               </thead>
               <tbody>
                 {preview.rows.map(row => (
                   <tr key={`${row.side}:${row.ictSubjectCode}`} className="odd:bg-card/70">
-                    <td className="px-3">{row.side === "revenue" ? "收入" : "成本"}</td>
-                    <td className="px-3 font-semibold">{row.ictSubjectName}</td>
-                    <td className="numeric-value px-3">{formatWan(row.originalAmount)} 万元</td>
-                    <td className="numeric-value px-3 text-primary">{formatWan(row.quoteAmount)} 万元</td>
-                    <td className="numeric-value px-3 font-bold">{formatWan(row.writtenAmount)} 万元</td>
+                    <td className="px-3 py-4 align-top">{row.side === "revenue" ? "收入" : "成本"}</td>
+                    <td className="px-3 py-4 align-top font-semibold">{row.ictSubjectName}</td>
+                    <td className="numeric-value px-3 py-4 align-top">{formatWan(row.originalAmount)} 万元</td>
+                    <td className="numeric-value px-3 py-4 align-top text-primary">{formatWan(row.quoteAmount)} 万元</td>
+                    <td className="numeric-value px-3 py-4 align-top font-bold">{formatWan(row.writtenAmount)} 万元</td>
                     {row.yearlyAmounts.slice(0, visibleYears).map((amount, index) => (
-                      <td key={index} className="numeric-value px-3">{formatWan(amount)}</td>
+                      <td key={index} className="numeric-value px-3 py-4 align-top">{formatWan(amount)}</td>
                     ))}
                     {!showAllYears && (
-                      <td className="px-3 text-caption text-secondary-foreground">
+                      <td className="px-3 py-4 align-top text-caption text-secondary-foreground">
                         第3-10年合计 {formatWan(row.yearlyAmounts.slice(2).reduce((sum, amount) => sum + amount, 0))} 万元
                       </td>
                     )}
-                    <td className="px-3 text-caption text-secondary-foreground">
+                    <td className="px-3 py-4 align-top text-caption text-secondary-foreground">
                       {row.syncStatus === "released_mapping"
                         ? "释放旧计划"
                         : row.syncStatus === "zeroed_absent"
                           ? "智算未输出"
-                        : row.fundingPlanModes.length > 0
-                          ? row.fundingPlanModes.map(fundingModeLabel).join("、")
-                          : "--"}
+                          : row.fundingPlanModes.length > 0
+                            ? row.fundingPlanModes.map(fundingModeLabel).join("、")
+                            : "--"}
                     </td>
-                    <td className="px-3 text-caption text-secondary-foreground">
-                      {row.sourceLineItemNames.join("、") || "--"}
+                    <td className="px-3 py-4 align-top text-caption text-secondary-foreground">
+                      <div className="whitespace-normal break-words leading-5">
+                        {row.sourceLineItemNames.join("、") || "--"}
+                      </div>
                     </td>
-                    <td className="px-3 text-caption">
+                    <td className="px-3 py-4 align-top text-caption">
                       <div className={
                         row.syncStatus === "ready"
                           ? "text-success-foreground"
@@ -2218,19 +2635,25 @@ function IctExportConfirmModal({
                             ? "text-destructive"
                             : "text-warning-foreground"
                       }>
-                        {row.syncStatus === "ready"
-                          ? row.originalAmount === row.writtenAmount ? "金额一致" : "将覆盖"
-                          : row.syncStatus === "zeroed_error"
-                            ? "异常写零"
-                            : row.syncStatus === "zeroed_absent"
-                              ? "智算无输出，写 0"
-                            : row.syncStatus === "paused_override"
-                              ? "ICT 人工覆盖"
-                              : row.syncStatus === "released_mapping"
-                                ? "释放旧映射"
-                                : "需重载"}
+                        <span className="whitespace-nowrap">
+                          {row.syncStatus === "ready"
+                            ? row.originalAmount === row.writtenAmount ? "金额一致" : "将覆盖"
+                            : row.syncStatus === "zeroed_error"
+                              ? "异常写零"
+                              : row.syncStatus === "zeroed_absent"
+                                ? "智算无输出，写 0"
+                              : row.syncStatus === "paused_override"
+                                ? "ICT 人工覆盖"
+                                : row.syncStatus === "released_mapping"
+                                  ? "释放旧映射"
+                                  : "需重载"}
+                        </span>
                       </div>
-                      {row.syncMessages?.map(message => <div key={message}>{message}</div>)}
+                      {row.syncMessages?.map(message => (
+                        <div key={message} className="mt-1 whitespace-normal break-words leading-5">
+                          {message}
+                        </div>
+                      ))}
                     </td>
                   </tr>
                 ))}

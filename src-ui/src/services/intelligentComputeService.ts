@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { AiComputeAmountSourcePackage } from "../features/ai-compute-quote/amountSourceExchange";
 import type {
   IntelligentAmountSource,
   IntelligentComputeProjectData,
@@ -38,5 +39,21 @@ export const intelligentComputeService = {
 
   deleteAmountSource(projectId: string, amountSourceId: string): Promise<void> {
     return invoke<void>("delete_intelligent_amount_source", { projectId, amountSourceId });
+  },
+
+  exportAmountSourcePackage(
+    projectId: string,
+    packagePayload: AiComputeAmountSourcePackage,
+    defaultFileName: string,
+  ): Promise<string | null> {
+    return invoke<string | null>("export_intelligent_amount_source_package", {
+      projectId,
+      packagePayload,
+      defaultFileName,
+    });
+  },
+
+  selectAndReadAmountSourcePackage(): Promise<AiComputeAmountSourcePackage | null> {
+    return invoke<AiComputeAmountSourcePackage | null>("select_and_read_intelligent_amount_source_package");
   },
 };

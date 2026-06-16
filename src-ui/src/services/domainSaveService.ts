@@ -7,6 +7,7 @@ import type {
   Project,
   ProjectType,
 } from "../utils/projectService";
+import type { IntelligentComputeProjectState } from "../features/ai-compute-quote/types";
 
 export interface ProjectDetailPatch {
   name?: string;
@@ -52,6 +53,7 @@ export interface AiComputeRealtimeSyncResult {
   ictResult: IctResult;
   lifecycleState: any;
   cashflowState: any;
+  projectState: IntelligentComputeProjectState;
 }
 
 export interface TemplateStatePayload {

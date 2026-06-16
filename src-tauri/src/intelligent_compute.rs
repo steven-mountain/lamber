@@ -1,8 +1,18 @@
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fs;
+use std::path::Path;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_dialog::DialogExt;
+
+const H200_BASELINE_ROLE: &str = "h200_baseline";
+const H200_BASELINE_DEFAULT_DESCRIPTION: &str = "智算项目默认金额来源";
+const H200_BASELINE_PRESET_DESCRIPTION: &str =
+    "64 台 H200、5 年服务期的标准报价预设。金额口径为元、含税。";
+const AMOUNT_SOURCE_PACKAGE_KIND: &str = "lamber.intelligentCompute.amountSource";
+const AMOUNT_SOURCE_PACKAGE_SCHEMA_VERSION: i64 = 1;
 
 fn now_iso() -> String {
     chrono::Utc::now().to_rfc3339()
@@ -10,6 +20,87 @@ fn now_iso() -> String {
 
 fn parse_json(raw: String, fallback: Value) -> Value {
     serde_json::from_str(&raw).unwrap_or(fallback)
+}
+
+fn validate_amount_source_package(value: &Value) -> Result<(), String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| "InvalidAmountSourcePackage::not_object".to_string())?;
+    if object.get("kind").and_then(Value::as_str) != Some(AMOUNT_SOURCE_PACKAGE_KIND) {
+        return Err("InvalidAmountSourcePackage::kind".to_string());
+    }
+    if object.get("schemaVersion").and_then(Value::as_i64)
+        != Some(AMOUNT_SOURCE_PACKAGE_SCHEMA_VERSION)
+    {
+        return Err("InvalidAmountSourcePackage::schemaVersion".to_string());
+    }
+    let source = object
+        .get("source")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "InvalidAmountSourcePackage::source".to_string())?;
+    if source
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .is_none()
+    {
+        return Err("InvalidAmountSourcePackage::source.name".to_string());
+    }
+    for key in [
+        "parameterGroups",
+        "parameters",
+        "revenueItems",
+        "costItems",
+        "mappings",
+    ] {
+        if !source.get(key).is_some_and(Value::is_array) {
+            return Err(format!("InvalidAmountSourcePackage::source.{}", key));
+        }
+    }
+    if !source.get("metadata").is_some_and(Value::is_object) {
+        return Err("InvalidAmountSourcePackage::source.metadata".to_string());
+    }
+    if !source
+        .get("calculationSnapshot")
+        .is_some_and(Value::is_object)
+    {
+        return Err("InvalidAmountSourcePackage::source.calculationSnapshot".to_string());
+    }
+    let project_settings = object
+        .get("projectSettings")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "InvalidAmountSourcePackage::projectSettings".to_string())?;
+    let project_years = project_settings
+        .get("projectYears")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| "InvalidAmountSourcePackage::projectSettings.projectYears".to_string())?;
+    if !(1..=10).contains(&project_years) {
+        return Err("InvalidAmountSourcePackage::projectSettings.projectYears".to_string());
+    }
+    let discount_rate = project_settings
+        .get("discountRate")
+        .and_then(Value::as_f64)
+        .ok_or_else(|| "InvalidAmountSourcePackage::projectSettings.discountRate".to_string())?;
+    if !discount_rate.is_finite() || !(0.0..=1.0).contains(&discount_rate) {
+        return Err("InvalidAmountSourcePackage::projectSettings.discountRate".to_string());
+    }
+    Ok(())
+}
+
+fn read_amount_source_package(path: &Path) -> Result<Value, String> {
+    let raw =
+        fs::read_to_string(path).map_err(|e| format!("ReadAmountSourcePackageFailed::{}", e))?;
+    let value: Value =
+        serde_json::from_str(&raw).map_err(|e| format!("InvalidAmountSourcePackageJson::{}", e))?;
+    validate_amount_source_package(&value)?;
+    Ok(value)
+}
+
+fn write_amount_source_package(path: &Path, value: &Value) -> Result<(), String> {
+    validate_amount_source_package(value)?;
+    let raw = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
+    fs::write(path, raw).map_err(|e| format!("WriteAmountSourcePackageFailed::{}", e))
 }
 
 fn ensure_intelligent_project(conn: &rusqlite::Connection, project_id: &str) -> Result<(), String> {
@@ -121,6 +212,47 @@ fn row_to_source(row: &rusqlite::Row<'_>) -> rusqlite::Result<IntelligentAmountS
     })
 }
 
+pub(crate) fn get_project_state(
+    conn: &rusqlite::Connection,
+    project_id: &str,
+) -> Result<IntelligentComputeProjectState, String> {
+    conn.query_row(
+        "SELECT project_id, state_version, active_amount_source_id, project_years,
+            discount_rate, sync_revision, controlled_subjects_json, last_result_json,
+            created_at, updated_at
+         FROM project_intelligent_compute_states WHERE project_id = ?1",
+        [project_id],
+        row_to_state,
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn is_h200_baseline_source(
+    conn: &rusqlite::Connection,
+    project_id: &str,
+    source: &IntelligentAmountSource,
+) -> Result<bool, String> {
+    if source.metadata.get("sourceRole").and_then(Value::as_str) == Some(H200_BASELINE_ROLE) {
+        return Ok(true);
+    }
+    let has_legacy_baseline_description = source.description.as_deref()
+        == Some(H200_BASELINE_DEFAULT_DESCRIPTION)
+        || source.description.as_deref() == Some(H200_BASELINE_PRESET_DESCRIPTION);
+    if !has_legacy_baseline_description {
+        return Ok(false);
+    }
+    let first_source_id: Option<String> = conn
+        .query_row(
+            "SELECT id FROM intelligent_compute_amount_sources
+             WHERE project_id = ?1 ORDER BY created_at ASC LIMIT 1",
+            [project_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    Ok(first_source_id.as_deref() == Some(source.id.as_str()))
+}
+
 pub(crate) fn ensure_project_state(
     conn: &rusqlite::Connection,
     project_id: &str,
@@ -163,14 +295,18 @@ pub(crate) fn ensure_default_amount_source(
     }
     let source_id = format!("amount_source_{}", uuid::Uuid::new_v4().simple());
     let now = now_iso();
+    let metadata = serde_json::json!({
+        "sourceRole": H200_BASELINE_ROLE,
+        "basePreset": "h200",
+    });
     conn.execute(
         "INSERT INTO intelligent_compute_amount_sources (
             id, project_id, name, description, enabled, source_version, metadata_json,
             parameter_groups_json, parameters_json, revenue_items_json, cost_items_json,
             mappings_json, calculation_snapshot_json, created_at, updated_at
          ) VALUES (?1, ?2, 'H200 标准智算金额来源', '智算项目默认金额来源', 1, 1,
-            '{}', '[]', '[]', '[]', '[]', '[]', '{}', ?3, ?3)",
-        params![source_id, project_id, now],
+            ?3, '[]', '[]', '[]', '[]', '[]', '{}', ?4, ?4)",
+        params![source_id, project_id, metadata.to_string(), now],
     )
     .map_err(|e| e.to_string())?;
     conn.execute(
@@ -194,16 +330,6 @@ pub async fn get_intelligent_compute_project(
     ensure_intelligent_project(&conn, &project_id)?;
     ensure_project_state(&conn, &project_id)?;
     ensure_default_amount_source(&conn, &project_id)?;
-    let state = conn
-        .query_row(
-            "SELECT project_id, state_version, active_amount_source_id, project_years,
-                discount_rate, sync_revision, controlled_subjects_json, last_result_json,
-                created_at, updated_at
-             FROM project_intelligent_compute_states WHERE project_id = ?1",
-            [&project_id],
-            row_to_state,
-        )
-        .map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(
             "SELECT id, project_id, name, description, enabled, source_version, metadata_json,
@@ -221,7 +347,7 @@ pub async fn get_intelligent_compute_project(
         amount_sources.push(row.map_err(|e| e.to_string())?);
     }
     Ok(IntelligentComputeProjectData {
-        state,
+        state: get_project_state(&conn, &project_id)?,
         amount_sources,
     })
 }
@@ -423,15 +549,85 @@ pub async fn delete_intelligent_amount_source(
     let db = runtime.require_db()?;
     let mut conn = db.lock().map_err(|e| e.to_string())?;
     ensure_intelligent_project(&conn, &project_id)?;
+    delete_intelligent_amount_source_locked(&mut conn, &project_id, &amount_source_id)
+}
+
+#[tauri::command]
+pub async fn export_intelligent_amount_source_package(
+    app: AppHandle,
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
+    project_id: String,
+    package_payload: Value,
+    default_file_name: String,
+) -> Result<Option<String>, String> {
+    runtime.require_workspace()?;
+    let db = runtime.require_db()?;
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    ensure_intelligent_project(&conn, &project_id)?;
+    validate_amount_source_package(&package_payload)?;
+    drop(conn);
+
+    let file = app
+        .dialog()
+        .file()
+        .set_title("导出智算金额来源")
+        .set_file_name(default_file_name)
+        .add_filter("智算金额来源 JSON", &["json"])
+        .blocking_save_file();
+    let Some(path) = file else {
+        return Ok(None);
+    };
+    let path_string = path.to_string();
+    write_amount_source_package(Path::new(&path_string), &package_payload)?;
+    Ok(Some(path_string))
+}
+
+#[tauri::command]
+pub async fn select_and_read_intelligent_amount_source_package(
+    app: AppHandle,
+) -> Result<Option<Value>, String> {
+    let file = app
+        .dialog()
+        .file()
+        .set_title("选择智算金额来源 JSON")
+        .add_filter("智算金额来源 JSON", &["json"])
+        .blocking_pick_file();
+    let Some(path) = file else {
+        return Ok(None);
+    };
+    let path_string = path.to_string();
+    read_amount_source_package(Path::new(&path_string)).map(Some)
+}
+
+pub(crate) fn delete_intelligent_amount_source_locked(
+    conn: &mut rusqlite::Connection,
+    project_id: &str,
+    amount_source_id: &str,
+) -> Result<(), String> {
     let count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM intelligent_compute_amount_sources WHERE project_id = ?1",
-            [&project_id],
+            [project_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     if count <= 1 {
         return Err("CannotDeleteLastAmountSource".to_string());
+    }
+    let target = conn
+        .query_row(
+            "SELECT id, project_id, name, description, enabled, source_version, metadata_json,
+                parameter_groups_json, parameters_json, revenue_items_json, cost_items_json,
+                mappings_json, calculation_snapshot_json, created_at, updated_at
+             FROM intelligent_compute_amount_sources WHERE id = ?1 AND project_id = ?2",
+            params![amount_source_id, project_id],
+            row_to_source,
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "AmountSourceNotFound".to_string())?;
+    if is_h200_baseline_source(conn, project_id, &target)? {
+        return Err("CannotDeleteH200BaselineAmountSource".to_string());
     }
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let affected = tx
@@ -447,7 +643,7 @@ pub async fn delete_intelligent_amount_source(
         .query_row(
             "SELECT id FROM intelligent_compute_amount_sources
              WHERE project_id = ?1 ORDER BY created_at ASC LIMIT 1",
-            [&project_id],
+            [project_id],
             |row| row.get(0),
         )
         .optional()
@@ -466,4 +662,228 @@ pub async fn delete_intelligent_amount_source(
     .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_amount_source_package() -> Value {
+        serde_json::json!({
+            "kind": AMOUNT_SOURCE_PACKAGE_KIND,
+            "schemaVersion": AMOUNT_SOURCE_PACKAGE_SCHEMA_VERSION,
+            "exportedAt": "2026-06-16T00:00:00Z",
+            "projectSettings": {
+                "projectYears": 5,
+                "discountRate": 0.05
+            },
+            "source": {
+                "name": "测试金额来源",
+                "description": "测试",
+                "metadata": {},
+                "parameterGroups": [],
+                "parameters": [],
+                "revenueItems": [],
+                "costItems": [],
+                "mappings": [],
+                "calculationSnapshot": {}
+            }
+        })
+    }
+
+    #[test]
+    fn amount_source_package_validation_rejects_invalid_kind_and_schema() {
+        let mut invalid_kind = sample_amount_source_package();
+        invalid_kind["kind"] = serde_json::json!("other");
+        assert_eq!(
+            validate_amount_source_package(&invalid_kind).unwrap_err(),
+            "InvalidAmountSourcePackage::kind"
+        );
+
+        let mut invalid_schema = sample_amount_source_package();
+        invalid_schema["schemaVersion"] = serde_json::json!(99);
+        assert_eq!(
+            validate_amount_source_package(&invalid_schema).unwrap_err(),
+            "InvalidAmountSourcePackage::schemaVersion"
+        );
+    }
+
+    #[test]
+    fn amount_source_package_validation_rejects_missing_core_arrays() {
+        let mut package = sample_amount_source_package();
+        package["source"]["revenueItems"] = Value::Null;
+        assert_eq!(
+            validate_amount_source_package(&package).unwrap_err(),
+            "InvalidAmountSourcePackage::source.revenueItems"
+        );
+    }
+
+    #[test]
+    fn amount_source_package_can_be_written_and_read_back() {
+        let package = sample_amount_source_package();
+        let path = std::env::temp_dir().join(format!(
+            "lamber-amount-source-package-{}.json",
+            uuid::Uuid::new_v4().simple()
+        ));
+        write_amount_source_package(&path, &package).expect("write package");
+        let read_back = read_amount_source_package(&path).expect("read package");
+        let _ = fs::remove_file(&path);
+        assert_eq!(read_back, package);
+    }
+
+    fn create_amount_source_delete_test_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("open in-memory database");
+        conn.execute_batch(
+            "
+            CREATE TABLE projects (
+                id TEXT PRIMARY KEY,
+                project_type TEXT NOT NULL,
+                project_years INTEGER NOT NULL,
+                discount_rate REAL NOT NULL
+            );
+            CREATE TABLE project_intelligent_compute_states (
+                project_id TEXT PRIMARY KEY,
+                state_version INTEGER NOT NULL DEFAULT 1,
+                active_amount_source_id TEXT,
+                project_years INTEGER NOT NULL DEFAULT 1,
+                discount_rate REAL NOT NULL DEFAULT 0.055,
+                sync_revision INTEGER NOT NULL DEFAULT 0,
+                controlled_subjects_json TEXT NOT NULL DEFAULT '{}',
+                last_result_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE intelligent_compute_amount_sources (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                source_version INTEGER NOT NULL DEFAULT 1,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                parameter_groups_json TEXT NOT NULL DEFAULT '[]',
+                parameters_json TEXT NOT NULL DEFAULT '[]',
+                revenue_items_json TEXT NOT NULL DEFAULT '[]',
+                cost_items_json TEXT NOT NULL DEFAULT '[]',
+                mappings_json TEXT NOT NULL DEFAULT '[]',
+                calculation_snapshot_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO projects (id, project_type, project_years, discount_rate)
+            VALUES ('project-1', 'intelligent_compute', 5, 0.05);
+            INSERT INTO project_intelligent_compute_states (
+                project_id, state_version, active_amount_source_id, project_years, discount_rate,
+                sync_revision, controlled_subjects_json, last_result_json, created_at, updated_at
+            ) VALUES ('project-1', 1, 'source-h200', 5, 0.05, 0, '{}', '{}', 'before', 'before');
+            ",
+        )
+        .expect("create amount source delete schema");
+        conn
+    }
+
+    fn insert_amount_source(
+        conn: &rusqlite::Connection,
+        id: &str,
+        description: &str,
+        metadata: Value,
+        created_at: &str,
+    ) {
+        conn.execute(
+            "INSERT INTO intelligent_compute_amount_sources (
+                id, project_id, name, description, enabled, source_version, metadata_json,
+                parameter_groups_json, parameters_json, revenue_items_json, cost_items_json,
+                mappings_json, calculation_snapshot_json, created_at, updated_at
+             ) VALUES (?1, 'project-1', ?2, ?3, 1, 1, ?4, '[]', '[]', '[]', '[]', '[]', '{}', ?5, ?5)",
+            params![id, id, description, metadata.to_string(), created_at],
+        )
+        .expect("insert amount source");
+    }
+
+    #[test]
+    fn delete_amount_source_rejects_last_source() {
+        let mut conn = create_amount_source_delete_test_db();
+        insert_amount_source(&conn, "source-only", "普通来源", serde_json::json!({}), "1");
+        conn.execute(
+            "UPDATE project_intelligent_compute_states SET active_amount_source_id = 'source-only'
+             WHERE project_id = 'project-1'",
+            [],
+        )
+        .unwrap();
+
+        let error = delete_intelligent_amount_source_locked(&mut conn, "project-1", "source-only")
+            .unwrap_err();
+        assert_eq!(error, "CannotDeleteLastAmountSource");
+    }
+
+    #[test]
+    fn delete_amount_source_rejects_h200_baseline() {
+        let mut conn = create_amount_source_delete_test_db();
+        insert_amount_source(
+            &conn,
+            "source-h200",
+            H200_BASELINE_DEFAULT_DESCRIPTION,
+            serde_json::json!({"sourceRole": H200_BASELINE_ROLE}),
+            "1",
+        );
+        insert_amount_source(
+            &conn,
+            "source-quote",
+            H200_BASELINE_PRESET_DESCRIPTION,
+            serde_json::json!({}),
+            "2",
+        );
+
+        let error = delete_intelligent_amount_source_locked(&mut conn, "project-1", "source-h200")
+            .unwrap_err();
+        assert_eq!(error, "CannotDeleteH200BaselineAmountSource");
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM intelligent_compute_amount_sources WHERE project_id = 'project-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn delete_amount_source_removes_normal_source_and_switches_active_source() {
+        let mut conn = create_amount_source_delete_test_db();
+        insert_amount_source(
+            &conn,
+            "source-h200",
+            H200_BASELINE_DEFAULT_DESCRIPTION,
+            serde_json::json!({"sourceRole": H200_BASELINE_ROLE}),
+            "1",
+        );
+        insert_amount_source(
+            &conn,
+            "source-quote",
+            H200_BASELINE_PRESET_DESCRIPTION,
+            serde_json::json!({}),
+            "2",
+        );
+        conn.execute(
+            "UPDATE project_intelligent_compute_states SET active_amount_source_id = 'source-quote'
+             WHERE project_id = 'project-1'",
+            [],
+        )
+        .unwrap();
+
+        delete_intelligent_amount_source_locked(&mut conn, "project-1", "source-quote")
+            .expect("delete normal amount source");
+        let (active_source, state_version, count): (String, i64, i64) = conn
+            .query_row(
+                "SELECT s.active_amount_source_id, s.state_version,
+                    (SELECT COUNT(*) FROM intelligent_compute_amount_sources WHERE project_id = 'project-1')
+                 FROM project_intelligent_compute_states s WHERE s.project_id = 'project-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(active_source, "source-h200");
+        assert_eq!(state_version, 2);
+        assert_eq!(count, 1);
+    }
 }

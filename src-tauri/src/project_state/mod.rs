@@ -3,6 +3,7 @@ use crate::benefit::models::{
     SummaryMetrics,
 };
 use crate::benefit::service::compute_fingerprint;
+use crate::intelligent_compute::IntelligentComputeProjectState;
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -249,6 +250,7 @@ pub struct IntelligentComputeSyncResult {
     pub ict_result: IctResult,
     pub lifecycle_state: StoredLifecycleState,
     pub cashflow_state: StoredCashflowState,
+    pub project_state: IntelligentComputeProjectState,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -867,7 +869,6 @@ pub async fn sync_intelligent_compute_to_ict(
         "source": "intelligent_compute_explicit_sync",
     });
     cashflow_state.metrics_json = serde_json::to_value(&ict_result).map_err(|e| e.to_string())?;
-    let next_revision = payload.expected_sync_revision + 1;
     let synced_at = now_iso();
     let stored = apply_ai_compute_quote_to_ict_locked(
         &mut conn,
@@ -881,12 +882,14 @@ pub async fn sync_intelligent_compute_to_ict(
             payload.controlled_subjects,
         )),
     )?;
+    let project_state = crate::intelligent_compute::get_project_state(&conn, &project_id)?;
     Ok(IntelligentComputeSyncResult {
-        revision: next_revision,
+        revision: project_state.sync_revision,
         synced_at,
         ict_result,
         lifecycle_state: stored.lifecycle_state,
         cashflow_state: stored.cashflow_state,
+        project_state,
     })
 }
 
