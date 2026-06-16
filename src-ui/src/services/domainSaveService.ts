@@ -5,11 +5,13 @@ import type {
   IctInput,
   IctResult,
   Project,
+  ProjectType,
 } from "../utils/projectService";
 
 export interface ProjectDetailPatch {
   name?: string;
   customerName?: string;
+  projectType?: ProjectType;
   status?: string;
   progress?: number;
   deadline?: string | null;
@@ -35,10 +37,10 @@ export interface CashflowStatePayload {
   metricsJson: Record<string, unknown>;
 }
 
-export interface AiComputeRealtimeSyncPayload {
-  expectedRevision: number;
-  nextRevision: number;
-  blueprintSettingJson: Record<string, unknown>;
+export interface IntelligentComputeSyncRequest {
+  expectedSyncRevision: number;
+  sourceVersions: Record<string, number>;
+  controlledSubjects: Record<string, unknown>;
   lifecycleState: LifecycleStatePayload;
   cashflowState: CashflowStatePayload;
   calculationInput: IctInput;
@@ -119,23 +121,11 @@ export const domainSaveService = {
     return invoke("get_cashflow_state", { projectId });
   },
 
-  applyAiComputeQuoteToIct(
+  syncIntelligentComputeToIct(
     projectId: string,
-    lifecycleState: LifecycleStatePayload,
-    cashflowState: CashflowStatePayload,
-  ): Promise<any> {
-    return invoke("apply_ai_compute_quote_to_ict", {
-      projectId,
-      lifecycleState,
-      cashflowState,
-    });
-  },
-
-  syncAiComputeQuoteToIct(
-    projectId: string,
-    payload: AiComputeRealtimeSyncPayload,
+    payload: IntelligentComputeSyncRequest,
   ): Promise<AiComputeRealtimeSyncResult> {
-    return invoke<AiComputeRealtimeSyncResult>("sync_ai_compute_quote_to_ict", {
+    return invoke<AiComputeRealtimeSyncResult>("sync_intelligent_compute_to_ict", {
       projectId,
       payload,
     });

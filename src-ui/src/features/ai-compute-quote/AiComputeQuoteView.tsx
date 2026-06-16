@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppIcon, { type AppIconName } from "../../components/icons/AppIcon";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { useNavigationStore } from "../../store/useNavigationStore";
 import { useProjectStore } from "../../store/useProjectStore";
+import { useWorkspaceStore } from "../../store/useWorkspaceStore";
 import { projectService, type IctResult, type Project } from "../../utils/projectService";
 import { domainSaveService } from "../../services/domainSaveService";
 import { finalizeIctInputWithFundingPlans } from "../../lib/ictCalculationInput";
@@ -26,24 +27,28 @@ import {
 import {
   buildAiComputeIctExportPayloads,
   buildAiComputeAutoSyncPreview,
+  buildIntelligentComputeAggregatePreview,
+  validateIntelligentComputeSources,
   type AiComputeIctExportPreview,
 } from "./ictExport";
-import {
-  applySuccessfulAiComputeSync,
-  getAiComputeSyncFingerprint,
-  mergePersistedAiComputeControlState,
-} from "./ictSync";
 import { PARAMETER_GROUP_IDS } from "./parameterLayout";
 import { createH200Blueprint } from "./presets";
-import { useAiComputeQuoteStore } from "./store";
+import {
+  buildBlueprintForAmountSource,
+  type CreateAmountSourceBaseMode,
+  type CreateAmountSourceRequest,
+  useAiComputeQuoteStore,
+} from "./store";
+import { getAiComputeSyncFingerprint } from "./ictSync";
 import type {
   AiComputeLineItemFundingPlanMode,
   AiComputeQuoteLineItem,
-  AiComputeQuoteParameter,
-  AiComputeQuoteParameterCategory,
-  AiComputeQuoteParameterGroup,
-  AiComputeQuoteSide,
-} from "./types";
+	  AiComputeQuoteParameter,
+	  AiComputeQuoteParameterCategory,
+	  AiComputeQuoteParameterGroup,
+	  AiComputeQuoteSide,
+	  IntelligentAmountSource,
+	} from "./types";
 
 type QuoteWorkspaceTab = "parameters" | "revenue" | "cost" | "sensitivity";
 type ParameterFilterMode = "key" | "modified" | "sensitive" | "all";
@@ -148,6 +153,15 @@ function getSyncStatusLabel(status: "idle" | "syncing" | "synced" | "error" | "c
   return "待同步";
 }
 
+function isIntelligentComputeVersionConflict(error: unknown) {
+  const message = String(error);
+  return [
+    "IntelligentComputeSyncRevisionConflict",
+    "IntelligentAmountSourceSetConflict",
+    "IntelligentAmountSourceVersionConflict",
+  ].some(marker => message.includes(marker));
+}
+
 function getSavedStatusLabel(isDirty: boolean, lastSavedAt: string | null) {
   if (isDirty) return "有未保存修改";
   if (!lastSavedAt) return "尚未保存";
@@ -173,20 +187,24 @@ function formatNumber(value: number, digits = 2) {
 
 export default function AiComputeQuoteView() {
   const navigateTo = useNavigationStore(state => state.navigateTo);
+  const openIctFromIntelligentCompute = useNavigationStore(state => state.openIctFromIntelligentCompute);
   const activeProjectId = useNavigationStore(state => state.activeProjectId);
   const currentProject = useProjectStore(state => state.currentProject);
-  const setCurrentProject = useProjectStore(state => state.setCurrentProject);
+  const workspaceId = useWorkspaceStore(state => state.workspaceId);
   const store = useAiComputeQuoteStore();
   const loadQuote = store.load;
   const [projects, setProjects] = useState<Project[]>([]);
-  const [showOutput, setShowOutput] = useState(false);
-  const [showSyncDetails, setShowSyncDetails] = useState(false);
-  const [ictExportPreview, setIctExportPreview] = useState<AiComputeIctExportPreview | null>(null);
-  const [ictResult, setIctResult] = useState<IctResult | null>(null);
-  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "error" | "conflict">("idle");
-  const [ictExportError, setIctExportError] = useState<string | null>(null);
-  const [syncNonce, setSyncNonce] = useState(0);
-  const syncRequestRef = useRef(0);
+	  const [showOutput, setShowOutput] = useState(false);
+	  const [showSyncDetails, setShowSyncDetails] = useState(false);
+	  const [showAmountSourceManager, setShowAmountSourceManager] = useState(false);
+	  const [ictExportPreview, setIctExportPreview] = useState<AiComputeIctExportPreview | null>(null);
+	  const [ictResult, setIctResult] = useState<IctResult | null>(null);
+	  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "error" | "conflict">("idle");
+	  const [ictExportError, setIctExportError] = useState<string | null>(null);
+	  const syncRequestRef = useRef(0);
+	  const autoSyncTimerRef = useRef<number | null>(null);
+	  const lastAutoSyncFingerprintRef = useRef<string | null>(null);
+	  const hasLoadedAutoSyncBaselineRef = useRef(false);
   const [activeTab, setActiveTab] = useState<QuoteWorkspaceTab>("parameters");
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [sensitivityParameterId, setSensitivityParameterId] = useState("gpu-service-price");
@@ -201,6 +219,7 @@ export default function AiComputeQuoteView() {
   const projectId = activeProjectId || currentProject?.id || null;
   const activeProject = projects.find(project => project.id === projectId)
     || (currentProject?.id === projectId ? currentProject : null);
+  const isIntelligentProject = activeProject?.project_type === "intelligent_compute";
 
   useEffect(() => {
     projectService.listWorkspaceProjects()
@@ -208,9 +227,32 @@ export default function AiComputeQuoteView() {
       .catch(() => setProjects([]));
   }, []);
 
+	  useEffect(() => {
+	    if (!projectId) {
+	      void loadQuote(null);
+    } else if (isIntelligentProject) {
+      void loadQuote(projectId);
+    } else {
+	      void loadQuote(null);
+	    }
+	  }, [isIntelligentProject, loadQuote, projectId]);
+
+	  useEffect(() => {
+	    hasLoadedAutoSyncBaselineRef.current = false;
+	    lastAutoSyncFingerprintRef.current = null;
+	    if (autoSyncTimerRef.current) {
+	      window.clearTimeout(autoSyncTimerRef.current);
+	      autoSyncTimerRef.current = null;
+	    }
+	  }, [projectId]);
+
   useEffect(() => {
-    void loadQuote(projectId);
-  }, [loadQuote, projectId]);
+    if (!projectId || !store.isDirty || store.isLoading || store.isSaving) return;
+    const timer = window.setTimeout(() => {
+      void useAiComputeQuoteStore.getState().save(projectId);
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [projectId, store.blueprint, store.isDirty, store.isLoading, store.isSaving]);
 
   const summary = useMemo(() => summarizeQuote(store.blueprint), [store.blueprint]);
   const outputPackage = useMemo(() => buildAiComputeQuoteOutput(store.blueprint), [store.blueprint]);
@@ -232,11 +274,35 @@ export default function AiComputeQuoteView() {
     max: sensitivityMax,
     step: sensitivityStep,
   }), [sensitivityMax, sensitivityMin, sensitivityParameterId, sensitivityStep, store.blueprint]);
-  const syncFingerprint = useMemo(
-    () => getAiComputeSyncFingerprint(store.blueprint),
-    [store.blueprint],
-  );
-  const sensitivityBlueprint = store.blueprint;
+	  const sensitivityBlueprint = store.blueprint;
+	  const projectCycleParameter = store.blueprint.parameters.find(isAiComputeProjectCycleParameter);
+	  const discountRateParameter = store.blueprint.parameters.find(isAiComputeDiscountRateParameter);
+
+	  const buildAutoSyncFingerprint = useCallback(() => {
+	    const latest = useAiComputeQuoteStore.getState();
+	    if (!latest.projectState || !latest.projectId) return null;
+	    const sourceFingerprint = (blueprint: ReturnType<typeof buildBlueprintForAmountSource>) =>
+	      getAiComputeSyncFingerprint({
+	        ...blueprint,
+	        name: "",
+	        description: "",
+	      });
+	    const selectedSource = latest.amountSources.find(source => source.id === latest.activeAmountSourceId)
+	      || latest.amountSources[0];
+	    if (!selectedSource) return null;
+	    const selectedBlueprint = selectedSource.id === latest.activeAmountSourceId
+	      ? latest.blueprint
+	      : buildBlueprintForAmountSource(selectedSource, latest.projectState);
+	    return JSON.stringify({
+	      projectId: latest.projectId,
+	      projectYears: getAiComputeProjectCycleYears(selectedBlueprint.parameters),
+	      discountRate: getAiComputeDiscountRatePercent(selectedBlueprint.parameters),
+	      source: {
+	        id: selectedSource.id,
+	        fingerprint: sourceFingerprint(selectedBlueprint),
+	      },
+	    });
+	  }, []);
 
   useEffect(() => {
     const requestId = ++sensitivityRequestRef.current;
@@ -247,7 +313,6 @@ export default function AiComputeQuoteView() {
     const timer = window.setTimeout(async () => {
       try {
         const fullState = await domainSaveService.loadProjectFullState(projectId);
-        if (!fullState.lifecycleState || !fullState.cashflowState) return;
         const inputs = sensitivityRows.map(row => {
           const candidate = {
             ...sensitivityBlueprint,
@@ -277,138 +342,195 @@ export default function AiComputeQuoteView() {
     return () => window.clearTimeout(timer);
   }, [projectId, sensitivityBlueprint, sensitivityParameterId, sensitivityRows]);
 
-  const selectProject = (nextProjectId: string) => {
-    const project = projects.find(item => item.id === nextProjectId) || null;
-    setCurrentProject(project);
-    navigateTo("ai_compute_quote", project?.id || null);
-  };
+	  const renameAmountSource = useCallback(async (name: string) => {
+	    if (!projectId || !name.trim()) return false;
+	    useAiComputeQuoteStore.getState().renameBlueprint(name);
+	    return useAiComputeQuoteStore.getState().save(projectId);
+	  }, [projectId]);
 
-  const saveAsBlueprint = async () => {
-    const name = window.prompt("请输入蓝图名称", store.blueprint.name);
-    if (!name?.trim()) return;
-    store.renameBlueprint(name);
-    await store.save(projectId);
-  };
-
-  useEffect(() => {
-    if (!projectId) {
-      setSyncStatus("idle");
-      setIctResult(null);
-      return;
-    }
-    if (store.isLoading || store.projectId !== projectId) return;
-
-    const requestId = ++syncRequestRef.current;
-    const timer = window.setTimeout(async () => {
-      setSyncStatus("syncing");
-      setIctExportError(null);
-      try {
-        const fullState = await domainSaveService.loadProjectFullState(projectId);
-        if (!fullState.lifecycleState || !fullState.cashflowState) {
-          throw new Error("请先打开 ICT 测算并完成项目初始化");
-        }
-        const currentBlueprint = useAiComputeQuoteStore.getState().blueprint;
-        const preview = buildAiComputeAutoSyncPreview(currentBlueprint, fullState, projectId);
-        const payloads = buildAiComputeIctExportPayloads(preview, fullState);
-        const finalized = finalizeIctInputWithFundingPlans(
-          payloads.lifecycleState.inputPayloadJson,
-          payloads.cashflowState.assumptionsJson.subjectFundingPlans,
-        );
-        if (!finalized.coverage.valid) {
-          throw new Error(finalized.coverage.issues[0]?.message || "ICT 科目资金计划校验失败");
-        }
-        const expectedRevision = currentBlueprint.syncState?.revision || 0;
-        const nextRevision = expectedRevision + 1;
-        const syncedAt = new Date().toISOString();
-        const syncedBlueprint = applySuccessfulAiComputeSync(
-          currentBlueprint,
-          preview,
-          nextRevision,
-          syncedAt,
-        );
-        const result = await domainSaveService.syncAiComputeQuoteToIct(projectId, {
-          expectedRevision,
-          nextRevision,
-          blueprintSettingJson: {
-            version: 4,
-            blueprint: syncedBlueprint,
-            savedAt: syncedAt,
-          },
-          lifecycleState: payloads.lifecycleState,
-          cashflowState: payloads.cashflowState,
-          calculationInput: finalized.input,
-        });
-        if (requestId !== syncRequestRef.current) return;
-        useAiComputeQuoteStore.getState().replaceBlueprint(syncedBlueprint, {
-          dirty: false,
-          savedAt: result.syncedAt,
-        });
-        setIctExportPreview(preview);
-        setIctResult(result.ictResult);
-        setSyncStatus(syncedBlueprint.syncState?.status === "conflict" ? "conflict" : "synced");
-      } catch (error) {
-        if (requestId !== syncRequestRef.current) return;
-        const message = String(error);
-        if (message.includes("AiComputeSyncRevisionConflict")) {
-          try {
-            const raw = await projectService.getProjectSetting(projectId, "ai_compute_quote::active");
-            const persisted = raw ? JSON.parse(raw)?.blueprint : null;
-            if (persisted) {
-              const local = useAiComputeQuoteStore.getState().blueprint;
-              useAiComputeQuoteStore.getState().replaceBlueprint(
-                mergePersistedAiComputeControlState(local, persisted),
-                { dirty: true },
-              );
-              setSyncStatus("conflict");
-              setIctExportError("检测到 ICT 侧更新，已合并联动状态并准备重新同步。");
-              setSyncNonce(value => value + 1);
-              return;
-            }
-          } catch {
-            // Fall through to the visible sync error.
-          }
-        }
-        const currentState = useAiComputeQuoteStore.getState();
-        currentState.replaceBlueprint({
-          ...currentState.blueprint,
-          syncState: {
-            revision: currentState.blueprint.syncState?.revision || 0,
-            status: "error",
-            syncedAt: currentState.blueprint.syncState?.syncedAt,
-            error: message,
-            subjects: currentState.blueprint.syncState?.subjects || {},
-          },
-        }, { dirty: currentState.isDirty });
-        setSyncStatus("error");
-        setIctExportError(`自动同步失败：${message}`);
+	  const syncToIct = useCallback(async (options: {
+	    confirmed?: boolean;
+	    silent?: boolean;
+	    autoFingerprint?: string;
+	  } = {}) => {
+	    const { confirmed = false, silent = false, autoFingerprint } = options;
+	    const currentStore = useAiComputeQuoteStore.getState();
+	    if (!projectId || !activeProject || !workspaceId || !currentStore.projectState) return false;
+	    const requestId = ++syncRequestRef.current;
+	    setSyncStatus("syncing");
+	    setIctExportError(null);
+	    try {
+	      if (currentStore.isDirty && !(await currentStore.save(projectId))) {
+	        throw new Error("请先完成智算金额来源保存");
+	      }
+	      const latest = useAiComputeQuoteStore.getState();
+      if (!latest.projectState) throw new Error("智算项目状态未加载");
+      const selectedSource = latest.amountSources.find(source => source.id === latest.activeAmountSourceId)
+        || latest.amountSources[0];
+      if (!selectedSource) {
+        throw new Error("请选择一个智算金额来源后才能同步");
       }
-    }, 500);
+      const selectedBlueprint = selectedSource.id === latest.activeAmountSourceId
+        ? latest.blueprint
+        : buildBlueprintForAmountSource(selectedSource, latest.projectState);
+      const selectedSources = [{
+        sourceId: selectedSource.id,
+        sourceName: selectedSource.name,
+        blueprint: selectedBlueprint,
+      }];
+      const validation = validateIntelligentComputeSources(selectedSources);
+      if (!validation.valid) {
+        throw new Error(validation.issues.slice(0, 6).join("\n"));
+      }
+      const fullState = await domainSaveService.loadProjectFullState(projectId);
+      const preview = buildIntelligentComputeAggregatePreview(
+        selectedSources,
+        fullState,
+        projectId,
+        latest.projectState.controlledSubjects,
+      );
+      if (preview.rows.length === 0) {
+        throw new Error("没有可同步到 ICT 的映射科目");
+      }
+	      setIctExportPreview(preview);
+	      if (!confirmed) {
+	        if (!silent) setShowSyncDetails(true);
+	        setSyncStatus("idle");
+	        return true;
+	      }
+      const payloads = buildAiComputeIctExportPayloads(preview, fullState);
+      const finalized = finalizeIctInputWithFundingPlans(
+        payloads.lifecycleState.inputPayloadJson,
+        payloads.cashflowState.assumptionsJson.subjectFundingPlans,
+      );
+      if (!finalized.coverage.valid) {
+        throw new Error(finalized.coverage.issues[0]?.message || "ICT 科目资金计划校验失败");
+      }
+      const controlledSubjects = Object.fromEntries(
+        preview.rows
+          .map(row => [`${row.side}:${row.ictSubjectCode}`, {
+            side: row.side,
+            ictSubjectCode: row.ictSubjectCode,
+            amountInclTax: row.writtenAmount,
+            taxRate: row.taxRate,
+            yearlyAmounts: row.yearlyAmounts,
+            sourceLineItemIds: row.sourceLineItemIds,
+          }]),
+      );
+      const result = await domainSaveService.syncIntelligentComputeToIct(projectId, {
+        expectedSyncRevision: latest.projectState.syncRevision,
+        sourceVersions: Object.fromEntries(latest.amountSources.map(source => [source.id, source.sourceVersion])),
+        controlledSubjects,
+        lifecycleState: payloads.lifecycleState,
+        cashflowState: payloads.cashflowState,
+        calculationInput: finalized.input,
+      });
+	      if (requestId !== syncRequestRef.current) return;
+	      setIctExportPreview(preview);
+	      setIctResult(result.ictResult);
+	      setSyncStatus("synced");
+	      setShowSyncDetails(false);
+	      lastAutoSyncFingerprintRef.current = autoFingerprint || buildAutoSyncFingerprint();
+	      await useAiComputeQuoteStore.getState().load(projectId);
+	      return true;
+	    } catch (error) {
+	      if (requestId !== syncRequestRef.current) return;
+	      if (isIntelligentComputeVersionConflict(error)) {
+	        setSyncStatus("conflict");
+	        setShowSyncDetails(true);
+	        setIctExportError("同步冲突：智算或 ICT 状态已更新。请重新加载冲突并使用最新预览执行智算完全覆盖 ICT。");
+	        return false;
+	      }
+	      if (autoFingerprint) lastAutoSyncFingerprintRef.current = autoFingerprint;
+	      setSyncStatus("error");
+	      setIctExportError(`同步失败：${String(error)}`);
+	      return false;
+	    }
+	  }, [activeProject, buildAutoSyncFingerprint, projectId, workspaceId]);
 
-    return () => window.clearTimeout(timer);
-  }, [projectId, store.isLoading, store.projectId, syncFingerprint, syncNonce]);
+	  const reloadConflictAndOverwrite = useCallback(async () => {
+	    if (!projectId) return;
+	    setSyncStatus("syncing");
+	    setIctExportError(null);
+	    await useAiComputeQuoteStore.getState().load(projectId);
+	    if (!useAiComputeQuoteStore.getState().projectState) {
+	      setSyncStatus("error");
+	      setIctExportError("重新加载冲突状态失败，请返回项目后重新打开智算测算。");
+	      return;
+	    }
+	    await syncToIct({ confirmed: true });
+	  }, [projectId, syncToIct]);
 
-  const requestIctOutput = () => setSyncNonce(value => value + 1);
+	  useEffect(() => {
+	    if (!projectId || !isIntelligentProject || store.isLoading || store.isSaving) return;
+	    if (syncStatus === "syncing") return;
+	    const fingerprint = buildAutoSyncFingerprint();
+	    if (!fingerprint) return;
+	    if (!hasLoadedAutoSyncBaselineRef.current) {
+	      hasLoadedAutoSyncBaselineRef.current = true;
+	      lastAutoSyncFingerprintRef.current = fingerprint;
+	      return;
+	    }
+	    if (fingerprint === lastAutoSyncFingerprintRef.current) return;
+	    if (autoSyncTimerRef.current) window.clearTimeout(autoSyncTimerRef.current);
+	    autoSyncTimerRef.current = window.setTimeout(() => {
+	      void syncToIct({
+	        confirmed: true,
+	        silent: true,
+	        autoFingerprint: fingerprint,
+	      });
+	    }, 1200);
+	    return () => {
+	      if (autoSyncTimerRef.current) {
+	        window.clearTimeout(autoSyncTimerRef.current);
+	        autoSyncTimerRef.current = null;
+	      }
+	    };
+	  }, [
+	    buildAutoSyncFingerprint,
+	    isIntelligentProject,
+	    projectId,
+	    store.activeAmountSourceId,
+	    store.amountSources,
+	    store.blueprint,
+	    store.isLoading,
+	    store.isSaving,
+	    store.projectState,
+	    syncStatus,
+	    syncToIct,
+	  ]);
+
+  const openIct = () => {
+    if (!projectId || !activeProject || !workspaceId) return;
+    openIctFromIntelligentCompute({
+      type: "intelligent_compute",
+      workspaceId,
+      projectId,
+      projectName: activeProject.name,
+      amountSourceId: store.activeAmountSourceId,
+    });
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
       <header className="shrink-0 bg-card shadow-sm">
         <div className="flex min-h-14 items-center gap-3 px-5 py-2">
-          <Button variant="ghost" size="sm" onClick={() => navigateTo("hub")}>← 返回</Button>
+          <Button variant="ghost" size="sm" onClick={() => navigateTo("project_board")}>← 返回项目看板</Button>
           <div className="min-w-0">
-            <h1 className="truncate text-page-title font-bold">智算报价测算</h1>
-            <p className="truncate text-caption text-secondary-foreground">智算报价蓝图与 ICT 科目输出预览</p>
+            <h1 className="truncate text-page-title font-bold">智算测算</h1>
+            <p className="truncate text-caption text-secondary-foreground">维护智算金额来源并显式同步到 ICT 测算</p>
           </div>
           <div className="relative ml-auto flex shrink-0 items-center gap-2">
-            <Button
-              variant="outline"
-              disabled={!projectId || syncStatus === "syncing"}
-              onClick={requestIctOutput}
-            >
+	            <Button
+	              variant="outline"
+	              disabled={!projectId || syncStatus === "syncing"}
+	              onClick={() => void syncToIct()}
+	            >
               <AppIcon name={syncStatus === "syncing" ? "loading" : "reverse"} className={syncStatus === "syncing" ? "animate-spin" : ""} />
-              {syncStatus === "syncing" ? "同步中..." : "重新同步 ICT"}
+              {syncStatus === "syncing" ? "同步中..." : "同步到 ICT"}
             </Button>
-            <Button onClick={() => void saveAsBlueprint()}>
-              <AppIcon name="presets" />保存为蓝图
+            <Button onClick={() => void store.save(projectId)}>
+              <AppIcon name="save" />保存金额来源
             </Button>
             <Button
               variant="outline"
@@ -429,13 +551,36 @@ export default function AiComputeQuoteView() {
                     setMoreMenuOpen(false);
                   }}
                 >
-                  <AppIcon name="reverse" />恢复 H200
+                  <AppIcon name="reverse" />恢复 H200 默认值
+                </button>
+	                <button
+	                  type="button"
+	                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
+	                  onClick={() => {
+	                    setShowAmountSourceManager(true);
+	                    setMoreMenuOpen(false);
+	                  }}
+	                >
+	                  <AppIcon name="presets" />管理金额来源
+	                </button>
+                <button
+                  type="button"
+                  disabled={store.amountSources.length <= 1}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-45"
+                  onClick={() => {
+                    if (store.activeAmountSourceId && window.confirm("确认删除当前智算金额来源吗？")) {
+                      void store.deleteAmountSource(store.activeAmountSourceId);
+                    }
+                    setMoreMenuOpen(false);
+                  }}
+                >
+                  <AppIcon name="delete" />删除当前来源
                 </button>
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
                   onClick={() => {
-                    navigateTo("ict_lifecycle", projectId, null, store.blueprint.scenarioId || store.blueprint.id);
+                    openIct();
                     setMoreMenuOpen(false);
                   }}
                 >
@@ -444,8 +589,8 @@ export default function AiComputeQuoteView() {
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
-                  onClick={() => {
-                    setShowOutput(true);
+	                  onClick={() => {
+	                    setShowOutput(true);
                     setMoreMenuOpen(false);
                   }}
                 >
@@ -467,24 +612,66 @@ export default function AiComputeQuoteView() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
-          <label className="flex h-9 min-w-56 items-center gap-2 rounded-lg bg-muted/60 px-3 text-caption font-semibold text-secondary-foreground">
-            当前项目
+          <HeaderStatusChip label="当前项目" value={activeProject?.name || "未选择智算项目"} />
+          {projectCycleParameter && (
+            <label className="flex h-9 items-center gap-2 rounded-lg bg-muted/60 px-3 text-caption font-semibold text-secondary-foreground">
+              项目周期
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={getAiComputeProjectCycleYears(store.blueprint.parameters)}
+                onChange={event => store.updateParameter(projectCycleParameter.id, { value: Number(event.target.value) })}
+                className="w-12 bg-transparent text-right font-bold text-foreground outline-none"
+              />
+              年
+            </label>
+          )}
+          {discountRateParameter && (
+            <label className="flex h-9 items-center gap-2 rounded-lg bg-muted/60 px-3 text-caption font-semibold text-secondary-foreground">
+              折现率
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.1}
+                value={getAiComputeDiscountRatePercent(store.blueprint.parameters)}
+                onChange={event => store.updateParameter(discountRateParameter.id, { value: Number(event.target.value) })}
+                className="w-16 bg-transparent text-right font-bold text-foreground outline-none"
+              />
+              %
+            </label>
+          )}
+	          <label className="flex h-9 min-w-64 items-center gap-2 rounded-lg bg-muted/60 px-3 text-caption font-semibold text-secondary-foreground">
+	            金额来源
             <select
               className="min-w-0 flex-1 bg-transparent text-sm font-bold text-foreground outline-none"
-              value={projectId || ""}
-              onChange={event => selectProject(event.target.value)}
+              value={store.activeAmountSourceId || ""}
+              onChange={event => void store.setActiveAmountSource(event.target.value)}
             >
-              <option value="">自由预览（不持久化）</option>
-              {projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
-            </select>
-          </label>
-          <HeaderStatusChip label="当前蓝图" value={store.blueprint.name} />
+              {store.amountSources.map(source => (
+                <option key={source.id} value={source.id}>
+                  {source.name}
+                </option>
+	              ))}
+	            </select>
+	          </label>
+	          <Button
+	            variant="outline"
+	            size="sm"
+	            onClick={() => setShowAmountSourceManager(true)}
+	          >
+	            <AppIcon name="edit" />管理来源
+	          </Button>
           <HeaderStatusChip
             label="ICT 状态"
             value={`${activeProject?.benefit_status === "normal" ? "已有正式测算" : "待配置"} · ${getSyncStatusLabel(syncStatus)}`}
             tone={syncStatus === "error" || syncStatus === "conflict" ? "warning" : syncStatus === "synced" ? "success" : undefined}
           />
-          <HeaderStatusChip label="资金计划来源" value="智算业务项计划" />
+          <HeaderStatusChip
+            label="同步来源"
+            value={store.amountSources.find(source => source.id === store.activeAmountSourceId)?.name || "--"}
+          />
           <HeaderStatusChip
             label="保存状态"
             value={getSavedStatusLabel(store.isDirty, store.lastSavedAt)}
@@ -494,6 +681,11 @@ export default function AiComputeQuoteView() {
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 xl:overflow-hidden">
+        {projectId && activeProject && !isIntelligentProject && (
+          <div className="shrink-0 rounded-lg bg-warning-soft px-3 py-2 text-caption text-warning-foreground">
+            当前项目类型为 ICT，不能加载智算金额来源。请返回项目看板选择智算项目。
+          </div>
+        )}
         {(store.error || ictExportError) && (
           <div className="shrink-0 rounded-lg bg-destructive-soft px-3 py-2 text-caption text-destructive">
             {store.error || ictExportError}
@@ -567,22 +759,186 @@ export default function AiComputeQuoteView() {
       {showOutput && (
         <OutputPackageModal
           onClose={() => setShowOutput(false)}
-          onRequestIctOutput={() => {
-            setShowOutput(false);
-            void requestIctOutput();
-          }}
-        />
-      )}
-      {showSyncDetails && ictExportPreview && (
+	          onRequestIctOutput={() => {
+	            setShowOutput(false);
+	            void syncToIct();
+	          }}
+	        />
+	      )}
+	      {showAmountSourceManager && (
+	        <AmountSourceManagerModal
+	          sources={store.amountSources}
+	          activeSourceId={store.activeAmountSourceId}
+	          onClose={() => setShowAmountSourceManager(false)}
+	          onRename={renameAmountSource}
+	          onCreate={async request => {
+	            return useAiComputeQuoteStore.getState().createAmountSource(request);
+	          }}
+	        />
+	      )}
+	      {showSyncDetails && ictExportPreview && (
         <IctExportConfirmModal
           preview={ictExportPreview}
           error={ictExportError}
+          syncing={syncStatus === "syncing"}
+          requiresReload={syncStatus === "conflict"}
+	          onConfirm={() => void (
+	            syncStatus === "conflict"
+	              ? reloadConflictAndOverwrite()
+	              : syncToIct({ confirmed: true })
+	          )}
           onCancel={() => {
             setShowSyncDetails(false);
             setIctExportError(null);
           }}
         />
       )}
+    </div>
+  );
+	}
+
+function AmountSourceManagerModal({
+  sources,
+  activeSourceId,
+  onClose,
+  onRename,
+  onCreate,
+}: {
+  sources: IntelligentAmountSource[];
+  activeSourceId: string | null;
+  onClose: () => void;
+  onRename: (name: string) => Promise<boolean>;
+  onCreate: (request: CreateAmountSourceRequest) => Promise<boolean>;
+}) {
+  const activeSource = sources.find(source => source.id === activeSourceId) || null;
+  const [renameName, setRenameName] = useState(activeSource?.name || "");
+  const [newName, setNewName] = useState("");
+  const [baseValue, setBaseValue] = useState<CreateAmountSourceBaseMode | `source:${string}`>(
+    activeSource ? "current" : "blank",
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setRenameName(activeSource?.name || "");
+    setBaseValue(activeSource ? "current" : "blank");
+  }, [activeSource?.id, activeSource?.name]);
+
+  const resolveBase = (): Pick<CreateAmountSourceRequest, "baseMode" | "baseSourceId"> => {
+    if (baseValue.startsWith("source:")) {
+      return { baseMode: "source", baseSourceId: baseValue.slice("source:".length) };
+    }
+    return { baseMode: baseValue as CreateAmountSourceBaseMode, baseSourceId: null };
+  };
+
+  const handleRename = async () => {
+    const name = renameName.trim();
+    if (!activeSource || !name) {
+      setError("请填写当前金额来源名称。");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const ok = await onRename(name);
+    setBusy(false);
+    if (!ok) {
+      setError("金额来源重命名失败，请稍后重试。");
+    }
+  };
+
+  const handleCreate = async () => {
+    const name = newName.trim();
+    if (!name) {
+      setError("请填写新金额来源名称。");
+      return;
+    }
+    const base = resolveBase();
+    if (base.baseMode === "source" && !base.baseSourceId) {
+      setError("请选择一个已有金额来源作为基底。");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const ok = await onCreate({
+      name,
+      ...base,
+    });
+    setBusy(false);
+    if (ok) {
+      onClose();
+      return;
+    }
+    setError("金额来源创建失败，请检查当前来源是否已保存。");
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-xl rounded-xl bg-card p-5 shadow-xl ring-1 ring-border/60">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-section-title font-bold">金额来源管理</h2>
+            <p className="text-caption text-secondary-foreground">当前项目共 {sources.length} 个来源</p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={onClose}>关闭</Button>
+        </div>
+
+        {error && (
+          <div className="mb-3 rounded-lg bg-destructive-soft px-3 py-2 text-caption font-semibold text-destructive">
+            {error}
+          </div>
+        )}
+
+        <section className="rounded-lg bg-muted/45 p-3.5">
+          <div className="mb-2 text-caption font-extrabold text-foreground">当前来源名称</div>
+          <div className="flex gap-2">
+            <Input
+              value={renameName}
+              disabled={!activeSource || busy}
+              onChange={event => setRenameName(event.target.value)}
+              className="bg-card"
+            />
+            <Button disabled={!activeSource || busy || !renameName.trim()} onClick={handleRename}>
+              <AppIcon name="save" />保存名称
+            </Button>
+          </div>
+        </section>
+
+        <section className="mt-3 rounded-lg bg-muted/45 p-3.5">
+          <div className="mb-2 text-caption font-extrabold text-foreground">新建金额来源</div>
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px]">
+            <Input
+              value={newName}
+              disabled={busy}
+              placeholder="金额来源名称"
+              onChange={event => setNewName(event.target.value)}
+              className="bg-card"
+            />
+            <select
+              value={baseValue}
+              disabled={busy}
+              onChange={event => setBaseValue(event.target.value as typeof baseValue)}
+              className="h-10 rounded-md bg-card px-3 text-sm font-semibold outline-none ring-1 ring-input focus:ring-ring"
+            >
+              <option value="blank">空白来源</option>
+              <option value="h200">H200 标准</option>
+              {activeSource && <option value="current">当前来源</option>}
+              {sources.map(source => (
+                <option key={source.id} value={`source:${source.id}`}>
+                  {source.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-caption font-semibold text-secondary-foreground">
+              新建后将设为当前唯一 ICT 同步来源
+            </div>
+            <Button disabled={busy || !newName.trim()} onClick={handleCreate}>
+              <AppIcon name="copy" />新建来源
+            </Button>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
@@ -614,7 +970,7 @@ function QuoteWorkspaceTabs({
       className="flex shrink-0 items-center gap-1 overflow-x-auto bg-muted/25 px-4 pt-2"
       style={{ borderBottom: "0.5px solid hsl(var(--border))" }}
       role="tablist"
-      aria-label="智算报价编辑区"
+      aria-label="智算金额来源编辑区"
     >
       {tabs.map(tab => {
         const active = activeTab === tab.id;
@@ -1524,7 +1880,7 @@ function SensitivityPanel({
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="mr-auto">
           <h2 className="text-section-title">敏感性分析工具</h2>
-          <p className="text-caption text-secondary-foreground">创建临时计算快照，不修改当前蓝图参数或正式 ICT 数据。</p>
+          <p className="text-caption text-secondary-foreground">创建临时计算快照，不修改当前金额来源参数或正式 ICT 数据。</p>
         </div>
         <Field label="分析参数">
           <select
@@ -1753,10 +2109,16 @@ function OutputPackageModal({
 function IctExportConfirmModal({
   preview,
   error,
+  syncing,
+  requiresReload = false,
+  onConfirm,
   onCancel,
 }: {
   preview: AiComputeIctExportPreview;
   error: string | null;
+  syncing: boolean;
+  requiresReload?: boolean;
+  onConfirm: () => void;
   onCancel: () => void;
 }) {
   const [showAllYears, setShowAllYears] = useState(false);
@@ -1773,9 +2135,9 @@ function IctExportConfirmModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/25 p-6 backdrop-blur-sm">
       <div className="flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-card shadow-xl">
         <div className="shrink-0 p-6 pb-4">
-          <h2 className="text-page-title">ICT 自动同步明细</h2>
+          <h2 className="text-page-title">ICT 同步明细</h2>
           <p className="mt-1 text-body text-secondary-foreground">
-            智算停止编辑后自动更新 ICT 科目、年度资金计划和正式效益指标。
+            用户确认同步后，系统更新 ICT 科目、年度资金计划和正式效益指标。
           </p>
           <div className="mt-3 flex flex-wrap gap-2 text-caption">
             <span className="rounded-full bg-primary-soft px-2.5 py-1 font-bold text-primary">
@@ -1790,7 +2152,7 @@ function IctExportConfirmModal({
               Scenario: {preview.scenarioId}
             </span>
             <span className="rounded-full bg-secondary px-2.5 py-1 font-bold text-secondary-foreground">
-              Blueprint: {preview.blueprintId}
+              来源集合: {preview.blueprintId}
             </span>
             <span className="rounded-full bg-secondary px-2.5 py-1 font-bold text-secondary-foreground">
               项目周期: {preview.projectYears} 年
@@ -1839,6 +2201,8 @@ function IctExportConfirmModal({
                     <td className="px-3 text-caption text-secondary-foreground">
                       {row.syncStatus === "released_mapping"
                         ? "释放旧计划"
+                        : row.syncStatus === "zeroed_absent"
+                          ? "智算未输出"
                         : row.fundingPlanModes.length > 0
                           ? row.fundingPlanModes.map(fundingModeLabel).join("、")
                           : "--"}
@@ -1855,14 +2219,16 @@ function IctExportConfirmModal({
                             : "text-warning-foreground"
                       }>
                         {row.syncStatus === "ready"
-                          ? "已同步"
+                          ? row.originalAmount === row.writtenAmount ? "金额一致" : "将覆盖"
                           : row.syncStatus === "zeroed_error"
                             ? "异常写零"
+                            : row.syncStatus === "zeroed_absent"
+                              ? "智算无输出，写 0"
                             : row.syncStatus === "paused_override"
                               ? "ICT 人工覆盖"
                               : row.syncStatus === "released_mapping"
                                 ? "释放旧映射"
-                                : "合并冲突"}
+                                : "需重载"}
                       </div>
                       {row.syncMessages?.map(message => <div key={message}>{message}</div>)}
                     </td>
@@ -1895,9 +2261,12 @@ function IctExportConfirmModal({
         </div>
 
         <div className="flex shrink-0 justify-end gap-2 p-6 pt-4">
-          <Button variant="outline" onClick={onCancel}>关闭</Button>
+          <Button variant="outline" disabled={syncing} onClick={onCancel}>关闭</Button>
           <Button variant="secondary" onClick={() => setShowAllYears(value => !value)}>
             {showAllYears ? "收起差异" : "查看差异"}
+          </Button>
+          <Button disabled={syncing || preview.rows.length === 0} onClick={onConfirm}>
+            {syncing ? "同步中..." : requiresReload ? "重新加载冲突并覆盖" : "智算完全覆盖 ICT"}
           </Button>
         </div>
       </div>

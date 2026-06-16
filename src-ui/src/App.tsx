@@ -93,8 +93,8 @@ export default function App() {
                   <span>←</span> 返回集市
                 </button>
                 <div>
-                  <h1 className="text-page-title font-bold tracking-tight">智算报价测算</h1>
-                  <p className="text-caption text-secondary-foreground mt-0.5">请先打开工作区后维护项目级智算蓝图</p>
+                  <h1 className="text-page-title font-bold tracking-tight">智算测算</h1>
+                  <p className="text-caption text-secondary-foreground mt-0.5">请先打开工作区并从项目看板进入智算项目</p>
                 </div>
               </div>
             </header>
@@ -195,10 +195,10 @@ function HubView({ onOpenTool }: { onOpenTool: (view: string) => void }) {
         />
         <HubCard
           icon="calculator"
-          title="智算报价测算"
-          description="智算报价蓝图、科目输出包与敏感性分析"
+          title="智算测算"
+          description="从项目看板维护智算金额来源并同步到 ICT"
           delay="delay-100"
-          onClick={() => onOpenTool("ai_compute_quote")}
+          onClick={() => onOpenTool("project_board")}
         />
         <HubCard
           icon="settings"

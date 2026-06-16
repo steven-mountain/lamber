@@ -6,6 +6,7 @@ mod common_presets;
 mod config_manager;
 mod db;
 mod docfill;
+mod intelligent_compute;
 mod migration;
 mod project_files;
 mod project_state;
@@ -158,8 +159,7 @@ fn main() {
             project_state::get_lifecycle_state,
             project_state::save_cashflow_state,
             project_state::get_cashflow_state,
-            project_state::apply_ai_compute_quote_to_ict,
-            project_state::sync_ai_compute_quote_to_ict,
+            project_state::sync_intelligent_compute_to_ict,
             project_state::save_benefit_analysis,
             project_state::get_benefit_schemes,
             project_state::save_template_state,
@@ -167,6 +167,10 @@ fn main() {
             project_state::list_template_states,
             project_state::list_template_assets,
             project_state::get_project_full_state,
+            intelligent_compute::get_intelligent_compute_project,
+            intelligent_compute::save_intelligent_compute_project_state,
+            intelligent_compute::save_intelligent_amount_source,
+            intelligent_compute::delete_intelligent_amount_source,
             workspace::get_workspace_state,
             workspace::inspect_workspace_path,
             workspace::select_workspace_folder,

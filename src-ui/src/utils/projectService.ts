@@ -98,10 +98,13 @@ export interface SummaryMetrics {
   risk_level: string;
 }
 
+export type ProjectType = "ict" | "intelligent_compute";
+
 export interface Project {
   id: string;
   name: string;
   customer_name: string;
+  project_type: ProjectType;
   status: string; // User-editable lifecycle tag, defaults to "需求导入"
   benefit_status: "not_started" | "normal" | "outdated";
   default_scheme_id?: string | null;
@@ -256,8 +259,8 @@ export const projectService = {
     return invoke<void>("save_project_setting", { projectId, key, value });
   },
 
-  async createProjectInWorkspace(name: string, customerName: string): Promise<Project> {
-    return invoke<Project>("create_project_in_workspace", { name, customerName });
+  async createProjectInWorkspace(name: string, customerName: string, projectType: ProjectType = "ict"): Promise<Project> {
+    return invoke<Project>("create_project_in_workspace", { name, customerName, projectType });
   },
 
   async listWorkspaceProjects(): Promise<WorkspaceProjectInfo[]> {

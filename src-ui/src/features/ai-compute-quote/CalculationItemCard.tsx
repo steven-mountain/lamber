@@ -71,15 +71,12 @@ function getIctStatus(
   syncStatus: SyncStatus,
 ) {
   if (item.outputEnabled === false) {
-    return { label: "不参与自动同步", tone: "muted" as const };
+    return { label: "不参与同步输出", tone: "muted" as const };
   }
   if (!mappingName) {
     return { label: "未映射 ICT 科目", tone: "warning" as const };
   }
-  if (item.formulaControlStatus === "ict_override") {
-    return { label: `ICT 已覆盖 · ${mappingName}`, tone: "warning" as const };
-  }
-  if (item.formulaControlStatus === "merge_conflict" || syncStatus === "conflict") {
+  if (syncStatus === "conflict") {
     return { label: `存在冲突 · ${mappingName}`, tone: "warning" as const };
   }
   if (syncStatus === "syncing") {
@@ -265,7 +262,6 @@ export default function CalculationItemCard({
             onUpdateItem={patch => store.updateLineItem(item.side, item.id, patch)}
             onUpdateFormula={formula => store.updateFormula(item.side, item.id, formula)}
             onUpdateMapping={selectMapping}
-            onRestoreFormulaControl={() => store.restoreFormulaControl(item.id)}
             onRemove={() => store.removeLineItem(item.side, item.id)}
           />
         </div>

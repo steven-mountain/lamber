@@ -1724,9 +1724,10 @@ fn regenerate_project_json(
         Option<String>,
         String,
         String,
+        String,
     )> = conn
         .query_row(
-            "SELECT id, name, folder_name, relative_path, linked_folder_relative_path, folder_path, created_at, updated_at FROM projects WHERE id=?1",
+            "SELECT id, name, folder_name, relative_path, linked_folder_relative_path, folder_path, created_at, updated_at, project_type FROM projects WHERE id=?1",
             [project_id],
             |row| {
                 Ok((
@@ -1738,6 +1739,7 @@ fn regenerate_project_json(
                     row.get::<_, Option<String>>(5)?,
                     row.get::<_, String>(6)?,
                     row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
                 ))
             },
         )
@@ -1752,6 +1754,7 @@ fn regenerate_project_json(
         folder_path,
         created_at,
         updated_at,
+        project_type,
     ) = row.ok_or_else(|| "项目不存在".to_string())?;
     let path_value = [
         relative_path,
@@ -1779,6 +1782,7 @@ fn regenerate_project_json(
         "relativePath": rel,
         "createdAt": created_at,
         "updatedAt": updated_at,
+        "projectType": project_type,
         "source": "healthRepair"
     });
     fs::write(

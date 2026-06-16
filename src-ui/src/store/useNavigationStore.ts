@@ -2,12 +2,21 @@ import { create } from "zustand";
 
 export type ViewType = "hub" | "project_board" | "ict_lifecycle" | "ai_compute_quote" | "data_management" | "preset_center" | "settings";
 
+export interface IctOrigin {
+  type: "intelligent_compute";
+  workspaceId: string;
+  projectId: string;
+  projectName: string;
+  amountSourceId: string | null;
+}
+
 interface NavigationState {
   currentView: ViewType;
   activeProjectId: string | null;
   activeSchemeId: string | null;
   entrySource: "hub" | "project_board" | "ai_compute_quote" | null;
   activeScenarioId: string | null;
+  ictOrigin: IctOrigin | null;
   settingsReturnView: ViewType | null;
   navigateTo: (
     view: ViewType,
@@ -15,6 +24,7 @@ interface NavigationState {
     schemeId?: string | null,
     scenarioId?: string | null,
   ) => void;
+  openIctFromIntelligentCompute: (origin: IctOrigin) => void;
   clearContext: () => void;
 }
 
@@ -26,11 +36,12 @@ export interface StoredNavigation {
   activeSchemeId: string | null;
   entrySource: "hub" | "project_board" | "ai_compute_quote" | null;
   activeScenarioId: string | null;
+  ictOrigin: IctOrigin | null;
 }
 
 export function readStoredNavigationState(): StoredNavigation {
   if (typeof window === "undefined") {
-    return { currentView: "hub", activeProjectId: null, activeSchemeId: null, entrySource: null, activeScenarioId: null };
+    return { currentView: "hub", activeProjectId: null, activeSchemeId: null, entrySource: null, activeScenarioId: null, ictOrigin: null };
   }
   try {
     const raw = localStorage.getItem(NAVIGATION_STORAGE_KEY);
@@ -42,12 +53,13 @@ export function readStoredNavigationState(): StoredNavigation {
         activeSchemeId: parsed.activeSchemeId || null,
         entrySource: parsed.entrySource || null,
         activeScenarioId: parsed.activeScenarioId || null,
+        ictOrigin: parsed.ictOrigin || null,
       };
     }
   } catch (e) {
     console.warn("Failed to load navigation state from localStorage:", e);
   }
-  return { currentView: "hub", activeProjectId: null, activeSchemeId: null, entrySource: null, activeScenarioId: null };
+  return { currentView: "hub", activeProjectId: null, activeSchemeId: null, entrySource: null, activeScenarioId: null, ictOrigin: null };
 }
 
 export const useNavigationStore = create<NavigationState>((set) => {
@@ -61,18 +73,23 @@ export const useNavigationStore = create<NavigationState>((set) => {
         let newEntrySource = state.entrySource;
         let newSettingsReturnView = state.settingsReturnView;
         let newScenarioId = state.activeScenarioId;
+        let newIctOrigin = state.ictOrigin;
 
         if (view === "ict_lifecycle") {
           if (state.currentView === "hub" || state.currentView === "project_board" || state.currentView === "ai_compute_quote") {
             newEntrySource = state.currentView as "hub" | "project_board" | "ai_compute_quote";
           }
           if (state.currentView === "ai_compute_quote") newScenarioId = scenarioId || state.activeScenarioId;
+          if (state.currentView !== "ict_lifecycle" || (newIctOrigin && newIctOrigin.projectId !== projectId)) {
+            newIctOrigin = null;
+          }
         } else if (view === "ai_compute_quote") {
           newEntrySource = null;
           newScenarioId = scenarioId || state.activeScenarioId;
         } else if (view === "hub" || view === "project_board") {
           newEntrySource = null;
           newScenarioId = null;
+          newIctOrigin = null;
         }
 
         if (view === "settings") {
@@ -90,6 +107,7 @@ export const useNavigationStore = create<NavigationState>((set) => {
           activeSchemeId: finalSchemeId,
           entrySource: newEntrySource,
           activeScenarioId: newScenarioId,
+          ictOrigin: newIctOrigin,
           settingsReturnView: newSettingsReturnView,
         };
 
@@ -103,6 +121,27 @@ export const useNavigationStore = create<NavigationState>((set) => {
         return newState;
       });
     },
+    openIctFromIntelligentCompute: origin => {
+      set(state => {
+        const newState = {
+          ...state,
+          currentView: "ict_lifecycle" as const,
+          activeProjectId: origin.projectId,
+          activeSchemeId: null,
+          entrySource: "ai_compute_quote" as const,
+          activeScenarioId: origin.amountSourceId,
+          ictOrigin: origin,
+          settingsReturnView: null,
+        };
+        try {
+          const { settingsReturnView: _, ...storedState } = newState;
+          localStorage.setItem(NAVIGATION_STORAGE_KEY, JSON.stringify(storedState));
+        } catch (e) {
+          console.warn("Failed to save navigation state to localStorage:", e);
+        }
+        return newState;
+      });
+    },
     clearContext: () => {
       set((state) => {
         const newState = {
@@ -110,6 +149,7 @@ export const useNavigationStore = create<NavigationState>((set) => {
           activeProjectId: null,
           activeSchemeId: null,
           activeScenarioId: null,
+          ictOrigin: null,
         };
         try {
           localStorage.setItem(NAVIGATION_STORAGE_KEY, JSON.stringify({
@@ -118,6 +158,7 @@ export const useNavigationStore = create<NavigationState>((set) => {
             activeSchemeId: null,
             entrySource: state.entrySource,
             activeScenarioId: null,
+            ictOrigin: null,
           }));
         } catch (e) {
           console.warn("Failed to clear navigation context in localStorage:", e);

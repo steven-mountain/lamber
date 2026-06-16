@@ -139,6 +139,7 @@ impl ProjectService {
             id: generate_id(),
             name,
             customer_name,
+            project_type: "ict".to_string(),
             status: "需求导入".to_string(),
             benefit_status: "not_started".to_string(),
             default_scheme_id: None,

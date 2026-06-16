@@ -6,6 +6,7 @@ use crate::benefit::service::compute_fingerprint;
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
@@ -78,10 +79,32 @@ fn ensure_project_exists(conn: &rusqlite::Connection, project_id: &str) -> Resul
     }
 }
 
+fn ensure_intelligent_compute_project(
+    conn: &rusqlite::Connection,
+    project_id: &str,
+) -> Result<(), String> {
+    let project_type: Option<String> = conn
+        .query_row(
+            "SELECT project_type FROM projects WHERE id = ?1",
+            [project_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    match project_type.as_deref() {
+        Some("intelligent_compute") => Ok(()),
+        Some(project_type) => Err(format!(
+            "ProjectTypeMismatch::{}::{}",
+            project_id, project_type
+        )),
+        None => Err(format!("ProjectNotFoundInCurrentWorkspace::{}", project_id)),
+    }
+}
+
 fn row_to_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
-    let summary_metrics: Option<String> = row.get(13)?;
+    let summary_metrics: Option<String> = row.get(14)?;
     let summary_metrics = summary_metrics.and_then(|s| serde_json::from_str(&s).ok());
-    let logs_str: Option<String> = row.get(18).ok();
+    let logs_str: Option<String> = row.get(19).ok();
     let logs: Vec<ProjectLog> = logs_str
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
@@ -90,29 +113,30 @@ fn row_to_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
         id: row.get(0)?,
         name: row.get(1)?,
         customer_name: row.get(2)?,
-        status: row.get(3)?,
-        benefit_status: row.get(4)?,
-        default_scheme_id: row.get(5)?,
-        created_at: row.get(6)?,
-        updated_at: row.get(7)?,
-        total_revenue_incl: row.get(8)?,
-        total_cost_incl: row.get(9)?,
-        project_years: row.get(10)?,
-        discount_rate: row.get(11)?,
-        cashflow_model: row.get(12)?,
+        project_type: row.get(3)?,
+        status: row.get(4)?,
+        benefit_status: row.get(5)?,
+        default_scheme_id: row.get(6)?,
+        created_at: row.get(7)?,
+        updated_at: row.get(8)?,
+        total_revenue_incl: row.get(9)?,
+        total_cost_incl: row.get(10)?,
+        project_years: row.get(11)?,
+        discount_rate: row.get(12)?,
+        cashflow_model: row.get(13)?,
         summary_metrics,
-        folder_path: row.get(14)?,
-        main_document_path: row.get(15)?,
-        main_budget_file_path: row.get(16)?,
-        note: row.get(17)?,
+        folder_path: row.get(15)?,
+        main_document_path: row.get(16)?,
+        main_budget_file_path: row.get(17)?,
+        note: row.get(18)?,
         logs,
-        folder_name: row.get(19)?,
-        relative_path: row.get(20)?,
-        progress: row.get(21).unwrap_or(0.0),
-        deadline: row.get(22)?,
-        linked_folder_type: row.get(23)?,
-        linked_folder_relative_path: row.get(24)?,
-        linked_folder_external_path: row.get(25)?,
+        folder_name: row.get(20)?,
+        relative_path: row.get(21)?,
+        progress: row.get(22).unwrap_or(0.0),
+        deadline: row.get(23)?,
+        linked_folder_type: row.get(24)?,
+        linked_folder_relative_path: row.get(25)?,
+        linked_folder_external_path: row.get(26)?,
     })
 }
 
@@ -121,7 +145,7 @@ fn get_project_locked(
     project_id: &str,
 ) -> Result<Option<Project>, String> {
     conn.query_row(
-        "SELECT id, name, customer_name, status, benefit_status, default_scheme_id, created_at, updated_at,
+        "SELECT id, name, customer_name, project_type, status, benefit_status, default_scheme_id, created_at, updated_at,
             total_revenue_incl, total_cost_incl, project_years, discount_rate, cashflow_model, summary_metrics,
             folder_path, main_document_path, main_budget_file_path, note, logs, folder_name, relative_path,
             progress, deadline, linked_folder_type, linked_folder_relative_path, linked_folder_external_path
@@ -138,6 +162,7 @@ fn get_project_locked(
 pub struct ProjectDetailPatch {
     pub name: Option<String>,
     pub customer_name: Option<String>,
+    pub project_type: Option<String>,
     pub status: Option<String>,
     pub progress: Option<f64>,
     pub deadline: Option<String>,
@@ -216,25 +241,25 @@ pub struct AiComputeIctImportResult {
     pub cashflow_state: StoredCashflowState,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiComputeRealtimeSyncPayload {
-    pub expected_revision: i64,
-    pub next_revision: i64,
-    pub blueprint_setting_json: Value,
-    pub lifecycle_state: LifecycleStatePayload,
-    pub cashflow_state: CashflowStatePayload,
-    pub calculation_input: IctInput,
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AiComputeRealtimeSyncResult {
+pub struct IntelligentComputeSyncResult {
     pub revision: i64,
     pub synced_at: String,
     pub ict_result: IctResult,
     pub lifecycle_state: StoredLifecycleState,
     pub cashflow_state: StoredCashflowState,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct IntelligentComputeSyncPayload {
+    pub expected_sync_revision: i64,
+    pub source_versions: HashMap<String, i64>,
+    pub controlled_subjects: Value,
+    pub lifecycle_state: LifecycleStatePayload,
+    pub cashflow_state: CashflowStatePayload,
+    pub calculation_input: IctInput,
 }
 
 #[derive(Debug, Serialize)]
@@ -599,6 +624,13 @@ pub async fn save_project_detail(
             trimmed.to_string()
         };
     }
+    if let Some(project_type) = patch.project_type {
+        project.project_type = match project_type.as_str() {
+            "ict" => "ict".to_string(),
+            "intelligent_compute" => "intelligent_compute".to_string(),
+            _ => return Err("InvalidProjectType".to_string()),
+        };
+    }
     if let Some(status) = patch.status {
         let trimmed = status.trim();
         if !trimmed.is_empty() {
@@ -626,15 +658,17 @@ pub async fn save_project_detail(
 
     let now = now_iso();
     let logs_str = serde_json::to_string(&project.logs).map_err(|e| e.to_string())?;
-    let affected = conn
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let affected = tx
         .execute(
-            "UPDATE projects SET name = ?1, customer_name = ?2, status = ?3, progress = ?4, deadline = ?5,
-                note = ?6, linked_folder_type = ?7, linked_folder_relative_path = ?8, linked_folder_external_path = ?9,
-                logs = ?10, updated_at = ?11
-             WHERE id = ?12",
+            "UPDATE projects SET name = ?1, customer_name = ?2, project_type = ?3, status = ?4, progress = ?5, deadline = ?6,
+                note = ?7, linked_folder_type = ?8, linked_folder_relative_path = ?9, linked_folder_external_path = ?10,
+                logs = ?11, updated_at = ?12
+             WHERE id = ?13",
             params![
                 project.name,
                 project.customer_name,
+                project.project_type,
                 project.status,
                 project.progress,
                 project.deadline,
@@ -651,6 +685,11 @@ pub async fn save_project_detail(
     if affected == 0 {
         return Err(format!("ProjectNotFoundInCurrentWorkspace::{}", project_id));
     }
+    if project.project_type == "intelligent_compute" {
+        crate::intelligent_compute::ensure_project_state(&tx, &project_id)?;
+        crate::intelligent_compute::ensure_default_amount_source(&tx, &project_id)?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
 
     project.updated_at = now;
     if let Some(ref rel_path) = project.relative_path {
@@ -661,6 +700,7 @@ pub async fn save_project_detail(
             if let Ok(content) = std::fs::read_to_string(&project_json_path) {
                 if let Ok(mut json_val) = serde_json::from_str::<Value>(&content) {
                     json_val["name"] = Value::String(project.name.clone());
+                    json_val["projectType"] = Value::String(project.project_type.clone());
                     json_val["updatedAt"] = Value::String(project.updated_at.clone());
                     if let Ok(updated_content) = serde_json::to_string_pretty(&json_val) {
                         let _ = std::fs::write(project_json_path, updated_content);
@@ -810,57 +850,39 @@ pub async fn get_cashflow_state(
 }
 
 #[tauri::command]
-pub async fn apply_ai_compute_quote_to_ict(
+pub async fn sync_intelligent_compute_to_ict(
     runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     project_id: String,
-    lifecycle_state: LifecycleStatePayload,
-    cashflow_state: CashflowStatePayload,
-) -> Result<AiComputeIctImportResult, String> {
+    payload: IntelligentComputeSyncPayload,
+) -> Result<IntelligentComputeSyncResult, String> {
     runtime.require_workspace()?;
     let db = runtime.require_db()?;
     let mut conn = db.lock().map_err(|e| e.to_string())?;
-    apply_ai_compute_quote_to_ict_locked(
-        &mut conn,
-        &project_id,
-        lifecycle_state,
-        cashflow_state,
-        None,
-        None,
-    )
-}
-
-#[tauri::command]
-pub async fn sync_ai_compute_quote_to_ict(
-    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
-    project_id: String,
-    payload: AiComputeRealtimeSyncPayload,
-) -> Result<AiComputeRealtimeSyncResult, String> {
-    runtime.require_workspace()?;
-    let db = runtime.require_db()?;
-    let mut conn = db.lock().map_err(|e| e.to_string())?;
+    ensure_intelligent_compute_project(&conn, &project_id)?;
     let ict_result =
         crate::benefit::calculator::calculate_ict_benefit(payload.calculation_input.clone())?;
     let mut cashflow_state = payload.cashflow_state;
     cashflow_state.yearly_cashflow_json = serde_json::json!({
         "cashflowTable": ict_result.cashflow,
-        "source": "ai_compute_quote_realtime_sync",
+        "source": "intelligent_compute_explicit_sync",
     });
     cashflow_state.metrics_json = serde_json::to_value(&ict_result).map_err(|e| e.to_string())?;
+    let next_revision = payload.expected_sync_revision + 1;
     let synced_at = now_iso();
     let stored = apply_ai_compute_quote_to_ict_locked(
         &mut conn,
         &project_id,
         payload.lifecycle_state,
         cashflow_state,
-        Some((
-            payload.expected_revision,
-            payload.next_revision,
-            payload.blueprint_setting_json,
-        )),
         Some(&ict_result),
+        Some((
+            payload.expected_sync_revision,
+            payload.source_versions,
+            payload.controlled_subjects,
+        )),
     )?;
-    Ok(AiComputeRealtimeSyncResult {
-        revision: payload.next_revision,
+    Ok(IntelligentComputeSyncResult {
+        revision: next_revision,
         synced_at,
         ict_result,
         lifecycle_state: stored.lifecycle_state,
@@ -873,8 +895,8 @@ fn apply_ai_compute_quote_to_ict_locked(
     project_id: &str,
     lifecycle_state: LifecycleStatePayload,
     cashflow_state: CashflowStatePayload,
-    blueprint_setting: Option<(i64, i64, Value)>,
     ict_result: Option<&IctResult>,
+    intelligent_sync: Option<(i64, HashMap<String, i64>, Value)>,
 ) -> Result<AiComputeIctImportResult, String> {
     ensure_project_exists(conn, project_id)?;
     const REVENUE_SUBJECT_CODES: [&str; 9] = [
@@ -943,30 +965,52 @@ fn apply_ai_compute_quote_to_ict_locked(
     let now = now_iso();
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    if let Some((expected_revision, _, _)) = &blueprint_setting {
-        let current_setting: Option<String> = tx
+    if let Some((expected_revision, source_versions, _)) = &intelligent_sync {
+        let current_revision: i64 = tx
             .query_row(
-                "SELECT value FROM project_settings WHERE project_id = ?1 AND key = 'ai_compute_quote::active'",
+                "SELECT sync_revision FROM project_intelligent_compute_states WHERE project_id = ?1",
                 [&project_id],
                 |row| row.get(0),
             )
-            .optional()
-            .map_err(|e| e.to_string())?;
-        let current_revision = current_setting
-            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
-            .and_then(|value| {
-                value
-                    .get("blueprint")
-                    .and_then(|blueprint| blueprint.get("syncState"))
-                    .and_then(|sync| sync.get("revision"))
-                    .and_then(Value::as_i64)
-            })
-            .unwrap_or(0);
+            .map_err(|_| "IntelligentComputeStateNotFound".to_string())?;
         if current_revision != *expected_revision {
             return Err(format!(
-                "AiComputeSyncRevisionConflict::expected={}::current={}",
+                "IntelligentComputeSyncRevisionConflict::expected={}::current={}",
                 expected_revision, current_revision
             ));
+        }
+        let stored_source_count: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM intelligent_compute_amount_sources WHERE project_id = ?1",
+                [&project_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if stored_source_count != source_versions.len() as i64 {
+            return Err(format!(
+                "IntelligentAmountSourceSetConflict::expected={}::current={}",
+                source_versions.len(),
+                stored_source_count
+            ));
+        }
+        for (source_id, expected_source_version) in source_versions {
+            let current_source_version: Option<i64> = tx
+                .query_row(
+                    "SELECT source_version FROM intelligent_compute_amount_sources
+                     WHERE id = ?1 AND project_id = ?2",
+                    params![source_id, project_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| e.to_string())?;
+            if current_source_version != Some(*expected_source_version) {
+                return Err(format!(
+                    "IntelligentAmountSourceVersionConflict::{}::expected={}::current={}",
+                    source_id,
+                    expected_source_version,
+                    current_source_version.unwrap_or(-1)
+                ));
+            }
         }
     }
     let lifecycle_id: Option<String> = tx
@@ -1041,15 +1085,6 @@ fn apply_ai_compute_quote_to_ict_locked(
     )
     .map_err(|e| e.to_string())?;
 
-    if let Some((_, _, setting_value)) = &blueprint_setting {
-        tx.execute(
-            "INSERT OR REPLACE INTO project_settings (project_id, key, value, updated_at)
-             VALUES (?1, 'ai_compute_quote::active', ?2, ?3)",
-            params![project_id, json_string(setting_value)?, now],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
     let summary_metrics = ict_result.map(|result| {
         serde_json::json!({
             "margin_rate": result.margin_rate,
@@ -1087,6 +1122,36 @@ fn apply_ai_compute_quote_to_ict_locked(
         ],
     )
     .map_err(|e| e.to_string())?;
+    if let Some((expected_revision, _, controlled_subjects)) = &intelligent_sync {
+        let affected = tx
+            .execute(
+                "UPDATE project_intelligent_compute_states
+             SET state_version = state_version + 1,
+                 sync_revision = sync_revision + 1,
+                 controlled_subjects_json = ?1,
+                 last_result_json = ?2,
+                 updated_at = ?3
+             WHERE project_id = ?4 AND sync_revision = ?5",
+                params![
+                    json_string(controlled_subjects)?,
+                    ict_result
+                        .map(serde_json::to_value)
+                        .transpose()
+                        .map_err(|e| e.to_string())?
+                        .as_ref()
+                        .map(json_string)
+                        .transpose()?
+                        .unwrap_or_else(|| "{}".to_string()),
+                    now,
+                    project_id,
+                    expected_revision,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        if affected != 1 {
+            return Err("IntelligentComputeSyncRevisionConflict".to_string());
+        }
+    }
     tx.commit().map_err(|e| e.to_string())?;
 
     let lifecycle_state = get_lifecycle_state_locked(conn, project_id)?
@@ -1478,6 +1543,7 @@ mod tests {
             "
             CREATE TABLE projects (
                 id TEXT PRIMARY KEY,
+                project_type TEXT NOT NULL DEFAULT 'ict',
                 benefit_status TEXT NOT NULL,
                 total_revenue_incl REAL NOT NULL,
                 total_cost_incl REAL NOT NULL,
@@ -1516,6 +1582,23 @@ mod tests {
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY(project_id, key)
+            );
+            CREATE TABLE project_intelligent_compute_states (
+                project_id TEXT PRIMARY KEY,
+                state_version INTEGER NOT NULL DEFAULT 1,
+                active_amount_source_id TEXT,
+                project_years INTEGER NOT NULL DEFAULT 1,
+                discount_rate REAL NOT NULL DEFAULT 0.055,
+                sync_revision INTEGER NOT NULL DEFAULT 0,
+                controlled_subjects_json TEXT NOT NULL DEFAULT '{}',
+                last_result_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE intelligent_compute_amount_sources (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                source_version INTEGER NOT NULL DEFAULT 1
             );
             INSERT INTO projects (
                 id, benefit_status, total_revenue_incl, total_cost_incl,
@@ -1626,10 +1709,32 @@ mod tests {
     }
 
     #[test]
-    fn ai_compute_realtime_sync_checks_revision_and_commits_metrics() {
+    fn intelligent_compute_sync_checks_type_source_revisions_and_rolls_back() {
         let mut conn = create_import_test_db();
+        assert!(ensure_intelligent_compute_project(&conn, "project-1")
+            .unwrap_err()
+            .contains("ProjectTypeMismatch"));
+        conn.execute(
+            "UPDATE projects SET project_type = 'intelligent_compute' WHERE id = 'project-1'",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO project_intelligent_compute_states (
+                project_id, state_version, project_years, discount_rate, sync_revision,
+                controlled_subjects_json, last_result_json, created_at, updated_at
+             ) VALUES ('project-1', 1, 5, 0.05, 2, '{}', '{}', 'before', 'before')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO intelligent_compute_amount_sources (id, project_id, source_version)
+             VALUES ('source-a', 'project-1', 3), ('source-b', 'project-1', 1)",
+            [],
+        )
+        .unwrap();
         let lifecycle_state = LifecycleStatePayload {
-            profile_json: json!({"projectName": "测试项目"}),
+            profile_json: json!({"projectName": "智算项目"}),
             parameters_json: json!({"projectYears": 5, "discountRate": 0.05}),
             background_json: json!({}),
             input_payload_json: json!({
@@ -1643,7 +1748,7 @@ mod tests {
             payment_model_json: json!({}),
             yearly_cashflow_json: json!({}),
             sector_cashflow_json: json!({}),
-            assumptions_json: json!({"projectYears": 5, "discountRate": 0.05}),
+            assumptions_json: json!({}),
             metrics_json: json!({}),
         };
         let result = IctResult {
@@ -1657,61 +1762,66 @@ mod tests {
             it_margin_rate: "1".to_string(),
             cashflow: vec![],
         };
-        let setting = json!({
-            "version": 2,
-            "blueprint": {
-                "syncState": {"revision": 1, "status": "synced", "subjects": {}}
-            }
-        });
-
+        let source_versions =
+            HashMap::from([("source-a".to_string(), 3), ("source-b".to_string(), 1)]);
         apply_ai_compute_quote_to_ict_locked(
             &mut conn,
             "project-1",
             lifecycle_state.clone(),
             cashflow_state.clone(),
-            Some((0, 1, setting)),
             Some(&result),
+            Some((
+                2,
+                source_versions,
+                json!({"revenue:rev_it_cloud": {"amountInclTax": 1000}}),
+            )),
         )
-        .expect("commit realtime sync");
-
-        let stored_setting: String = conn
+        .expect("commit intelligent compute sync");
+        let (revision, controlled, last_result): (i64, String, String) = conn
             .query_row(
-                "SELECT value FROM project_settings
-                 WHERE project_id = 'project-1' AND key = 'ai_compute_quote::active'",
+                "SELECT sync_revision, controlled_subjects_json, last_result_json
+                 FROM project_intelligent_compute_states WHERE project_id = 'project-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(revision, 3);
+        assert!(controlled.contains("rev_it_cloud"));
+        assert!(last_result.contains("\"npv\":\"900\""));
+
+        let lifecycle_version_before: i64 = conn
+            .query_row(
+                "SELECT lifecycle_version FROM project_lifecycle_states
+                 WHERE project_id = 'project-1'",
                 [],
                 |row| row.get(0),
             )
-            .expect("read quote setting");
-        assert_eq!(
-            serde_json::from_str::<Value>(&stored_setting).unwrap()["blueprint"]["syncState"]
-                ["revision"],
-            1
-        );
-        let project_summary: (String, i64, f64, Option<String>) = conn
-            .query_row(
-                "SELECT benefit_status, project_years, discount_rate, summary_metrics
-                 FROM projects WHERE id = 'project-1'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )
-            .expect("read realtime project summary");
-        assert_eq!(project_summary.0, "normal");
-        assert_eq!(project_summary.1, 5);
-        assert_eq!(project_summary.2, 0.05);
-        assert!(project_summary.3.unwrap().contains("\"npv\":\"900\""));
-
+            .unwrap();
         let conflict = apply_ai_compute_quote_to_ict_locked(
             &mut conn,
             "project-1",
             lifecycle_state,
             cashflow_state,
-            Some((0, 1, json!({}))),
             Some(&result),
+            Some((
+                3,
+                HashMap::from([("source-a".to_string(), 99), ("source-b".to_string(), 1)]),
+                json!({}),
+            )),
         );
         let conflict = match conflict {
-            Ok(_) => panic!("stale revision must fail"),
+            Ok(_) => panic!("stale source revision must fail"),
             Err(error) => error,
         };
-        assert!(conflict.contains("AiComputeSyncRevisionConflict"));
+        assert!(conflict.contains("IntelligentAmountSourceVersionConflict"));
+        let lifecycle_version_after: i64 = conn
+            .query_row(
+                "SELECT lifecycle_version FROM project_lifecycle_states
+                 WHERE project_id = 'project-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(lifecycle_version_after, lifecycle_version_before);
     }
 }

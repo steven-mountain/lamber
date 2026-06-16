@@ -1,7 +1,7 @@
 import type { IctSubjectGroupId, IctSubjectSide } from "./ictSubjectCatalog";
 
 export type SubjectFundingPlanMode = "upfront" | "equal" | "custom";
-export type SubjectFundingPlanSource = "manual" | "template" | "migration" | "ai_compute_quote";
+export type SubjectFundingPlanSource = "manual" | "template" | "migration" | "ai_compute_quote" | "intelligent_compute";
 export type CashflowCalculationSource = "legacy_model" | "subject_funding_plans";
 
 export const SUBJECT_FUNDING_PLAN_MIGRATION_VERSION = 1;
@@ -21,15 +21,18 @@ export type SubjectFundingPlanLastChangeReason =
   | "auto_created_upfront"
   | "restored_after_zero"
   | "legacy_migration"
-  | "ai_compute_quote_import";
+  | "ai_compute_quote_import"
+  | "intelligent_compute_import";
 
 export type SubjectFundingPlanImportTrace = {
-  source: "ai_compute_quote";
+  source: "ai_compute_quote" | "intelligent_compute";
   sourceLabel: string;
   projectId: string;
   scenarioId: string;
   blueprintId: string;
   sourceLineItemIds: string[];
+  amountSourceIds?: string[];
+  sourceLineItems?: Array<{ amountSourceId: string; lineItemId: string }>;
   importedAt: string;
 };
 
@@ -242,6 +245,7 @@ export const normalizeSubjectFundingPlan = (value: unknown): SubjectFundingPlan 
     || raw.source === "migration"
     || raw.source === "manual"
     || raw.source === "ai_compute_quote"
+    || raw.source === "intelligent_compute"
       ? raw.source
       : "manual";
 

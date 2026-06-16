@@ -30,7 +30,7 @@ Lamber 是一个基于 **Tauri + React + Rust** 架构的销售支撑桌面工�
 5. **AI 顾问 (AI Assistant)**
    * 前端：[AiChatPanel.tsx](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-ui/src/components/ai/AiChatPanel.tsx)
    * 上下文构建：[buildAiChatContext.ts](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-ui/src/ai/context/buildAiChatContext.ts)
-6. **智算报价测算 (AI Compute Quote)**
+6. **智算测算与金额来源 (Intelligent Compute)**
    * 前端：[AiComputeQuoteView.tsx](../src-ui/src/features/ai-compute-quote/AiComputeQuoteView.tsx)
    * 计算核心：[calculations.ts](../src-ui/src/features/ai-compute-quote/calculations.ts)
    * 模块文档：[ai-compute-quote.md](./modules/ai-compute-quote.md)
@@ -38,7 +38,7 @@ Lamber 是一个基于 **Tauri + React + Rust** 架构的销售支撑桌面工�
 ## 模块详细设计上下文目录 (On-Demand)
 * **前端外观与设置体系 (Appearance)**: [appearance.md](file:///Users/hermesjang/Documents/CMCC/tools/lamber/docs/modules/appearance.md)
 * **采购甄选费测算 (Selection Fee)**: [selection-fee.md](file:///Users/hermesjang/Documents/CMCC/tools/lamber/docs/modules/selection-fee.md)
-* **智算报价测算 (AI Compute Quote)**: [ai-compute-quote.md](./modules/ai-compute-quote.md)
+* **智算测算与金额来源 (Intelligent Compute)**: [ai-compute-quote.md](./modules/ai-compute-quote.md)
 
 ## AI 上下文读取规则
 在每轮开发任务开始前，AI 必须严格执行按需读取，以节省上下文空间：

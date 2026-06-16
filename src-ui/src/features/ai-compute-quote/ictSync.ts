@@ -126,7 +126,7 @@ export function reconcileAiComputeBlueprintFromIct(
           yearlyAmounts,
           modifiedAt: new Date().toISOString(),
         },
-        ictControlMessage: "已被 ICT 人工修改，当前公式失效",
+        ictControlMessage: "历史 ICT 差异标记（仅兼容读取）",
       });
       return;
     }

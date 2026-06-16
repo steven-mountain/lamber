@@ -34,16 +34,17 @@ export type AiComputeIctExportRow = {
   ictSubjectCode: string;
   ictSubjectName: string;
   subject: IctSubjectDefinition;
-  originalAmount: number;
-  quoteAmount: number;
-  writtenAmount: number;
-  originalYearlyAmounts: number[];
-  yearlyAmounts: number[];
+	  originalAmount: number;
+	  quoteAmount: number;
+	  writtenAmount: number;
+	  amountExclTax: number;
+	  originalYearlyAmounts: number[];
+	  yearlyAmounts: number[];
   sourceLineItemIds: string[];
   sourceLineItemNames: string[];
   fundingPlanModes: AiComputeLineItemFundingPlanMode[];
   taxRate: number;
-  syncStatus?: "ready" | "zeroed_error" | "paused_override" | "merge_conflict" | "released_mapping";
+  syncStatus?: "ready" | "zeroed_error" | "zeroed_absent" | "paused_override" | "merge_conflict" | "released_mapping";
   syncMessages?: string[];
 };
 
@@ -56,6 +57,12 @@ export type AiComputeIctExportPreview = {
   rows: AiComputeIctExportRow[];
   skippedUnmappedItems: Array<{ id: string; name: string; side: "revenue" | "cost"; reason: string }>;
   skippedItems: Array<{ id: string; name: string; side: "revenue" | "cost"; reason: string }>;
+};
+
+export type IntelligentComputeAggregateSource = {
+  sourceId: string;
+  sourceName: string;
+  blueprint: AiComputeQuoteBlueprint;
 };
 
 const zeroYearlyAmounts = () => Array(10).fill(0);
@@ -237,25 +244,28 @@ const buildCompleteIctInput = (
       assumptionItem.billing_subject_name,
       "",
     )).trim();
-    completeInput[subject.subjectCode] = {
-      ...inputItem,
-      incl_tax: String(firstDefined(
-        inputItem.incl_tax,
-        inputItem.incl,
-        assumptionItem.incl,
-        assumptionItem.incl_tax,
-        0,
-      )),
-      tax_rate: String(firstDefined(
-        inputItem.tax_rate,
-        inputItem.tax,
-        assumptionItem.tax,
-        assumptionItem.tax_rate,
-        0,
-      )),
-      ...(customSubjectName ? { custom_subject_name: customSubjectName } : {}),
-      ...(billingSubjectName ? { billing_subject_name: billingSubjectName } : {}),
-    };
+	    const amountInclTax = firstDefined(
+	      inputItem.incl_tax,
+	      inputItem.incl,
+	      assumptionItem.incl,
+	      assumptionItem.incl_tax,
+	      0,
+	    );
+	    const rawTaxRate = firstDefined(
+	      inputItem.tax_rate,
+	      inputItem.tax,
+	      assumptionItem.tax,
+	      assumptionItem.tax_rate,
+	    );
+	    completeInput[subject.subjectCode] = {
+	      ...inputItem,
+	      incl_tax: String(amountInclTax),
+	      tax_rate: String(rawTaxRate === undefined || rawTaxRate === null || rawTaxRate === ""
+	        ? subject.defaultTaxRate
+	        : rawTaxRate),
+	      ...(customSubjectName ? { custom_subject_name: customSubjectName } : {}),
+	      ...(billingSubjectName ? { billing_subject_name: billingSubjectName } : {}),
+	    };
   });
 
   return completeInput;
@@ -294,32 +304,46 @@ const getExistingTaxRate = (
   fullState: UnknownRecord,
   subject: IctSubjectDefinition,
 ) => {
-  const assumptions = fullState.cashflowState?.assumptionsJson || {};
-  const assumptionItem = getAssumptionSubjectItem(assumptions, subject);
-  if (assumptionItem) return finiteMoney(assumptionItem.tax ?? assumptionItem.tax_rate);
-  const inputItem = getBaseInput(fullState)[subject.subjectCode];
-  return finiteMoney(inputItem?.tax_rate ?? inputItem?.tax);
-};
+	  const assumptions = fullState.cashflowState?.assumptionsJson || {};
+	  const assumptionItem = getAssumptionSubjectItem(assumptions, subject);
+	  if (assumptionItem) return finiteMoney(assumptionItem.tax ?? assumptionItem.tax_rate ?? subject.defaultTaxRate);
+	  const inputItem = getBaseInput(fullState)[subject.subjectCode];
+	  return finiteMoney(inputItem?.tax_rate ?? inputItem?.tax ?? subject.defaultTaxRate);
+	};
+
+const getExistingYearlyAmounts = (
+  fullState: UnknownRecord,
+  subject: IctSubjectDefinition,
+) => normalizeAnnualInclValues(
+  normalizeSubjectFundingPlans(
+    fullState.cashflowState?.assumptionsJson?.subjectFundingPlans
+    || fullState.cashflowState?.assumptionsJson?.subject_funding_plans,
+  )[createSubjectFundingPlanId({
+    side: subject.side,
+    groupId: subject.groupId,
+    key: subject.key,
+  })]?.annualInclValues,
+);
 
 const normalizeAiComputeImportTrace = (
   value: unknown,
 ): SubjectFundingPlanImportTrace | null => {
-  if (!value || typeof value !== "object") return null;
-  const raw = value as UnknownRecord;
-  if (raw.source !== "ai_compute_quote") return null;
-  const projectId = String(raw.projectId ?? raw.project_id ?? "").trim();
-  const scenarioId = String(raw.scenarioId ?? raw.scenario_id ?? "").trim();
-  const blueprintId = String(raw.blueprintId ?? raw.blueprint_id ?? "").trim();
+	  if (!value || typeof value !== "object") return null;
+	  const raw = value as UnknownRecord;
+	  if (raw.source !== "ai_compute_quote" && raw.source !== "intelligent_compute") return null;
+	  const projectId = String(raw.projectId ?? raw.project_id ?? "").trim();
+	  const scenarioId = String(raw.scenarioId ?? raw.scenario_id ?? "").trim();
+	  const blueprintId = String(raw.blueprintId ?? raw.blueprint_id ?? "").trim();
   const sourceLineItemIds = Array.isArray(raw.sourceLineItemIds ?? raw.source_line_item_ids)
     ? (raw.sourceLineItemIds ?? raw.source_line_item_ids)
       .map((id: unknown) => String(id).trim())
       .filter(Boolean)
     : [];
-  if (!projectId || (!scenarioId && !blueprintId) || sourceLineItemIds.length === 0) return null;
-  return {
-    source: "ai_compute_quote",
-    sourceLabel: String(raw.sourceLabel ?? raw.source_label ?? "来自智算报价测算"),
-    projectId,
+	  if (!projectId || (!scenarioId && !blueprintId) || sourceLineItemIds.length === 0) return null;
+	  return {
+	    source: raw.source,
+	    sourceLabel: String(raw.sourceLabel ?? raw.source_label ?? "来自智算报价测算"),
+	    projectId,
     scenarioId,
     blueprintId,
     sourceLineItemIds,
@@ -375,6 +399,56 @@ const collectPreviouslyControlledSubjects = (
     }
 
     subjects.set(key, {
+      side: subject.side,
+      ictSubjectCode: subject.subjectCode,
+      amountInclTax,
+      taxRate: getExistingTaxRate(fullState, subject),
+      yearlyAmounts,
+      sourceLineItemIds: [...trace.sourceLineItemIds],
+    });
+  });
+
+  return subjects;
+};
+
+const collectPreviouslyControlledIntelligentSubjects = (
+  fullState: UnknownRecord,
+  projectId: string,
+) => {
+  const subjects = new Map<string, AiComputeSyncedSubjectSnapshot>();
+  const assumptions = fullState.cashflowState?.assumptionsJson || {};
+  const plans = normalizeSubjectFundingPlans(
+    assumptions.subjectFundingPlans || assumptions.subject_funding_plans,
+  );
+
+  ICT_SUBJECT_DEFINITIONS.forEach(subject => {
+    const plan = plans[createSubjectFundingPlanId({
+      side: subject.side,
+      groupId: subject.groupId,
+      key: subject.key,
+    })];
+    const trace = normalizeAiComputeImportTrace(plan?.importTrace);
+    const isUnmodifiedIntelligentImport = plan?.source === "intelligent_compute"
+      && (!plan.lastChangeReason || plan.lastChangeReason === "intelligent_compute_import");
+    if (
+      !trace
+      || trace.source !== "intelligent_compute"
+      || trace.projectId !== projectId
+      || !isUnmodifiedIntelligentImport
+    ) {
+      return;
+    }
+
+    const yearlyAmounts = normalizeAnnualInclValues(plan?.annualInclValues);
+    const amountInclTax = getExistingAmount(fullState, subject);
+    if (
+      Math.abs(amountInclTax) <= 0.004
+      && yearlyAmounts.every(value => Math.abs(value) <= 0.004)
+    ) {
+      return;
+    }
+
+    subjects.set(`${subject.side}:${subject.subjectCode}`, {
       side: subject.side,
       ictSubjectCode: subject.subjectCode,
       amountInclTax,
@@ -445,10 +519,11 @@ export function buildAiComputeIctExportPreview(
       ictSubjectCode: fundingOutput.ictSubjectCode,
       ictSubjectName: fundingOutput.ictSubjectName,
       subject,
-      originalAmount: getExistingAmount(fullState, subject),
-      quoteAmount: finiteMoney(fundingOutput.totalAmount),
-      writtenAmount: finiteMoney(fundingOutput.totalAmount),
-      originalYearlyAmounts: normalizeAnnualInclValues(originalPlan?.annualInclValues),
+	      originalAmount: getExistingAmount(fullState, subject),
+	      quoteAmount: finiteMoney(fundingOutput.totalAmount),
+	      writtenAmount: finiteMoney(fundingOutput.totalAmount),
+	      amountExclTax: finiteMoney(amountExclTax),
+	      originalYearlyAmounts: normalizeAnnualInclValues(originalPlan?.annualInclValues),
       yearlyAmounts: normalizeAnnualInclValues(
         Array.from({ length: 10 }, (_, index) => fundingOutput.yearlyAmounts[String(index + 1)] || 0),
       ),
@@ -470,6 +545,169 @@ export function buildAiComputeIctExportPreview(
     discountRate: getAiComputeDiscountRateDecimal(calculated.parameters),
     rows,
     ...skipped,
+  };
+}
+
+export function validateIntelligentComputeSources(
+  sources: IntelligentComputeAggregateSource[],
+) {
+  const issues: string[] = [];
+  const selectedSources = sources.slice(0, 1);
+
+  selectedSources.forEach(source => {
+    const calculated = calculateQuoteBlueprint(source.blueprint);
+    const mappings = new Map(
+      calculated.mappings
+        .filter(mapping => mapping.enabled)
+        .map(mapping => [mapping.lineItemId, mapping]),
+    );
+    [...calculated.revenueItems, ...calculated.costItems].forEach(item => {
+      const mapping = mappings.get(item.id);
+      if (!item.enabled || !item.outputEnabled || !mapping) return;
+      if (item.calculationStatus !== "valid") {
+        issues.push(`${source.sourceName} / ${item.name}：${item.calculationError || "计算结果无效"}`);
+        return;
+      }
+      if (!item.fundingPlan?.enabled) {
+        issues.push(`${source.sourceName} / ${item.name}：年度金额未启用`);
+        return;
+      }
+      const validation = validateAiComputeFundingPlan(item.fundingPlan, item.amountInclTax);
+      if (!validation.consistent) {
+        issues.push(`${source.sourceName} / ${item.name}：年度金额差异 ${validation.difference} 元`);
+      }
+    });
+  });
+  return { valid: issues.length === 0, issues };
+}
+
+export function buildIntelligentComputeAggregatePreview(
+  sources: IntelligentComputeAggregateSource[],
+  fullState: UnknownRecord,
+  projectId: string,
+  controlledSubjects: Record<string, AiComputeSyncedSubjectSnapshot> = {},
+): AiComputeIctExportPreview {
+  const aggregate = new Map<string, AiComputeIctExportRow>();
+  const skippedUnmappedItems: AiComputeIctExportPreview["skippedUnmappedItems"] = [];
+  const skippedItems: AiComputeIctExportPreview["skippedItems"] = [];
+  let projectYears = 1;
+  let discountRate = 0.055;
+  const selectedSources = sources.slice(0, 1);
+
+  selectedSources.forEach(source => {
+    const preview = buildAiComputeIctExportPreview(source.blueprint, fullState, projectId);
+    projectYears = preview.projectYears;
+    discountRate = preview.discountRate;
+    preview.skippedUnmappedItems.forEach(item => skippedUnmappedItems.push({
+      ...item,
+      id: `${source.sourceId}:${item.id}`,
+      name: `${source.sourceName} / ${item.name}`,
+    }));
+    preview.skippedItems.forEach(item => skippedItems.push({
+      ...item,
+      id: `${source.sourceId}:${item.id}`,
+      name: `${source.sourceName} / ${item.name}`,
+    }));
+    preview.rows.forEach(row => {
+      const key = `${row.side}:${row.ictSubjectCode}`;
+      const compoundIds = row.sourceLineItemIds.map(id => `${source.sourceId}:${id}`);
+      const compoundNames = row.sourceLineItemNames.map(name => `${source.sourceName} / ${name}`);
+      const current = aggregate.get(key);
+      if (!current) {
+        aggregate.set(key, {
+          ...row,
+          sourceLineItemIds: compoundIds,
+          sourceLineItemNames: compoundNames,
+          syncStatus: "ready",
+        });
+        return;
+      }
+	      const nextAmount = finiteMoney(current.writtenAmount + row.writtenAmount);
+	      const nextExcl = finiteMoney(current.amountExclTax + row.amountExclTax);
+	      aggregate.set(key, {
+	        ...current,
+	        quoteAmount: nextAmount,
+	        writtenAmount: nextAmount,
+	        amountExclTax: nextExcl,
+	        yearlyAmounts: current.yearlyAmounts.map((value, index) =>
+	          finiteMoney(value + (row.yearlyAmounts[index] || 0))
+	        ),
+        sourceLineItemIds: [...current.sourceLineItemIds, ...compoundIds],
+        sourceLineItemNames: [...current.sourceLineItemNames, ...compoundNames],
+        fundingPlanModes: Array.from(new Set([...current.fundingPlanModes, ...row.fundingPlanModes])),
+	        taxRate: deriveTaxRate(nextAmount, nextExcl),
+	        syncStatus: "ready",
+	      });
+	    });
+	  });
+
+	  const previousControlledSubjects = new Map<string, AiComputeSyncedSubjectSnapshot>(
+	    Object.entries(controlledSubjects),
+	  );
+	  collectPreviouslyControlledIntelligentSubjects(fullState, projectId).forEach((snapshot, key) => {
+	    if (!previousControlledSubjects.has(key)) previousControlledSubjects.set(key, snapshot);
+	  });
+
+	  previousControlledSubjects.forEach((snapshot, key) => {
+	    if (aggregate.has(key)) return;
+	    const subject = ICT_SUBJECT_DEFINITIONS.find(candidate =>
+	      candidate.side === snapshot.side && candidate.subjectCode === snapshot.ictSubjectCode
+    );
+    if (!subject) return;
+    aggregate.set(key, {
+      side: snapshot.side,
+      ictSubjectCode: snapshot.ictSubjectCode,
+      ictSubjectName: subject.standardSubjectName,
+      subject,
+	      originalAmount: getExistingAmount(fullState, subject),
+	      quoteAmount: 0,
+	      writtenAmount: 0,
+	      amountExclTax: 0,
+	      originalYearlyAmounts: normalizeAnnualInclValues(snapshot.yearlyAmounts),
+      yearlyAmounts: zeroYearlyAmounts(),
+      sourceLineItemIds: [...snapshot.sourceLineItemIds],
+      sourceLineItemNames: [...snapshot.sourceLineItemIds],
+      fundingPlanModes: [],
+      taxRate: snapshot.taxRate || subject.defaultTaxRate,
+      syncStatus: "released_mapping",
+      syncMessages: ["该科目已不再由启用的智算金额来源控制，本次同步将清零金额和年度计划"],
+    });
+  });
+
+  ICT_SUBJECT_DEFINITIONS.forEach(subject => {
+    const key = `${subject.side}:${subject.subjectCode}`;
+    if (aggregate.has(key)) return;
+    aggregate.set(key, {
+      side: subject.side,
+      ictSubjectCode: subject.subjectCode,
+      ictSubjectName: subject.standardSubjectName,
+      subject,
+      originalAmount: getExistingAmount(fullState, subject),
+      quoteAmount: 0,
+      writtenAmount: 0,
+      amountExclTax: 0,
+      originalYearlyAmounts: getExistingYearlyAmounts(fullState, subject),
+      yearlyAmounts: zeroYearlyAmounts(),
+      sourceLineItemIds: [],
+      sourceLineItemNames: [],
+      fundingPlanModes: [],
+      taxRate: subject.defaultTaxRate,
+      syncStatus: "zeroed_absent",
+      syncMessages: ["当前同步来源未输出该科目，本次将按 0 覆盖 ICT 金额和年度计划"],
+    });
+  });
+
+  return {
+    projectId,
+    scenarioId: "intelligent-compute-aggregate",
+    blueprintId: "intelligent-compute-aggregate",
+    projectYears,
+    discountRate,
+    rows: ICT_SUBJECT_DEFINITIONS
+      .map(subject => aggregate.get(`${subject.side}:${subject.subjectCode}`))
+      .filter((row): row is AiComputeIctExportRow => Boolean(row)),
+    skippedUnmappedItems,
+    skippedItems,
   };
 }
 
@@ -503,17 +741,7 @@ export function buildAiComputeAutoSyncPreview(
     const items = mappings
       .map(mapping => itemMap.get(mapping.lineItemId))
       .filter((item): item is AiComputeQuoteBlueprint["revenueItems"][number] => Boolean(item));
-    const overrideItems = items.filter(item => item.formulaControlStatus === "ict_override");
-    const conflictItems = items.filter(item => item.formulaControlStatus === "merge_conflict");
-    const paused = overrideItems.length > 0 || conflictItems.length > 0;
     const syncMessages: string[] = [];
-
-    if (overrideItems.length > 0) {
-      syncMessages.push("ICT 人工修改已反写，当前公式失效；恢复公式控制后才会重新覆盖 ICT");
-    }
-    if (conflictItems.length > 0) {
-      syncMessages.push("多个智算项合并到同一 ICT 科目，ICT 人工值无法自动拆分");
-    }
 
     const invalidItems = items.filter(item => {
       const planValidation = item.fundingPlan
@@ -534,9 +762,7 @@ export function buildAiComputeAutoSyncPreview(
       syncMessages.push(`${item.name}：${reason}，按 0 同步`);
     });
 
-    const activeItems = paused
-      ? []
-      : items.filter(item => !invalidItems.some(invalid => invalid.id === item.id));
+    const activeItems = items.filter(item => !invalidItems.some(invalid => invalid.id === item.id));
     const amountInclTax = activeItems.reduce((sum, item) => sum + item.amountInclTax, 0);
     const amountExclTax = activeItems.reduce((sum, item) => sum + item.amountExclTax, 0);
     const yearlyAmounts = activeItems.reduce((values, item) => {
@@ -551,10 +777,11 @@ export function buildAiComputeAutoSyncPreview(
       ictSubjectCode: firstMapping.ictSubjectCode,
       ictSubjectName: firstMapping.ictSubjectName,
       subject,
-      originalAmount: getExistingAmount(fullState, subject),
-      quoteAmount: finiteMoney(amountInclTax),
-      writtenAmount: finiteMoney(amountInclTax),
-      originalYearlyAmounts: normalizeAnnualInclValues(
+	      originalAmount: getExistingAmount(fullState, subject),
+	      quoteAmount: finiteMoney(amountInclTax),
+	      writtenAmount: finiteMoney(amountInclTax),
+	      amountExclTax: finiteMoney(amountExclTax),
+	      originalYearlyAmounts: normalizeAnnualInclValues(
         normalizeSubjectFundingPlans(
           fullState.cashflowState?.assumptionsJson?.subjectFundingPlans
           || fullState.cashflowState?.assumptionsJson?.subject_funding_plans,
@@ -570,16 +797,10 @@ export function buildAiComputeAutoSyncPreview(
       fundingPlanModes: Array.from(new Set(items.flatMap(item =>
         item.fundingPlan?.mode ? [item.fundingPlan.mode] : []
       ))),
-      taxRate: amountInclTax > 0
-        ? deriveTaxRate(amountInclTax, amountExclTax)
-        : Number(activeItems[0]?.taxRate ?? items[0]?.taxRate ?? 0),
-      syncStatus: conflictItems.length > 0
-        ? "merge_conflict"
-        : overrideItems.length > 0
-          ? "paused_override"
-          : invalidItems.length > 0
-            ? "zeroed_error"
-            : "ready",
+	      taxRate: amountInclTax > 0
+	        ? deriveTaxRate(amountInclTax, amountExclTax)
+	        : Number(activeItems[0]?.taxRate ?? items[0]?.taxRate ?? subject.defaultTaxRate),
+      syncStatus: invalidItems.length > 0 ? "zeroed_error" : "ready",
       syncMessages,
     });
   });
@@ -596,11 +817,12 @@ export function buildAiComputeAutoSyncPreview(
         side: snapshot.side,
         ictSubjectCode: snapshot.ictSubjectCode,
         ictSubjectName: subject.standardSubjectName,
-        subject,
-        originalAmount: getExistingAmount(fullState, subject),
-        quoteAmount: 0,
-        writtenAmount: 0,
-        originalYearlyAmounts: normalizeAnnualInclValues(
+	        subject,
+	        originalAmount: getExistingAmount(fullState, subject),
+	        quoteAmount: 0,
+	        writtenAmount: 0,
+	        amountExclTax: 0,
+	        originalYearlyAmounts: normalizeAnnualInclValues(
           normalizeSubjectFundingPlans(
             fullState.cashflowState?.assumptionsJson?.subjectFundingPlans
             || fullState.cashflowState?.assumptionsJson?.subject_funding_plans,
@@ -656,19 +878,28 @@ export function buildAiComputeIctExportPayloads(
   preview.rows
     .filter(row => row.syncStatus !== "paused_override" && row.syncStatus !== "merge_conflict")
     .forEach(row => {
+    const sourceLineItems = row.sourceLineItemIds.flatMap(value => {
+      const separator = value.indexOf(":");
+      if (separator <= 0) return [];
+      return [{
+        amountSourceId: value.slice(0, separator),
+        lineItemId: value.slice(separator + 1),
+      }];
+    });
+    const amountSourceIds = Array.from(new Set(sourceLineItems.map(item => item.amountSourceId)));
+    const isAggregate = preview.blueprintId === "intelligent-compute-aggregate";
     const importTrace: SubjectFundingPlanImportTrace = {
-      source: "ai_compute_quote",
-      sourceLabel: "来自智算报价测算",
+      source: isAggregate ? "intelligent_compute" : "ai_compute_quote",
+      sourceLabel: isAggregate ? "来自智算金额来源" : "来自智算报价测算",
       projectId: preview.projectId,
       scenarioId: preview.scenarioId,
       blueprintId: preview.blueprintId,
       sourceLineItemIds: row.sourceLineItemIds,
+      ...(isAggregate ? { amountSourceIds, sourceLineItems } : {}),
       importedAt,
     };
-    const existingAssumptionItem = getAssumptionSubjectItem(assumptionsJson, row.subject) || {};
-    const excl = row.taxRate === 0
-      ? row.writtenAmount
-      : finiteMoney(row.writtenAmount / (1 + row.taxRate / 100));
+	    const existingAssumptionItem = getAssumptionSubjectItem(assumptionsJson, row.subject) || {};
+	    const excl = row.amountExclTax;
     const nextItem = {
       ...existingAssumptionItem,
       incl: row.writtenAmount,
@@ -700,8 +931,8 @@ export function buildAiComputeIctExportPayloads(
       mode: "custom",
       annualInclValues: normalizeAnnualInclValues(row.yearlyAmounts),
       enabled: true,
-      source: "ai_compute_quote",
-      lastChangeReason: "ai_compute_quote_import",
+      source: isAggregate ? "intelligent_compute" : "ai_compute_quote",
+      lastChangeReason: isAggregate ? "intelligent_compute_import" : "ai_compute_quote_import",
       lastChangedAt: importedAt,
       updatedAt: importedAt,
       importTrace,
@@ -709,16 +940,16 @@ export function buildAiComputeIctExportPayloads(
     existingPlans[planId] = plan;
   });
 
+  const isAggregate = preview.blueprintId === "intelligent-compute-aggregate";
   const importRecord = {
-    source: "ai_compute_quote",
-    sourceLabel: "来自智算报价测算",
+    source: isAggregate ? "intelligent_compute" : "ai_compute_quote",
+    sourceLabel: isAggregate ? "来自智算金额来源" : "来自智算报价测算",
     projectId: preview.projectId,
     scenarioId: preview.scenarioId,
     blueprintId: preview.blueprintId,
     importedAt,
     ictSubjectCodes: Array.from(new Set(
       preview.rows
-        .filter(row => row.syncStatus !== "released_mapping")
         .map(row => row.ictSubjectCode),
     )),
     releasedSubjectCodes: Array.from(new Set(
@@ -726,6 +957,16 @@ export function buildAiComputeIctExportPayloads(
         .filter(row => row.syncStatus === "released_mapping")
         .map(row => row.ictSubjectCode),
     )),
+    zeroedSubjectCodes: Array.from(new Set(
+      preview.rows
+        .filter(row => row.syncStatus === "zeroed_absent")
+        .map(row => row.ictSubjectCode),
+    )),
+    amountSourceIds: isAggregate
+      ? Array.from(new Set(preview.rows.flatMap(row =>
+          row.sourceLineItemIds.map(id => id.split(":")[0]).filter(Boolean)
+        )))
+      : [],
   };
   assumptionsJson.subjectFundingPlans = existingPlans;
   delete assumptionsJson.subject_funding_plans;

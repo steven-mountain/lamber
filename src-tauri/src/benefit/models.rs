@@ -197,6 +197,8 @@ pub struct Project {
     pub id: String,
     pub name: String,
     pub customer_name: String,
+    #[serde(default = "default_project_type")]
+    pub project_type: String,
     pub status: String, // User-editable lifecycle tag, defaults to "需求导入"
     pub benefit_status: String, // "not_started", "normal", "outdated"
     pub default_scheme_id: Option<String>,
@@ -236,6 +238,10 @@ pub struct Project {
     pub linked_folder_relative_path: Option<String>,
     #[serde(default)]
     pub linked_folder_external_path: Option<String>,
+}
+
+fn default_project_type() -> String {
+    "ict".to_string()
 }
 
 #[derive(Serialize, Deserialize, Clone)]

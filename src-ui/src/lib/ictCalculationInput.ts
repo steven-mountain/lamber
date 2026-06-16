@@ -20,20 +20,23 @@ const moneyString = (value: number) => (
 ).toFixed(2);
 
 export function buildIctFundingSubjectsFromInput(input: UnknownRecord): SubjectFundingPlanCoverageSubject[] {
-  return ICT_SUBJECT_DEFINITIONS.map(subject => {
-    const item = input[subject.subjectCode] || {};
-    return {
-      subjectRef: {
-        side: subject.side,
+	  return ICT_SUBJECT_DEFINITIONS.map(subject => {
+	    const item = input[subject.subjectCode] || {};
+	    const rawTaxRate = item.tax_rate ?? item.tax;
+	    return {
+	      subjectRef: {
+	        side: subject.side,
         groupId: subject.groupId,
         key: subject.key,
-      },
-      displayName: subject.standardSubjectName,
-      subjectAmountIncl: finiteNumber(item.incl_tax ?? item.incl),
-      taxRate: finiteNumber(item.tax_rate ?? item.tax),
-      isItScope: subject.groupId === "revIt" || subject.groupId === "costIt",
-    };
-  });
+	      },
+	      displayName: subject.standardSubjectName,
+	      subjectAmountIncl: finiteNumber(item.incl_tax ?? item.incl),
+	      taxRate: rawTaxRate === undefined || rawTaxRate === null || rawTaxRate === ""
+	        ? subject.defaultTaxRate
+	        : finiteNumber(rawTaxRate),
+	      isItScope: subject.groupId === "revIt" || subject.groupId === "costIt",
+	    };
+	  });
 }
 
 export function buildIctFundingCashflowFields(

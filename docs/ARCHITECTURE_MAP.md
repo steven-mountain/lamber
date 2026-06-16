@@ -34,6 +34,7 @@ graph TD
 - **`src/workspace.rs`**: Manages Lamber Workspace manifests, recent workspaces, last workspace restore, workspace readiness checks, associated workspace unlinking, the active SQLite connection, and workspace initialization from existing plain directories with candidate subdirectories import.
 - **`src/workspace_maintenance.rs`**: Provides workspace portability commands: daily/manual SQLite backup, backup restore with database connection release/reopen, `.lamber.zip` export/import/validation, read-only workspace health checks, repairable issue execution, external path listing, dry-run internal absolute path conversion, and native file-manager reveal.
 - **`src/db.rs`**: SQLite initialization, table creation, and schema version management.
+- **`src/intelligent_compute.rs`**: Project-scoped intelligent-compute state and amount-source CRUD. It enforces `intelligent_compute` project ownership, source ownership, last-source protection, and optimistic `stateVersion` / `sourceVersion` updates.
 - **`src/common_presets.rs`**: Workspace-scoped reusable materials command module. It owns CRUD, enabled/disabled state, soft deletion, usage-count updates, and field-key filtering for `common_presets`.
 - **`src/migration.rs`**: JSON-to-SQLite transactional database migration service and Tauri commands.
 - **`src/docfill.rs`**: Fills Word/Excel lifecycle templates for workspace-backed document generation.
@@ -69,7 +70,7 @@ graph TD
   - [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx): Variable mapping, inquiry vendor quote rows/screenshots, and document filling triggers.
   - [DataManagement.tsx](../src-ui/src/views/DataManagement.tsx): Data Management view containing Roots, Health Checker, and Relocator.
   - [PresetCenterView.tsx](../src-ui/src/views/PresetCenterView.tsx): Independent management page for workspace common fields and text snippets.
-  - [AiComputeQuoteView.tsx](../src-ui/src/features/ai-compute-quote/AiComputeQuoteView.tsx): Independent compute-quote blueprint page for project parameters, structured formulas, revenue/cost items, ICT-linked sensitivity analysis, and formal ICT result display. Project edits are debounced for 500ms and synchronized to formal ICT state through a revision-checked transaction.
+  - [AiComputeQuoteView.tsx](../src-ui/src/features/ai-compute-quote/AiComputeQuoteView.tsx): Intelligent-compute amount-source page for project-level period/discount rate, multiple calculation sources, structured formulas, revenue/cost items, ICT mapping, sensitivity analysis, sync preview, and explicit formal ICT synchronization.
 - **`src/theme/`**: Theme specification tokens and runtime switcher:
   - [appearance.ts](../src-ui/src/theme/appearance.ts): Holds type definitions (extended with `ContrastPreference`, `CustomAccentSettings`), config version (v3), and DEFAULT_APPEARANCE_SETTINGS.
   - [presets.ts](../src-ui/src/theme/presets.ts): Holds the HSL light themes and refined HSL dark themes (`DARK_THEMES`) for the 5 presets, plus high contrast overrides.
@@ -80,7 +81,7 @@ graph TD
 - **`src/services/workspaceMaintenanceService.ts`**: Frontend IPC wrapper for workspace backup/restore/export/import/health/path maintenance commands.
 - **`src/services/aiProjectContextService.ts`**: Typed frontend wrapper for `build_ai_project_context`, now used by the AI chat context composer during message send.
 - **`src/lib/ictSubjectCatalog.ts`**: Fixed frontend catalog and shared presentation resolver for ICT billing subject identity. It maps stable `subjectCode`, UI group/key, standard subject name, Excel variable prefix, and document business prefix (`IT`, `CT`, `非IT/CT`, `综合类`) so product/business names and billing subject names remain separate from standard subject identity. `resolveBillingSubjectPresentation` centralizes Excel display names, document business names, and document dedup keys.
-- **`src/features/ai-compute-quote/`**: 智算报价模块。`formulaEngine.ts` owns Version 2 formula parsing without `eval`; `calculations.ts` owns dependency ordering and business-item results; `ictExport.ts` merges linked items and builds ICT lifecycle/cashflow payloads; `ictSync.ts` owns revision fingerprints, successful-sync snapshots, ICT manual override reconciliation, merge conflicts, and formula-control restoration. Formal benefit metrics are never calculated locally.
+- **`src/features/ai-compute-quote/`**: 智算金额来源模块。`store.ts` adapts one persisted amount source to the legacy calculation model while keeping project-level state separate; `formulaEngine.ts` owns Version 2 formula parsing without `eval`; `calculations.ts` owns dependency ordering and business-item results; `ictExport.ts` aggregates enabled sources by `side + subjectCode`, creates compound source traces, releases old controlled subjects, and builds ICT lifecycle/cashflow payloads. Formal benefit metrics are never calculated locally.
 - **`src/lib/ictCalculationInput.ts`**: Shared pure ICT input finalizer used by both the ICT lifecycle calculation hook and AI-compute synchronization. It validates subject funding-plan coverage and converts tax-inclusive annual plans to the formal tax-exclusive ICT cashflow override arrays.
 - **`src/lib/ictBalanceAllocation.ts`**: Shared frontend rule helper for ICT revenue/investment total balancing. It normalizes and serializes `revenue_balance_rule` / `investment_balance_rule`, resolves stable `subjectCode + groupId + key` subject references, computes inclusive-amount differences with existing two-decimal money behavior, and reports missing/negative validation states without writing financial amounts itself.
 - **`src/lib/ictReverseCalculation.ts`**: Shared frontend helper for dynamic smart reverse calculation subjects. It builds eligible revenue/cost subject options from `ICT_SUBJECT_DEFINITIONS`, uses stable subject references (`side + subjectCode + groupId + key`), resolves display names through the shared subject resolver, applies candidate tax-inclusive amounts to arbitrary subject groups, mirrors the existing CT revenue-to-cost amount linkage, and resolves reverse modes (`normal`, `locked_total_structure`, `blocked`) for balance-allocation interactions.
@@ -118,6 +119,9 @@ graph TD
 Phase 3 introduces explicit project-state save domains:
 
 - `projects`: project identity, board metadata, folder links, and summary metrics.
+- `projects.project_type`: stable project discriminator, currently `ict | intelligent_compute`.
+- `project_intelligent_compute_states`: project-level intelligent-compute period, discount rate, active source, optimistic version, aggregate sync revision, controlled ICT subjects, and latest formal result.
+- `intelligent_compute_amount_sources`: independently versioned intelligent-compute parameters, revenue/cost items, annual funding plans, ICT mappings, and calculation snapshots.
 - `project_lifecycle_states`: current ICT lifecycle editor profile, parameters, background, and structured input payload.
 - `project_cashflow_states`: current funding model, payment model, yearly cashflow, sector cashflow, assumptions, and metrics.
 - `benefit_schemes` / `benefit_snapshots`: named benefit方案 metadata and historical calculation snapshots.
@@ -226,18 +230,18 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 9. Current-state persistence stores plans, the fixed calculation source, and migration version in `project_cashflow_states.assumptions_json`; lifecycle/snapshot payloads carry `subject_funding_plans`, `cashflow_calculation_source`, and `subject_funding_plan_migration_version`. Rust `IctInput` accepts these fields for serialization compatibility; formal annual cashflow still enters through the existing override arrays.
 10. Smart reverse, balance allocation, and CT linkage remain available because final writes flow through subject amount update paths that synchronize subject funding plans.
 
-### 4.3.2 AI compute quote and ICT realtime synchronization
+### 4.3.2 Intelligent-compute amount sources and explicit ICT synchronization
 
-1. The quote page loads the latest formal lifecycle/cashflow state and does not synthesize a hidden ICT project when no formal state exists.
-2. After 500ms without quote edits, mapped items are grouped by `side + ictSubjectCode`; amounts and ten annual values are merged. Invalid, disabled, or output-disabled controlled items contribute zero.
-3. The current mapping set is compared with the last successful subject snapshots. Subjects no longer controlled by any quote item are emitted as released mappings with zero amount and zero annual plan; subjects that still have remaining quote sources receive the remaining merged amount instead of being cleared.
-4. Existing ICT state remains the base input. The adapter preserves ICT discount rate, property rights, unrelated subjects, and other finance assumptions; only linked/released subjects, their plans, and the quote-owned 1-10 year project cycle are replaced. Legacy or incomplete lifecycle payloads are completed from project identity, lifecycle profile/parameters, and cashflow payment/assumption domains before Rust deserialization, then self-healed by the successful transaction.
-5. `ictCalculationInput.ts` creates the same formal cashflow override arrays used by `useIctCalculations.ts`, then Rust `calculate_ict_benefit` produces the authoritative metrics.
-6. `sync_ai_compute_quote_to_ict` checks the expected quote revision and commits blueprint, lifecycle, cashflow, formal result, and project summary in one SQLite transaction. A stale request cannot overwrite a newer revision.
-7. Successful snapshots are updated incrementally: normal subjects are replaced, released subjects are removed, and paused manual-override or merge-conflict subjects retain their previous comparison snapshot.
-8. The quote view renders the returned ICT margin, NPV, NPV rate, IRR, and payback. Sensitivity candidates call the batch ICT calculation command and discard stale responses.
-9. When ICT saves a manual change to a linked subject, a single-source mapping becomes `ict_override`; multiple-source mappings become `merge_conflict` and are not auto-split. Formula control can be explicitly restored or reset by changing the mapping.
-10. Navigation records `ai_compute_quote` as the ICT entry source so the ICT header can return to the same project and quote scenario.
+1. Project Board and `project.json` use `project_type` / `projectType` to decide whether intelligent-compute state may load. ICT projects never hydrate the intelligent-compute store.
+2. `project_intelligent_compute_states` owns project period and discount rate. Each `intelligent_compute_amount_sources` row owns one independent parameter/formula/item/funding-plan/mapping set and one optimistic source version.
+3. Intelligent-compute edits are debounced only into the intelligent-compute tables. They do not update ICT lifecycle, cashflow, subjects, or metrics.
+4. Explicit sync loads all enabled sources, validates mapped output items with cents-exact annual-plan reconciliation, and aggregates amount plus ten annual values by `side + ictSubjectCode`. Disabled, output-disabled, or unmapped items are skipped with visible reasons.
+5. The aggregate is compared with `controlled_subjects_json`. Subjects no longer controlled by enabled sources become `released_mapping` rows with zero amount and zero annual plan; unrelated ICT subjects remain unchanged.
+6. The preview shows existing amount, calculated amount, final written amount, annual values, compound `{amountSourceId, lineItemId}` references, skipped items, and released subjects. No ICT write occurs before explicit confirmation.
+7. `ictCalculationInput.ts` builds the same subject-plan cashflow overrides used by the ICT page. `sync_intelligent_compute_to_ict` validates project type, aggregate revision, complete source set, and every source version before Rust `calculate_ict_benefit`.
+8. One SQLite transaction commits lifecycle, cashflow, formal metrics, project summary, incremented sync revision, controlled subjects, and the latest result. Any revision/source conflict rolls back the entire write.
+9. ICT manual edits never mutate intelligent-compute formulas or sources. A later explicit sync displays and overwrites differences only after user confirmation.
+10. Navigation stores `IctOrigin { workspaceId, projectId, projectName, amountSourceId }`. ICT shows the source and return action only while Workspace, project ID, and `intelligent_compute` type all match. Workspace/project switches reset the origin and use request-generation guards to discard stale hydration.
 
 ### 4.4 AI Assistant context flow
 1. User types in form fields or switches tabs.

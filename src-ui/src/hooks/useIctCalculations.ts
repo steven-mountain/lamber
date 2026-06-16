@@ -181,12 +181,12 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
           side: subject.side,
           groupId: subject.groupId,
           key: subject.key,
-        },
-        displayName: getSubjectExcelDisplayName(subject, item),
-        subjectAmountIncl: Number(item?.incl ?? 0),
-        taxRate: Number(item?.tax ?? 0),
-        isItScope: subject.groupId === "revIt" || subject.groupId === "costIt",
-      };
+	        },
+	        displayName: getSubjectExcelDisplayName(subject, item),
+	        subjectAmountIncl: Number(item?.incl ?? 0),
+	        taxRate: Number(item?.tax ?? subject.defaultTaxRate),
+	        isItScope: subject.groupId === "revIt" || subject.groupId === "costIt",
+	      };
     });
   };
 

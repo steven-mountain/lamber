@@ -181,3 +181,46 @@ export interface AiComputeQuotePersistedState {
   blueprint: AiComputeQuoteBlueprint;
   savedAt: string;
 }
+
+export interface IntelligentComputeCalculationSnapshot {
+  summary?: AiComputeQuoteSummary;
+  syncState?: AiComputeQuoteSyncState;
+  calculatedAt?: string;
+  [key: string]: unknown;
+}
+
+export interface IntelligentAmountSource {
+  id: string;
+  projectId: string;
+  name: string;
+  description?: string | null;
+  enabled: boolean;
+  sourceVersion: number;
+  metadata: Record<string, unknown>;
+  parameterGroups: AiComputeQuoteParameterGroup[];
+  parameters: AiComputeQuoteParameter[];
+  revenueItems: AiComputeQuoteLineItem[];
+  costItems: AiComputeQuoteLineItem[];
+  mappings: AiComputeQuoteSubjectMapping[];
+  calculationSnapshot: IntelligentComputeCalculationSnapshot;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IntelligentComputeProjectState {
+  projectId: string;
+  stateVersion: number;
+  activeAmountSourceId?: string | null;
+  projectYears: number;
+  discountRate: number;
+  syncRevision: number;
+  controlledSubjects: Record<string, AiComputeSyncedSubjectSnapshot>;
+  lastResult: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IntelligentComputeProjectData {
+  state: IntelligentComputeProjectState;
+  amountSources: IntelligentAmountSource[];
+}

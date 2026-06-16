@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { ArrowRight, BarChart3, FileText, Info, List, LayoutGrid, FolderPlus, FolderOpen, Plus, Search, Settings2, StickyNote, X, ChevronDown, ChevronUp, AlertTriangle, RefreshCw } from "lucide-react";
 import AppIcon from "../components/icons/AppIcon";
-import { projectService, type Project, type BenefitAnalysisScheme, type BenefitAnalysisSnapshot, type SummaryMetrics } from "../utils/projectService";
+import { projectService, type Project, type ProjectType, type BenefitAnalysisScheme, type BenefitAnalysisSnapshot, type SummaryMetrics } from "../utils/projectService";
 import ProjectFilesTab from "../components/project/ProjectFilesTab";
 import { projectFileService } from "../services/projectFileService";
 import { invoke } from "@tauri-apps/api/core";
@@ -118,6 +118,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [newCustomerName, setNewCustomerName] = useState("");
+  const [newProjectType, setNewProjectType] = useState<ProjectType>("ict");
 
 
   // Import Scanner State
@@ -153,6 +154,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
   const [snapshots, setSnapshots] = useState<BenefitAnalysisSnapshot[]>([]);
   const [editingProjectName, setEditingProjectName] = useState("");
   const [editingCustomerName, setEditingCustomerName] = useState("");
+  const [editingProjectType, setEditingProjectType] = useState<ProjectType>("ict");
   const [editingStatus, setEditingStatus] = useState("");
   const [isNewSchemeModalOpen, setIsNewSchemeModalOpen] = useState(false);
   const [newSchemeName, setNewSchemeName] = useState("");
@@ -179,6 +181,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
         id: project.id,
         name: project.name,
         customerName: project.customer_name,
+        projectType: project.project_type,
         status: project.status,
         benefitStatus: project.benefit_status,
         updatedAt: project.updated_at,
@@ -192,6 +195,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
         id: selectedProject.id,
         name: editingProjectName || selectedProject.name,
         customerName: editingCustomerName || selectedProject.customer_name,
+        projectType: editingProjectType,
         status: editingStatus || selectedProject.status,
         note: noteDrafts[selectedProject.id] ?? selectedProject.note ?? "",
         progress: selectedProject.progress ?? 0,
@@ -209,6 +213,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     selectedProject?.deadline,
     editingProjectName,
     editingCustomerName,
+    editingProjectType,
     editingStatus,
     noteDrafts,
     replaceAiBusinessData,
@@ -251,6 +256,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       const result = await domainSaveService.saveProjectDetail(selectedProject.id, {
         name: editingProjectName,
         customerName: editingCustomerName,
+        projectType: editingProjectType,
         status: editingStatus,
         progress: selectedProject.progress || 0,
         deadline: selectedProject.deadline || null,
@@ -273,6 +279,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     selectedProject,
     editingProjectName,
     editingCustomerName,
+    editingProjectType,
     editingStatus,
     noteDrafts,
     registerSaveHandler,
@@ -374,7 +381,8 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     try {
       const newProj = await projectService.createProjectInWorkspace(
         projectName,
-        newCustomerName.trim() || "未知客户"
+        newCustomerName.trim() || "未知客户",
+        newProjectType,
       );
       const projWithExists = { ...newProj, directoryExists: true };
       setProjects((prev) => [projWithExists, ...prev]);
@@ -387,6 +395,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       setShowCreateModal(false);
       setNewProjectName("");
       setNewCustomerName("");
+      setNewProjectType("ict");
       // Automatically open the details of the newly created project
       handleOpenDetails(projWithExists);
     } catch (err) {
@@ -467,6 +476,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     setShowCreateModal(false);
     setNewProjectName("");
     setNewCustomerName("");
+    setNewProjectType("ict");
   };
 
   const handleOpenDetails = async (project: Project) => {
@@ -479,6 +489,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     setDetailTab('info');
     setEditingProjectName(project.name);
     setEditingCustomerName(project.customer_name);
+    setEditingProjectType(project.project_type);
     setEditingStatus(project.status);
 
     // Fetch Schemes
@@ -528,6 +539,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       ...selectedProject,
       name: nextProjectName,
       customer_name: editingCustomerName.trim() || "未知客户",
+      project_type: editingProjectType,
       status: editingStatus.trim() || statusOptions[0] || DEFAULT_STATUS_COLUMNS[0],
       updated_at: new Date().toISOString()
     };
@@ -536,6 +548,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       const result = await domainSaveService.saveProjectDetail(updated.id, {
         name: updated.name,
         customerName: updated.customer_name,
+        projectType: updated.project_type,
         status: updated.status,
         progress: updated.progress || 0,
         deadline: updated.deadline || null,
@@ -621,6 +634,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       useProjectStore.getState().setCurrentProject(latestProject);
       setEditingProjectName(latestProject.name);
       setEditingCustomerName(latestProject.customer_name);
+      setEditingProjectType(latestProject.project_type);
       setEditingStatus(latestProject.status);
       setNoteDrafts(prev => ({ ...prev, [latestProject.id]: latestProject.note || "" }));
       await reloadSchemesForProject(latestProject);
@@ -946,6 +960,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
           <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
             {project.status}
           </span>
+          {renderProjectTypeBadge(project)}
           {getStatusBadge(project.benefit_status)}
           {project.directoryExists === false && (
             <span className="rounded-md bg-destructive-soft border border-destructive-soft px-2 py-0.5 text-[10px] font-bold text-destructive flex items-center gap-1 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
@@ -970,10 +985,40 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       className={`${compact ? "px-3 py-1.5" : "px-4 py-2"} group inline-flex shrink-0 items-center justify-center rounded-xl bg-primary-soft hover:bg-primary text-primary hover:text-primary-foreground border border-primary-soft text-caption font-bold shadow-sm transition-all active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20`}
     >
       <BarChart3 className="h-4 w-4" />
-      <span className="ml-2">打开效益分析</span>
+      <span className="ml-2">ICT 测算</span>
       <ArrowRight className="ml-1.5 h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
     </button>
   );
+
+  const renderProjectTypeBadge = (project: Project) => (
+    <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${
+      project.project_type === "intelligent_compute"
+        ? "bg-primary-soft text-primary"
+        : "bg-muted text-muted-foreground"
+    }`}>
+      {project.project_type === "intelligent_compute" ? "智算项目" : "ICT 项目"}
+    </span>
+  );
+
+  const renderOpenIntelligentComputeButton = (project: Project, id: string, compact = false) => {
+    if (project.project_type !== "intelligent_compute") return null;
+    return (
+      <button
+        id={id}
+        onClick={async event => {
+          event.stopPropagation();
+          const canProceed = await confirmOrSave();
+          if (!canProceed) return;
+          useProjectStore.getState().setCurrentProject(project);
+          useNavigationStore.getState().navigateTo("ai_compute_quote", project.id);
+        }}
+        className={`${compact ? "px-3 py-1.5" : "px-4 py-2"} inline-flex shrink-0 items-center justify-center rounded-xl bg-muted text-caption font-bold text-secondary-foreground transition-all hover:bg-primary-soft hover:text-primary active:scale-[0.98]`}
+      >
+        <AppIcon name="calculator" size={16} />
+        <span className="ml-2">智算测算</span>
+      </button>
+    );
+  };
 
   const renderOpenFolderButton = (project: Project, compact = false) => {
     const hasFolder = !!project.folder_path;
@@ -1368,6 +1413,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                             </span>
                             <div className="flex items-center gap-2">
                               {renderOpenFolderButton(project, true)}
+                              {renderOpenIntelligentComputeButton(project, `open_intelligent_${project.id}`, true)}
                               {renderOpenCalcButton(project, `open_calc_btn_${project.id}`, true)}
                             </div>
                           </div>
@@ -1393,6 +1439,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                             <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
                               {project.status}
                             </span>
+                            {renderProjectTypeBadge(project)}
                             {getStatusBadge(project.benefit_status)}
                             {project.directoryExists === false && (
                               <span className="rounded-md bg-destructive-soft border border-destructive-soft px-2 py-0.5 text-[10px] font-bold text-destructive flex items-center gap-1 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
@@ -1473,6 +1520,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                         </span>
                         <div className="flex items-center gap-2">
                           {renderOpenFolderButton(project, true)}
+                          {renderOpenIntelligentComputeButton(project, `open_intelligent_standard_${project.id}`, true)}
                           {renderOpenCalcButton(project, `open_calc_btn_standard_${project.id}`, true)}
                         </div>
                       </div>
@@ -1501,6 +1549,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                           <span className="px-1 py-0.5 text-[8px] font-bold bg-muted text-muted-foreground rounded flex-shrink-0">
                             {project.status}
                           </span>
+                          {renderProjectTypeBadge(project)}
                           {project.directoryExists === false && (
                             <span className="px-1 py-0.5 text-[8px] font-bold bg-destructive-soft border border-destructive-soft text-destructive rounded flex-shrink-0 flex items-center gap-0.5 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
                               <AlertTriangle className="h-2.5 w-2.5 shrink-0" />
@@ -1577,6 +1626,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                       </span>
                       <div className="flex items-center gap-1.5 mt-1 lg:mt-0">
                         {renderOpenFolderButton(project, true)}
+                        {renderOpenIntelligentComputeButton(project, `open_intelligent_compact_${project.id}`, true)}
                         {renderOpenCalcButton(project, `open_calc_btn_compact_${project.id}`, true)}
                       </div>
                     </div>
@@ -1624,6 +1674,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                           </span>
                           <div className="flex items-center gap-2">
                             {renderOpenFolderButton(project, true)}
+                            {renderOpenIntelligentComputeButton(project, `open_intelligent_grid_${project.id}`, true)}
                             {renderOpenCalcButton(project, `open_calc_btn_grid_${project.id}`)}
                           </div>
                         </div>
@@ -1656,6 +1707,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                           </span>
                           <div className="flex items-center gap-2">
                             {renderOpenFolderButton(project, true)}
+                            {renderOpenIntelligentComputeButton(project, `open_intelligent_grid_standard_${project.id}`, true)}
                             {renderOpenCalcButton(project, `open_calc_btn_grid_standard_${project.id}`, true)}
                           </div>
                         </div>
@@ -1681,6 +1733,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                             <span className="px-1 py-0.5 text-[8px] font-bold bg-muted text-muted-foreground rounded flex-shrink-0">
                               {project.status}
                             </span>
+                            {renderProjectTypeBadge(project)}
                             {project.directoryExists === false && (
                               <span className="px-1 py-0.5 text-[8px] font-bold bg-destructive-soft border border-destructive-soft text-destructive rounded flex-shrink-0 flex items-center gap-0.5 animate-pulse" title="在磁盘中找不到项目对应的文件夹">
                                 <AlertTriangle className="h-2.5 w-2.5 shrink-0" />
@@ -1752,6 +1805,7 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                         </span>
                         <div className="flex items-center gap-1.5">
                           {renderOpenFolderButton(project, true)}
+                          {renderOpenIntelligentComputeButton(project, `open_intelligent_grid_compact_${project.id}`, true)}
                           {renderOpenCalcButton(project, `open_calc_btn_grid_compact_${project.id}`, true)}
                         </div>
                       </div>
@@ -1808,6 +1862,21 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                   onChange={(e) => setNewCustomerName(e.target.value)}
                   className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring w-full"
                 />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-secondary-foreground">项目类型</label>
+                <select
+                  value={newProjectType}
+                  onChange={event => setNewProjectType(event.target.value as ProjectType)}
+                  className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring w-full"
+                >
+                  <option value="ict">ICT 项目</option>
+                  <option value="intelligent_compute">智算项目</option>
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  智算项目可维护独立金额来源，并在确认后同步至 ICT 测算。
+                </p>
               </div>
             </div>
 
@@ -1993,6 +2062,28 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                         }}
                         className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring"
                       />
+                    </div>
+                    <div className="flex flex-col gap-1 col-span-2">
+                      <label className="text-xs font-semibold text-secondary-foreground">项目类型</label>
+                      <select
+                        value={editingProjectType}
+                        onChange={event => {
+                          const nextType = event.target.value as ProjectType;
+                          if (
+                            selectedProject.project_type === "intelligent_compute"
+                            && nextType === "ict"
+                            && !window.confirm("转为 ICT 项目后将隐藏智算入口，但保留智算金额来源和已同步的 ICT 数据。确定继续吗？")
+                          ) {
+                            return;
+                          }
+                          setEditingProjectType(nextType);
+                          markDirty("project-detail");
+                        }}
+                        className="bg-card border border-input px-3 py-2 rounded-lg text-sm outline-none focus:border-ring"
+                      >
+                        <option value="ict">ICT 项目</option>
+                        <option value="intelligent_compute">智算项目</option>
+                      </select>
                     </div>
                     <div className="flex flex-col gap-1 col-span-2">
                       <div className="flex items-center justify-between gap-3">

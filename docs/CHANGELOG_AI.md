@@ -6,6 +6,28 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-06-16
+
+### 智算金额来源自动同步与税率口径修复
+
+Modified:
+- 智算金额来源编辑后会按业务指纹防抖保存并自动同步到 ICT 正式状态；手动同步和同步明细仍保留用于预览、排查和重试。
+- ICT 标准科目目录增加 `defaultTaxRate`，智算导出、ICT 水合和资金计划 finalizer 统一使用该目录默认税率。
+- 智算到 ICT 的同步 payload 同时写入含税金额、不含税金额和税率；当前同步来源内同一科目按含税/不含税分别汇总后反算有效税率。
+- 金额来源管理改为弹窗入口，新建来源必须命名，并可从空白、H200 标准、当前来源或任一已有来源创建；新建后自动成为当前唯一 ICT 同步来源。
+- 同步来源从“多个启用来源汇总”收敛为“当前选中来源完全覆盖 ICT”，后端保存金额来源时兜底关闭同项目其他来源的启用标记。
+- 当前来源未产出的 ICT 标准收入/成本科目会写入金额 0、默认税率和 10 年全 0 资金计划；同步明细新增“智算无输出，写 0”状态。
+- 并发版本冲突不使用旧预览强写，前端提供“重新加载冲突并覆盖”，重载最新状态后再执行智算完全覆盖 ICT。
+- `source: intelligent_compute` 导入痕迹可作为释放旧受控科目的兜底依据，防止改映射或改来源后 ICT 残留旧金额。
+
+Decision:
+- 智算自动同步会写入 ICT 正式状态，并完全覆盖 ICT 标准收入/成本科目的金额、税率和资金计划；产权、现金流模型等非智算金额参数保持 ICT 当前状态。
+- 同步金额口径固定为“元、含税”，万元仅用于展示。
+
+Validation:
+- 智算专项测试覆盖 H200 大额同步、空科目默认税率、单来源选择、全量科目归零和 `intelligent_compute` 痕迹释放。
+- TypeScript 生产构建与 Rust 测试通过。
+
 ## 2026-06-13
 
 ### 智算参数类别与自由排序
@@ -1259,6 +1281,29 @@ Decisions:
 - lifecycle/cashflow 必须事务提交，禁止金额和资金计划出现半成功状态。
 
 ## 2026-06-15
+
+### 智算金额来源与 ICT 边界重构
+
+Created:
+- `src-tauri/src/intelligent_compute.rs`：智算项目状态、金额来源 CRUD、归属校验和乐观版本控制。
+- `src-ui/src/services/intelligentComputeService.ts`：智算状态与金额来源 IPC 服务。
+- schema v7 表 `project_intelligent_compute_states` 与 `intelligent_compute_amount_sources`。
+
+Modified:
+- 项目增加 `project_type: ict | intelligent_compute`，新建、详情转换、项目看板标识和入口按类型控制，并同步写入 `project.json.projectType`。
+- v6→v7 自动识别 `ai_compute_quote::active` 历史项目并迁移公式、行项目、年度计划、映射和同步快照；旧 setting 改为只读兼容。
+- 智算页面改为项目级周期/折现率和多个独立金额来源，支持空白新增、复制默认停用、重命名、启停和最后来源保护。
+- 编辑停止后只保存智算数据；同步改为先展示覆盖/释放/年度计划预览，再由用户确认。
+- 多个启用来源按 `side + ICT subjectCode` 聚合，导入痕迹增加 `amountSourceIds` 和复合行引用。
+- 新增 `sync_intelligent_compute_to_ict`，在单一事务中校验项目类型、同步 revision、完整来源集合和来源版本，运行 Rust 正式计算并更新 ICT 与智算同步快照。
+- ICT 保存移除智算反向覆盖路径，历史 `ict_override / merge_conflict` 不再影响智算公式。
+- 智算到 ICT 使用显式 `IctOrigin`，ICT 顶部显示来源并可返回智算；项目/Workspace 切换会清空来源和完整模块状态，异步加载使用请求代次防止串项目。
+- 测试增加 schema v7、新库默认类型、历史迁移、来源 revision 回滚、多来源聚合、停用排除、旧科目释放和复合来源痕迹。
+
+Decisions:
+- 智算负责计算过程和金额来源；ICT 只承接确认后的聚合结果并维护正式资金计划与指标。
+- 项目周期和折现率属于智算项目级状态，年度金额只存在于行项目资金计划。
+- 保留 `ai_compute_quote` 路由和内部计算类型作为兼容层，但用户文案和新持久化结构统一采用“智算金额来源”。
 
 ### 智算测算计算项与效益结论信息结构优化
 

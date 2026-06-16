@@ -76,6 +76,8 @@ const {
   buildAiComputeAutoSyncPreview,
   buildAiComputeIctExportPayloads,
   buildAiComputeIctExportPreview,
+  buildIntelligentComputeAggregatePreview,
+  validateIntelligentComputeSources,
 } = loadTs("ictExport.ts");
 const {
   applySuccessfulAiComputeSync,
@@ -96,6 +98,9 @@ const {
   removeFormulaTokenAt,
   removeFormulaTokenBeforeCursor,
 } = loadTs("formulaTokenEditing.ts");
+const {
+  useNavigationStore,
+} = loadTsFile(path.join(__dirname, "../src/store/useNavigationStore.ts"));
 
 const parameters = [
   { id: "a", name: "参数A", key: "a", value: 5 },
@@ -122,6 +127,47 @@ const blueprintWithItems = costItems => ({
   costItems,
   mappings: [],
 });
+
+// 智算 → ICT → 智算来源闭环与上下文清理。
+const navigation = useNavigationStore;
+navigation.getState().openIctFromIntelligentCompute({
+  type: "intelligent_compute",
+  workspaceId: "workspace-a",
+  projectId: "project-intelligent",
+  projectName: "智算项目 A",
+  amountSourceId: "amount-source-a",
+});
+assert.equal(navigation.getState().currentView, "ict_lifecycle");
+assert.equal(navigation.getState().ictOrigin.projectId, "project-intelligent");
+navigation.getState().navigateTo(
+  "ai_compute_quote",
+  "project-intelligent",
+  null,
+  "amount-source-a",
+);
+assert.equal(navigation.getState().ictOrigin.amountSourceId, "amount-source-a");
+navigation.getState().openIctFromIntelligentCompute({
+  type: "intelligent_compute",
+  workspaceId: "workspace-a",
+  projectId: "project-intelligent",
+  projectName: "智算项目 A",
+  amountSourceId: "amount-source-a",
+});
+navigation.getState().navigateTo("ict_lifecycle", "project-other");
+assert.equal(navigation.getState().ictOrigin, null);
+navigation.getState().navigateTo("hub");
+navigation.getState().navigateTo("ict_lifecycle", "project-direct");
+assert.equal(navigation.getState().ictOrigin, null);
+navigation.getState().openIctFromIntelligentCompute({
+  type: "intelligent_compute",
+  workspaceId: "workspace-a",
+  projectId: "project-intelligent",
+  projectName: "智算项目 A",
+  amountSourceId: null,
+});
+navigation.getState().clearContext();
+assert.equal(navigation.getState().activeProjectId, null);
+assert.equal(navigation.getState().ictOrigin, null);
 
 // 1. 参数 × 参数 × 固定值。
 const multiplyResult = evaluateQuoteFormula(expression([
@@ -652,6 +698,10 @@ assert.deepEqual(Array.from(exportPreview.rows[0].sourceLineItemNames), ["资金
 
 const h200ExportPreview = buildAiComputeIctExportPreview(h200, existingIctState, "project-1");
 assert.equal(h200ExportPreview.projectYears, 5);
+const h200GpuRevenueRow = h200ExportPreview.rows.find(row => row.ictSubjectCode === "rev_it_cloud");
+assert.equal(h200GpuRevenueRow.writtenAmount, 345600000);
+assert.equal(h200GpuRevenueRow.amountExclTax, 326037735.85);
+assert.equal(h200GpuRevenueRow.taxRate, 6);
 
 const exportPayloads = buildAiComputeIctExportPayloads(exportPreview, existingIctState);
 assert.equal(exportPreview.projectYears, 10);
@@ -668,7 +718,7 @@ assert.deepEqual(
   [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 );
 assert.equal(exportPayloads.lifecycleState.inputPayloadJson.rev_it_integration.incl_tax, "0");
-assert.equal(exportPayloads.lifecycleState.inputPayloadJson.rev_it_integration.tax_rate, "0");
+assert.equal(exportPayloads.lifecycleState.inputPayloadJson.rev_it_integration.tax_rate, "6");
 assert.equal(exportPayloads.lifecycleState.inputPayloadJson.cost_it_construction.tax_rate, "9");
 assert.equal(
   ICT_SUBJECT_DEFINITIONS.every(subject => (
@@ -744,7 +794,7 @@ assert.equal(zeroedPreview.rows[0].writtenAmount, 0);
 assert.equal(zeroedPreview.rows[0].syncStatus, "zeroed_error");
 assert.equal(zeroedPreview.rows[0].yearlyAmounts.every(value => value === 0), true);
 
-// ICT 修改单来源科目后反写覆盖状态；恢复公式控制后重新交给智算公式。
+// 兼容读取旧反写标记，但 ICT 人工金额不再覆盖智算公式。
 const singleSourceBlueprint = {
   ...fundingOutputBlueprint,
   costItems: [fundingOutputBlueprint.costItems[0]],
@@ -776,7 +826,7 @@ assert.equal(singleReconciled.changed, true);
 assert.equal(singleReconciled.blueprint.costItems[0].formulaControlStatus, "ict_override");
 assert.equal(singleReconciled.blueprint.costItems[0].ictOverride.amountInclTax, 160);
 const overrideCalculated = calculateQuoteBlueprint(singleReconciled.blueprint);
-assert.equal(overrideCalculated.costItems[0].amountInclTax, 160);
+assert.equal(overrideCalculated.costItems[0].amountInclTax, 150);
 const mappingControlRestored = clearAiComputeControlForMappingChange(
   singleReconciled.blueprint,
   "funding-a",
@@ -1028,7 +1078,7 @@ const unmappedSyncPreview = buildAiComputeAutoSyncPreview(
 assert.equal(unmappedSyncPreview.rows.length, 1);
 assert.equal(unmappedSyncPreview.rows[0].syncStatus, "released_mapping");
 
-// 暂停的 ICT 人工覆盖继续保留上次成功快照，后续 ICT 保存仍可比较。
+// 历史 ICT 覆盖标记不再暂停智算输出。
 const pausedSingle = {
   ...syncedSingle,
   costItems: syncedSingle.costItems.map(current => ({
@@ -1044,7 +1094,8 @@ const pausedSingle = {
   })),
 };
 const pausedPreview = buildAiComputeAutoSyncPreview(pausedSingle, existingIctState, "project-1");
-assert.equal(pausedPreview.rows[0].syncStatus, "paused_override");
+assert.equal(pausedPreview.rows[0].syncStatus, "ready");
+assert.equal(pausedPreview.rows[0].writtenAmount, 150);
 const pausedSynced = applySuccessfulAiComputeSync(
   pausedSingle,
   pausedPreview,
@@ -1053,7 +1104,7 @@ const pausedSynced = applySuccessfulAiComputeSync(
 );
 assert.equal(Boolean(pausedSynced.syncState.subjects["cost:cost_it_device"]), true);
 
-// 多来源科目被 ICT 修改时只标记合并冲突，不自动拆分人工金额。
+// 旧版合并冲突标记可读取，但不会让智算公式失效。
 const syncedMerged = applySuccessfulAiComputeSync(
   fundingOutputBlueprint,
   autoPreview,
@@ -1102,6 +1153,163 @@ assert.equal(mergedReconciled.conflicts.length, 1);
 assert.equal(mergedReconciled.blueprint.costItems.every(current =>
   current.formulaControlStatus === "merge_conflict"
 ), true);
+assert.deepEqual(
+  Array.from(calculateQuoteBlueprint(mergedReconciled.blueprint).costItems, current => current.amountInclTax),
+  [150, 300],
+);
+
+// ICT 正式同步一次只选择一个金额来源；同一来源内仍按 side + ICT subjectCode 聚合。
+const aggregateSourceA = {
+  ...singleSourceBlueprint,
+  id: "amount-source-a",
+  scenarioId: "amount-source-a",
+  name: "来源 A",
+  costItems: [{
+    ...singleSourceBlueprint.costItems[0],
+    taxRate: 13,
+  }],
+};
+const aggregateSourceB = {
+  ...singleSourceBlueprint,
+  id: "amount-source-b",
+  scenarioId: "amount-source-b",
+  name: "来源 B",
+	  costItems: [{
+	    ...singleSourceBlueprint.costItems[0],
+	    id: "funding-b",
+	    name: "资金项 B",
+	    formula: expression([{ type: "constant", value: 300 }]),
+	    taxRate: 6,
+	    fundingPlan: {
+      enabled: true,
+      mode: "manual",
+      yearlyAmounts: { "1": 300, "2": 0 },
+    },
+  }],
+  mappings: [{
+    ...singleSourceBlueprint.mappings[0],
+    id: "mapping-funding-b",
+    lineItemId: "funding-b",
+  }],
+};
+const aggregateSources = [
+  { sourceId: "amount-source-a", sourceName: "来源 A", blueprint: aggregateSourceA },
+  { sourceId: "amount-source-b", sourceName: "来源 B", blueprint: aggregateSourceB },
+];
+assert.equal(validateIntelligentComputeSources(aggregateSources.slice(0, 1)).valid, true);
+const aggregatePreview = buildIntelligentComputeAggregatePreview(
+  aggregateSources,
+  existingIctState,
+  "project-1",
+  {
+    "cost:cost_it_other": {
+      side: "cost",
+      ictSubjectCode: "cost_it_other",
+      amountInclTax: 25,
+      taxRate: 6,
+      yearlyAmounts: [25, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      sourceLineItemIds: ["old-source:old-line"],
+    },
+  },
+);
+assert.equal(aggregatePreview.rows.length, ICT_SUBJECT_DEFINITIONS.length);
+const aggregateDeviceRow = aggregatePreview.rows.find(row => row.ictSubjectCode === "cost_it_device");
+assert.equal(aggregateDeviceRow.syncStatus, "ready");
+assert.equal(aggregateDeviceRow.writtenAmount, 150);
+assert.equal(aggregateDeviceRow.amountExclTax, 132.74);
+assert.deepEqual(Array.from(aggregateDeviceRow.yearlyAmounts.slice(0, 2)), [100, 50]);
+assert.deepEqual(
+  Array.from(aggregateDeviceRow.sourceLineItemIds),
+  ["amount-source-a:funding-a"],
+);
+const aggregateReleasedRow = aggregatePreview.rows.find(row => row.ictSubjectCode === "cost_it_other");
+assert.equal(aggregateReleasedRow.syncStatus, "released_mapping");
+assert.equal(aggregateReleasedRow.writtenAmount, 0);
+const aggregateZeroedRow = aggregatePreview.rows.find(row => row.ictSubjectCode === "rev_it_integration");
+assert.equal(aggregateZeroedRow.syncStatus, "zeroed_absent");
+assert.equal(aggregateZeroedRow.writtenAmount, 0);
+assert.equal(aggregateZeroedRow.taxRate, 6);
+
+const intelligentTraceState = JSON.parse(JSON.stringify(existingIctState));
+const intelligentTrace = {
+  source: "intelligent_compute",
+  sourceLabel: "来自智算金额来源",
+  projectId: "project-1",
+  scenarioId: "intelligent-compute-aggregate",
+  blueprintId: "intelligent-compute-aggregate",
+  sourceLineItemIds: ["old-source:old-line"],
+  amountSourceIds: ["old-source"],
+  sourceLineItems: [{ amountSourceId: "old-source", lineItemId: "old-line" }],
+  importedAt: "2026-06-15T00:00:00.000Z",
+};
+intelligentTraceState.lifecycleState.inputPayloadJson.cost_it_other = {
+  incl_tax: "25",
+  excl_tax: "23.58",
+  tax_rate: "6",
+  import_trace: intelligentTrace,
+};
+intelligentTraceState.cashflowState.assumptionsJson.costIt.other = {
+  incl: 25,
+  excl: 23.58,
+  tax: 6,
+  importTrace: intelligentTrace,
+};
+intelligentTraceState.cashflowState.assumptionsJson.subjectFundingPlans["cost:costIt:other"] = {
+  id: "cost:costIt:other",
+  subjectRef: { side: "cost", groupId: "costIt", key: "other" },
+  mode: "custom",
+  annualInclValues: [25, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  enabled: true,
+  source: "intelligent_compute",
+  lastChangeReason: "intelligent_compute_import",
+  importTrace: intelligentTrace,
+};
+const aggregateTraceReleasePreview = buildIntelligentComputeAggregatePreview(
+  aggregateSources,
+  intelligentTraceState,
+  "project-1",
+);
+const recoveredIntelligentRelease = aggregateTraceReleasePreview.rows.find(row =>
+  row.ictSubjectCode === "cost_it_other"
+);
+assert.equal(recoveredIntelligentRelease.syncStatus, "released_mapping");
+assert.equal(recoveredIntelligentRelease.writtenAmount, 0);
+
+// 即使旧状态传入多个启用来源，正式同步也只使用第一个选中的来源。
+const singleSelectedPreview = buildIntelligentComputeAggregatePreview(
+  aggregateSources,
+  existingIctState,
+  "project-1",
+);
+assert.equal(
+  singleSelectedPreview.rows.find(row => row.ictSubjectCode === "cost_it_device").writtenAmount,
+  150,
+);
+const aggregatePayloads = buildAiComputeIctExportPayloads(aggregatePreview, existingIctState);
+const aggregateTrace = aggregatePayloads.cashflowState.assumptionsJson
+  .subjectFundingPlans["cost:costIt:device"].importTrace;
+assert.deepEqual(Array.from(aggregateTrace.amountSourceIds), ["amount-source-a"]);
+assert.deepEqual(
+  Array.from(aggregateTrace.sourceLineItems, item => `${item.amountSourceId}:${item.lineItemId}`),
+  ["amount-source-a:funding-a"],
+);
+assert.equal(aggregatePayloads.lifecycleState.inputPayloadJson.rev_it_integration.incl_tax, "0");
+assert.deepEqual(
+  Array.from(
+    aggregatePayloads.cashflowState.assumptionsJson
+      .subjectFundingPlans["revenue:revIt:integration"].annualInclValues,
+  ),
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+);
+const aggregateFinalized = finalizeIctInputWithFundingPlans(
+  aggregatePayloads.lifecycleState.inputPayloadJson,
+  aggregatePayloads.cashflowState.assumptionsJson.subjectFundingPlans,
+);
+assert.equal(aggregateFinalized.coverage.valid, true);
+assert.equal(
+  aggregatePayloads.cashflowState.assumptionsJson.aiComputeQuoteImport.zeroedSubjectCodes.includes("rev_it_integration"),
+  true,
+);
 
 const unmappedExportBlueprint = {
   ...fundingOutputBlueprint,

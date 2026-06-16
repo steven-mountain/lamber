@@ -822,6 +822,7 @@ pub async fn initialize_workspace_from_existing_directory(
             let mut name = subdir.clone();
             let mut created_at = Utc::now().to_rfc3339();
             let mut updated_at = Utc::now().to_rfc3339();
+            let mut project_type = "ict".to_string();
             let mut existing_json: Option<serde_json::Value> = None;
 
             if project_json_path.exists() {
@@ -846,6 +847,12 @@ pub async fn initialize_workspace_from_existing_directory(
                             if !u_str.trim().is_empty() {
                                 updated_at = u_str.to_string();
                             }
+                        }
+                        if matches!(
+                            json_val.get("projectType").and_then(|v| v.as_str()),
+                            Some("intelligent_compute")
+                        ) {
+                            project_type = "intelligent_compute".to_string();
                         }
                         existing_json = Some(json_val);
                     }
@@ -900,6 +907,9 @@ pub async fn initialize_workspace_from_existing_directory(
                 if json_val.get("updatedAt").is_none() {
                     json_val["updatedAt"] = serde_json::Value::String(updated_at.clone());
                 }
+                if json_val.get("projectType").is_none() {
+                    json_val["projectType"] = serde_json::Value::String(project_type.clone());
+                }
                 if json_val.get("source").is_none() {
                     json_val["source"] =
                         serde_json::Value::String("importedPlainDirectory".to_string());
@@ -923,12 +933,13 @@ pub async fn initialize_workspace_from_existing_directory(
             // Insert
             tx.execute(
                 "INSERT INTO projects (
-                    id, name, customer_name, status, benefit_status, total_revenue_incl, total_cost_incl, project_years, discount_rate, cashflow_model, created_at, updated_at, folder_path, logs, folder_name, relative_path, progress, linked_folder_type, linked_folder_relative_path
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+                    id, name, customer_name, project_type, status, benefit_status, total_revenue_incl, total_cost_incl, project_years, discount_rate, cashflow_model, created_at, updated_at, folder_path, logs, folder_name, relative_path, progress, linked_folder_type, linked_folder_relative_path
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
                 rusqlite::params![
                     project_id,
                     name,
                     "CMCC",
+                    project_type,
                     "需求导入",
                     "not_started",
                     0.0,

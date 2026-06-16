@@ -1,11 +1,9 @@
 import { create } from "zustand";
-import { projectService } from "../../utils/projectService";
+import { intelligentComputeService } from "../../services/intelligentComputeService";
 import { calculateQuoteBlueprint } from "./calculations";
 import { getFormulaParameterReferences, normalizeQuoteFormula } from "./formulaEngine";
 import {
   canDeleteAiComputeParameterGroup,
-  initializeAiComputeDiscountRate,
-  migrateAiComputeDiscountRateOwnership,
   moveAiComputeParameter,
   moveAiComputeParameterByOffset,
   moveAiComputeParameterGroupByOffset,
@@ -14,27 +12,111 @@ import {
 } from "./parameterLayout";
 import { createH200Blueprint } from "./presets";
 import {
-  ictDiscountRateToAiComputePercent,
+  getAiComputeDiscountRatePercent,
+  getAiComputeProjectCycleYears,
   isAiComputeProjectCycleParameter,
   isAiComputeStableIctParameter,
   normalizeAiComputeDiscountRatePercent,
   normalizeAiComputeProjectCycleValue,
 } from "./fundingPlans";
-import { clearAiComputeControlForMappingChange } from "./ictSync";
 import type {
   AiComputeQuoteBlueprint,
   AiComputeQuoteFormula,
   AiComputeQuoteLineItem,
   AiComputeQuoteParameter,
   AiComputeQuoteParameterGroup,
-  AiComputeQuotePersistedState,
   AiComputeQuoteSubjectMapping,
+  IntelligentAmountSource,
+  IntelligentComputeProjectState,
 } from "./types";
 
 export const AI_COMPUTE_QUOTE_SETTING_KEY = "ai_compute_quote::active";
 
+export type CreateAmountSourceBaseMode = "blank" | "h200" | "current" | "source";
+
+export interface CreateAmountSourceRequest {
+  name: string;
+  baseMode: CreateAmountSourceBaseMode;
+  baseSourceId?: string | null;
+  enabled?: boolean;
+}
+
 function cloneH200Blueprint() {
   return calculateQuoteBlueprint(createH200Blueprint());
+}
+
+let loadSequence = 0;
+
+function injectProjectParameters(
+  blueprint: AiComputeQuoteBlueprint,
+  projectState: IntelligentComputeProjectState,
+) {
+  return {
+    ...blueprint,
+    parameters: blueprint.parameters.map(parameter =>
+      isAiComputeProjectCycleParameter(parameter)
+        ? { ...parameter, value: projectState.projectYears, locked: true, isKey: true }
+        : parameter.id === "discount-rate" || parameter.key === "discount_rate"
+          ? { ...parameter, value: projectState.discountRate * 100, locked: true, isKey: true }
+          : parameter
+    ),
+  };
+}
+
+export function buildBlueprintForAmountSource(
+  source: IntelligentAmountSource,
+  projectState: IntelligentComputeProjectState,
+) {
+  const hasBusinessData = source.parameters.length > 0
+    || source.revenueItems.length > 0
+    || source.costItems.length > 0;
+  const raw: AiComputeQuoteBlueprint = hasBusinessData
+    ? {
+        id: source.id,
+        scenarioId: String(source.metadata.scenarioId || source.id),
+        name: source.name,
+        description: source.description || undefined,
+        parameterGroups: source.parameterGroups,
+        parameters: source.parameters,
+        revenueItems: source.revenueItems,
+        costItems: source.costItems,
+        mappings: source.mappings,
+        syncState: source.calculationSnapshot.syncState,
+      }
+    : {
+        ...cloneH200Blueprint(),
+        id: source.id,
+        scenarioId: source.id,
+        name: source.name,
+        description: source.description || "智算项目金额来源",
+      };
+  return calculateQuoteBlueprint(injectProjectParameters(normalizeBlueprint(raw), projectState));
+}
+
+function blueprintToSource(
+  source: IntelligentAmountSource,
+  blueprint: AiComputeQuoteBlueprint,
+): IntelligentAmountSource {
+  return {
+    ...source,
+    name: blueprint.name,
+    description: blueprint.description || null,
+    enabled: true,
+    metadata: {
+      ...source.metadata,
+      scenarioId: blueprint.scenarioId || blueprint.id,
+    },
+    parameterGroups: blueprint.parameterGroups,
+    parameters: blueprint.parameters,
+    revenueItems: blueprint.revenueItems,
+    costItems: blueprint.costItems,
+    mappings: blueprint.mappings,
+    calculationSnapshot: {
+      ...source.calculationSnapshot,
+      syncState: blueprint.syncState,
+      calculatedAt: new Date().toISOString(),
+    },
+  };
 }
 
 export function normalizeBlueprint(
@@ -64,6 +146,9 @@ export function normalizeBlueprint(
 
 interface AiComputeQuoteStore {
   blueprint: AiComputeQuoteBlueprint;
+  amountSources: IntelligentAmountSource[];
+  projectState: IntelligentComputeProjectState | null;
+  activeAmountSourceId: string | null;
   projectId: string | null;
   isLoading: boolean;
   isSaving: boolean;
@@ -72,6 +157,10 @@ interface AiComputeQuoteStore {
   lastSavedAt: string | null;
   load: (projectId: string | null) => Promise<void>;
   save: (projectId: string | null) => Promise<boolean>;
+  setActiveAmountSource: (sourceId: string) => Promise<boolean>;
+  createAmountSource: (request: CreateAmountSourceRequest) => Promise<boolean>;
+  deleteAmountSource: (sourceId: string) => Promise<boolean>;
+  updateAmountSourceMeta: (sourceId: string, patch: Partial<Pick<IntelligentAmountSource, "name" | "description" | "enabled">>) => void;
   resetToH200: () => void;
   renameBlueprint: (name: string) => void;
   updateParameter: (parameterId: string, patch: Partial<AiComputeQuoteParameter>) => void;
@@ -100,6 +189,9 @@ function recalculate(blueprint: AiComputeQuoteBlueprint) {
 
 export const useAiComputeQuoteStore = create<AiComputeQuoteStore>((set, get) => ({
   blueprint: cloneH200Blueprint(),
+  amountSources: [],
+  projectState: null,
+  activeAmountSourceId: null,
   projectId: null,
   isLoading: false,
   isSaving: false,
@@ -108,73 +200,244 @@ export const useAiComputeQuoteStore = create<AiComputeQuoteStore>((set, get) => 
   lastSavedAt: null,
 
   load: async projectId => {
+    const requestId = ++loadSequence;
     if (!projectId) {
-      set({ blueprint: cloneH200Blueprint(), projectId: null, isDirty: false, error: null, lastSavedAt: null });
+      set({
+        blueprint: cloneH200Blueprint(),
+        amountSources: [],
+        projectState: null,
+        activeAmountSourceId: null,
+        projectId: null,
+        isLoading: false,
+        isSaving: false,
+        isDirty: false,
+        error: null,
+        lastSavedAt: null,
+      });
       return;
     }
-    set({ isLoading: true, error: null });
+    set({
+      blueprint: cloneH200Blueprint(),
+      amountSources: [],
+      projectState: null,
+      activeAmountSourceId: null,
+      projectId,
+      isLoading: true,
+      isDirty: false,
+      error: null,
+      lastSavedAt: null,
+    });
     try {
-      const [raw, project] = await Promise.all([
-        projectService.getProjectSetting(projectId, AI_COMPUTE_QUOTE_SETTING_KEY),
-        projectService.getProject(projectId),
-      ]);
-      if (!raw) {
-        const discountRatePercent = ictDiscountRateToAiComputePercent(project?.discount_rate);
-        const blueprint = initializeAiComputeDiscountRate(
-          cloneH200Blueprint(),
-          discountRatePercent,
-        );
-        set({
-          blueprint: recalculate(blueprint),
-          projectId,
-          isLoading: false,
-          isDirty: false,
-          lastSavedAt: null,
-        });
-        return;
-      }
-      const persisted = JSON.parse(raw) as Partial<AiComputeQuotePersistedState>;
-      const discountRatePercent = ictDiscountRateToAiComputePercent(project?.discount_rate);
-      const normalized = normalizeBlueprint(persisted.blueprint, {
-        fallbackDiscountRatePercent: discountRatePercent,
-      });
+      const data = await intelligentComputeService.loadProject(projectId);
+      if (requestId !== loadSequence || get().projectId !== projectId) return;
+      const activeId = data.state.activeAmountSourceId || data.amountSources[0]?.id || null;
+      const activeSource = data.amountSources.find(source => source.id === activeId)
+        || data.amountSources[0];
+      if (!activeSource) throw new Error("智算项目缺少金额来源");
       set({
-        blueprint: recalculate(migrateAiComputeDiscountRateOwnership(
-          normalized,
-          Number(persisted.version || 1),
-          discountRatePercent,
-        )),
+        blueprint: buildBlueprintForAmountSource(activeSource, data.state),
+        amountSources: data.amountSources,
+        projectState: data.state,
+        activeAmountSourceId: activeSource.id,
         projectId,
         isLoading: false,
         isDirty: false,
-        lastSavedAt: typeof persisted.savedAt === "string" ? persisted.savedAt : null,
+        lastSavedAt: activeSource.updatedAt || null,
       });
     } catch (error) {
-      set({ isLoading: false, error: `智算报价加载失败：${String(error)}` });
+      if (requestId === loadSequence) {
+        set({ isLoading: false, error: `智算金额来源加载失败：${String(error)}` });
+      }
     }
   },
 
   save: async projectId => {
     if (!projectId) {
-      set({ error: "请先选择项目后再保存智算蓝图。" });
+      set({ error: "请先打开智算项目后再保存金额来源。" });
+      return false;
+    }
+    const current = get();
+    const source = current.amountSources.find(item => item.id === current.activeAmountSourceId);
+    if (!source || !current.projectState) {
+      set({ error: "当前金额来源不存在。" });
       return false;
     }
     set({ isSaving: true, error: null });
     try {
-      const savedAt = new Date().toISOString();
-      const payload: AiComputeQuotePersistedState = {
-        version: 4,
-        blueprint: recalculate(get().blueprint),
-        savedAt,
-      };
-      await projectService.saveProjectSetting(projectId, AI_COMPUTE_QUOTE_SETTING_KEY, JSON.stringify(payload));
-      set({ projectId, isSaving: false, isDirty: false, lastSavedAt: savedAt });
+      const blueprint = recalculate(get().blueprint);
+      const savedSource = await intelligentComputeService.saveAmountSource(
+        projectId,
+        blueprintToSource(source, blueprint),
+        source.sourceVersion,
+      );
+      const latestState = get().projectState;
+      if (!latestState || get().projectId !== projectId) return false;
+      const projectYears = getAiComputeProjectCycleYears(blueprint.parameters);
+      const discountRate = getAiComputeDiscountRatePercent(blueprint.parameters) / 100;
+      const savedState = await intelligentComputeService.saveProjectState(projectId, {
+        expectedVersion: latestState.stateVersion,
+        activeAmountSourceId: savedSource.id,
+        projectYears,
+        discountRate,
+      });
+      if (get().projectId !== projectId) return false;
+      set(state => ({
+        amountSources: state.amountSources.map(item => item.id === savedSource.id ? savedSource : item),
+        projectState: savedState,
+        projectId,
+        isSaving: false,
+        isDirty: false,
+        lastSavedAt: savedSource.updatedAt,
+      }));
       return true;
     } catch (error) {
-      set({ isSaving: false, error: `智算报价保存失败：${String(error)}` });
+      set({ isSaving: false, error: `智算金额来源保存失败：${String(error)}` });
       return false;
     }
   },
+
+  setActiveAmountSource: async sourceId => {
+    const state = get();
+    if (!state.projectId || !state.projectState || sourceId === state.activeAmountSourceId) return true;
+    if (state.isDirty && !(await state.save(state.projectId))) return false;
+    const latest = get();
+    const source = latest.amountSources.find(item => item.id === sourceId);
+    if (!source || !latest.projectState) return false;
+    try {
+      const savedState = await intelligentComputeService.saveProjectState(latest.projectId!, {
+        expectedVersion: latest.projectState.stateVersion,
+        activeAmountSourceId: sourceId,
+        projectYears: latest.projectState.projectYears,
+        discountRate: latest.projectState.discountRate,
+      });
+      set({
+        activeAmountSourceId: sourceId,
+        blueprint: buildBlueprintForAmountSource(source, savedState),
+        amountSources: latest.amountSources.map(item => ({
+          ...item,
+          enabled: item.id === sourceId,
+        })),
+        projectState: savedState,
+        isDirty: false,
+        lastSavedAt: source.updatedAt,
+        error: null,
+      });
+      return true;
+    } catch (error) {
+      set({ error: `切换金额来源失败：${String(error)}` });
+      return false;
+    }
+	  },
+
+	  createAmountSource: async request => {
+	    const state = get();
+	    if (!state.projectId || !state.projectState) return false;
+	    if (state.isDirty && !(await state.save(state.projectId))) return false;
+	    const latest = get();
+	    const name = request.name.trim();
+	    if (!name) {
+	      set({ error: "请先填写金额来源名称。" });
+	      return false;
+	    }
+	    const sourceId = `amount_source_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+	    const h200 = cloneH200Blueprint();
+	    const selectedBaseSource = latest.amountSources.find(source => source.id === request.baseSourceId);
+	    const base = request.baseMode === "current"
+	      ? latest.blueprint
+	      : request.baseMode === "source" && selectedBaseSource && latest.projectState
+	        ? buildBlueprintForAmountSource(selectedBaseSource, latest.projectState)
+	        : request.baseMode === "h200"
+	          ? h200
+	          : {
+	              ...h200,
+	              parameters: h200.parameters.filter(isAiComputeStableIctParameter),
+	              revenueItems: [],
+	              costItems: [],
+	              mappings: [],
+	            };
+	    const blueprint = {
+	      ...base,
+	      id: sourceId,
+	      scenarioId: sourceId,
+	      name,
+	      syncState: undefined,
+	    };
+	    const now = new Date().toISOString();
+	    const draft: IntelligentAmountSource = {
+	      id: sourceId,
+	      projectId: latest.projectId!,
+	      name: blueprint.name,
+	      description: blueprint.description || null,
+	      enabled: true,
+	      sourceVersion: 0,
+      metadata: { scenarioId: sourceId },
+      parameterGroups: blueprint.parameterGroups,
+      parameters: blueprint.parameters,
+      revenueItems: blueprint.revenueItems,
+      costItems: blueprint.costItems,
+      mappings: blueprint.mappings,
+      calculationSnapshot: {},
+      createdAt: now,
+      updatedAt: now,
+    };
+    try {
+      const saved = await intelligentComputeService.saveAmountSource(latest.projectId!, draft, 0);
+      const projectState = await intelligentComputeService.saveProjectState(latest.projectId!, {
+        expectedVersion: latest.projectState!.stateVersion,
+        activeAmountSourceId: saved.id,
+        projectYears: latest.projectState!.projectYears,
+        discountRate: latest.projectState!.discountRate,
+      });
+      set(current => ({
+        amountSources: [...current.amountSources.map(source => ({ ...source, enabled: false })), saved],
+        activeAmountSourceId: saved.id,
+        blueprint: buildBlueprintForAmountSource(saved, projectState),
+        projectState,
+        isDirty: false,
+        lastSavedAt: saved.updatedAt,
+        error: null,
+      }));
+      return true;
+    } catch (error) {
+      set({ error: `新增金额来源失败：${String(error)}` });
+      return false;
+    }
+  },
+
+  deleteAmountSource: async sourceId => {
+    const state = get();
+    if (!state.projectId || state.amountSources.length <= 1) {
+      set({ error: "智算项目至少保留一个金额来源。" });
+      return false;
+    }
+    try {
+      await intelligentComputeService.deleteAmountSource(state.projectId, sourceId);
+      await get().load(state.projectId);
+      return true;
+    } catch (error) {
+      set({ error: `删除金额来源失败：${String(error)}` });
+      return false;
+    }
+  },
+
+  updateAmountSourceMeta: (sourceId, patch) => set(state => {
+    const amountSources = state.amountSources.map(source =>
+      source.id === sourceId
+        ? { ...source, ...patch }
+        : patch.enabled
+          ? { ...source, enabled: false }
+          : source
+    );
+    const active = sourceId === state.activeAmountSourceId;
+    return {
+      amountSources,
+      blueprint: active && patch.name
+        ? { ...state.blueprint, name: patch.name }
+        : state.blueprint,
+      isDirty: active ? true : state.isDirty,
+      error: null,
+    };
+  }),
 
   resetToH200: () => set({ blueprint: cloneH200Blueprint(), isDirty: true, error: null }),
   renameBlueprint: name => set(state => ({
@@ -377,13 +640,12 @@ export const useAiComputeQuoteStore = create<AiComputeQuoteStore>((set, get) => 
   }),
   updateFormula: (side, itemId, formula) => get().updateLineItem(side, itemId, { formula }),
   updateMapping: (lineItemId, mapping) => set(state => {
-    const released = clearAiComputeControlForMappingChange(state.blueprint, lineItemId);
     return {
       blueprint: recalculate({
-        ...released,
+        ...state.blueprint,
         mappings: mapping
-          ? [...released.mappings.filter(item => item.lineItemId !== lineItemId), mapping]
-          : released.mappings.filter(item => item.lineItemId !== lineItemId),
+          ? [...state.blueprint.mappings.filter(item => item.lineItemId !== lineItemId), mapping]
+          : state.blueprint.mappings.filter(item => item.lineItemId !== lineItemId),
       }),
       isDirty: true,
       error: null,

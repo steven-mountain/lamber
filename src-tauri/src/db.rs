@@ -35,7 +35,8 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
             deadline TEXT,
             linked_folder_type TEXT DEFAULT 'none',
             linked_folder_relative_path TEXT,
-            linked_folder_external_path TEXT
+            linked_folder_external_path TEXT,
+            project_type TEXT NOT NULL DEFAULT 'ict'
         );",
         [],
     )?;
@@ -209,6 +210,8 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
         [],
     )?;
 
+    ensure_intelligent_compute_schema(&conn)?;
+
     conn.execute(
         "CREATE TABLE IF NOT EXISTS project_template_states (
             id TEXT PRIMARY KEY,
@@ -317,7 +320,27 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
                 found
             };
 
-            let initial_version = if has_folder_name { "6" } else { "2" };
+            let has_project_type: bool = {
+                let mut col_stmt = conn.prepare("PRAGMA table_info(projects)")?;
+                let mut rows = col_stmt.query([])?;
+                let mut found = false;
+                while let Some(row) = rows.next()? {
+                    let name: String = row.get(1)?;
+                    if name == "project_type" {
+                        found = true;
+                        break;
+                    }
+                }
+                found
+            };
+
+            let initial_version = if has_project_type {
+                "7"
+            } else if has_folder_name {
+                "6"
+            } else {
+                "2"
+            };
             conn.execute(
                 "INSERT INTO app_settings (key, value, updated_at) VALUES ('schema_version', ?1, ?2)",
                 [initial_version, &now],
@@ -646,5 +669,422 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
         }
     }
 
+    // Run migration checks from Version 6 to 7
+    {
+        let version = {
+            let mut stmt =
+                conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
+            let mut rows = stmt.query([])?;
+            if let Some(row) = rows.next()? {
+                let val_str: String = row.get(0)?;
+                val_str.parse::<i32>().unwrap_or(1)
+            } else {
+                1
+            }
+        };
+        if version < 7 {
+            let project_columns: Vec<String> = {
+                let mut col_stmt = conn.prepare("PRAGMA table_info(projects)")?;
+                let col_iter = col_stmt.query_map([], |r| r.get::<_, String>(1))?;
+                let mut cols = Vec::new();
+                for col in col_iter {
+                    cols.push(col?);
+                }
+                cols
+            };
+            if !project_columns.contains(&"project_type".to_string()) {
+                conn.execute(
+                    "ALTER TABLE projects ADD COLUMN project_type TEXT NOT NULL DEFAULT 'ict';",
+                    [],
+                )?;
+            }
+            ensure_intelligent_compute_schema(&conn)?;
+            migrate_legacy_ai_compute_settings(&mut conn)?;
+
+            let now = chrono::Utc::now().to_rfc3339();
+            conn.execute(
+                "UPDATE app_settings SET value = '7', updated_at = ?1 WHERE key = 'schema_version'",
+                [now],
+            )?;
+        }
+    }
+
     Ok(conn)
+}
+
+fn ensure_intelligent_compute_schema(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS project_intelligent_compute_states (
+            project_id TEXT PRIMARY KEY,
+            state_version INTEGER NOT NULL DEFAULT 1,
+            active_amount_source_id TEXT,
+            project_years INTEGER NOT NULL DEFAULT 1,
+            discount_rate REAL NOT NULL DEFAULT 0.055,
+            sync_revision INTEGER NOT NULL DEFAULT 0,
+            controlled_subjects_json TEXT NOT NULL DEFAULT '{}',
+            last_result_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );",
+        [],
+    )?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS intelligent_compute_amount_sources (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            source_version INTEGER NOT NULL DEFAULT 1,
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            parameter_groups_json TEXT NOT NULL DEFAULT '[]',
+            parameters_json TEXT NOT NULL DEFAULT '[]',
+            revenue_items_json TEXT NOT NULL DEFAULT '[]',
+            cost_items_json TEXT NOT NULL DEFAULT '[]',
+            mappings_json TEXT NOT NULL DEFAULT '[]',
+            calculation_snapshot_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_intelligent_amount_sources_project
+         ON intelligent_compute_amount_sources(project_id, updated_at);",
+        [],
+    )?;
+    Ok(())
+}
+
+fn migrate_legacy_ai_compute_settings(conn: &mut Connection) -> Result<()> {
+    let legacy_rows: Vec<(String, String, String)> = {
+        let mut stmt = conn.prepare(
+            "SELECT project_id, value, updated_at
+             FROM project_settings
+             WHERE key = 'ai_compute_quote::active'",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        let mut values = Vec::new();
+        for row in rows {
+            values.push(row?);
+        }
+        values
+    };
+
+    for (project_id, raw, updated_at) in legacy_rows {
+        let value: serde_json::Value =
+            serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({}));
+        let blueprint = value
+            .get("blueprint")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        let source_id = format!("legacy_amount_source_{}", project_id);
+        let project_values: (i64, f64) = conn
+            .query_row(
+                "SELECT project_years, discount_rate FROM projects WHERE id = ?1",
+                [&project_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap_or((1, 0.055));
+        let name = blueprint
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("历史智算金额来源");
+        let description = blueprint
+            .get("description")
+            .and_then(serde_json::Value::as_str);
+        let metadata = serde_json::json!({
+            "legacyBlueprintId": blueprint.get("id"),
+            "legacyScenarioId": blueprint.get("scenarioId"),
+            "legacySavedAt": value.get("savedAt"),
+        });
+        let snapshot = serde_json::json!({
+            "syncState": blueprint.get("syncState").cloned().unwrap_or_else(|| serde_json::json!({})),
+        });
+        let sync_revision = blueprint
+            .get("syncState")
+            .and_then(|sync| sync.get("revision"))
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(0);
+        let controlled_subjects = blueprint
+            .get("syncState")
+            .and_then(|sync| sync.get("subjects"))
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        conn.execute(
+            "UPDATE projects SET project_type = 'intelligent_compute' WHERE id = ?1",
+            [&project_id],
+        )?;
+        conn.execute(
+            "INSERT OR IGNORE INTO project_intelligent_compute_states (
+                project_id, state_version, active_amount_source_id, project_years, discount_rate,
+                sync_revision, controlled_subjects_json, last_result_json, created_at, updated_at
+             ) VALUES (?1, 1, ?2, ?3, ?4, ?5, ?6, '{}', ?7, ?7)",
+            rusqlite::params![
+                project_id,
+                source_id,
+                project_values.0,
+                project_values.1,
+                sync_revision,
+                serde_json::to_string(&controlled_subjects).unwrap_or_else(|_| "{}".to_string()),
+                updated_at,
+            ],
+        )?;
+        conn.execute(
+            "INSERT OR IGNORE INTO intelligent_compute_amount_sources (
+                id, project_id, name, description, enabled, source_version, metadata_json,
+                parameter_groups_json, parameters_json, revenue_items_json, cost_items_json,
+                mappings_json, calculation_snapshot_json, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, 1, 1, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)",
+            rusqlite::params![
+                source_id,
+                project_id,
+                name,
+                description,
+                serde_json::to_string(&metadata).unwrap_or_else(|_| "{}".to_string()),
+                serde_json::to_string(
+                    blueprint
+                        .get("parameterGroups")
+                        .unwrap_or(&serde_json::Value::Array(Vec::new())),
+                )
+                .unwrap_or_else(|_| "[]".to_string()),
+                serde_json::to_string(
+                    blueprint
+                        .get("parameters")
+                        .unwrap_or(&serde_json::Value::Array(Vec::new())),
+                )
+                .unwrap_or_else(|_| "[]".to_string()),
+                serde_json::to_string(
+                    blueprint
+                        .get("revenueItems")
+                        .unwrap_or(&serde_json::Value::Array(Vec::new())),
+                )
+                .unwrap_or_else(|_| "[]".to_string()),
+                serde_json::to_string(
+                    blueprint
+                        .get("costItems")
+                        .unwrap_or(&serde_json::Value::Array(Vec::new())),
+                )
+                .unwrap_or_else(|_| "[]".to_string()),
+                serde_json::to_string(
+                    blueprint
+                        .get("mappings")
+                        .unwrap_or(&serde_json::Value::Array(Vec::new())),
+                )
+                .unwrap_or_else(|_| "[]".to_string()),
+                serde_json::to_string(&snapshot).unwrap_or_else(|_| "{}".to_string()),
+                updated_at,
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::params;
+
+    fn temp_db_path(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "lamber-{}-{}.db",
+            name,
+            uuid::Uuid::new_v4().simple()
+        ))
+    }
+
+    fn create_v6_database(path: &Path) {
+        let conn = Connection::open(path).unwrap();
+        conn.execute_batch(
+            "
+            PRAGMA foreign_keys = ON;
+            CREATE TABLE projects (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                customer_name TEXT NOT NULL,
+                status TEXT NOT NULL,
+                benefit_status TEXT NOT NULL,
+                default_scheme_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                total_revenue_incl REAL NOT NULL,
+                total_cost_incl REAL NOT NULL,
+                project_years INTEGER NOT NULL,
+                discount_rate REAL NOT NULL,
+                cashflow_model TEXT NOT NULL,
+                summary_metrics TEXT,
+                folder_path TEXT,
+                main_document_path TEXT,
+                main_budget_file_path TEXT,
+                note TEXT,
+                logs TEXT,
+                folder_name TEXT,
+                relative_path TEXT,
+                progress REAL DEFAULT 0.0,
+                deadline TEXT,
+                linked_folder_type TEXT DEFAULT 'none',
+                linked_folder_relative_path TEXT,
+                linked_folder_external_path TEXT
+            );
+            CREATE TABLE app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE project_settings (
+                project_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(project_id, key),
+                FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            ",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO app_settings (key, value, updated_at)
+             VALUES ('schema_version', '6', '2026-06-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO projects (
+                id, name, customer_name, status, benefit_status, created_at, updated_at,
+                total_revenue_incl, total_cost_incl, project_years, discount_rate,
+                cashflow_model, logs
+             ) VALUES (
+                'legacy-intelligent', '历史智算项目', '客户A', '需求导入', 'normal',
+                '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z',
+                100, 80, 5, 0.06, 'model_a', '[]'
+             )",
+            [],
+        )
+        .unwrap();
+        let legacy = serde_json::json!({
+            "version": 4,
+            "savedAt": "2026-06-01T00:00:00Z",
+            "blueprint": {
+                "id": "legacy-blueprint",
+                "scenarioId": "legacy-scenario",
+                "name": "H200 历史来源",
+                "parameterGroups": [{"id": "scale", "name": "规模", "builtin": true}],
+                "parameters": [{"id": "device-count", "key": "device_count", "name": "设备数", "value": 8}],
+                "revenueItems": [{"id": "revenue-1", "name": "收入", "fundingPlan": {"enabled": true, "yearlyAmounts": {"1": 100}}}],
+                "costItems": [{"id": "cost-1", "name": "成本"}],
+                "mappings": [{"lineItemId": "revenue-1", "ictSubjectCode": "rev_it_cloud"}],
+                "syncState": {
+                    "revision": 3,
+                    "subjects": {
+                        "revenue:rev_it_cloud": {
+                            "side": "revenue",
+                            "ictSubjectCode": "rev_it_cloud",
+                            "amountInclTax": 100,
+                            "taxRate": 6,
+                            "yearlyAmounts": [100, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                            "sourceLineItemIds": ["revenue-1"]
+                        }
+                    }
+                }
+            }
+        });
+        conn.execute(
+            "INSERT INTO project_settings (project_id, key, value, updated_at)
+             VALUES (?1, 'ai_compute_quote::active', ?2, ?3)",
+            params![
+                "legacy-intelligent",
+                legacy.to_string(),
+                "2026-06-01T00:00:00Z"
+            ],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn fresh_database_uses_schema_v7_and_defaults_projects_to_ict() {
+        let path = temp_db_path("fresh-v7");
+        let conn = init_db(&path).unwrap();
+        let version: String = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = 'schema_version'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, "7");
+        conn.execute(
+            "INSERT INTO projects (
+                id, name, customer_name, status, benefit_status, created_at, updated_at,
+                total_revenue_incl, total_cost_incl, project_years, discount_rate,
+                cashflow_model, logs
+             ) VALUES (
+                'ict-default', 'ICT 默认项目', '客户', '需求导入', 'not_started',
+                '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z',
+                0, 0, 1, 0.055, 'model_a', '[]'
+             )",
+            [],
+        )
+        .unwrap();
+        let project_type: String = conn
+            .query_row(
+                "SELECT project_type FROM projects WHERE id = 'ict-default'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(project_type, "ict");
+        drop(conn);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn v6_legacy_blueprint_migrates_to_intelligent_amount_source() {
+        let path = temp_db_path("v6-to-v7");
+        create_v6_database(&path);
+        let conn = init_db(&path).unwrap();
+        let (project_type, sync_revision, active_source): (String, i64, String) = conn
+            .query_row(
+                "SELECT p.project_type, s.sync_revision, s.active_amount_source_id
+                 FROM projects p
+                 JOIN project_intelligent_compute_states s ON s.project_id = p.id
+                 WHERE p.id = 'legacy-intelligent'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(project_type, "intelligent_compute");
+        assert_eq!(sync_revision, 3);
+        let (name, parameters, revenue_items, mappings): (String, String, String, String) = conn
+            .query_row(
+                "SELECT name, parameters_json, revenue_items_json, mappings_json
+                 FROM intelligent_compute_amount_sources WHERE id = ?1",
+                [&active_source],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(name, "H200 历史来源");
+        assert!(parameters.contains("device-count"));
+        assert!(revenue_items.contains("yearlyAmounts"));
+        assert!(mappings.contains("rev_it_cloud"));
+        let legacy_setting_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM project_settings
+                 WHERE project_id = 'legacy-intelligent' AND key = 'ai_compute_quote::active'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(legacy_setting_count, 1);
+        drop(conn);
+        let _ = std::fs::remove_file(path);
+    }
 }

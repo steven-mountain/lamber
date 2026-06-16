@@ -6,7 +6,7 @@ import {
   type CashflowModel,
   normalizeDistribution
 } from "../lib/cashflowDistribution";
-import { normalizeCustomSubjectName } from "../lib/ictSubjectCatalog";
+import { ICT_SUBJECT_GROUPS, normalizeCustomSubjectName, type IctSubjectGroupId } from "../lib/ictSubjectCatalog";
 import {
   createDefaultBalanceAllocationState,
   type BalanceAllocationSide,
@@ -34,6 +34,48 @@ export interface TaxItem { incl: number; tax: number; excl: number; customSubjec
 
 export type TaxItemInclUpdate = { groupId: string; key: string; incl: number; reason?: SubjectFundingPlanLastChangeReason };
 export const defaultTaxItem = (tax = 6): TaxItem => ({ incl: 0, tax, excl: 0 });
+const defaultSubjectTaxItem = (groupId: IctSubjectGroupId, key: string) => {
+  const subject = ICT_SUBJECT_GROUPS[groupId]?.find(item => item.key === key);
+  return defaultTaxItem(subject?.defaultTaxRate ?? 6);
+};
+const createDefaultRevIt = () => ({
+  integration: defaultSubjectTaxItem("revIt", "integration"),
+  maintenance: defaultSubjectTaxItem("revIt", "maintenance"),
+  device_sales: defaultSubjectTaxItem("revIt", "device_sales"),
+  device_lease: defaultSubjectTaxItem("revIt", "device_lease"),
+  other: defaultSubjectTaxItem("revIt", "other"),
+  cloud: defaultSubjectTaxItem("revIt", "cloud"),
+});
+const createDefaultRevCt = () => ({
+  line: defaultSubjectTaxItem("revCt", "line"),
+  product: defaultSubjectTaxItem("revCt", "product"),
+});
+const createDefaultRevNonItCt = () => defaultSubjectTaxItem("revNonItCt", "item");
+const createDefaultCostIt = () => ({
+  device: defaultSubjectTaxItem("costIt", "device"),
+  construction: defaultSubjectTaxItem("costIt", "construction"),
+  survey: defaultSubjectTaxItem("costIt", "survey"),
+  integration: defaultSubjectTaxItem("costIt", "integration"),
+  other: defaultSubjectTaxItem("costIt", "other"),
+  maintenance: defaultSubjectTaxItem("costIt", "maintenance"),
+  running: defaultSubjectTaxItem("costIt", "running"),
+  bidding: defaultSubjectTaxItem("costIt", "bidding"),
+  design_eval: defaultSubjectTaxItem("costIt", "design_eval"),
+  audit: defaultSubjectTaxItem("costIt", "audit"),
+});
+const createDefaultCostCt = () => ({
+  construction: defaultSubjectTaxItem("costCt", "construction"),
+  maintenance: defaultSubjectTaxItem("costCt", "maintenance"),
+  other: defaultSubjectTaxItem("costCt", "other"),
+  bandwidth: defaultSubjectTaxItem("costCt", "bandwidth"),
+  renewal: defaultSubjectTaxItem("costCt", "renewal"),
+});
+const createDefaultCostMix = () => ({
+  non_it_ct: defaultSubjectTaxItem("costMix", "non_it_ct"),
+  marketing: defaultSubjectTaxItem("costMix", "marketing"),
+  channel: defaultSubjectTaxItem("costMix", "channel"),
+  other: defaultSubjectTaxItem("costMix", "other"),
+});
 export type SegmentValueMode = "ratio" | "amount";
 export type SegmentFlowMode = "upfront" | "equal" | "custom";
 export type SegmentSideScope = "project" | "it" | "ct" | "non_it_ct" | "mix";
@@ -80,6 +122,54 @@ export const createCashflowSegment = (index: number): CashflowSegment => ({
   revenueAnnualValues: [],
   costAnnualValues: [],
 });
+
+const createDefaultCashflowSegments = (): CashflowSegment[] => [
+  {
+    id: "segment-1",
+    name: "板块一",
+    value: 50,
+    revenueValue: 0,
+    revenueTax: 6,
+    revenueScope: "project",
+    costValue: 0,
+    costTax: 6,
+    costScope: "project",
+    startYear: 1,
+    serviceYears: 3,
+    revenueMode: "upfront",
+    costMode: "upfront",
+    revenueAnnualValues: [],
+    costAnnualValues: [],
+  },
+  {
+    id: "segment-2",
+    name: "板块二",
+    value: 50,
+    revenueValue: 0,
+    revenueTax: 6,
+    revenueScope: "project",
+    costValue: 0,
+    costTax: 6,
+    costScope: "project",
+    startYear: 1,
+    serviceYears: 2,
+    revenueMode: "equal",
+    costMode: "equal",
+    revenueAnnualValues: [],
+    costAnnualValues: [],
+  },
+];
+
+const createDefaultTechItems = () => [
+  { serviceName: "集成服务", serviceDesc: "集成实施", amount: 1, unit: "项" },
+  { serviceName: "维保服务", serviceDesc: "硬件维保", amount: 1, unit: "项" },
+];
+
+const createDefaultInquiryVendors = () => [
+  { vendorName: "厂商A", amount: 0, taxRate: 6, remark: "最低" },
+  { vendorName: "厂商B", amount: 0, taxRate: 6, remark: "" },
+  { vendorName: "厂商C", amount: 0, taxRate: 6, remark: "" },
+];
 
 const roundMoney = (value: number) => Number((Number.isFinite(value) ? value : 0).toFixed(2));
 const normalizeMoney = (value: number) => {
@@ -245,52 +335,10 @@ export function useIctState() {
   const [distRev, setDistRev] = useState<number[]>([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
   const [distCost, setDistCost] = useState<number[]>([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
   const [segmentValueMode, setSegmentValueMode] = useState<SegmentValueMode>("ratio");
-  const [cashflowSegments, setCashflowSegments] = useState<CashflowSegment[]>([
-    {
-      id: "segment-1",
-      name: "板块一",
-      value: 50,
-      revenueValue: 0,
-      revenueTax: 6,
-      revenueScope: "project",
-      costValue: 0,
-      costTax: 6,
-      costScope: "project",
-      startYear: 1,
-      serviceYears: 3,
-      revenueMode: "upfront",
-      costMode: "upfront",
-      revenueAnnualValues: [],
-      costAnnualValues: [],
-    },
-    {
-      id: "segment-2",
-      name: "板块二",
-      value: 50,
-      revenueValue: 0,
-      revenueTax: 6,
-      revenueScope: "project",
-      costValue: 0,
-      costTax: 6,
-      costScope: "project",
-      startYear: 1,
-      serviceYears: 2,
-      revenueMode: "equal",
-      costMode: "equal",
-      revenueAnnualValues: [],
-      costAnnualValues: [],
-    },
-  ]);
+  const [cashflowSegments, setCashflowSegments] = useState<CashflowSegment[]>(createDefaultCashflowSegments);
   const [projectBackground, setProjectBackground] = useState("在数字经济与制造业深度融合的国家战略推动下...");
-  const [techItems, setTechItems] = useState<any[]>([
-    { serviceName: '集成服务', serviceDesc: '集成实施', amount: 1, unit: '项' },
-    { serviceName: '维保服务', serviceDesc: '硬件维保', amount: 1, unit: '项' }
-  ]);
-  const [inqVendors, setInqVendors] = useState<any[]>([
-    { vendorName: '厂商A', amount: 0, taxRate: 6, remark: '最低' },
-    { vendorName: '厂商B', amount: 0, taxRate: 6, remark: '' },
-    { vendorName: '厂商C', amount: 0, taxRate: 6, remark: '' }
-  ]);
+  const [techItems, setTechItems] = useState<any[]>(createDefaultTechItems);
+  const [inqVendors, setInqVendors] = useState<any[]>(createDefaultInquiryVendors);
 
   const [balanceAllocation, setBalanceAllocation] = useState<BalanceAllocationState>(
     createDefaultBalanceAllocationState(),
@@ -302,30 +350,14 @@ export function useIctState() {
     useState<number | undefined>(SUBJECT_FUNDING_PLAN_MIGRATION_VERSION);
 
   // --- Revenue State ---
-  const [revIt, setRevIt] = useState({
-    integration: defaultTaxItem(6), maintenance: defaultTaxItem(6),
-    device_sales: defaultTaxItem(13), device_lease: defaultTaxItem(13),
-    other: defaultTaxItem(6), cloud: defaultTaxItem(6),
-  });
-  const [revCt, setRevCt] = useState({ line: defaultTaxItem(9), product: defaultTaxItem(6) });
-  const [revNonItCt, setRevNonItCt] = useState(defaultTaxItem(9));
+  const [revIt, setRevIt] = useState(createDefaultRevIt);
+  const [revCt, setRevCt] = useState(createDefaultRevCt);
+  const [revNonItCt, setRevNonItCt] = useState(createDefaultRevNonItCt);
 
   // --- Cost State ---
-  const [costIt, setCostIt] = useState({
-    device: defaultTaxItem(13), construction: defaultTaxItem(9),
-    survey: defaultTaxItem(6), integration: defaultTaxItem(6),
-    other: defaultTaxItem(6), maintenance: defaultTaxItem(6),
-    running: defaultTaxItem(13), bidding: defaultTaxItem(6),
-    design_eval: defaultTaxItem(6), audit: defaultTaxItem(6),
-  });
-  const [costCt, setCostCt] = useState({
-    construction: defaultTaxItem(9), maintenance: defaultTaxItem(9),
-    other: defaultTaxItem(6), bandwidth: defaultTaxItem(9), renewal: defaultTaxItem(9),
-  });
-  const [costMix, setCostMix] = useState({
-    non_it_ct: defaultTaxItem(9), marketing: defaultTaxItem(6),
-    channel: defaultTaxItem(6), other: defaultTaxItem(6),
-  });
+  const [costIt, setCostIt] = useState(createDefaultCostIt);
+  const [costCt, setCostCt] = useState(createDefaultCostCt);
+  const [costMix, setCostMix] = useState(createDefaultCostMix);
 
   // --- Templates & Ignore States ---
   const [templates, setTemplates] = useState<string[]>([]);
@@ -464,28 +496,12 @@ export function useIctState() {
   };
 
   const clearFinancialSubjects = () => {
-    setRevIt({
-      integration: defaultTaxItem(6), maintenance: defaultTaxItem(6),
-      device_sales: defaultTaxItem(13), device_lease: defaultTaxItem(13),
-      other: defaultTaxItem(6), cloud: defaultTaxItem(6),
-    });
-    setRevCt({ line: defaultTaxItem(9), product: defaultTaxItem(6) });
-    setRevNonItCt(defaultTaxItem(9));
-    setCostIt({
-      device: defaultTaxItem(13), construction: defaultTaxItem(9),
-      survey: defaultTaxItem(6), integration: defaultTaxItem(6),
-      other: defaultTaxItem(6), maintenance: defaultTaxItem(6),
-      running: defaultTaxItem(13), bidding: defaultTaxItem(6),
-      design_eval: defaultTaxItem(6), audit: defaultTaxItem(6),
-    });
-    setCostCt({
-      construction: defaultTaxItem(9), maintenance: defaultTaxItem(9),
-      other: defaultTaxItem(6), bandwidth: defaultTaxItem(9), renewal: defaultTaxItem(9),
-    });
-    setCostMix({
-      non_it_ct: defaultTaxItem(9), marketing: defaultTaxItem(6),
-      channel: defaultTaxItem(6), other: defaultTaxItem(6),
-    });
+    setRevIt(createDefaultRevIt());
+    setRevCt(createDefaultRevCt());
+    setRevNonItCt(createDefaultRevNonItCt());
+    setCostIt(createDefaultCostIt());
+    setCostCt(createDefaultCostCt());
+    setCostMix(createDefaultCostMix());
     setSubjectFundingPlansState({});
     setBalanceAllocation(createDefaultBalanceAllocationState());
     setIgnoredTailValue(null);
@@ -504,6 +520,25 @@ export function useIctState() {
       revenueAnnualValues: [],
       costAnnualValues: [],
     })));
+  };
+
+  const resetProjectState = () => {
+    setActiveTab("basic");
+    setProjName("X项目");
+    setCustomerName("X客户");
+    setPropertyRights("客户");
+    setDiscountRate(0.055);
+    setProjectYears(1);
+    setCashflowModel("model_a");
+    setDistRev([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    setDistCost([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    setSegmentValueMode("ratio");
+    setCashflowSegments(createDefaultCashflowSegments());
+    setProjectBackground("在数字经济与制造业深度融合的国家战略推动下...");
+    setTechItems(createDefaultTechItems());
+    setInqVendors(createDefaultInquiryVendors());
+    setSelectedTemplate("");
+    clearFinancialSubjects();
   };
 
   const updateTaxItemsInclBatch = (updates: TaxItemInclUpdate[]) => {
@@ -696,12 +731,14 @@ export function useIctState() {
       [field]: normalizedValue,
     });
 
-    const updateGroupItem = (groupState: Record<string, TaxItem>, setGroupState: (value: any) => void, targetKey: string) => {
-      setGroupState({
-        ...groupState,
-        [targetKey]: nextItem(groupState[targetKey] || defaultTaxItem()),
-      });
-    };
+	    const updateGroupItem = (groupState: Record<string, TaxItem>, setGroupState: (value: any) => void, targetKey: string) => {
+	      setGroupState({
+	        ...groupState,
+	        [targetKey]: nextItem(
+	          groupState[targetKey] || defaultSubjectTaxItem(groupId as IctSubjectGroupId, targetKey),
+	        ),
+	      });
+	    };
 
     if (groupId === 'revIt') updateGroupItem(revIt, setRevIt, key);
     else if (groupId === 'revCt') {
@@ -767,7 +804,7 @@ export function useIctState() {
     cashflowCalculationSource, setCashflowCalculationSource,
     subjectFundingPlanMigrationVersion, setSubjectFundingPlanMigrationVersion,
     subjectFundingPlans, setSubjectFundingPlans, upsertSubjectFundingPlan, removeSubjectFundingPlanForRef,
-    clearFinancialSubjects,
+    clearFinancialSubjects, resetProjectState,
     revIt, setRevIt,
     revCt, setRevCt,
     revNonItCt, setRevNonItCt,

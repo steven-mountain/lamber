@@ -58,6 +58,8 @@ pub async fn update_project(
             if let Ok(content) = std::fs::read_to_string(&project_json_path) {
                 if let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(&content) {
                     json_val["name"] = serde_json::Value::String(updated.name.clone());
+                    json_val["projectType"] =
+                        serde_json::Value::String(updated.project_type.clone());
                     json_val["updatedAt"] = serde_json::Value::String(updated.updated_at.clone());
                     if let Ok(updated_content) = serde_json::to_string_pretty(&json_val) {
                         let _ = std::fs::write(project_json_path, updated_content);
@@ -149,6 +151,7 @@ pub async fn create_project_in_workspace(
     runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     name: String,
     customer_name: String,
+    project_type: Option<String>,
 ) -> Result<Project, String> {
     let ws = runtime.require_workspace()?;
     let conn = runtime.require_db()?;
@@ -165,6 +168,11 @@ pub async fn create_project_in_workspace(
         } else {
             trimmed.to_string()
         }
+    };
+    let project_type = match project_type.as_deref().unwrap_or("ict") {
+        "ict" => "ict".to_string(),
+        "intelligent_compute" => "intelligent_compute".to_string(),
+        _ => return Err("InvalidProjectType".to_string()),
     };
 
     let folder_name = crate::workspace::sanitize_folder_name(&name);
@@ -190,6 +198,7 @@ pub async fn create_project_in_workspace(
     struct ProjectJson {
         project_id: String,
         name: String,
+        project_type: String,
         relative_path: String,
         created_at: String,
         updated_at: String,
@@ -199,6 +208,7 @@ pub async fn create_project_in_workspace(
     let project_json = ProjectJson {
         project_id: project_id.clone(),
         name: name.clone(),
+        project_type: project_type.clone(),
         relative_path: relative_path.clone(),
         created_at: timestamp.clone(),
         updated_at: timestamp.clone(),
@@ -215,10 +225,11 @@ pub async fn create_project_in_workspace(
     }
 
     // 3. Save to database
-    let mut project = Project {
+    let project = Project {
         id: project_id,
         name,
         customer_name,
+        project_type,
         status: "需求导入".to_string(),
         benefit_status: "not_started".to_string(),
         default_scheme_id: None,
@@ -248,6 +259,20 @@ pub async fn create_project_in_workspace(
     if let Err(e) = repo.save_project(&project) {
         let _ = std::fs::remove_dir_all(&project_dir);
         return Err(format!("保存项目到数据库失败，已回滚文件夹: {}", e));
+    }
+    if project.project_type == "intelligent_compute" {
+        let initialization = (|| -> Result<(), String> {
+            let db = runtime.require_db()?;
+            let conn = db.lock().map_err(|e| e.to_string())?;
+            crate::intelligent_compute::ensure_project_state(&conn, &project.id)?;
+            crate::intelligent_compute::ensure_default_amount_source(&conn, &project.id)?;
+            Ok(())
+        })();
+        if let Err(error) = initialization {
+            let _ = repo.delete_project(&project.id);
+            let _ = std::fs::remove_dir_all(&project_dir);
+            return Err(format!("初始化智算金额来源失败，已回滚项目: {}", error));
+        }
     }
 
     Ok(project)

@@ -23,7 +23,6 @@ type Props = {
   onUpdateItem: (patch: Partial<AiComputeQuoteLineItem>) => void;
   onUpdateFormula: (formula: AiComputeQuoteExpressionFormula) => void;
   onUpdateMapping: (subjectCode: string) => void;
-  onRestoreFormulaControl: () => void;
   onRemove: () => void;
 };
 
@@ -102,7 +101,7 @@ function ProjectEditTab({
             onChange={event => onUpdateItem({ outputEnabled: event.target.checked })}
           />
           <span>
-            是否参与 ICT 自动同步
+            是否参与 ICT 同步输出
             <span className="mt-0.5 block text-caption font-normal text-secondary-foreground">
               关闭后保留业务计算，但不写入映射科目。
             </span>
@@ -129,7 +128,6 @@ export default function CalculationItemDetailTabs({
   onUpdateItem,
   onUpdateFormula,
   onUpdateMapping,
-  onRestoreFormulaControl,
   onRemove,
 }: Props) {
   const [activeTab, setActiveTab] = useState<DetailTab>("project");
@@ -169,16 +167,6 @@ export default function CalculationItemDetailTabs({
 
         {activeTab === "formula" && (
           <div>
-            {(item.formulaControlStatus === "ict_override" || item.formulaControlStatus === "merge_conflict") && (
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-destructive-soft px-3 py-2.5 text-caption text-destructive">
-                <span className="font-bold">
-                  {item.ictControlMessage || "已被 ICT 人工修改，当前公式失效"}
-                </span>
-                <Button size="sm" variant="outline" onClick={onRestoreFormulaControl}>
-                  恢复公式控制
-                </Button>
-              </div>
-            )}
             <QuoteFormulaCalculator
               blueprint={blueprint}
               item={{ ...item, formula: normalizedFormula }}

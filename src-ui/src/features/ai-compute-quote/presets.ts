@@ -89,7 +89,7 @@ export function createH200Blueprint(): AiComputeQuoteBlueprint {
   return {
     id: "h200-standard",
     scenarioId: "h200-standard-scenario",
-    name: "H200 标准智算报价蓝图",
+    name: "H200 标准智算金额来源",
     description: "64 台 H200、5 年服务期的标准报价预设。金额口径为元、含税。",
     parameterGroups: DEFAULT_PARAMETER_GROUPS.map(group => ({ ...group })),
     parameters: [

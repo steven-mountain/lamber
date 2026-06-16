@@ -262,6 +262,9 @@ pub async fn save_project_setting(
     key: String,
     value: String,
 ) -> Result<(), String> {
+    if key == "ai_compute_quote::active" {
+        return Err("LegacyAiComputeSettingReadOnly".to_string());
+    }
     use crate::benefit::repository::ProjectRepository;
     let project_repo =
         crate::benefit::repository::SqliteProjectRepository::new(runtime.require_db()?);

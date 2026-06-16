@@ -15,7 +15,6 @@ import { IctMetricsDashboard } from "../components/IctMetricsDashboard";
 import {
   projectService,
   type Project,
-  type IctInput,
   type BenefitAnalysisScheme,
   type BenefitAnalysisSnapshot
 } from "../utils/projectService";
@@ -24,9 +23,6 @@ import { useProjectStore } from "../store/useProjectStore";
 import { useSaveStore } from "../store/useSaveStore";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { domainSaveService } from "../services/domainSaveService";
-import { AI_COMPUTE_QUOTE_SETTING_KEY } from "../features/ai-compute-quote/store";
-import { reconcileAiComputeBlueprintFromIct } from "../features/ai-compute-quote/ictSync";
-import type { AiComputeQuotePersistedState } from "../features/ai-compute-quote/types";
 import {
   ICT_SUBJECT_DEFINITIONS,
   ICT_SUBJECT_GROUPS,
@@ -147,16 +143,16 @@ const buildRestoredFundingSubjects = (sources: {
         groupId: subject.groupId,
         key: subject.key,
       },
-      displayName: getSubjectExcelDisplayName(subject, item),
-      subjectAmountIncl: Number(item?.incl ?? 0),
-      taxRate: Number(item?.tax ?? 0),
-      isItScope: subject.groupId === "revIt" || subject.groupId === "costIt",
-    };
+	      displayName: getSubjectExcelDisplayName(subject, item),
+	      subjectAmountIncl: Number(item?.incl ?? 0),
+	      taxRate: Number(item?.tax ?? subject.defaultTaxRate),
+	      isItScope: subject.groupId === "revIt" || subject.groupId === "costIt",
+	    };
   });
 };
 
 export default function IctLifecycle() {
-  const { activeProjectId, activeSchemeId, activeScenarioId, entrySource, navigateTo } = useNavigationStore();
+  const { activeProjectId, activeSchemeId, activeScenarioId, entrySource, ictOrigin, navigateTo } = useNavigationStore();
   const isWorkspaceReady = useWorkspaceStore(state => state.isWorkspaceReady);
   const workspaceId = useWorkspaceStore(state => state.workspaceId);
   const state = useIctState();
@@ -170,6 +166,7 @@ export default function IctLifecycle() {
   const lastSaveError = useSaveStore(saveState => saveState.lastSaveError);
   const { confirmOrSave } = useUnsavedChangesGuard();
   const isHydratingRef = useRef(false);
+  const projectLoadRequestRef = useRef(0);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
@@ -270,12 +267,14 @@ export default function IctLifecycle() {
   }, [activeProjectId, isWorkspaceReady]);
 
 
-  const fillCalculatorState = useCallback((params: any) => {
-    if (!params) return;
+	  const fillCalculatorState = useCallback((params: any) => {
+	    if (!params) return;
 
-    const restoreItem = (item: any, defaultTax = 6) => {
-      const incl = restoreTaxItemNumber(item, "incl_tax", "incl", 0);
-      const tax = restoreTaxItemNumber(item, "tax_rate", "tax", defaultTax);
+	    const defaultTaxRateForSubject = (subjectCode: string) =>
+	      ICT_SUBJECT_DEFINITIONS.find(subject => subject.subjectCode === subjectCode)?.defaultTaxRate ?? 6;
+	    const restoreItem = (item: any, defaultTax = 6) => {
+	      const incl = restoreTaxItemNumber(item, "incl_tax", "incl", 0);
+	      const tax = restoreTaxItemNumber(item, "tax_rate", "tax", defaultTax);
       const explicitExcl = restoreTaxItemNumber(item, "excl_tax", "excl", Number.NaN);
       const excl = Number.isFinite(explicitExcl)
         ? explicitExcl
@@ -287,9 +286,11 @@ export default function IctLifecycle() {
         tax,
         excl,
         customSubjectName: restoreCustomSubjectName(item),
-        billingSubjectName: restoreBillingSubjectName(item),
-      };
-    };
+	        billingSubjectName: restoreBillingSubjectName(item),
+	      };
+	    };
+	    const restoreSubjectItem = (subjectCode: string, item: any) =>
+	      restoreItem(item, defaultTaxRateForSubject(subjectCode));
 
     if (params.project_name) state.setProjName(params.project_name);
     if (params.customer_name) state.setCustomerName(params.customer_name);
@@ -307,45 +308,45 @@ export default function IctLifecycle() {
       investment: params.investment_balance_rule ?? params.investmentBalanceRule,
     }));
 
-    const revItRestored = {
-      integration: restoreItem(params.rev_it_integration, 6),
-      maintenance: restoreItem(params.rev_it_maintenance, 6),
-      device_sales: restoreItem(params.rev_it_device_sales, 13),
-      device_lease: restoreItem(params.rev_it_device_lease, 13),
-      other: restoreItem(params.rev_it_other, 6),
-      cloud: restoreItem(params.rev_it_cloud, 6),
-    };
-    const revCtRestored = {
-      line: restoreItem(params.rev_ct_line, 9),
-      product: restoreItem(params.rev_ct_product, 6),
-    };
-    const revNonItCtRestored = restoreItem(params.rev_non_it_ct, 9);
+	    const revItRestored = {
+	      integration: restoreSubjectItem("rev_it_integration", params.rev_it_integration),
+	      maintenance: restoreSubjectItem("rev_it_maintenance", params.rev_it_maintenance),
+	      device_sales: restoreSubjectItem("rev_it_device_sales", params.rev_it_device_sales),
+	      device_lease: restoreSubjectItem("rev_it_device_lease", params.rev_it_device_lease),
+	      other: restoreSubjectItem("rev_it_other", params.rev_it_other),
+	      cloud: restoreSubjectItem("rev_it_cloud", params.rev_it_cloud),
+	    };
+	    const revCtRestored = {
+	      line: restoreSubjectItem("rev_ct_line", params.rev_ct_line),
+	      product: restoreSubjectItem("rev_ct_product", params.rev_ct_product),
+	    };
+	    const revNonItCtRestored = restoreSubjectItem("rev_non_it_ct", params.rev_non_it_ct);
 
-    const costItRestored = {
-      device: restoreItem(params.cost_it_device, 13),
-      construction: restoreItem(params.cost_it_construction, 9),
-      survey: restoreItem(params.cost_it_survey, 6),
-      integration: restoreItem(params.cost_it_integration, 6),
-      other: restoreItem(params.cost_it_other, 6),
-      maintenance: restoreItem(params.cost_it_maintenance, 6),
-      running: restoreItem(params.cost_it_running, 13),
-      bidding: restoreItem(params.cost_it_bidding, 6),
-      design_eval: restoreItem(params.cost_it_design_eval, 6),
-      audit: restoreItem(params.cost_it_audit, 6),
-    };
-    const costCtRestored = {
-      construction: restoreItem(params.cost_ct_construction, 9),
-      maintenance: restoreItem(params.cost_ct_maintenance, 9),
-      other: restoreItem(params.cost_ct_other, 6),
-      bandwidth: restoreItem(params.cost_ct_bandwidth, 9),
-      renewal: restoreItem(params.cost_ct_renewal, 9),
-    };
-    const costMixRestored = {
-      non_it_ct: restoreItem(params.cost_non_it_ct, 9),
-      marketing: restoreItem(params.cost_mix_marketing, 6),
-      channel: restoreItem(params.cost_mix_channel, 6),
-      other: restoreItem(params.cost_mix_other, 6),
-    };
+	    const costItRestored = {
+	      device: restoreSubjectItem("cost_it_device", params.cost_it_device),
+	      construction: restoreSubjectItem("cost_it_construction", params.cost_it_construction),
+	      survey: restoreSubjectItem("cost_it_survey", params.cost_it_survey),
+	      integration: restoreSubjectItem("cost_it_integration", params.cost_it_integration),
+	      other: restoreSubjectItem("cost_it_other", params.cost_it_other),
+	      maintenance: restoreSubjectItem("cost_it_maintenance", params.cost_it_maintenance),
+	      running: restoreSubjectItem("cost_it_running", params.cost_it_running),
+	      bidding: restoreSubjectItem("cost_it_bidding", params.cost_it_bidding),
+	      design_eval: restoreSubjectItem("cost_it_design_eval", params.cost_it_design_eval),
+	      audit: restoreSubjectItem("cost_it_audit", params.cost_it_audit),
+	    };
+	    const costCtRestored = {
+	      construction: restoreSubjectItem("cost_ct_construction", params.cost_ct_construction),
+	      maintenance: restoreSubjectItem("cost_ct_maintenance", params.cost_ct_maintenance),
+	      other: restoreSubjectItem("cost_ct_other", params.cost_ct_other),
+	      bandwidth: restoreSubjectItem("cost_ct_bandwidth", params.cost_ct_bandwidth),
+	      renewal: restoreSubjectItem("cost_ct_renewal", params.cost_ct_renewal),
+	    };
+	    const costMixRestored = {
+	      non_it_ct: restoreSubjectItem("cost_non_it_ct", params.cost_non_it_ct),
+	      marketing: restoreSubjectItem("cost_mix_marketing", params.cost_mix_marketing),
+	      channel: restoreSubjectItem("cost_mix_channel", params.cost_mix_channel),
+	      other: restoreSubjectItem("cost_mix_other", params.cost_mix_other),
+	    };
 
     syncRestoredPairedSubjectNames(revCtRestored.product, costCtRestored.other);
     syncRestoredPairedSubjectNames(revCtRestored.line, costCtRestored.bandwidth);
@@ -397,6 +398,7 @@ export default function IctLifecycle() {
   }, [state]);
 
   const loadProjectContext = useCallback(async (pId: string | null, sId?: string | null) => {
+    const requestId = ++projectLoadRequestRef.current;
     const targetProjectId = pId || null;
     const targetSchemeId = sId || null;
 
@@ -408,17 +410,23 @@ export default function IctLifecycle() {
       setActiveScheme(null);
       setActiveSnapshot(null);
       setPendingNewSchemeName(null);
-      state.setCashflowCalculationSource("subject_funding_plans");
-      state.setSubjectFundingPlanMigrationVersion(SUBJECT_FUNDING_PLAN_MIGRATION_VERSION);
-      state.setSubjectFundingPlans({});
+      state.resetProjectState();
       return;
     }
     if (!isWorkspaceReady) {
       return;
     }
 
+    isHydratingRef.current = true;
+    setActiveProject(null);
+    setActiveScheme(null);
+    setActiveSnapshot(null);
+    setPendingNewSchemeName(null);
+    state.resetProjectState();
+
     try {
       const project = await projectService.getProject(targetProjectId);
+      if (requestId !== projectLoadRequestRef.current) return;
       if (!project) {
         localStorage.removeItem("lamber_active_project_id");
         localStorage.removeItem("lamber_active_scheme_id");
@@ -427,9 +435,8 @@ export default function IctLifecycle() {
         setActiveScheme(null);
         setActiveSnapshot(null);
         setPendingNewSchemeName(null);
-        state.setCashflowCalculationSource("subject_funding_plans");
-        state.setSubjectFundingPlanMigrationVersion(SUBJECT_FUNDING_PLAN_MIGRATION_VERSION);
-        state.setSubjectFundingPlans({});
+        state.resetProjectState();
+        isHydratingRef.current = false;
         return;
       }
 
@@ -466,6 +473,7 @@ export default function IctLifecycle() {
         console.warn("Failed to load project full state, fallback to legacy chain:", error);
         return null;
       });
+      if (requestId !== projectLoadRequestRef.current) return;
       const projectSchemes = fullState?.schemes || await projectService.getSchemes(project.id);
       let schemeToSelect: BenefitAnalysisScheme | null = null;
       if (targetSchemeId) {
@@ -487,6 +495,7 @@ export default function IctLifecycle() {
         localStorage.setItem("lamber_active_scheme_id", schemeToSelect.id);
 
         const snapshots = await projectService.getSnapshots(schemeToSelect.id);
+        if (requestId !== projectLoadRequestRef.current) return;
         if (preferCurrentState) {
           setActiveSnapshot(snapshots[0] || null);
           isHydratingRef.current = true;
@@ -544,6 +553,9 @@ export default function IctLifecycle() {
         }, 0);
       }
     } catch (err) {
+      if (requestId === projectLoadRequestRef.current) {
+        isHydratingRef.current = false;
+      }
       console.error("Failed to load project context:", err);
     }
   }, [state, fillCalculatorState, buildHydrationInput, isWorkspaceReady]);
@@ -885,7 +897,6 @@ export default function IctLifecycle() {
       if (context.workspaceId !== workspaceId || context.projectId !== activeProject.id) {
         throw new Error("项目或工作区已切换");
       }
-      const inputPayload = calculations.buildInputDataPayload();
       const cashflowState = {
         cashflowModel: state.cashflowModel,
         paymentModelJson: {
@@ -920,73 +931,6 @@ export default function IctLifecycle() {
         },
         metricsJson: calculations.metrics,
       };
-      const rawQuote = await projectService.getProjectSetting(
-        activeProject.id,
-        AI_COMPUTE_QUOTE_SETTING_KEY,
-      );
-      const persistedQuote = rawQuote
-        ? JSON.parse(rawQuote) as AiComputeQuotePersistedState
-        : null;
-      const hasLinkedSubjects = Boolean(
-        persistedQuote?.blueprint.syncState
-        && Object.keys(persistedQuote.blueprint.syncState.subjects || {}).length > 0,
-      );
-      if (persistedQuote && hasLinkedSubjects) {
-        const reconciled = reconcileAiComputeBlueprintFromIct(
-          persistedQuote.blueprint,
-          inputPayload,
-          cashflowState.assumptionsJson,
-        );
-        if (reconciled.changed) {
-          const expectedRevision = persistedQuote.blueprint.syncState?.revision || 0;
-          const nextRevision = expectedRevision + 1;
-          const syncedAt = new Date().toISOString();
-          const nextBlueprint = {
-            ...reconciled.blueprint,
-            syncState: {
-              ...(reconciled.blueprint.syncState || {
-                status: "synced" as const,
-                subjects: {},
-              }),
-              revision: nextRevision,
-              status: reconciled.conflicts.length > 0 ? "conflict" as const : "synced" as const,
-              syncedAt,
-            },
-          };
-          await domainSaveService.syncAiComputeQuoteToIct(activeProject.id, {
-            expectedRevision,
-            nextRevision,
-            blueprintSettingJson: {
-              version: 4,
-              blueprint: nextBlueprint,
-              savedAt: syncedAt,
-            },
-            lifecycleState: {
-              profileJson: {
-                projectName: state.projName,
-                customerName: state.customerName,
-                propertyRights: state.propertyRights,
-              },
-              parametersJson: {
-                projectYears: state.projectYears,
-                discountRate: state.discountRate,
-                ignoreTailDifference: state.ignoredTailValue !== null,
-                tailDifferenceValue: state.ignoredTailValue,
-                balanceAllocation: serializeBalanceAllocationState(state.balanceAllocation),
-                cashflowCalculationSource: state.cashflowCalculationSource,
-                subjectFundingPlanMigrationVersion: state.subjectFundingPlanMigrationVersion,
-              },
-              backgroundJson: {
-                projectBackground: state.projectBackground,
-              },
-              inputPayloadJson: inputPayload,
-            },
-            cashflowState,
-            calculationInput: inputPayload as IctInput,
-          });
-          return { success: true, savedScopes: ["cashflow"] };
-        }
-      }
       await domainSaveService.saveCashflowState(activeProject.id, cashflowState);
       return { success: true, savedScopes: ["cashflow"] };
     });
@@ -1484,20 +1428,27 @@ export default function IctLifecycle() {
       ? "保存失败，请重试"
       : pageDirty
         ? "● 未保存"
-        : "已保存";
+      : "已保存";
+  const validIctOrigin = ictOrigin
+    && ictOrigin.type === "intelligent_compute"
+    && ictOrigin.workspaceId === workspaceId
+    && ictOrigin.projectId === activeProject?.id
+    && activeProject?.project_type === "intelligent_compute"
+      ? ictOrigin
+      : null;
 
   return (
     <div className="flex flex-col flex-1 animate-in fade-in duration-300 h-full overflow-hidden">
       <WorkspaceHeader
         moduleId="ict_lifecycle"
         title="ICT项目全生命周期"
-        backLabel={entrySource === "ai_compute_quote" ? "返回智算报价" : "返回集市"}
+        backLabel={validIctOrigin ? "返回智算测算" : "返回集市"}
         onBack={async () => {
           const canProceed = await confirmOrSave();
           if (!canProceed) return;
           if (entrySource === "project_board") {
             navigateTo("project_board", activeProjectId, activeSchemeId);
-          } else if (entrySource === "ai_compute_quote") {
+          } else if (validIctOrigin) {
             navigateTo("ai_compute_quote", activeProjectId, null, activeScenarioId);
           } else {
             navigateTo("hub");
@@ -1508,6 +1459,11 @@ export default function IctLifecycle() {
           <div className="flex min-w-0 items-center gap-2 text-xs">
             {activeProject ? (
               <>
+                {validIctOrigin && (
+                  <span className="shrink-0 rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-bold text-primary">
+                    来源：智算项目 {validIctOrigin.projectName}
+                  </span>
+                )}
                 <span className="truncate font-extrabold text-foreground max-w-[180px]">{activeProject.name}</span>
                 <span className="truncate text-secondary-foreground max-w-[140px]">({activeProject.customer_name})</span>
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${

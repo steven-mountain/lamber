@@ -175,10 +175,10 @@ impl SqliteProjectRepository {
 }
 
 fn row_to_project(row: &rusqlite::Row) -> Result<Project, rusqlite::Error> {
-    let summary_metrics_str: Option<String> = row.get(13)?;
+    let summary_metrics_str: Option<String> = row.get(14)?;
     let summary_metrics = summary_metrics_str.and_then(|s| serde_json::from_str(&s).ok());
 
-    let logs_str: Option<String> = row.get(18)?;
+    let logs_str: Option<String> = row.get(19)?;
     let logs = logs_str
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
@@ -187,29 +187,30 @@ fn row_to_project(row: &rusqlite::Row) -> Result<Project, rusqlite::Error> {
         id: row.get(0)?,
         name: row.get(1)?,
         customer_name: row.get(2)?,
-        status: row.get(3)?,
-        benefit_status: row.get(4)?,
-        default_scheme_id: row.get(5)?,
-        created_at: row.get(6)?,
-        updated_at: row.get(7)?,
-        total_revenue_incl: row.get(8)?,
-        total_cost_incl: row.get(9)?,
-        project_years: row.get(10)?,
-        discount_rate: row.get(11)?,
-        cashflow_model: row.get(12)?,
+        project_type: row.get(3)?,
+        status: row.get(4)?,
+        benefit_status: row.get(5)?,
+        default_scheme_id: row.get(6)?,
+        created_at: row.get(7)?,
+        updated_at: row.get(8)?,
+        total_revenue_incl: row.get(9)?,
+        total_cost_incl: row.get(10)?,
+        project_years: row.get(11)?,
+        discount_rate: row.get(12)?,
+        cashflow_model: row.get(13)?,
         summary_metrics,
-        folder_path: row.get(14)?,
-        main_document_path: row.get(15)?,
-        main_budget_file_path: row.get(16)?,
-        note: row.get(17)?,
+        folder_path: row.get(15)?,
+        main_document_path: row.get(16)?,
+        main_budget_file_path: row.get(17)?,
+        note: row.get(18)?,
         logs,
-        folder_name: row.get(19).ok(),
-        relative_path: row.get(20).ok(),
-        progress: row.get(21).unwrap_or(0.0),
-        deadline: row.get(22).ok(),
-        linked_folder_type: row.get(23).ok(),
-        linked_folder_relative_path: row.get(24).ok(),
-        linked_folder_external_path: row.get(25).ok(),
+        folder_name: row.get(20).ok(),
+        relative_path: row.get(21).ok(),
+        progress: row.get(22).unwrap_or(0.0),
+        deadline: row.get(23).ok(),
+        linked_folder_type: row.get(24).ok(),
+        linked_folder_relative_path: row.get(25).ok(),
+        linked_folder_external_path: row.get(26).ok(),
     })
 }
 
@@ -217,7 +218,7 @@ impl ProjectRepository for SqliteProjectRepository {
     fn get_projects(&self) -> Result<Vec<Project>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
-            .prepare("SELECT id, name, customer_name, status, benefit_status, default_scheme_id, created_at, updated_at, total_revenue_incl, total_cost_incl, project_years, discount_rate, cashflow_model, summary_metrics, folder_path, main_document_path, main_budget_file_path, note, logs, folder_name, relative_path, progress, deadline, linked_folder_type, linked_folder_relative_path, linked_folder_external_path FROM projects")
+            .prepare("SELECT id, name, customer_name, project_type, status, benefit_status, default_scheme_id, created_at, updated_at, total_revenue_incl, total_cost_incl, project_years, discount_rate, cashflow_model, summary_metrics, folder_path, main_document_path, main_budget_file_path, note, logs, folder_name, relative_path, progress, deadline, linked_folder_type, linked_folder_relative_path, linked_folder_external_path FROM projects")
             .map_err(|e| e.to_string())?;
 
         let project_iter = stmt
@@ -234,7 +235,7 @@ impl ProjectRepository for SqliteProjectRepository {
     fn get_project(&self, id: &str) -> Result<Option<Project>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
-            .prepare("SELECT id, name, customer_name, status, benefit_status, default_scheme_id, created_at, updated_at, total_revenue_incl, total_cost_incl, project_years, discount_rate, cashflow_model, summary_metrics, folder_path, main_document_path, main_budget_file_path, note, logs, folder_name, relative_path, progress, deadline, linked_folder_type, linked_folder_relative_path, linked_folder_external_path FROM projects WHERE id = ?1")
+            .prepare("SELECT id, name, customer_name, project_type, status, benefit_status, default_scheme_id, created_at, updated_at, total_revenue_incl, total_cost_incl, project_years, discount_rate, cashflow_model, summary_metrics, folder_path, main_document_path, main_budget_file_path, note, logs, folder_name, relative_path, progress, deadline, linked_folder_type, linked_folder_relative_path, linked_folder_external_path FROM projects WHERE id = ?1")
             .map_err(|e| e.to_string())?;
 
         let mut rows = stmt.query([id]).map_err(|e| e.to_string())?;
@@ -265,17 +266,18 @@ impl ProjectRepository for SqliteProjectRepository {
         if exists {
             conn.execute(
                 "UPDATE projects SET 
-                    name = ?1, customer_name = ?2, status = ?3, benefit_status = ?4, 
-                    default_scheme_id = ?5, updated_at = ?6, total_revenue_incl = ?7, 
-                    total_cost_incl = ?8, project_years = ?9, discount_rate = ?10, 
-                    cashflow_model = ?11, summary_metrics = ?12, folder_path = ?13, 
-                    main_document_path = ?14, main_budget_file_path = ?15, note = ?16, logs = ?17,
-                    folder_name = ?18, relative_path = ?19, progress = ?20, deadline = ?21,
-                    linked_folder_type = ?22, linked_folder_relative_path = ?23, linked_folder_external_path = ?24
-                 WHERE id = ?25",
+                    name = ?1, customer_name = ?2, project_type = ?3, status = ?4, benefit_status = ?5,
+                    default_scheme_id = ?6, updated_at = ?7, total_revenue_incl = ?8,
+                    total_cost_incl = ?9, project_years = ?10, discount_rate = ?11,
+                    cashflow_model = ?12, summary_metrics = ?13, folder_path = ?14,
+                    main_document_path = ?15, main_budget_file_path = ?16, note = ?17, logs = ?18,
+                    folder_name = ?19, relative_path = ?20, progress = ?21, deadline = ?22,
+                    linked_folder_type = ?23, linked_folder_relative_path = ?24, linked_folder_external_path = ?25
+                 WHERE id = ?26",
                 rusqlite::params![
                     project.name,
                     project.customer_name,
+                    project.project_type,
                     project.status,
                     project.benefit_status,
                     project.default_scheme_id,
@@ -304,16 +306,17 @@ impl ProjectRepository for SqliteProjectRepository {
         } else {
             conn.execute(
                 "INSERT INTO projects (
-                    id, name, customer_name, status, benefit_status, default_scheme_id, created_at, updated_at,
+                    id, name, customer_name, project_type, status, benefit_status, default_scheme_id, created_at, updated_at,
                     total_revenue_incl, total_cost_incl, project_years, discount_rate, cashflow_model,
                     summary_metrics, folder_path, main_document_path, main_budget_file_path, note, logs,
                     folder_name, relative_path, progress, deadline, linked_folder_type, linked_folder_relative_path,
                     linked_folder_external_path
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
                 rusqlite::params![
                     project.id,
                     project.name,
                     project.customer_name,
+                    project.project_type,
                     project.status,
                     project.benefit_status,
                     project.default_scheme_id,

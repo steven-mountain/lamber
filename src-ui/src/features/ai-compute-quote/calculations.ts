@@ -86,27 +86,6 @@ export function calculateQuoteLineItem(
   lineItemValues: Map<string, number> = new Map(),
   projectCycleYears = 10,
 ): AiComputeQuoteLineItem {
-  if (item.formulaControlStatus === "ict_override" && item.ictOverride) {
-    return {
-      ...item,
-      amountInclTax: item.ictOverride.amountInclTax,
-      amountExclTax: calculateExclTax(item.ictOverride.amountInclTax, item.ictOverride.taxRate),
-      taxRate: item.ictOverride.taxRate,
-      calculationStatus: "valid",
-      calculationError: undefined,
-      calculationWarnings: ["已被 ICT 人工修改，当前公式失效"],
-    };
-  }
-
-  if (item.formulaControlStatus === "merge_conflict") {
-    return {
-      ...item,
-      calculationStatus: "error",
-      calculationError: item.ictControlMessage || "多个智算项合并到同一 ICT 科目，无法自动反写",
-      calculationWarnings: [],
-    };
-  }
-
   if (!item.enabled) {
     return {
       ...item,
@@ -232,8 +211,6 @@ export function buildAiComputeQuoteOutput(
       || !item
       || !item.enabled
       || !item.outputEnabled
-      || item.formulaControlStatus === "ict_override"
-      || item.formulaControlStatus === "merge_conflict"
       || item.side !== mapping.side
       || item.calculationStatus !== "valid"
     ) {
@@ -278,8 +255,6 @@ export function buildAiComputeQuoteOutputFundingPlans(
       || !item
       || !item.enabled
       || !item.outputEnabled
-      || item.formulaControlStatus === "ict_override"
-      || item.formulaControlStatus === "merge_conflict"
       || !item.fundingPlan?.enabled
       || item.side !== mapping.side
       || item.calculationStatus !== "valid"
