@@ -1436,6 +1436,8 @@ export default function IctLifecycle() {
     && activeProject?.project_type === "intelligent_compute"
       ? ictOrigin
       : null;
+  const isTabbedDocumentTemplate = activeTab === "generate"
+    && (selectedTemplate.includes("会审") || selectedTemplate.includes("立项签批表") || selectedTemplate.includes("需求导入表"));
 
   return (
     <div className="flex flex-col flex-1 animate-in fade-in duration-300 h-full overflow-hidden">
@@ -1455,6 +1457,7 @@ export default function IctLifecycle() {
           }
         }}
         onPathChange={() => loadTemplates()}
+        inlineWorkspaceControl
         contextContent={
           <div className="flex min-w-0 items-center gap-2 text-xs">
             {activeProject ? (
@@ -1673,8 +1676,8 @@ export default function IctLifecycle() {
             </div>
           )}
 
-          <div className={`bg-card border border-border rounded-xl p-8 shadow-sm flex-col gap-6 ${activeTab === "generate" ? "flex" : "hidden"}`}>
-            <h3 className="text-lg font-bold text-foreground">即将生成：{selectedTemplate}</h3>
+          <div className={`flex-col gap-6 ${activeTab === "generate" ? "flex" : "hidden"} ${isTabbedDocumentTemplate ? "" : "bg-card border border-border rounded-xl p-8 shadow-sm"}`}>
+            {!isTabbedDocumentTemplate && <h3 className="text-lg font-bold text-foreground">即将生成：{selectedTemplate}</h3>}
             <TemplateForms
               selectedTemplate={selectedTemplate}
               projectData={{ basic: {proj_name: projName, customer_name: customerName, project_years: projectYears}, cost: { it: costIt, ct: costCt, mix: costMix }, revenue: { it: revIt, ct: revCt, non_it_ct: revNonItCt } }}
@@ -1687,10 +1690,11 @@ export default function IctLifecycle() {
               setInqVendors={state.setInqVendors}
               outputDir={activeProject?.folder_path || undefined}
               projectId={activeProject?.id || undefined}
+              currentSchemeLabel={pendingNewSchemeName || activeScheme?.name || "默认方案"}
             />
           </div>
 
-          <IctMetricsDashboard metrics={metrics} />
+          {!isTabbedDocumentTemplate && <IctMetricsDashboard metrics={metrics} />}
         </div>
 
         {(activeTab === 'revenue' || activeTab === 'cost') && (

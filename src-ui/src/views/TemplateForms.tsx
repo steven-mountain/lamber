@@ -10,6 +10,14 @@ import { domainSaveService } from "../services/domainSaveService"
 import { useSaveStore } from "../store/useSaveStore"
 import { useWorkspaceStore } from "../store/useWorkspaceStore"
 import { CommonPresetFieldHeader, CommonPresetLabelHeader } from "../components/common-presets/CommonPresetQuickFill"
+import {
+  getTemplateCompletion,
+  TemplateConfirmationPanel,
+  TemplateDocumentLayout,
+  TemplateSubmoduleCard,
+  TemplateTabSection,
+  type TemplateCompletionItem,
+} from "../components/templates/TemplateDocumentLayout"
 import { PRESET_FIELD_KEYS } from "../lib/presetFieldKeys"
 import { createTemplateAssetSelection, publishTemplateAssetSelection } from "../ai/templateAssetSelection"
 import {
@@ -37,10 +45,38 @@ interface Props {
   outputDir?: string;
   projectId?: string;
   onGenerated?: () => void;
+  currentSchemeLabel?: string;
 }
 
 type ProjectScale = "large" | "small"
 type SelfThreeRequirement = "integration" | "maintenance"
+type MeetingReviewTabId = "basic" | "content" | "business" | "risk" | "confirm"
+type ApprovalTemplateTabId = "basic" | "service" | "business" | "approval" | "confirm"
+type DemandTemplateTabId = "basic" | "content" | "business" | "delivery" | "confirm"
+
+const MEETING_REVIEW_TABS: Array<{ id: MeetingReviewTabId; label: string }> = [
+  { id: "basic", label: "会审基础信息" },
+  { id: "content", label: "项目内容" },
+  { id: "business", label: "商务条款" },
+  { id: "risk", label: "风险与采购" },
+  { id: "confirm", label: "生成确认" },
+]
+
+const APPROVAL_TEMPLATE_TABS: Array<{ id: ApprovalTemplateTabId; label: string }> = [
+  { id: "basic", label: "项目基础信息" },
+  { id: "service", label: "服务内容" },
+  { id: "business", label: "商务条款" },
+  { id: "approval", label: "立项与采购" },
+  { id: "confirm", label: "生成确认" },
+]
+
+const DEMAND_TEMPLATE_TABS: Array<{ id: DemandTemplateTabId; label: string }> = [
+  { id: "basic", label: "需求基础信息" },
+  { id: "content", label: "需求内容" },
+  { id: "business", label: "商务与预算" },
+  { id: "delivery", label: "实施与风险" },
+  { id: "confirm", label: "生成确认" },
+]
 
 const SELF_THREE_OPTIONS: Array<{
   value: string;
@@ -133,7 +169,8 @@ export default function TemplateForms({
   metrics,
   outputDir,
   projectId,
-  onGenerated
+  onGenerated,
+  currentSchemeLabel
 }: Props) {
   const formRef = useRef<HTMLFormElement>(null)
   const markDirty = useSaveStore(state => state.markDirty)
@@ -176,6 +213,9 @@ export default function TemplateForms({
   const [expPayment, setExpPayment] = useState("项目验收完成且收到款项后30天内支付100%")
   const [selfThreeValue, setSelfThreeValue] = useState(SELF_THREE_OPTIONS[0].value)
   const [syncTrigger, setSyncTrigger] = useState(0) // Added to trigger AI sync on ref changes
+  const [meetingReviewTab, setMeetingReviewTab] = useState<MeetingReviewTabId>("basic")
+  const [approvalTemplateTab, setApprovalTemplateTab] = useState<ApprovalTemplateTabId>("basic")
+  const [demandTemplateTab, setDemandTemplateTab] = useState<DemandTemplateTabId>("basic")
 
   const [isMidThreeModalOpen, setIsMidThreeModalOpen] = useState(false)
   const [midThreeSearch, setMidThreeSearch] = useState("")
@@ -417,6 +457,12 @@ export default function TemplateForms({
   useEffect(() => {
     loadFormSettings();
   }, [projectId, selectedTemplate]);
+
+  useEffect(() => {
+    setMeetingReviewTab("basic");
+    setApprovalTemplateTab("basic");
+    setDemandTemplateTab("basic");
+  }, [selectedTemplate]);
 
   // --- Auto-save and image migration ---
   const ensureAllImagesMigrated = async (imagesList: any[], typeName: string): Promise<any[]> => {
@@ -1222,6 +1268,74 @@ export default function TemplateForms({
   const itCostInclForContent = (projectData.cost?.it?.integration?.incl || 0) + (projectData.cost?.it?.device?.incl || 0) + (projectData.cost?.it?.maintenance?.incl || 0)
   const defaultSignItContent = joinedBusinessNames(customItBusinessNames) || (itCostInclForContent > 0 ? (itContent || "集成服务") : "无")
   const defaultSignCtContent = joinedBusinessNames(customCtBusinessNames) || (hasMidThree ? (ctContent ? ctContent.replace(/能力/g, '') : "详见清单") : "无")
+  const isMeetingReviewTemplate = Boolean(selectedTemplate && selectedTemplate.includes('会审'))
+  const isApprovalTemplate = selectedTemplate.includes('立项签批表')
+  const isDemandTemplate = selectedTemplate.includes('需求导入表')
+  const usesTabbedDocumentLayout = isMeetingReviewTemplate || isApprovalTemplate || isDemandTemplate
+  const getFormValue = (name: string, defaultValue = "") => formData[name] ?? defaultValue
+  const hasText = (value: unknown) => String(value ?? "").trim().length > 0
+  const hasAnyInquiryVendor = inqVendors.some(v => hasText(v.vendorName) || Number(v.amount || 0) > 0)
+  const projectInfoForConfirmation = {
+    projectName: projectData.basic?.proj_name || "",
+    customerName: projectData.basic?.customer_name || "",
+    projectYears: projectData.basic?.project_years || 1,
+  }
+  const meetingCompletionItems: TemplateCompletionItem[] = [
+    { label: "会议开始日期", filled: hasText(getFormValue("gen_meet_start", todayStr)) },
+    { label: "会议结束日期", filled: hasText(getFormValue("gen_meet_end", todayStr)) },
+    { label: "会议方式", filled: hasText(getFormValue("gen_meet_mode", "线上")) },
+    { label: "项目规模", filled: hasText(projectScale) },
+    { label: "市公司参会人员", filled: projectScale !== "large" || hasText(getFormValue("gen_city_attendees")) },
+    { label: "分公司参会人员", filled: hasText(getFormValue("gen_branch_name", "XXXX")) && hasText(getFormValue("gen_branch_attendees")) },
+    { label: "驻点支撑人员", filled: hasText(getFormValue("gen_onsite_support")) },
+    { label: "项目背景", filled: hasText(projectBackground) },
+    { label: "IT建设内容", filled: hasText(itContent) },
+    { label: "CT建设内容", filled: hasText(ctContent) },
+    { label: "技术方案", filled: hasText(getFormValue("gen_tech_solution", "采用端-管-云架构...")) },
+    { label: "技术方案可行性清单", filled: techItems.length > 0 },
+    { label: "涉及中台能力调用", filled: !hasMidThree || (hasText(midThreeCode) && hasText(midThreeName)) },
+    { label: "自主三问", filled: hasText(selfThreeValue) },
+    { label: "三化方案", filled: hasText(getFormValue("gen_threeization", "本项目不涉及三化方案。")) },
+    { label: "战略价值", filled: hasText(getFormValue("gen_strategic_value")) },
+    { label: "综论", filled: hasText(getFormValue("gen_tech_conclusion", "方案可行同时能满足客户需求。")) },
+    { label: "收入付款方式", filled: hasText(revCollection) },
+    { label: "支出付款方式", filled: hasText(expPayment) },
+    { label: "IT服务模式/商务模式", filled: hasText(itBusMode) },
+    { label: "资金来源", filled: hasText(itFundSrc) },
+    { label: "询价情况/询价过程", filled: hasAnyInquiryVendor },
+    { label: "时间要求", filled: hasText(getFormValue("gen_construction_time_req", "合同签定后30天内。")) },
+    { label: "风险点及其他责任人", filled: hasText(getFormValue("gen_risk_owner", "人员A")) },
+    { label: "是否联合体投标", filled: hasText(getFormValue("gen_is_joint", "否")) },
+    { label: "项目评审清单准确完整", filled: hasText(getFormValue("gen_review_acc", "是，项目投入收入核算完整，各表填写准确")) },
+    { label: "是否涉及单一来源", filled: !hasSingleSource || hasText(getFormValue("gen_single_source", "单一来源决策依据：符合单一来源场景...")) },
+    { label: "采购方式", filled: procurementMethod !== "其他" || hasText(getFormValue("gen_procurement_method_other")) },
+    { label: "售中建设及施工界面", filled: hasText(getFormValue("gen_construction_interface", "本项目采购统一集成单位实施。分公司负责客户侧的协调工作，并协调管理合作伙伴完成交付。")) },
+  ]
+  const approvalCompletionItems: TemplateCompletionItem[] = [
+    { label: "项目背景", filled: hasText(projectBackground) },
+    { label: "IT服务内容", filled: hasText(getFormValue("gen_sign_it_content", defaultSignItContent)) },
+    { label: "CT服务内容", filled: hasText(getFormValue("gen_sign_ct_content", defaultSignCtContent)) },
+    { label: "是否涉及垫资", filled: true },
+    { label: "是否立项后甄选", filled: true },
+    { label: "收入侧收款方式", filled: hasText(revCollection) },
+    { label: "支出侧付款方式", filled: hasText(expPayment) },
+  ]
+  const demandCompletionItems: TemplateCompletionItem[] = [
+    { label: "项目需求单位", filled: hasText(getFormValue("gen_demand_branch_name", "XXX分公司")) },
+    { label: "业务模式", filled: hasText(getFormValue("gen_demand_it_business_mode", "服务模式")) },
+    { label: "服务内容", filled: hasText(getFormValue("gen_demand_service_content", "IT；CT")) },
+    { label: "设备清单", filled: hasText(getFormValue("gen_demand_device_list", "不涉及")) },
+    { label: "技术方案可行性清单", filled: techItems.length > 0 },
+    { label: "客户确认", filled: hasText(getFormValue("gen_demand_customer_confirm", "微信截图")) },
+    { label: "部署环境要求", filled: hasText(getFormValue("gen_demand_env_require", "客户提供部署环境，不包含在本次项目范围内")) },
+    { label: "公示网址/招标文件", filled: !hasPublicUrl || hasText(getFormValue("gen_demand_public_url")) },
+    { label: "信息安全/密评", filled: !hasSecurity || hasText(getFormValue("gen_demand_security_detail")) },
+    { label: "附件1客户确认材料", filled: attach1Images.length > 0 },
+    { label: "附件2招标材料", filled: !hasPublicUrl || attach2Images.length > 0 },
+  ]
+  const meetingCompletion = getTemplateCompletion(meetingCompletionItems)
+  const approvalCompletion = getTemplateCompletion(approvalCompletionItems)
+  const demandCompletion = getTemplateCompletion(demandCompletionItems)
 
   return (
     <div className="flex flex-col gap-6">
@@ -1264,791 +1378,926 @@ export default function TemplateForms({
         )}
 
         {/* 会审纪要 专属字段 (排除立项签批表、立项决策、Excel 效益分析表和需求导入表) */}
-        {selectedTemplate && selectedTemplate.includes('会审') && (
-          <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-            <h4 className="font-bold text-primary mb-4">补充文档信息 (会审纪要等所需)</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">会审开始日期</label>
-                <input type="date" name="gen_meet_start" {...getBind("gen_meet_start", todayStr)} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">会审结束日期</label>
-                <input type="date" name="gen_meet_end" {...getBind("gen_meet_end", todayStr)} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">会审方式</label>
-                <select name="gen_meet_mode" {...getBind("gen_meet_mode", "线上")} className="bg-card border border-input px-3 py-2 rounded-md">
-                  <option value="线上">线上</option>
-                  <option value="线下">线下</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">项目规模</label>
-                <select
-                  name="gen_project_scale"
-                  value={projectScale}
-                  onChange={e => handleProjectScaleChange(normalizeProjectScale(e.target.value))}
-                  className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm"
-                >
-                  <option value="large">大项目 (市/省)</option>
-                  <option value="small">小项目 (分公司)</option>
-                </select>
-              </div>
-              {projectScale === 'large' && (
-                <div className="flex flex-col gap-1 col-span-2">
-                  <CommonPresetFieldHeader
-                    fieldKey={PRESET_FIELD_KEYS.approvalReviewers}
-                    kind="short_value"
-                    value={formData.gen_city_attendees ?? ""}
-                    onApply={(nextValue) => handleFieldChange("gen_city_attendees", nextValue)}
-                  >
-                    市公司政企部参会人员
-                  </CommonPresetFieldHeader>
-                  <input type="text" name="gen_city_attendees" {...getBind("gen_city_attendees")} placeholder="人员A、人员B" className="bg-card border border-input px-3 py-2 rounded-md" />
-                </div>
-              )}
-              <div className="flex flex-col gap-1 col-span-2">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.approvalDepartment}
-                  kind="short_value"
-                  value={formData.gen_branch_name ?? "XXXX"}
-                  onApply={(nextValue) => handleFieldChange("gen_branch_name", nextValue)}
-                >
-                  分公司参会人员
-                </CommonPresetFieldHeader>
-                <div className="flex gap-2">
-                  <input type="text" name="gen_branch_name" {...getBind("gen_branch_name", "XXXX")} placeholder="分公司名称" className="w-32 bg-card border border-input px-3 py-2 rounded-md" />
-                  <input type="text" name="gen_branch_attendees" {...getBind("gen_branch_attendees")} placeholder="人员D、人员E" className="flex-1 bg-card border border-input px-3 py-2 rounded-md" />
-                </div>
-              </div>
-              <div className="flex flex-col gap-1 col-span-2">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.meetingOnsiteSupport}
-                  kind="short_value"
-                  value={formData.gen_onsite_support ?? ""}
-                  onApply={(nextValue) => handleFieldChange("gen_onsite_support", nextValue)}
-                >
-                  驻点支撑人员
-                </CommonPresetFieldHeader>
-                <input type="text" name="gen_onsite_support" {...getBind("gen_onsite_support")} placeholder="如有请填写" className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1 col-span-2">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.projectBackground}
-                  kind="text_snippet"
-                  value={projectBackground}
-                  onApply={setProjectBackground}
-                >
-                  项目背景
-                </CommonPresetFieldHeader>
-                <textarea name="gen_proj_bg" rows={3} value={projectBackground} onChange={e => setProjectBackground(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
+        {isMeetingReviewTemplate && (
+          <TemplateDocumentLayout
+            templateName={selectedTemplate}
+            title="补充文档信息 (会审纪要等所需)"
+            tabs={MEETING_REVIEW_TABS}
+            activeTab={meetingReviewTab}
+            onTabChange={setMeetingReviewTab}
+            completion={meetingCompletion}
+            metrics={metrics}
+            onGenerate={handleGenerate}
+          >
 
-              <div className="flex flex-col gap-1 col-span-2">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.meetingItConstructionContent}
-                  kind="text_snippet"
-                  value={itContent}
-                  onApply={setItContent}
-                  labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
-                >
-                  <span>IT建设内容</span>
-                  <span className="text-xs text-secondary-foreground font-normal">根据项目名称自动生成</span>
-                </CommonPresetFieldHeader>
-                <textarea name="gen_it_content" value={itContent} onChange={e => setItContent(e.target.value)} rows={2} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1 col-span-2">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.meetingCtConstructionContent}
-                  kind="text_snippet"
-                  value={ctContent}
-                  onApply={setCtContent}
-                  labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
-                >
-                  <span>CT建设内容</span>
-                  <span className="text-xs text-secondary-foreground font-normal">中台能力联动修改</span>
-                </CommonPresetFieldHeader>
-                <textarea name="gen_ct_content" value={ctContent} onChange={e => setCtContent(e.target.value)} rows={2} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-
-              <div className="flex flex-col gap-1 col-span-2">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.projectSolution}
-                  kind="text_snippet"
-                  value={formData.gen_tech_solution ?? "采用端-管-云架构..."}
-                  onApply={(nextValue) => handleFieldChange("gen_tech_solution", nextValue)}
-                >
-                  技术方案
-                </CommonPresetFieldHeader>
-                <textarea name="gen_tech_solution" rows={2} {...getBind("gen_tech_solution", "采用端-管-云架构...")} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-
-              <div className="col-span-2 border border-border rounded-lg p-4 bg-background">
-                <div className="flex justify-between items-center mb-3">
-                  <label className="text-sm font-bold">技术方案可行性清单</label>
-                  <button type="button" onClick={addTechItem} className="text-xs bg-primary-soft text-primary px-3 py-1.5 rounded font-semibold hover:bg-primary-soft/80">+ 新增一行</button>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {techItems.map((item, i) => (
-                    <div key={i} className="flex gap-2 items-center">
-                      <input type="text" placeholder="服务名称" value={item.serviceName} onChange={e => updateTechItem(i, 'serviceName', e.target.value)} className="w-1/4 bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
-                      <input type="text" placeholder="服务说明" value={item.serviceDesc} onChange={e => updateTechItem(i, 'serviceDesc', e.target.value)} className="flex-1 bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
-                      <input type="number" placeholder="数量" value={item.amount} onChange={e => updateTechItem(i, 'amount', Number(e.target.value))} className="w-16 bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
-                      <input type="text" placeholder="单位" value={item.unit} onChange={e => updateTechItem(i, 'unit', e.target.value)} className="w-16 bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
-                      <button type="button" onClick={() => removeTechItem(i)} className="text-destructive hover:bg-destructive/10 p-1.5 rounded" title="删除">
-                        <AppIcon name="delete" size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">自主三问</label>
-                <select
-                  name="gen_self_three"
-                  value={selfThreeValue}
-                  onChange={e => handleSelfThreeChange(e.target.value)}
-                  className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm"
-                >
-                  {SELF_THREE_OPTIONS.map(option => (
-                    <option key={option.value} value={option.value}>{option.value}</option>
-                  ))}
-                </select>
-                {(selectedSelfThree.reminder || selfThreeMissingFees.length > 0) && (
-                  <div className="mt-1 space-y-1 text-xs leading-5">
-                    {selectedSelfThree.reminder && (
-                      <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-primary">
-                        {selectedSelfThree.reminder}
-                      </div>
-                    )}
-                    {selfThreeMissingFees.length > 0 && (
-                      <div className="rounded-md border border-warning/20 bg-warning-soft px-3 py-2 text-warning-foreground">
-                        {selfThreeMissingFees.join("；")}。
-                      </div>
-                    )}
+            {meetingReviewTab === "basic" && (
+              <div className="rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/60">
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-semibold">会审开始日期</label>
+                    <input type="date" name="gen_meet_start" {...getBind("gen_meet_start", todayStr)} className="bg-card border border-input px-3 py-2 rounded-md" />
                   </div>
-                )}
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">三化方案</label>
-                <input type="text" name="gen_threeization" {...getBind("gen_threeization", "本项目不涉及三化方案。")} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">战略价值</label>
-                <input type="text" name="gen_strategic_value" {...getBind("gen_strategic_value")} placeholder="战略价值说明" className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">结论</label>
-                <input type="text" name="gen_tech_conclusion" {...getBind("gen_tech_conclusion", "方案可行同时能满足客户需求。")} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-
-              <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold flex items-center gap-2">
-                  <input type="checkbox" checked={hasMidThree} onChange={e => setHasMidThree(e.target.checked)} className="w-4 h-4" />
-                  涉及中台能力调用
-                </label>
-                {hasMidThree && (
-                  <div className="flex flex-col gap-2 mt-1">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        name="gen_mid_three_code"
-                        value={midThreeCode}
-                        onChange={e => setMidThreeCode(e.target.value)}
-                        placeholder="能力编号"
-                        className="w-1/3 bg-card border border-input px-3 py-2 rounded-md text-sm"
-                      />
-                      <input
-                        type="text"
-                        list="mid-three-capabilities-list"
-                        name="gen_mid_three_name"
-                        value={midThreeName}
-                        onChange={e => {
-                          const val = e.target.value;
-                          setMidThreeName(val);
-                          const matched = MID_THREE_CAPABILITIES.find(c => c.label === val || c.value === val);
-                          if (matched) {
-                            setMidThreeCode(matched.code);
-                          }
-                        }}
-                        placeholder="请选择或输入所需的中台能力"
-                        className="flex-1 bg-card border border-input px-3 py-2 rounded-md text-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setIsMidThreeModalOpen(true)}
-                        className="px-3 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 flex items-center justify-center shrink-0 transition-colors"
-                        title="全局能力库"
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-semibold">会审结束日期</label>
+                    <input type="date" name="gen_meet_end" {...getBind("gen_meet_end", todayStr)} className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-semibold">会审方式</label>
+                    <select name="gen_meet_mode" {...getBind("gen_meet_mode", "线上")} className="bg-card border border-input px-3 py-2 rounded-md">
+                      <option value="线上">线上</option>
+                      <option value="线下">线下</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-semibold">项目规模</label>
+                    <select
+                      name="gen_project_scale"
+                      value={projectScale}
+                      onChange={e => handleProjectScaleChange(normalizeProjectScale(e.target.value))}
+                      className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm"
+                    >
+                      <option value="large">大项目 (市/省)</option>
+                      <option value="small">小项目 (分公司)</option>
+                    </select>
+                  </div>
+                  {projectScale === 'large' && (
+                    <div className="flex flex-col gap-1 xl:col-span-2">
+                      <CommonPresetFieldHeader
+                        fieldKey={PRESET_FIELD_KEYS.approvalReviewers}
+                        kind="short_value"
+                        value={formData.gen_city_attendees ?? ""}
+                        onApply={(nextValue) => handleFieldChange("gen_city_attendees", nextValue)}
                       >
-                        <AppIcon name="tableProperties" size={16} />
-                      </button>
+                        市公司政企部参会人员
+                      </CommonPresetFieldHeader>
+                      <input type="text" name="gen_city_attendees" {...getBind("gen_city_attendees")} placeholder="人员A、人员B" className="bg-card border border-input px-3 py-2 rounded-md" />
                     </div>
-                    <datalist id="mid-three-capabilities-list">
-                      {MID_THREE_CAPABILITIES.map((cap, idx) => (
-                        <option key={`${cap.code}-${idx}`} value={cap.value}>
-                          {cap.label} ({cap.code})
-                        </option>
-                      ))}
-                    </datalist>
+                  )}
+                  <div className="flex flex-col gap-1 xl:col-span-2">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.approvalDepartment}
+                      kind="short_value"
+                      value={formData.gen_branch_name ?? "XXXX"}
+                      onApply={(nextValue) => handleFieldChange("gen_branch_name", nextValue)}
+                    >
+                      分公司参会人员
+                    </CommonPresetFieldHeader>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <input type="text" name="gen_branch_name" {...getBind("gen_branch_name", "XXXX")} placeholder="分公司名称" className="bg-card border border-input px-3 py-2 rounded-md sm:w-36" />
+                      <input type="text" name="gen_branch_attendees" {...getBind("gen_branch_attendees")} placeholder="人员D、人员E" className="flex-1 bg-card border border-input px-3 py-2 rounded-md" />
+                    </div>
                   </div>
-                )}
+                  <div className="flex flex-col gap-1 xl:col-span-2">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.meetingOnsiteSupport}
+                      kind="short_value"
+                      value={formData.gen_onsite_support ?? ""}
+                      onApply={(nextValue) => handleFieldChange("gen_onsite_support", nextValue)}
+                    >
+                      驻点支撑人员
+                    </CommonPresetFieldHeader>
+                    <input type="text" name="gen_onsite_support" {...getBind("gen_onsite_support")} placeholder="如有请填写" className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
+                  <div className="flex flex-col gap-1 xl:col-span-2">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.projectBackground}
+                      kind="text_snippet"
+                      value={projectBackground}
+                      onApply={setProjectBackground}
+                    >
+                      项目背景
+                    </CommonPresetFieldHeader>
+                    <textarea name="gen_proj_bg" rows={4} value={projectBackground} onChange={e => setProjectBackground(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
+                </div>
               </div>
+            )}
 
-              <div className="flex flex-col gap-1 col-span-2">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.paymentRevenueCollectionMethod}
-                  kind="text_snippet"
-                  value={revCollection}
-                  onApply={setRevCollection}
-                >
-                  收入侧收款方式
-                </CommonPresetFieldHeader>
-                <input type="text" name="gen_rev_collection" value={revCollection} onChange={e => setRevCollection(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1 col-span-2">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.paymentExpenditurePaymentMethod}
-                  kind="text_snippet"
-                  value={expPayment}
-                  onApply={setExpPayment}
-                >
-                  支出侧付款方式
-                </CommonPresetFieldHeader>
-                <input type="text" name="gen_exp_payment" value={expPayment} onChange={e => setExpPayment(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
+            {meetingReviewTab === "content" && (
+              <div className="rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/60">
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <div className="flex flex-col gap-1 xl:col-span-2">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.meetingItConstructionContent}
+                      kind="text_snippet"
+                      value={itContent}
+                      onApply={setItContent}
+                      labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
+                    >
+                      <span>IT建设内容</span>
+                      <span className="text-xs text-secondary-foreground font-normal">根据项目名称自动生成</span>
+                    </CommonPresetFieldHeader>
+                    <textarea name="gen_it_content" value={itContent} onChange={e => setItContent(e.target.value)} rows={2} className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
+                  <div className="flex flex-col gap-1 xl:col-span-2">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.meetingCtConstructionContent}
+                      kind="text_snippet"
+                      value={ctContent}
+                      onApply={setCtContent}
+                      labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
+                    >
+                      <span>CT建设内容</span>
+                      <span className="text-xs text-secondary-foreground font-normal">中台能力联动修改</span>
+                    </CommonPresetFieldHeader>
+                    <textarea name="gen_ct_content" value={ctContent} onChange={e => setCtContent(e.target.value)} rows={2} className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
+                  <div className="flex flex-col gap-1 xl:col-span-2">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.projectSolution}
+                      kind="text_snippet"
+                      value={formData.gen_tech_solution ?? "采用端-管-云架构..."}
+                      onApply={(nextValue) => handleFieldChange("gen_tech_solution", nextValue)}
+                    >
+                      技术方案
+                    </CommonPresetFieldHeader>
+                    <textarea name="gen_tech_solution" rows={3} {...getBind("gen_tech_solution", "采用端-管-云架构...")} className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">IT部分商务模式</label>
-                <select name="gen_it_bus_mode" value={itBusMode} onChange={e => setItBusMode(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md">
-                  <option value="服务模式">服务模式</option>
-                  <option value="集成购销">集成购销</option>
-                  <option value="投资">投资</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-semibold">IT部分资金来源</label>
-                <select name="gen_it_fund_src" value={itFundSrc} onChange={e => setItFundSrc(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md">
-                  <option value="分公司成本开支">分公司成本开支</option>
-                  <option value="市公司专项资源">市公司专项资源</option>
-                </select>
-              </div>
+                  <div className="xl:col-span-2 rounded-xl bg-muted/40 p-4 shadow-sm">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <label className="text-sm font-bold">技术方案可行性清单</label>
+                      <button type="button" onClick={addTechItem} className="text-xs bg-primary-soft text-primary px-3 py-1.5 rounded font-semibold hover:bg-primary-soft/80">+ 新增一行</button>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {techItems.map((item, i) => (
+                        <div key={i} className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_2fr_5rem_5rem_auto] md:items-center">
+                          <input type="text" placeholder="服务名称" value={item.serviceName} onChange={e => updateTechItem(i, 'serviceName', e.target.value)} className="bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
+                          <input type="text" placeholder="服务说明" value={item.serviceDesc} onChange={e => updateTechItem(i, 'serviceDesc', e.target.value)} className="bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
+                          <input type="number" placeholder="数量" value={item.amount} onChange={e => updateTechItem(i, 'amount', Number(e.target.value))} className="bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
+                          <input type="text" placeholder="单位" value={item.unit} onChange={e => updateTechItem(i, 'unit', e.target.value)} className="bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
+                          <button type="button" onClick={() => removeTechItem(i)} className="text-destructive hover:bg-destructive/10 p-1.5 rounded" title="删除">
+                            <AppIcon name="delete" size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
-              <div className="col-span-2 border border-border rounded-lg p-4 bg-background">
-                <div className="flex justify-between items-center mb-3">
-                  <div>
-                    <label className="text-sm font-bold">IT部分询价过程</label>
-                    {totalRevenueIncl > 0 && (
-                      <div className="mt-1 text-[11px] font-semibold text-secondary-foreground">
-                        三家询价最高价不超过含税总收入 {totalRevenueIncl.toFixed(2)}
+                  <div className="xl:col-span-2 rounded-xl bg-muted/40 p-4 shadow-sm">
+                    <label className="text-sm font-semibold flex items-center gap-2">
+                      <input type="checkbox" checked={hasMidThree} onChange={e => setHasMidThree(e.target.checked)} className="w-4 h-4" />
+                      涉及中台能力调用
+                    </label>
+                    {hasMidThree && (
+                      <div className="mt-3 flex flex-col gap-2">
+                        <div className="flex flex-col gap-2 md:flex-row">
+                          <input
+                            type="text"
+                            name="gen_mid_three_code"
+                            value={midThreeCode}
+                            onChange={e => setMidThreeCode(e.target.value)}
+                            placeholder="能力编号"
+                            className="bg-card border border-input px-3 py-2 rounded-md text-sm md:w-1/3"
+                          />
+                          <input
+                            type="text"
+                            list="mid-three-capabilities-list"
+                            name="gen_mid_three_name"
+                            value={midThreeName}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setMidThreeName(val);
+                              const matched = MID_THREE_CAPABILITIES.find(c => c.label === val || c.value === val);
+                              if (matched) {
+                                setMidThreeCode(matched.code);
+                              }
+                            }}
+                            placeholder="请选择或输入所需的中台能力"
+                            className="flex-1 bg-card border border-input px-3 py-2 rounded-md text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setIsMidThreeModalOpen(true)}
+                            className="px-3 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 flex items-center justify-center shrink-0 transition-colors"
+                            title="全局能力库"
+                          >
+                            <AppIcon name="tableProperties" size={16} />
+                          </button>
+                        </div>
+                        <datalist id="mid-three-capabilities-list">
+                          {MID_THREE_CAPABILITIES.map((cap, idx) => (
+                            <option key={`${cap.code}-${idx}`} value={cap.value}>
+                              {cap.label} ({cap.code})
+                            </option>
+                          ))}
+                        </datalist>
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={autoGenerateInquiry} className="inline-flex items-center gap-1.5 text-xs bg-warning-soft text-warning-foreground px-3 py-1.5 rounded font-bold hover:bg-warning/20">
-                      <AppIcon name="quickAction" size={14} /> 一键生成三家报价
-                    </button>
-                    <button type="button" onClick={addInqVendor} className="text-xs bg-primary-soft text-primary px-3 py-1.5 rounded font-semibold hover:bg-primary-soft/80">+ 新增厂商</button>
+
+                  <div className="flex flex-col gap-1 xl:col-span-2">
+                    <label className="text-sm font-semibold">自主三问</label>
+                    <select
+                      name="gen_self_three"
+                      value={selfThreeValue}
+                      onChange={e => handleSelfThreeChange(e.target.value)}
+                      className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm"
+                    >
+                      {SELF_THREE_OPTIONS.map(option => (
+                        <option key={option.value} value={option.value}>{option.value}</option>
+                      ))}
+                    </select>
+                    {(selectedSelfThree.reminder || selfThreeMissingFees.length > 0) && (
+                      <div className="mt-1 space-y-1 text-xs leading-5">
+                        {selectedSelfThree.reminder && (
+                          <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-primary">
+                            {selectedSelfThree.reminder}
+                          </div>
+                        )}
+                        {selfThreeMissingFees.length > 0 && (
+                          <div className="rounded-md border border-warning/20 bg-warning-soft px-3 py-2 text-warning-foreground">
+                            {selfThreeMissingFees.join("；")}。
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-semibold">三化方案</label>
+                    <input type="text" name="gen_threeization" {...getBind("gen_threeization", "本项目不涉及三化方案。")} className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-semibold">战略价值</label>
+                    <input type="text" name="gen_strategic_value" {...getBind("gen_strategic_value")} placeholder="战略价值说明" className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
+                  <div className="flex flex-col gap-1 xl:col-span-2">
+                    <label className="text-sm font-semibold">结论</label>
+                    <input type="text" name="gen_tech_conclusion" {...getBind("gen_tech_conclusion", "方案可行同时能满足客户需求。")} className="bg-card border border-input px-3 py-2 rounded-md" />
                   </div>
                 </div>
-                <div className="flex flex-col gap-2">
-                  {inqVendors.map((item, i) => (
-                    <div key={i} className="flex gap-2 items-center">
-                      <input type="text" placeholder="厂商名称" value={item.vendorName} onChange={e => updateInqVendor(i, 'vendorName', e.target.value)} className="flex-1 bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
-                      <input type="number" placeholder="含税报价" value={item.amount === 0 ? '' : item.amount} onChange={e => handleInquiryAmountChange(i, e.target.value)} className="w-28 bg-card border border-input px-2 py-1.5 rounded-md text-sm" title={totalRevenueIncl > 0 ? `最高不超过含税总收入 ${totalRevenueIncl.toFixed(2)}` : undefined} />
-                      <div className="flex items-center gap-1">
-                        <input type="number" placeholder="税率" value={item.taxRate} onChange={e => updateInqVendor(i, 'taxRate', Number(e.target.value))} className="w-16 bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
-                        <span className="text-xs text-secondary-foreground">%</span>
-                      </div>
-                      <input type="text" placeholder="备注" value={item.remark} onChange={e => updateInqVendor(i, 'remark', e.target.value)} className="w-20 bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
-                      <button type="button" onClick={() => removeInqVendor(i)} className="text-destructive hover:bg-destructive/10 p-1.5 rounded" title="删除">
-                        <AppIcon name="delete" size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
               </div>
+            )}
 
-              {inqVendors.some(v => v.vendorName) && (
-                <div className="col-span-2 border border-border rounded-lg p-5 bg-background">
-                  <label className="text-sm font-bold text-foreground block mb-3">询价厂商报价截图上传</label>
-                  <div className="flex flex-col gap-4">
-                    {inqVendors.map((v, i) => {
-                      if (!v.vendorName) return null;
-                      const vendorImages = v.images || [];
+            {meetingReviewTab === "business" && (
+              <div className="rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/60">
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <div className="flex flex-col gap-1 xl:col-span-2">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.paymentRevenueCollectionMethod}
+                      kind="text_snippet"
+                      value={revCollection}
+                      onApply={setRevCollection}
+                    >
+                      收入侧收款方式
+                    </CommonPresetFieldHeader>
+                    <input type="text" name="gen_rev_collection" value={revCollection} onChange={e => setRevCollection(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
+                  <div className="flex flex-col gap-1 xl:col-span-2">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.paymentExpenditurePaymentMethod}
+                      kind="text_snippet"
+                      value={expPayment}
+                      onApply={setExpPayment}
+                    >
+                      支出侧付款方式
+                    </CommonPresetFieldHeader>
+                    <input type="text" name="gen_exp_payment" value={expPayment} onChange={e => setExpPayment(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
 
-                      const setVendorImages = (updater: any) => {
-                        setInqVendors(previous => previous.map((vendor, index) => {
-                          if (index !== i) return vendor;
-                          const prevImages = vendor.images || [];
-                          const newImages = typeof updater === 'function' ? updater(prevImages) : updater;
-                          return { ...vendor, images: newImages };
-                        }));
-                      };
+                  <div className="grid grid-cols-1 gap-4 rounded-xl bg-muted/40 p-4 shadow-sm xl:col-span-2 xl:grid-cols-2">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-sm font-semibold">IT部分商务模式</label>
+                      <select name="gen_it_bus_mode" value={itBusMode} onChange={e => setItBusMode(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md">
+                        <option value="服务模式">服务模式</option>
+                        <option value="集成购销">集成购销</option>
+                        <option value="投资">投资</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-sm font-semibold">IT部分资金来源</label>
+                      <select name="gen_it_fund_src" value={itFundSrc} onChange={e => setItFundSrc(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md">
+                        <option value="分公司成本开支">分公司成本开支</option>
+                        <option value="市公司专项资源">市公司专项资源</option>
+                      </select>
+                    </div>
+                  </div>
 
-                      return (
-                        <div key={i} className="border border-border/60 bg-muted/5 p-4 rounded-xl flex flex-col gap-3 transition-colors hover:border-primary/40">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-foreground flex items-center gap-1.5">
-                              <span className="bg-primary-soft text-primary text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">{i + 1}</span>
-                              <span className="text-primary font-extrabold">{v.vendorName}</span> 报价截图
-                            </span>
-                            {vendorImages.length > 0 && (
-                              <span className="text-xs bg-success-soft text-success px-2 py-0.5 rounded-full font-medium">
-                                已上传 {vendorImages.length} 张图片
-                              </span>
-                            )}
+                  <div className="xl:col-span-2 rounded-xl bg-muted/40 p-4 shadow-sm">
+                    <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <label className="text-sm font-bold">IT部分询价过程</label>
+                        {totalRevenueIncl > 0 && (
+                          <div className="mt-1 text-[11px] font-semibold text-secondary-foreground">
+                            三家询价最高价不超过含税总收入 {totalRevenueIncl.toFixed(2)}
                           </div>
-
-                          <input
-                            type="file"
-                            multiple
-                            accept="image/*"
-                            className="hidden"
-                            id={`vendor-file-input-${i}`}
-                            onChange={(e) => handleImageUpload(e, setVendorImages, "vendor_" + i)}
-                          />
-
-                          <div
-                            className="border border-dashed border-border rounded-lg p-5 text-center cursor-pointer hover:bg-muted/50 focus:border-ring focus:ring-2 focus:ring-ring/20 outline-none transition-all flex flex-col items-center justify-center gap-2 bg-muted/20"
-                            onClick={(e) => e.currentTarget.focus()}
-                            onDragOver={e => e.preventDefault()}
-                            onDrop={e => { e.preventDefault(); handleImageUpload(e, setVendorImages, "vendor_" + i); }}
-                            onPaste={e => handleImageUpload(e, setVendorImages, "vendor_" + i)}
-                            tabIndex={0}
-                          >
-                            <p className="text-xs text-secondary-foreground">
-                              点击聚焦后直接按下 <kbd className="bg-background px-1 border rounded text-[10px] font-mono font-bold">Ctrl+V</kbd> / <kbd className="bg-background px-1 border rounded text-[10px] font-mono font-bold">Cmd+V</kbd> 粘贴截图
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-secondary-foreground">或拖拽图片到此，或者</span>
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); document.getElementById(`vendor-file-input-${i}`)?.click(); }}
-                                className="inline-flex items-center gap-1.5 text-[11px] bg-primary text-primary-foreground px-2.5 py-1 rounded font-semibold hover:bg-primary/90 transition-colors shadow-sm"
-                              >
-                                <AppIcon name="imageUpload" size={14} /> 选择本地图片
-                              </button>
-                            </div>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={autoGenerateInquiry} className="inline-flex items-center gap-1.5 text-xs bg-warning-soft text-warning-foreground px-3 py-1.5 rounded font-bold hover:bg-warning/20">
+                          <AppIcon name="quickAction" size={14} /> 一键生成三家报价
+                        </button>
+                        <button type="button" onClick={addInqVendor} className="text-xs bg-primary-soft text-primary px-3 py-1.5 rounded font-semibold hover:bg-primary-soft/80">+ 新增厂商</button>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {inqVendors.map((item, i) => (
+                        <div key={i} className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_8rem_5rem_5rem_auto] md:items-center">
+                          <input type="text" placeholder="厂商名称" value={item.vendorName} onChange={e => updateInqVendor(i, 'vendorName', e.target.value)} className="bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
+                          <input type="number" placeholder="含税报价" value={item.amount === 0 ? '' : item.amount} onChange={e => handleInquiryAmountChange(i, e.target.value)} className="bg-card border border-input px-2 py-1.5 rounded-md text-sm" title={totalRevenueIncl > 0 ? `最高不超过含税总收入 ${totalRevenueIncl.toFixed(2)}` : undefined} />
+                          <div className="flex items-center gap-1">
+                            <input type="number" placeholder="税率" value={item.taxRate} onChange={e => updateInqVendor(i, 'taxRate', Number(e.target.value))} className="w-full bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
+                            <span className="text-xs text-secondary-foreground">%</span>
                           </div>
+                          <input type="text" placeholder="备注" value={item.remark} onChange={e => updateInqVendor(i, 'remark', e.target.value)} className="bg-card border border-input px-2 py-1.5 rounded-md text-sm" />
+                          <button type="button" onClick={() => removeInqVendor(i)} className="text-destructive hover:bg-destructive/10 p-1.5 rounded" title="删除">
+                            <AppIcon name="delete" size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
 
-                          {vendorImages.length > 0 && (
-                            <div className="flex gap-2 flex-wrap mt-1">
-                              {vendorImages.map((img: any, imgIdx: number) => (
-                                <div key={imgIdx} className="relative w-20 h-20 border rounded-lg overflow-hidden group">
-                                  <img src={img.data} className="w-full h-full object-cover" />
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      handleRemoveImage(img, imgIdx, setVendorImages);
-                                    }}
-                                    className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm"
-                                    title="移除图片"
-                                  >
-                                    <AppIcon name="close" size={12} strokeWidth={2} />
-                                  </button>
-                                  {img.assetId && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSendImageToAi(img, `vendor_${i}`)}
-                                      className="absolute bottom-1 left-1 right-1 rounded bg-background/95 px-1 py-0.5 text-[10px] font-semibold text-primary opacity-0 shadow-sm transition-opacity hover:bg-primary hover:text-primary-foreground group-hover:opacity-100"
-                                      title="发送给 AI 分析"
-                                    >
-                                      AI 分析
-                                    </button>
+                    {inqVendors.some(v => v.vendorName) && (
+                      <div className="mt-4">
+                        <label className="text-sm font-bold text-foreground block mb-3">询价厂商报价截图上传</label>
+                        <div className="flex flex-col gap-4">
+                          {inqVendors.map((v, i) => {
+                            if (!v.vendorName) return null;
+                            const vendorImages = v.images || [];
+
+                            const setVendorImages = (updater: any) => {
+                              setInqVendors(previous => previous.map((vendor, index) => {
+                                if (index !== i) return vendor;
+                                const prevImages = vendor.images || [];
+                                const newImages = typeof updater === 'function' ? updater(prevImages) : updater;
+                                return { ...vendor, images: newImages };
+                              }));
+                            };
+
+                            return (
+                              <div key={i} className="bg-card p-4 rounded-xl flex flex-col gap-3 shadow-sm transition-colors">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                                    <span className="bg-primary-soft text-primary text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">{i + 1}</span>
+                                    <span className="text-primary font-extrabold">{v.vendorName}</span> 报价截图
+                                  </span>
+                                  {vendorImages.length > 0 && (
+                                    <span className="text-xs bg-success-soft text-success px-2 py-0.5 rounded-full font-medium">
+                                      已上传 {vendorImages.length} 张图片
+                                    </span>
                                   )}
                                 </div>
-                              ))}
-                            </div>
-                          )}
+
+                                <input
+                                  type="file"
+                                  multiple
+                                  accept="image/*"
+                                  className="hidden"
+                                  id={`vendor-file-input-${i}`}
+                                  onChange={(e) => handleImageUpload(e, setVendorImages, "vendor_" + i)}
+                                />
+
+                                <div
+                                  className="border border-dashed border-border rounded-lg p-5 text-center cursor-pointer hover:bg-muted/50 focus:border-ring focus:ring-2 focus:ring-ring/20 outline-none transition-all flex flex-col items-center justify-center gap-2 bg-muted/20"
+                                  onClick={(e) => e.currentTarget.focus()}
+                                  onDragOver={e => e.preventDefault()}
+                                  onDrop={e => { e.preventDefault(); handleImageUpload(e, setVendorImages, "vendor_" + i); }}
+                                  onPaste={e => handleImageUpload(e, setVendorImages, "vendor_" + i)}
+                                  tabIndex={0}
+                                >
+                                  <p className="text-xs text-secondary-foreground">
+                                    点击聚焦后直接按下 <kbd className="bg-background px-1 border rounded text-[10px] font-mono font-bold">Ctrl+V</kbd> / <kbd className="bg-background px-1 border rounded text-[10px] font-mono font-bold">Cmd+V</kbd> 粘贴截图
+                                  </p>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-secondary-foreground">或拖拽图片到此，或者</span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); document.getElementById(`vendor-file-input-${i}`)?.click(); }}
+                                      className="inline-flex items-center gap-1.5 text-[11px] bg-primary text-primary-foreground px-2.5 py-1 rounded font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+                                    >
+                                      <AppIcon name="imageUpload" size={14} /> 选择本地图片
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {vendorImages.length > 0 && (
+                                  <div className="flex gap-2 flex-wrap mt-1">
+                                    {vendorImages.map((img: any, imgIdx: number) => (
+                                      <div key={imgIdx} className="relative w-20 h-20 border rounded-lg overflow-hidden group">
+                                        <img src={img.data} className="w-full h-full object-cover" />
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            handleRemoveImage(img, imgIdx, setVendorImages);
+                                          }}
+                                          className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm"
+                                          title="移除图片"
+                                        >
+                                          <AppIcon name="close" size={12} strokeWidth={2} />
+                                        </button>
+                                        {img.assetId && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSendImageToAi(img, `vendor_${i}`)}
+                                            className="absolute bottom-1 left-1 right-1 rounded bg-background/95 px-1 py-0.5 text-[10px] font-semibold text-primary opacity-0 shadow-sm transition-opacity hover:bg-primary hover:text-primary-foreground group-hover:opacity-100"
+                                            title="发送给 AI 分析"
+                                          >
+                                            AI 分析
+                                          </button>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-1 xl:col-span-2">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.meetingTimeRequirement}
+                      kind="text_snippet"
+                      value={formData.gen_construction_time_req ?? "合同签定后30天内。"}
+                      onApply={(nextValue) => handleFieldChange("gen_construction_time_req", nextValue)}
+                    >
+                      时间要求
+                    </CommonPresetFieldHeader>
+                    <textarea name="gen_construction_time_req" rows={2} {...getBind("gen_construction_time_req", "合同签定后30天内。")} className="bg-card border border-input px-3 py-2 rounded-md" />
                   </div>
                 </div>
-              )}
+              </div>
+            )}
 
-              <div className="flex flex-col gap-1">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.approvalProjectManager}
-                  kind="short_value"
-                  value={formData.gen_risk_owner ?? "人员A"}
-                  onApply={(nextValue) => handleFieldChange("gen_risk_owner", nextValue)}
-                >
-                  风险点及其他责任人
-                </CommonPresetFieldHeader>
-                <input type="text" name="gen_risk_owner" {...getBind("gen_risk_owner", "人员A")} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <CommonPresetLabelHeader>是否联合体投标</CommonPresetLabelHeader>
-                <input type="text" name="gen_is_joint" {...getBind("gen_is_joint", "否")} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">项目评审表准确完整</label>
-                <input type="text" name="gen_review_acc" {...getBind("gen_review_acc", "是，项目投入收入核算完整，各表填写准确")} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
+            {meetingReviewTab === "risk" && (
+              <div className="rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/60">
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <div className="flex flex-col gap-1">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.approvalProjectManager}
+                      kind="short_value"
+                      value={formData.gen_risk_owner ?? "人员A"}
+                      onApply={(nextValue) => handleFieldChange("gen_risk_owner", nextValue)}
+                    >
+                      风险点及其他责任人
+                    </CommonPresetFieldHeader>
+                    <input type="text" name="gen_risk_owner" {...getBind("gen_risk_owner", "人员A")} className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <CommonPresetLabelHeader>是否联合体投标</CommonPresetLabelHeader>
+                    <input type="text" name="gen_is_joint" {...getBind("gen_is_joint", "否")} className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
+                  <div className="flex flex-col gap-1 xl:col-span-2">
+                    <label className="text-sm font-semibold">项目评审表准确完整</label>
+                    <input type="text" name="gen_review_acc" {...getBind("gen_review_acc", "是，项目投入收入核算完整，各表填写准确")} className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
 
-              <div className="flex flex-col gap-1 col-span-2 mt-2">
-                <label className="text-sm font-bold text-foreground flex items-center gap-2">
-                  <input type="checkbox" checked={hasSingleSource} onChange={e => setHasSingleSource(e.target.checked)} className="w-4 h-4" />
-                  是否涉及单一来源
-                </label>
-                {hasSingleSource && (
-                  <textarea name="gen_single_source" rows={3} {...getBind("gen_single_source", "单一来源决策依据：符合单一来源场景...")} className="bg-card border border-input px-3 py-2 rounded-md" />
-                )}
-              </div>
+                  <div className="flex flex-col gap-1 xl:col-span-2 rounded-xl bg-muted/40 p-4 shadow-sm">
+                    <label className="text-sm font-bold text-foreground flex items-center gap-2">
+                      <input type="checkbox" checked={hasSingleSource} onChange={e => setHasSingleSource(e.target.checked)} className="w-4 h-4" />
+                      是否涉及单一来源
+                    </label>
+                    {hasSingleSource && (
+                      <textarea name="gen_single_source" rows={3} {...getBind("gen_single_source", "单一来源决策依据：符合单一来源场景...")} className="bg-card border border-input px-3 py-2 rounded-md" />
+                    )}
+                  </div>
 
-              <div className="flex flex-col gap-1">
-                <CommonPresetLabelHeader labelClassName="text-sm font-bold text-foreground">采购方式</CommonPresetLabelHeader>
-                <select value={procurementMethod} onChange={e => setProcurementMethod(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md">
-                  <option value="短名单甄选">短名单甄选</option>
-                  <option value="采购">采购</option>
-                  <option value="其他">其他</option>
-                </select>
-                {procurementMethod === '其他' && (
-                  <input type="text" name="gen_procurement_method_other" {...getBind("gen_procurement_method_other")} placeholder="请输入其他采购方式" className="bg-card border border-input px-3 py-2 rounded-md mt-1" />
-                )}
+                  <div className="flex flex-col gap-1">
+                    <CommonPresetLabelHeader labelClassName="text-sm font-bold text-foreground">采购方式</CommonPresetLabelHeader>
+                    <select value={procurementMethod} onChange={e => setProcurementMethod(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md">
+                      <option value="短名单甄选">短名单甄选</option>
+                      <option value="采购">采购</option>
+                      <option value="其他">其他</option>
+                    </select>
+                    {procurementMethod === '其他' && (
+                      <input type="text" name="gen_procurement_method_other" {...getBind("gen_procurement_method_other")} placeholder="请输入其他采购方式" className="bg-card border border-input px-3 py-2 rounded-md mt-1" />
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1 xl:col-span-2">
+                    <label className="text-sm font-semibold">售中建设及施工界面</label>
+                    <textarea name="gen_construction_interface" rows={3} {...getBind("gen_construction_interface", "本项目采购统一集成单位实施。分公司负责客户侧的协调工作，并协调管理合作伙伴完成交付。")} className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-col gap-1">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.meetingTimeRequirement}
-                  kind="text_snippet"
-                  value={formData.gen_construction_time_req ?? "合同签定后30天内。"}
-                  onApply={(nextValue) => handleFieldChange("gen_construction_time_req", nextValue)}
-                >
-                  时间要求
-                </CommonPresetFieldHeader>
-                <textarea name="gen_construction_time_req" rows={2} {...getBind("gen_construction_time_req", "合同签定后30天内。")} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-semibold">售中建设及施工界面</label>
-                <textarea name="gen_construction_interface" rows={2} {...getBind("gen_construction_interface", "本项目采购统一集成单位实施。分公司负责客户侧的协调工作，并协调管理合作伙伴完成交付。")} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-            </div>
-          </div>
+            )}
+
+            {meetingReviewTab === "confirm" && (
+              <TemplateConfirmationPanel
+                templateName={selectedTemplate}
+                currentSchemeLabel={currentSchemeLabel}
+                completion={meetingCompletion}
+                metrics={metrics}
+                onGenerate={handleGenerate}
+                {...projectInfoForConfirmation}
+              />
+            )}
+          </TemplateDocumentLayout>
         )}
 
         {/* 立项签批表专属配置 */}
         {selectedTemplate.includes('立项签批表') && (
-          <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-            <h4 className="font-bold text-primary mb-4">《ICT项目立项签批表》专属配置</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1 col-span-2">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.projectBackground}
-                  kind="text_snippet"
-                  value={projectBackground}
-                  onApply={setProjectBackground}
-                >
-                  项目背景
-                </CommonPresetFieldHeader>
-                <textarea
-                  name="gen_proj_bg"
-                  rows={3}
-                  value={projectBackground}
-                  onChange={e => setProjectBackground(e.target.value)}
-                  className="bg-card border border-input px-3 py-2 rounded-md"
-                  placeholder="请输入项目背景..."
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.approvalItServiceContent}
-                  kind="text_snippet"
-                  value={formData.gen_sign_it_content ?? defaultSignItContent}
-                  onApply={(nextValue) => handleFieldChange("gen_sign_it_content", nextValue)}
-                  labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
-                >
-                  <span>IT服务内容</span>
-                  <span className="text-xs text-secondary-foreground font-normal">为空则用系统默认</span>
-                </CommonPresetFieldHeader>
-                <textarea
-                  name="gen_sign_it_content"
-                  rows={2}
-                  {...getBind("gen_sign_it_content", defaultSignItContent)}
-                  className="bg-card border border-input px-3 py-2 rounded-md"
-                  placeholder={defaultSignItContent}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.approvalCtServiceContent}
-                  kind="text_snippet"
-                  value={formData.gen_sign_ct_content ?? defaultSignCtContent}
-                  onApply={(nextValue) => handleFieldChange("gen_sign_ct_content", nextValue)}
-                  labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
-                >
-                  <span>CT服务内容</span>
-                  <span className="text-xs text-secondary-foreground font-normal">为空则用系统默认</span>
-                </CommonPresetFieldHeader>
-                <textarea
-                  name="gen_sign_ct_content"
-                  rows={2}
-                  {...getBind("gen_sign_ct_content", defaultSignCtContent)}
-                  className="bg-card border border-input px-3 py-2 rounded-md"
-                  placeholder={defaultSignCtContent}
-                />
-              </div>
-              <div className="flex items-center gap-6 col-span-2">
-                <label className="text-sm font-semibold flex items-center gap-2">
-                  <input type="checkbox" name="gen_is_advance" {...getBindCheckbox("gen_is_advance")} className="w-4 h-4" />
-                  是否涉及垫资
-                </label>
-                <label className="text-sm font-semibold flex items-center gap-2">
-                  <input type="checkbox" name="gen_after_approval_selection" {...getBindCheckbox("gen_after_approval_selection")} className="w-4 h-4" />
-                  是否立项后甄选
-                </label>
-              </div>
-              <div className="flex flex-col gap-1 col-span-2">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.paymentRevenueCollectionMethod}
-                  kind="text_snippet"
-                  value={revCollection}
-                  onApply={setRevCollection}
-                >
-                  收入侧收款方式
-                </CommonPresetFieldHeader>
-                <input
-                  type="text"
-                  name="gen_rev_collection"
-                  value={revCollection}
-                  onChange={e => setRevCollection(e.target.value)}
-                  className="bg-card border border-input px-3 py-2 rounded-md"
-                  placeholder="请输入收入侧收款方式..."
-                />
-              </div>
-              <div className="flex flex-col gap-1 col-span-2">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.paymentExpenditurePaymentMethod}
-                  kind="text_snippet"
-                  value={expPayment}
-                  onApply={setExpPayment}
-                >
-                  支出侧付款方式
-                </CommonPresetFieldHeader>
-                <input
-                  type="text"
-                  name="gen_exp_payment"
-                  value={expPayment}
-                  onChange={e => setExpPayment(e.target.value)}
-                  className="bg-card border border-input px-3 py-2 rounded-md"
-                  placeholder="请输入支出侧付款方式..."
-                />
-              </div>
-            </div>
-          </div>
+          <TemplateDocumentLayout
+            templateName={selectedTemplate}
+            title="《ICT项目立项签批表》专属配置"
+            tabs={APPROVAL_TEMPLATE_TABS}
+            activeTab={approvalTemplateTab}
+            onTabChange={setApprovalTemplateTab}
+            completion={approvalCompletion}
+            metrics={metrics}
+            onGenerate={handleGenerate}
+          >
+            {approvalTemplateTab === "basic" && (
+              <TemplateTabSection>
+                <div className="flex flex-col gap-1">
+                  <CommonPresetFieldHeader
+                    fieldKey={PRESET_FIELD_KEYS.projectBackground}
+                    kind="text_snippet"
+                    value={projectBackground}
+                    onApply={setProjectBackground}
+                  >
+                    项目背景
+                  </CommonPresetFieldHeader>
+                  <textarea
+                    name="gen_proj_bg"
+                    rows={4}
+                    value={projectBackground}
+                    onChange={e => setProjectBackground(e.target.value)}
+                    className="bg-card border border-input px-3 py-2 rounded-md"
+                    placeholder="请输入项目背景..."
+                  />
+                </div>
+              </TemplateTabSection>
+            )}
+
+            {approvalTemplateTab === "service" && (
+              <TemplateTabSection>
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <div className="flex flex-col gap-1">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.approvalItServiceContent}
+                      kind="text_snippet"
+                      value={formData.gen_sign_it_content ?? defaultSignItContent}
+                      onApply={(nextValue) => handleFieldChange("gen_sign_it_content", nextValue)}
+                      labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
+                    >
+                      <span>IT服务内容</span>
+                      <span className="text-xs text-secondary-foreground font-normal">为空则用系统默认</span>
+                    </CommonPresetFieldHeader>
+                    <textarea
+                      name="gen_sign_it_content"
+                      rows={4}
+                      {...getBind("gen_sign_it_content", defaultSignItContent)}
+                      className="bg-card border border-input px-3 py-2 rounded-md"
+                      placeholder={defaultSignItContent}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.approvalCtServiceContent}
+                      kind="text_snippet"
+                      value={formData.gen_sign_ct_content ?? defaultSignCtContent}
+                      onApply={(nextValue) => handleFieldChange("gen_sign_ct_content", nextValue)}
+                      labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
+                    >
+                      <span>CT服务内容</span>
+                      <span className="text-xs text-secondary-foreground font-normal">为空则用系统默认</span>
+                    </CommonPresetFieldHeader>
+                    <textarea
+                      name="gen_sign_ct_content"
+                      rows={4}
+                      {...getBind("gen_sign_ct_content", defaultSignCtContent)}
+                      className="bg-card border border-input px-3 py-2 rounded-md"
+                      placeholder={defaultSignCtContent}
+                    />
+                  </div>
+                </div>
+              </TemplateTabSection>
+            )}
+
+            {approvalTemplateTab === "business" && (
+              <TemplateTabSection>
+                <TemplateSubmoduleCard>
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="flex flex-col gap-1">
+                      <CommonPresetFieldHeader
+                        fieldKey={PRESET_FIELD_KEYS.paymentRevenueCollectionMethod}
+                        kind="text_snippet"
+                        value={revCollection}
+                        onApply={setRevCollection}
+                      >
+                        收入侧收款方式
+                      </CommonPresetFieldHeader>
+                      <input
+                        type="text"
+                        name="gen_rev_collection"
+                        value={revCollection}
+                        onChange={e => setRevCollection(e.target.value)}
+                        className="bg-card border border-input px-3 py-2 rounded-md"
+                        placeholder="请输入收入侧收款方式..."
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <CommonPresetFieldHeader
+                        fieldKey={PRESET_FIELD_KEYS.paymentExpenditurePaymentMethod}
+                        kind="text_snippet"
+                        value={expPayment}
+                        onApply={setExpPayment}
+                      >
+                        支出侧付款方式
+                      </CommonPresetFieldHeader>
+                      <input
+                        type="text"
+                        name="gen_exp_payment"
+                        value={expPayment}
+                        onChange={e => setExpPayment(e.target.value)}
+                        className="bg-card border border-input px-3 py-2 rounded-md"
+                        placeholder="请输入支出侧付款方式..."
+                      />
+                    </div>
+                  </div>
+                </TemplateSubmoduleCard>
+              </TemplateTabSection>
+            )}
+
+            {approvalTemplateTab === "approval" && (
+              <TemplateTabSection>
+                <TemplateSubmoduleCard>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+                    <label className="text-sm font-semibold flex items-center gap-2">
+                      <input type="checkbox" name="gen_is_advance" {...getBindCheckbox("gen_is_advance")} className="w-4 h-4" />
+                      是否涉及垫资
+                    </label>
+                    <label className="text-sm font-semibold flex items-center gap-2">
+                      <input type="checkbox" name="gen_after_approval_selection" {...getBindCheckbox("gen_after_approval_selection")} className="w-4 h-4" />
+                      是否立项后甄选
+                    </label>
+                  </div>
+                </TemplateSubmoduleCard>
+              </TemplateTabSection>
+            )}
+
+            {approvalTemplateTab === "confirm" && (
+              <TemplateConfirmationPanel
+                templateName={selectedTemplate}
+                currentSchemeLabel={currentSchemeLabel}
+                completion={approvalCompletion}
+                metrics={metrics}
+                onGenerate={handleGenerate}
+                {...projectInfoForConfirmation}
+              />
+            )}
+          </TemplateDocumentLayout>
         )}
 
         {/* 需求导入表专属配置 */}
         {selectedTemplate.includes('需求导入表') && (
-          <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-            <h4 className="font-bold text-primary mb-4">《ICT项目需求导入表》专属配置</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.demandUnit}
-                  kind="short_value"
-                  value={formData.gen_demand_branch_name ?? "XXX分公司"}
-                  onApply={(nextValue) => handleFieldChange("gen_demand_branch_name", nextValue)}
-                >
-                  项目需求单位
-                </CommonPresetFieldHeader>
-                <input type="text" name="gen_demand_branch_name" {...getBind("gen_demand_branch_name", "XXX分公司")} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <CommonPresetLabelHeader>业务模式</CommonPresetLabelHeader>
-                <select name="gen_demand_it_business_mode" {...getBind("gen_demand_it_business_mode", "服务模式")} className="bg-card border border-input px-3 py-2 rounded-md">
-                  <option value="服务模式">服务模式</option>
-                  <option value="投资">投资</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-1 col-span-2">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.demandServiceContent}
-                  kind="text_snippet"
-                  value={formData.gen_demand_service_content ?? "IT；CT"}
-                  onApply={(nextValue) => handleFieldChange("gen_demand_service_content", nextValue)}
-                >
-                  服务内容
-                </CommonPresetFieldHeader>
-                <textarea name="gen_demand_service_content" {...getBind("gen_demand_service_content", "IT；CT")} rows={2} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="flex flex-col gap-1 col-span-2">
-                <CommonPresetLabelHeader>设备清单</CommonPresetLabelHeader>
-                <input type="text" name="gen_demand_device_list" {...getBind("gen_demand_device_list", "不涉及")} className="bg-card border border-input px-3 py-2 rounded-md" />
-              </div>
-              <div className="col-span-2 border border-border rounded-lg p-4 bg-background">
-                <div className="flex justify-between items-center mb-3">
-                  <label className="text-sm font-bold text-foreground">技术方案可行性清单 (设备需求清单)</label>
-                  <button type="button" onClick={addTechItem} className="text-xs bg-primary-soft text-primary px-3 py-1.5 rounded font-semibold hover:bg-primary-soft/80">+ 新增一行</button>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {techItems.map((item, i) => (
-                    <div key={i} className="flex gap-2 items-center">
-                      <input type="text" placeholder="服务名称" value={item.serviceName} onChange={e => updateTechItem(i, 'serviceName', e.target.value)} className="w-1/4 bg-card border border-input px-2 py-1.5 rounded-md text-sm text-foreground" />
-                      <input type="text" placeholder="服务说明" value={item.serviceDesc} onChange={e => updateTechItem(i, 'serviceDesc', e.target.value)} className="flex-1 bg-card border border-input px-2 py-1.5 rounded-md text-sm text-foreground" />
-                      <input type="number" placeholder="数量" value={item.amount} onChange={e => updateTechItem(i, 'amount', Number(e.target.value))} className="w-16 bg-card border border-input px-2 py-1.5 rounded-md text-sm text-foreground" />
-                      <input type="text" placeholder="单位" value={item.unit} onChange={e => updateTechItem(i, 'unit', e.target.value)} className="w-16 bg-card border border-input px-2 py-1.5 rounded-md text-sm text-foreground" />
-                      <button type="button" onClick={() => removeTechItem(i)} className="text-destructive hover:bg-destructive/10 p-1.5 rounded" title="删除">
-                        <AppIcon name="delete" size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="flex flex-col gap-1 col-span-2">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.demandCustomerConfirmation}
-                  kind="short_value"
-                  value={formData.gen_demand_customer_confirm ?? "微信截图"}
-                  onApply={(nextValue) => handleFieldChange("gen_demand_customer_confirm", nextValue)}
-                >
-                  客户确认
-                </CommonPresetFieldHeader>
-                <input type="text" name="gen_demand_customer_confirm" {...getBind("gen_demand_customer_confirm", "微信截图")} className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
-              </div>
-              <div className="flex flex-col gap-1 col-span-2">
-                <CommonPresetFieldHeader
-                  fieldKey={PRESET_FIELD_KEYS.demandDeploymentEnvironment}
-                  kind="text_snippet"
-                  value={formData.gen_demand_env_require ?? "客户提供部署环境，不包含在本次项目范围内"}
-                  onApply={(nextValue) => handleFieldChange("gen_demand_env_require", nextValue)}
-                >
-                  部署环境要求
-                </CommonPresetFieldHeader>
-                <input type="text" name="gen_demand_env_require" {...getBind("gen_demand_env_require", "客户提供部署环境，不包含在本次项目范围内")} className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
-              </div>
-
-              <div className="flex flex-col gap-1 col-span-2 mt-2">
-                <label className="text-sm font-bold text-foreground flex items-center gap-2">
-                  <input type="checkbox" checked={hasPublicUrl} onChange={e => {
-                    setHasPublicUrl(e.target.checked);
-                    handleFieldChange("gen_has_public_url", e.target.checked ? "on" : "off");
-                    if (!e.target.checked) {
-                      setAttach2Images([]);
-                      handleFieldChange("gen_demand_public_url", "");
-                    }
-                  }} className="w-4 h-4" />
-                  项目有效的公示网址及招标文件
-                </label>
-                {hasPublicUrl && (
-                  <input type="text" name="gen_demand_public_url" {...getBind("gen_demand_public_url")} placeholder="https://..." className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
-                )}
-              </div>
-
-              <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-sm font-bold text-foreground flex items-center gap-2">
-                  <input type="checkbox" checked={hasSecurity} onChange={e => {
-                    setHasSecurity(e.target.checked);
-                    handleFieldChange("gen_has_security", e.target.checked ? "on" : "off");
-                    if (!e.target.checked) {
-                      handleFieldChange("gen_demand_security_detail", "");
-                    }
-                  }} className="w-4 h-4" />
-                  信息安全、密评
-                </label>
-                {hasSecurity && (
-                  <input type="text" name="gen_demand_security_detail" {...getBind("gen_demand_security_detail")} placeholder="例如：已做密评/待补充" className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
-                )}
-              </div>
-
-
-              {/* Image Attachments */}
-              <div className="flex flex-col gap-1 col-span-2 mt-2">
-                <label className="text-sm font-bold text-foreground">附件1截图（客户确认材料）</label>
-                <input type="file" multiple accept="image/*" className="hidden" ref={fileInput1Ref} onChange={(e) => handleImageUpload(e, setAttach1Images, "attach1")} />
-                <div
-                  className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:bg-muted/50 focus:border-ring focus:ring-2 focus:ring-ring/20 outline-none transition-all flex flex-col items-center justify-center gap-3 bg-muted/20"
-                  onClick={(e) => e.currentTarget.focus()}
-                  onDragOver={e => e.preventDefault()}
-                  onDrop={e => { e.preventDefault(); handleImageUpload(e, setAttach1Images, "attach1"); }}
-                  onPaste={e => handleImageUpload(e, setAttach1Images, "attach1")}
-                  tabIndex={0}
-                >
-                  <p className="text-sm text-secondary-foreground">
-                    点击聚焦本区域，然后直接按下 <kbd className="bg-background px-1.5 py-0.5 border rounded text-xs font-mono font-bold">Ctrl+V</kbd> / <kbd className="bg-background px-1.5 py-0.5 border rounded text-xs font-mono font-bold">Cmd+V</kbd> 粘贴截图
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-secondary-foreground">或拖拽图片到此，或者</span>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); fileInput1Ref.current?.click(); }}
-                      className="inline-flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+          <TemplateDocumentLayout
+            templateName={selectedTemplate}
+            title="《ICT项目需求导入表》专属配置"
+            tabs={DEMAND_TEMPLATE_TABS}
+            activeTab={demandTemplateTab}
+            onTabChange={setDemandTemplateTab}
+            completion={demandCompletion}
+            metrics={metrics}
+            onGenerate={handleGenerate}
+          >
+            {demandTemplateTab === "basic" && (
+              <TemplateTabSection>
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <div className="flex flex-col gap-1">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.demandUnit}
+                      kind="short_value"
+                      value={formData.gen_demand_branch_name ?? "XXX分公司"}
+                      onApply={(nextValue) => handleFieldChange("gen_demand_branch_name", nextValue)}
                     >
-                      <AppIcon name="imageUpload" size={14} /> 选择本地图片
-                    </button>
+                      项目需求单位
+                    </CommonPresetFieldHeader>
+                    <input type="text" name="gen_demand_branch_name" {...getBind("gen_demand_branch_name", "XXX分公司")} className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.demandCustomerConfirmation}
+                      kind="short_value"
+                      value={formData.gen_demand_customer_confirm ?? "微信截图"}
+                      onApply={(nextValue) => handleFieldChange("gen_demand_customer_confirm", nextValue)}
+                    >
+                      客户确认
+                    </CommonPresetFieldHeader>
+                    <input type="text" name="gen_demand_customer_confirm" {...getBind("gen_demand_customer_confirm", "微信截图")} className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
                   </div>
                 </div>
-                <div className="flex gap-2 flex-wrap mt-2">
-                  {attach1Images.map((img, i) => (
-                    <div key={i} className="relative w-24 h-24 border rounded overflow-hidden group">
-                      <img src={img.data} className="w-full h-full object-cover" />
-                      <button type="button" onClick={() => handleRemoveImage(img, i, setAttach1Images)} className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm" title="移除图片">
-                        <AppIcon name="close" size={12} strokeWidth={2} />
-                      </button>
-                      {img.assetId && (
-                        <button type="button" onClick={() => handleSendImageToAi(img, "attach1")} className="absolute bottom-1 left-1 right-1 rounded bg-background/95 px-1 py-0.5 text-[10px] font-semibold text-primary opacity-0 shadow-sm transition-opacity hover:bg-primary hover:text-primary-foreground group-hover:opacity-100" title="发送给 AI 分析">
-                          AI 分析
-                        </button>
+              </TemplateTabSection>
+            )}
+
+            {demandTemplateTab === "content" && (
+              <TemplateTabSection>
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="flex flex-col gap-1">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.demandServiceContent}
+                      kind="text_snippet"
+                      value={formData.gen_demand_service_content ?? "IT；CT"}
+                      onApply={(nextValue) => handleFieldChange("gen_demand_service_content", nextValue)}
+                    >
+                      服务内容
+                    </CommonPresetFieldHeader>
+                    <textarea name="gen_demand_service_content" {...getBind("gen_demand_service_content", "IT；CT")} rows={3} className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <CommonPresetLabelHeader>设备清单</CommonPresetLabelHeader>
+                    <input type="text" name="gen_demand_device_list" {...getBind("gen_demand_device_list", "不涉及")} className="bg-card border border-input px-3 py-2 rounded-md" />
+                  </div>
+                  <TemplateSubmoduleCard>
+                    <div className="flex justify-between items-center mb-3">
+                      <label className="text-sm font-bold text-foreground">技术方案可行性清单 (设备需求清单)</label>
+                      <button type="button" onClick={addTechItem} className="text-xs bg-primary-soft text-primary px-3 py-1.5 rounded font-semibold hover:bg-primary-soft/80">+ 新增一行</button>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {techItems.map((item, i) => (
+                        <div key={i} className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_2fr_5rem_5rem_auto] md:items-center">
+                          <input type="text" placeholder="服务名称" value={item.serviceName} onChange={e => updateTechItem(i, 'serviceName', e.target.value)} className="bg-card border border-input px-2 py-1.5 rounded-md text-sm text-foreground" />
+                          <input type="text" placeholder="服务说明" value={item.serviceDesc} onChange={e => updateTechItem(i, 'serviceDesc', e.target.value)} className="bg-card border border-input px-2 py-1.5 rounded-md text-sm text-foreground" />
+                          <input type="number" placeholder="数量" value={item.amount} onChange={e => updateTechItem(i, 'amount', Number(e.target.value))} className="bg-card border border-input px-2 py-1.5 rounded-md text-sm text-foreground" />
+                          <input type="text" placeholder="单位" value={item.unit} onChange={e => updateTechItem(i, 'unit', e.target.value)} className="bg-card border border-input px-2 py-1.5 rounded-md text-sm text-foreground" />
+                          <button type="button" onClick={() => removeTechItem(i)} className="text-destructive hover:bg-destructive/10 p-1.5 rounded" title="删除">
+                            <AppIcon name="delete" size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </TemplateSubmoduleCard>
+                </div>
+              </TemplateTabSection>
+            )}
+
+            {demandTemplateTab === "business" && (
+              <TemplateTabSection>
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="flex flex-col gap-1">
+                    <CommonPresetLabelHeader>业务模式</CommonPresetLabelHeader>
+                    <select name="gen_demand_it_business_mode" {...getBind("gen_demand_it_business_mode", "服务模式")} className="bg-card border border-input px-3 py-2 rounded-md">
+                      <option value="服务模式">服务模式</option>
+                      <option value="投资">投资</option>
+                    </select>
+                  </div>
+                  <TemplateSubmoduleCard>
+                    <div className="flex flex-col gap-3">
+                      <label className="text-sm font-bold text-foreground flex items-center gap-2">
+                        <input type="checkbox" checked={hasPublicUrl} onChange={e => {
+                          setHasPublicUrl(e.target.checked);
+                          handleFieldChange("gen_has_public_url", e.target.checked ? "on" : "off");
+                          if (!e.target.checked) {
+                            setAttach2Images([]);
+                            handleFieldChange("gen_demand_public_url", "");
+                          }
+                        }} className="w-4 h-4" />
+                        项目有效的公示网址及招标文件
+                      </label>
+                      {hasPublicUrl && (
+                        <input type="text" name="gen_demand_public_url" {...getBind("gen_demand_public_url")} placeholder="https://..." className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
                       )}
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </TemplateSubmoduleCard>
 
-              {hasPublicUrl && (
-                <div className="flex flex-col gap-1 col-span-2 mt-2">
-                  <label className="text-sm font-bold text-foreground">附件2截图（招标文件/挂网截图）</label>
-                  <input type="file" multiple accept="image/*" className="hidden" ref={fileInput2Ref} onChange={(e) => handleImageUpload(e, setAttach2Images, "attach2")} />
-                  <div
-                    className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:bg-muted/50 focus:border-ring focus:ring-2 focus:ring-ring/20 outline-none transition-all flex flex-col items-center justify-center gap-3 bg-muted/20"
-                    onClick={(e) => e.currentTarget.focus()}
-                    onDragOver={e => e.preventDefault()}
-                    onDrop={e => { e.preventDefault(); handleImageUpload(e, setAttach2Images, "attach2"); }}
-                    onPaste={e => handleImageUpload(e, setAttach2Images, "attach2")}
-                    tabIndex={0}
-                  >
-                    <p className="text-sm text-secondary-foreground">
-                      点击聚焦本区域，然后直接按下 <kbd className="bg-background px-1.5 py-0.5 border rounded text-xs font-mono font-bold">Ctrl+V</kbd> / <kbd className="bg-background px-1.5 py-0.5 border rounded text-xs font-mono font-bold">Cmd+V</kbd> 粘贴截图
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-secondary-foreground">或拖拽图片到此，或者</span>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); fileInput2Ref.current?.click(); }}
-                        className="inline-flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+                  {hasPublicUrl && (
+                    <TemplateSubmoduleCard>
+                      <label className="text-sm font-bold text-foreground">附件2截图（招标文件/挂网截图）</label>
+                      <input type="file" multiple accept="image/*" className="hidden" ref={fileInput2Ref} onChange={(e) => handleImageUpload(e, setAttach2Images, "attach2")} />
+                      <div
+                        className="mt-2 border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:bg-muted/50 focus:border-ring focus:ring-2 focus:ring-ring/20 outline-none transition-all flex flex-col items-center justify-center gap-3 bg-muted/20"
+                        onClick={(e) => e.currentTarget.focus()}
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={e => { e.preventDefault(); handleImageUpload(e, setAttach2Images, "attach2"); }}
+                        onPaste={e => handleImageUpload(e, setAttach2Images, "attach2")}
+                        tabIndex={0}
                       >
-                        <AppIcon name="imageUpload" size={14} /> 选择本地图片
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 flex-wrap mt-2">
-                    {attach2Images.map((img, i) => (
-                      <div key={i} className="relative w-24 h-24 border rounded overflow-hidden group">
-                        <img src={img.data} className="w-full h-full object-cover" />
-                        {img.assetId && (
-                          <button type="button" onClick={() => handleSendImageToAi(img, "attach2")} className="absolute bottom-1 left-1 right-1 rounded bg-background/95 px-1 py-0.5 text-[10px] font-semibold text-primary opacity-0 shadow-sm transition-opacity hover:bg-primary hover:text-primary-foreground group-hover:opacity-100" title="发送给 AI 分析">
-                            AI 分析
+                        <p className="text-sm text-secondary-foreground">
+                          点击聚焦本区域，然后直接按下 <kbd className="bg-background px-1.5 py-0.5 border rounded text-xs font-mono font-bold">Ctrl+V</kbd> / <kbd className="bg-background px-1.5 py-0.5 border rounded text-xs font-mono font-bold">Cmd+V</kbd> 粘贴截图
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-secondary-foreground">或拖拽图片到此，或者</span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); fileInput2Ref.current?.click(); }}
+                            className="inline-flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+                          >
+                            <AppIcon name="imageUpload" size={14} /> 选择本地图片
                           </button>
-                        )}
-                        <button type="button" onClick={() => handleRemoveImage(img, i, setAttach2Images)} className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm" title="移除图片">
-                          <AppIcon name="close" size={12} strokeWidth={2} />
+                        </div>
+                      </div>
+                      <div className="flex gap-2 flex-wrap mt-2">
+                        {attach2Images.map((img, i) => (
+                          <div key={i} className="relative w-24 h-24 border rounded overflow-hidden group">
+                            <img src={img.data} className="w-full h-full object-cover" />
+                            {img.assetId && (
+                              <button type="button" onClick={() => handleSendImageToAi(img, "attach2")} className="absolute bottom-1 left-1 right-1 rounded bg-background/95 px-1 py-0.5 text-[10px] font-semibold text-primary opacity-0 shadow-sm transition-opacity hover:bg-primary hover:text-primary-foreground group-hover:opacity-100" title="发送给 AI 分析">
+                                AI 分析
+                              </button>
+                            )}
+                            <button type="button" onClick={() => handleRemoveImage(img, i, setAttach2Images)} className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm" title="移除图片">
+                              <AppIcon name="close" size={12} strokeWidth={2} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </TemplateSubmoduleCard>
+                  )}
+                </div>
+              </TemplateTabSection>
+            )}
+
+            {demandTemplateTab === "delivery" && (
+              <TemplateTabSection>
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="flex flex-col gap-1">
+                    <CommonPresetFieldHeader
+                      fieldKey={PRESET_FIELD_KEYS.demandDeploymentEnvironment}
+                      kind="text_snippet"
+                      value={formData.gen_demand_env_require ?? "客户提供部署环境，不包含在本次项目范围内"}
+                      onApply={(nextValue) => handleFieldChange("gen_demand_env_require", nextValue)}
+                    >
+                      部署环境要求
+                    </CommonPresetFieldHeader>
+                    <input type="text" name="gen_demand_env_require" {...getBind("gen_demand_env_require", "客户提供部署环境，不包含在本次项目范围内")} className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
+                  </div>
+
+                  <TemplateSubmoduleCard>
+                    <div className="flex flex-col gap-3">
+                      <label className="text-sm font-bold text-foreground flex items-center gap-2">
+                        <input type="checkbox" checked={hasSecurity} onChange={e => {
+                          setHasSecurity(e.target.checked);
+                          handleFieldChange("gen_has_security", e.target.checked ? "on" : "off");
+                          if (!e.target.checked) {
+                            handleFieldChange("gen_demand_security_detail", "");
+                          }
+                        }} className="w-4 h-4" />
+                        信息安全、密评
+                      </label>
+                      {hasSecurity && (
+                        <input type="text" name="gen_demand_security_detail" {...getBind("gen_demand_security_detail")} placeholder="例如：已做密评/待补充" className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
+                      )}
+                    </div>
+                  </TemplateSubmoduleCard>
+
+                  <TemplateSubmoduleCard>
+                    <label className="text-sm font-bold text-foreground">附件1截图（客户确认材料）</label>
+                    <input type="file" multiple accept="image/*" className="hidden" ref={fileInput1Ref} onChange={(e) => handleImageUpload(e, setAttach1Images, "attach1")} />
+                    <div
+                      className="mt-2 border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:bg-muted/50 focus:border-ring focus:ring-2 focus:ring-ring/20 outline-none transition-all flex flex-col items-center justify-center gap-3 bg-muted/20"
+                      onClick={(e) => e.currentTarget.focus()}
+                      onDragOver={e => e.preventDefault()}
+                      onDrop={e => { e.preventDefault(); handleImageUpload(e, setAttach1Images, "attach1"); }}
+                      onPaste={e => handleImageUpload(e, setAttach1Images, "attach1")}
+                      tabIndex={0}
+                    >
+                      <p className="text-sm text-secondary-foreground">
+                        点击聚焦本区域，然后直接按下 <kbd className="bg-background px-1.5 py-0.5 border rounded text-xs font-mono font-bold">Ctrl+V</kbd> / <kbd className="bg-background px-1.5 py-0.5 border rounded text-xs font-mono font-bold">Cmd+V</kbd> 粘贴截图
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-secondary-foreground">或拖拽图片到此，或者</span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); fileInput1Ref.current?.click(); }}
+                          className="inline-flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+                        >
+                          <AppIcon name="imageUpload" size={14} /> 选择本地图片
                         </button>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                    <div className="flex gap-2 flex-wrap mt-2">
+                      {attach1Images.map((img, i) => (
+                        <div key={i} className="relative w-24 h-24 border rounded overflow-hidden group">
+                          <img src={img.data} className="w-full h-full object-cover" />
+                          <button type="button" onClick={() => handleRemoveImage(img, i, setAttach1Images)} className="absolute top-1 right-1 bg-background/90 text-destructive rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs shadow-sm" title="移除图片">
+                            <AppIcon name="close" size={12} strokeWidth={2} />
+                          </button>
+                          {img.assetId && (
+                            <button type="button" onClick={() => handleSendImageToAi(img, "attach1")} className="absolute bottom-1 left-1 right-1 rounded bg-background/95 px-1 py-0.5 text-[10px] font-semibold text-primary opacity-0 shadow-sm transition-opacity hover:bg-primary hover:text-primary-foreground group-hover:opacity-100" title="发送给 AI 分析">
+                              AI 分析
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </TemplateSubmoduleCard>
                 </div>
-              )}
-            </div>
-          </div>
+              </TemplateTabSection>
+            )}
+
+            {demandTemplateTab === "confirm" && (
+              <TemplateConfirmationPanel
+                templateName={selectedTemplate}
+                currentSchemeLabel={currentSchemeLabel}
+                completion={demandCompletion}
+                metrics={metrics}
+                onGenerate={handleGenerate}
+                {...projectInfoForConfirmation}
+              />
+            )}
+          </TemplateDocumentLayout>
         )}
 
       </form>
 
-      <button className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-bold py-3 px-6 rounded-lg self-start shadow-sm hover:opacity-90 transition-opacity" onClick={handleGenerate}>
-        <AppIcon name="generate" size={18} /> 立即生成此文件
-      </button>
+      {!usesTabbedDocumentLayout && (
+        <button className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-bold py-3 px-6 rounded-lg self-start shadow-sm hover:opacity-90 transition-opacity" onClick={handleGenerate}>
+          <AppIcon name="generate" size={18} /> 立即生成此文件
+        </button>
+      )}
 
       {isMidThreeModalOpen && (
         <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
