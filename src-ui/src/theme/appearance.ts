@@ -31,6 +31,7 @@ export interface AppearanceSettings {
   fontScale: FontScalePreset;
   density: DensityPreset;
   contrastPreference: ContrastPreference;
+  aiLauncherVisible: boolean;
   customAccent: CustomAccentSettings;
   version: number;
 }
@@ -41,11 +42,12 @@ export const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   fontScale: "standard",
   density: "standard",
   contrastPreference: "standard",
+  aiLauncherVisible: false,
   customAccent: {
     enabled: false,
     value: null,
   },
-  version: 3,
+  version: 4,
 };
 
 export const FONT_SCALES: Record<FontScalePreset, number> = {
@@ -54,4 +56,3 @@ export const FONT_SCALES: Record<FontScalePreset, number> = {
   comfortable: 1.08,
   large: 1.16,
 };
-

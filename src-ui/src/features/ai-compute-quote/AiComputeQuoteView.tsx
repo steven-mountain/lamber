@@ -50,7 +50,12 @@ import {
   isH200BaselineAmountSource,
   useAiComputeQuoteStore,
 } from "./store";
-import { buildIntelligentComputeSyncLock, getAiComputeSyncFingerprint } from "./ictSync";
+import {
+  buildIntelligentComputeSyncLock,
+  getAiComputeSyncFingerprint,
+  projectStateSyncIncludesAmountSource,
+  restoreIctResultFromProjectState,
+} from "./ictSync";
 import type {
   AiComputeLineItemFundingPlanMode,
   AiComputeQuoteLineItem,
@@ -62,7 +67,6 @@ import type {
 	} from "./types";
 
 type QuoteWorkspaceTab = "parameters" | "revenue" | "cost" | "sensitivity";
-type ParameterFilterMode = "key" | "modified" | "sensitive" | "all";
 const PARAMETER_DRAG_TYPE = "application/x-lamber-ai-parameter";
 const PARAMETER_GROUP_DRAG_TYPE = "application/x-lamber-ai-parameter-group";
 
@@ -257,7 +261,31 @@ export default function AiComputeQuoteView() {
 	      window.clearTimeout(autoSyncTimerRef.current);
 	      autoSyncTimerRef.current = null;
 	    }
+    setIctResult(null);
+    setIctExportPreview(null);
+    setIctExportError(null);
+    setShowSyncDetails(false);
+    setSyncStatus("idle");
 	  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId || !isIntelligentProject || store.isLoading || syncStatus === "syncing") return;
+    const restoredResult = restoreIctResultFromProjectState(store.projectState);
+    setIctResult(restoredResult);
+    setSyncStatus(current => {
+      if (current === "syncing" || current === "synced" || current === "error" || current === "conflict") return current;
+      return restoredResult && projectStateSyncIncludesAmountSource(store.projectState, store.activeAmountSourceId)
+        ? "synced"
+        : "idle";
+    });
+  }, [
+    isIntelligentProject,
+    projectId,
+    store.activeAmountSourceId,
+    store.isLoading,
+    store.projectState,
+    syncStatus,
+  ]);
 
   useEffect(() => {
     if (!projectId || !store.isDirty || store.isLoading || store.isSaving) return;
@@ -1431,8 +1459,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function ParameterPanel() {
   const store = useAiComputeQuoteStore();
-  const [filterMode, setFilterMode] = useState<ParameterFilterMode>("key");
   const [searchTerm, setSearchTerm] = useState("");
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [selectedParameterId, setSelectedParameterId] = useState("gpu-service-price");
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [parameterDialogGroupId, setParameterDialogGroupId] = useState<string | null>(null);
@@ -1459,25 +1487,19 @@ function ParameterPanel() {
     return [parameter.name, parameter.key, parameter.unit || ""]
       .some(value => value.toLocaleLowerCase().includes(query));
   };
-  const matchesMode = (parameter: AiComputeQuoteParameter) => {
-    if (filterMode === "key") return parameter.isKey === true;
-    if (filterMode === "modified") return isParameterModified(parameter);
-    if (filterMode === "sensitive") return parameter.sensitivityEnabled !== false;
-    return true;
-  };
-  const visibleParameters = store.blueprint.parameters.filter(parameter =>
-    matchesMode(parameter) && matchesSearch(parameter)
-  );
+  const searchActive = Boolean(searchTerm.trim());
+  const visibleParameters = store.blueprint.parameters.filter(matchesSearch);
   const selectedParameter = store.blueprint.parameters.find(parameter => parameter.id === selectedParameterId)
     || visibleParameters[0]
     || store.blueprint.parameters[0];
-  const canReorder = filterMode === "all" && searchTerm.trim() === "";
-  const normalAllView = filterMode === "all" && searchTerm.trim() === "";
+  const canReorder = !searchActive;
+  const isGroupExpanded = (groupId: string) => expandedGroups[groupId]
+    ?? (groupId !== PARAMETER_GROUP_IDS.operations && groupId !== PARAMETER_GROUP_IDS.finance);
   const visibleGroups = store.blueprint.parameterGroups.flatMap((group, groupIndex) => {
     const allGroupParameters = store.blueprint.parameters.filter(parameter => parameter.groupId === group.id);
     const groupParameters = visibleParameters.filter(parameter => parameter.groupId === group.id);
     const emptyUnclassified = group.id === PARAMETER_GROUP_IDS.unclassified && allGroupParameters.length === 0;
-    if (emptyUnclassified || (!normalAllView && groupParameters.length === 0)) return [];
+    if (emptyUnclassified || (searchActive && groupParameters.length === 0)) return [];
     return [{
       group,
       groupIndex,
@@ -1485,6 +1507,11 @@ function ParameterPanel() {
       totalParameterCount: allGroupParameters.length,
     }];
   });
+  const setAllGroupsExpanded = (expanded: boolean) => {
+    setExpandedGroups(Object.fromEntries(
+      store.blueprint.parameterGroups.map(group => [group.id, expanded]),
+    ));
+  };
   const projectCycleParameter = store.blueprint.parameters.find(isAiComputeProjectCycleParameter);
   const projectCycleYears = getAiComputeProjectCycleYears(store.blueprint.parameters);
   const discountRateParameter = store.blueprint.parameters.find(isAiComputeDiscountRateParameter);
@@ -1496,7 +1523,7 @@ function ParameterPanel() {
         <div>
           <h2 className="text-section-title">参数区</h2>
           <p className="text-caption text-secondary-foreground">
-            按业务类别组织参数；切换“全部参数”后可拖拽调整类别和参数顺序。
+            按业务类别组织参数；清空搜索后可拖拽调整类别和参数顺序。
           </p>
         </div>
         <div className="relative">
@@ -1585,25 +1612,20 @@ function ParameterPanel() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {([
-          ["key", "仅看关键参数"],
-          ["modified", "仅看已修改"],
-          ["sensitive", "仅看敏感性参数"],
-          ["all", "全部参数"],
-        ] as Array<[ParameterFilterMode, string]>).map(([mode, label]) => (
-          <button
-            key={mode}
-            type="button"
-            className={`h-9 rounded-lg px-3 text-xs font-bold transition-colors ${
-              filterMode === mode
-                ? "bg-primary-soft text-primary ring-1 ring-primary/20"
-                : "bg-muted/65 text-secondary-foreground hover:bg-muted hover:text-foreground"
-            }`}
-            onClick={() => setFilterMode(mode)}
-          >
-            {label}
-          </button>
-        ))}
+        <button
+          type="button"
+          className="h-9 rounded-lg bg-primary-soft px-3 text-xs font-bold text-primary ring-1 ring-primary/20 transition-colors hover:bg-primary-soft/80"
+          onClick={() => setAllGroupsExpanded(true)}
+        >
+          展开全部
+        </button>
+        <button
+          type="button"
+          className="h-9 rounded-lg bg-muted/65 px-3 text-xs font-bold text-secondary-foreground transition-colors hover:bg-muted hover:text-foreground"
+          onClick={() => setAllGroupsExpanded(false)}
+        >
+          折叠全部
+        </button>
         <label className="relative ml-auto min-w-56 flex-1 sm:max-w-72">
           <AppIcon name="search" className="pointer-events-none absolute left-3 top-2.5 text-secondary-foreground" size={16} />
           <Input
@@ -1615,9 +1637,9 @@ function ParameterPanel() {
         </label>
       </div>
 
-      {!canReorder && (
+      {searchActive && (
         <div className="mb-3 rounded-lg bg-muted/45 px-3 py-2 text-[11px] text-secondary-foreground">
-          当前为筛选视图。参数仍可通过设置菜单调整类别；拖拽排序请切换到“全部参数”并清空搜索。
+          当前为搜索结果视图。参数仍可通过设置菜单调整类别；拖拽排序请清空搜索。
         </div>
       )}
 
@@ -1634,7 +1656,8 @@ function ParameterPanel() {
             usageByParameter={usageByParameter}
             selectedParameterId={selectedParameter?.id || null}
             canReorder={canReorder}
-            forceOpen={Boolean(searchTerm.trim()) || filterMode !== "key"}
+            open={searchActive || isGroupExpanded(group.id)}
+            onOpenChange={open => setExpandedGroups(current => ({ ...current, [group.id]: open }))}
             onSelect={setSelectedParameterId}
             onAddParameter={groupId => setParameterDialogGroupId(groupId)}
             onEditCategory={groupValue => setCategoryDialog({ mode: "edit", group: groupValue })}
@@ -1653,7 +1676,10 @@ function ParameterPanel() {
           onClose={() => setParameterDialogGroupId(null)}
           onCreated={parameterId => {
             setSelectedParameterId(parameterId);
-            setFilterMode("all");
+            setExpandedGroups(current => parameterDialogGroupId
+              ? { ...current, [parameterDialogGroupId]: true }
+              : current
+            );
             setParameterDialogGroupId(null);
           }}
         />
@@ -1664,7 +1690,6 @@ function ParameterPanel() {
           group={categoryDialog.group}
           onClose={() => setCategoryDialog(null)}
           onSaved={() => {
-            setFilterMode("all");
             setCategoryDialog(null);
           }}
         />
@@ -1683,7 +1708,8 @@ function ParameterGroupSection({
   usageByParameter,
   selectedParameterId,
   canReorder,
-  forceOpen,
+  open,
+  onOpenChange,
   onSelect,
   onAddParameter,
   onEditCategory,
@@ -1697,16 +1723,13 @@ function ParameterGroupSection({
   usageByParameter: Map<string, { revenue: string[]; cost: string[] }>;
   selectedParameterId: string | null;
   canReorder: boolean;
-  forceOpen: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onSelect: (parameterId: string) => void;
   onAddParameter: (groupId: string) => void;
   onEditCategory: (group: AiComputeQuoteParameterGroup) => void;
 }) {
   const store = useAiComputeQuoteStore();
-  const [expanded, setExpanded] = useState(
-    group.id !== PARAMETER_GROUP_IDS.operations && group.id !== PARAMETER_GROUP_IDS.finance,
-  );
-  const open = forceOpen || expanded;
   const handleDrop = (event: React.DragEvent<HTMLElement>) => {
     if (!canReorder) return;
     event.preventDefault();
@@ -1739,7 +1762,7 @@ function ParameterGroupSection({
             canReorder ? "cursor-grab hover:bg-muted active:cursor-grabbing" : "cursor-not-allowed opacity-35"
           }`}
           aria-label={`拖拽排序类别 ${group.name}`}
-          title={canReorder ? "拖拽调整类别顺序" : "在全部参数视图中可拖拽"}
+          title={canReorder ? "拖拽调整类别顺序" : "清空搜索后可拖拽"}
           onDragStart={event => {
             event.dataTransfer.effectAllowed = "move";
             event.dataTransfer.setData(PARAMETER_GROUP_DRAG_TYPE, group.id);
@@ -1752,7 +1775,7 @@ function ParameterGroupSection({
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
           title={group.description}
           aria-expanded={open}
-          onClick={() => setExpanded(value => !value)}
+          onClick={() => onOpenChange(!open)}
         >
           <AppIcon name={getParameterGroupIcon(group.id)} size={18} />
           <span className="shrink-0 text-sm font-bold">{group.name}</span>
@@ -1828,7 +1851,7 @@ function ParameterGroupSection({
       {open && (
         <div
           className="grid gap-3 px-4 pb-4"
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}
           onDragOver={event => {
             if (canReorder) event.preventDefault();
           }}
@@ -1923,122 +1946,127 @@ function ParameterCard({
         >
           ⋮⋮
         </button>
-        <Input
-          aria-label={`${parameter.name}参数名称`}
-          className="h-6 min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-xs font-bold shadow-none hover:border-0 focus-visible:border-0 focus-visible:ring-0"
-          value={parameter.name}
-          onFocus={onSelect}
-          onChange={event => store.updateParameter(parameter.id, { name: event.target.value })}
-        />
-        <span className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold ${
-          modified ? "bg-destructive-soft text-destructive" : "bg-muted text-secondary-foreground"
-        }`}>
-          {modified ? "已修改" : "默认值"}
-        </span>
-        <button
-          type="button"
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors ${
-            descriptionOpen ? "bg-primary-soft text-primary" : "text-muted-foreground hover:bg-muted"
-          }`}
-          aria-label={`${descriptionOpen ? "收起" : "查看"}参数说明 ${parameter.name}`}
-          title="参数说明"
-          onClick={event => {
-            event.stopPropagation();
-            setDescriptionOpen(value => !value);
-          }}
-        >
-          <AppIcon name="info" size={13} />
-        </button>
-        <details className="relative" onClick={event => event.stopPropagation()}>
-          <summary
-            className="flex h-5 w-5 cursor-pointer list-none items-center justify-center rounded text-muted-foreground hover:bg-muted [&::-webkit-details-marker]:hidden"
-            aria-label={`编辑参数设置 ${parameter.name}`}
-            title="参数设置"
-          >
-            <AppIcon name="edit" size={13} />
-          </summary>
-          <div className="absolute right-0 top-7 z-30 w-72 rounded-lg bg-card p-3 shadow-lg ring-1 ring-border">
-            <Field label="字段 key">
-              <Input
-                className="h-8 font-mono text-xs"
-                value={parameter.key}
-                disabled={isAiComputeStableIctParameter(parameter)}
-                onChange={event => store.updateParameter(parameter.id, { key: event.target.value })}
-              />
-            </Field>
-            {isAiComputeStableIctParameter(parameter) && (
-              <div className="mt-1 text-[10px] font-semibold text-secondary-foreground">
-                {isAiComputeProjectCycleParameter(parameter)
-                  ? "项目周期字段 key 固定为 `years`，用于同步 ICT 项目周期。"
-                  : "项目折现率字段 key 固定为 `discount_rate`，页面按百分数输入并同步 ICT。"}
+        <div className="min-w-0 flex-1">
+          <Input
+            aria-label={`${parameter.name}参数名称`}
+            title={parameter.name}
+            className="h-6 w-full min-w-0 border-0 bg-transparent px-0 py-0 text-xs font-bold shadow-none hover:border-0 focus-visible:border-0 focus-visible:ring-0"
+            value={parameter.name}
+            onFocus={onSelect}
+            onChange={event => store.updateParameter(parameter.id, { name: event.target.value })}
+          />
+          <div className="mt-1 flex items-center gap-1.5">
+            <span className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold ${
+              modified ? "bg-destructive-soft text-destructive" : "bg-muted text-secondary-foreground"
+            }`}>
+              {modified ? "已修改" : "默认值"}
+            </span>
+            <button
+              type="button"
+              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors ${
+                descriptionOpen ? "bg-primary-soft text-primary" : "text-muted-foreground hover:bg-muted"
+              }`}
+              aria-label={`${descriptionOpen ? "收起" : "查看"}参数说明 ${parameter.name}`}
+              title="参数说明"
+              onClick={event => {
+                event.stopPropagation();
+                setDescriptionOpen(value => !value);
+              }}
+            >
+              <AppIcon name="info" size={13} />
+            </button>
+            <details className="relative" onClick={event => event.stopPropagation()}>
+              <summary
+                className="flex h-5 w-5 cursor-pointer list-none items-center justify-center rounded text-muted-foreground hover:bg-muted [&::-webkit-details-marker]:hidden"
+                aria-label={`编辑参数设置 ${parameter.name}`}
+                title="参数设置"
+              >
+                <AppIcon name="edit" size={13} />
+              </summary>
+              <div className="absolute right-0 top-7 z-30 w-72 rounded-lg bg-card p-3 shadow-lg ring-1 ring-border">
+                <Field label="字段 key">
+                  <Input
+                    className="h-8 font-mono text-xs"
+                    value={parameter.key}
+                    disabled={isAiComputeStableIctParameter(parameter)}
+                    onChange={event => store.updateParameter(parameter.id, { key: event.target.value })}
+                  />
+                </Field>
+                {isAiComputeStableIctParameter(parameter) && (
+                  <div className="mt-1 text-[10px] font-semibold text-secondary-foreground">
+                    {isAiComputeProjectCycleParameter(parameter)
+                      ? "项目周期字段 key 固定为 `years`，用于同步 ICT 项目周期。"
+                      : "项目折现率字段 key 固定为 `discount_rate`，页面按百分数输入并同步 ICT。"}
+                  </div>
+                )}
+                <Field label="所属类别">
+                  <select
+                    className="h-8 rounded-md bg-card px-2 text-xs ring-1 ring-input"
+                    value={parameter.groupId || ""}
+                    onChange={event => store.moveParameter(parameter.id, event.target.value)}
+                  >
+                    {allGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+                  </select>
+                </Field>
+                <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-secondary-foreground">
+                  <input
+                    type="checkbox"
+                    checked={parameter.isKey === true}
+                    onChange={event => store.updateParameter(parameter.id, { isKey: event.target.checked })}
+                  />
+                  关键参数
+                </label>
+                <label className="mt-2 flex items-center gap-2 text-xs font-semibold text-secondary-foreground">
+                  <input
+                    type="checkbox"
+                    checked={parameter.sensitivityEnabled !== false}
+                    onChange={event => store.updateParameter(parameter.id, { sensitivityEnabled: event.target.checked })}
+                  />
+                  参与敏感性分析
+                </label>
+                <div className="mt-3 grid grid-cols-2 gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={parameterIndex === 0}
+                    onClick={() => store.moveParameterByOffset(parameter.id, -1)}
+                  >
+                    上移
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={parameterIndex === siblingCount - 1}
+                    onClick={() => store.moveParameterByOffset(parameter.id, 1)}
+                  >
+                    下移
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={isAiComputeStableIctParameter(parameter)}
+                    onClick={() => store.duplicateParameter(parameter.id, createId("parameter"))}
+                  >
+                    <AppIcon name="copy" size={14} />复制
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="hover:bg-destructive-soft hover:text-destructive"
+                    disabled={parameter.locked}
+                    onClick={() => store.removeParameter(parameter.id)}
+                  >
+                    <AppIcon name="delete" size={14} />删除
+                  </Button>
+                </div>
               </div>
-            )}
-            <Field label="所属类别">
-              <select
-                className="h-8 rounded-md bg-card px-2 text-xs ring-1 ring-input"
-                value={parameter.groupId || ""}
-                onChange={event => store.moveParameter(parameter.id, event.target.value)}
-              >
-                {allGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
-              </select>
-            </Field>
-            <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-secondary-foreground">
-              <input
-                type="checkbox"
-                checked={parameter.isKey === true}
-                onChange={event => store.updateParameter(parameter.id, { isKey: event.target.checked })}
-              />
-              关键参数
-            </label>
-            <label className="mt-2 flex items-center gap-2 text-xs font-semibold text-secondary-foreground">
-              <input
-                type="checkbox"
-                checked={parameter.sensitivityEnabled !== false}
-                onChange={event => store.updateParameter(parameter.id, { sensitivityEnabled: event.target.checked })}
-              />
-              参与敏感性分析
-            </label>
-            <div className="mt-3 grid grid-cols-2 gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={parameterIndex === 0}
-                onClick={() => store.moveParameterByOffset(parameter.id, -1)}
-              >
-                上移
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={parameterIndex === siblingCount - 1}
-                onClick={() => store.moveParameterByOffset(parameter.id, 1)}
-              >
-                下移
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={isAiComputeStableIctParameter(parameter)}
-                onClick={() => store.duplicateParameter(parameter.id, createId("parameter"))}
-              >
-                <AppIcon name="copy" size={14} />复制
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="hover:bg-destructive-soft hover:text-destructive"
-                disabled={parameter.locked}
-                onClick={() => store.removeParameter(parameter.id)}
-              >
-                <AppIcon name="delete" size={14} />删除
-              </Button>
-            </div>
+            </details>
           </div>
-        </details>
+        </div>
       </div>
       <div className="mt-1 flex h-8 items-center gap-1.5">
         <Input

@@ -759,11 +759,23 @@ fn internal_generate_xlsx(
             set_cell(incl_cell, &format!("{}_INCL", prefix), false);
         }
 
+        set_cell("T26", "SELECTION_FEE_SUPPLIER_QUOTE", false);
+        set_cell("T29", "SELECTION_FEE_MARKUP", false);
+
         for year in 1..=10 {
             let in_cell = format!("E{}", 33 + year);
             let out_cell = format!("G{}", 33 + year);
             set_cell(&in_cell, &format!("CASH_IN_Y{}", year), false);
             set_cell(&out_cell, &format!("CASH_OUT_Y{}", year), false);
+        }
+
+        // IT 部分年现金流：第一年=53 行 ... 第十年=62 行（E 流入 / G 流出）
+        // 与上方项目现金流一致，逐年写入，避免全部堆在第一年
+        for year in 1..=10 {
+            let it_in_cell = format!("E{}", 52 + year);
+            let it_out_cell = format!("G{}", 52 + year);
+            set_cell(&it_in_cell, &format!("IT_CASH_IN_Y{}", year), false);
+            set_cell(&it_out_cell, &format!("IT_CASH_OUT_Y{}", year), false);
         }
     }
 
@@ -916,6 +928,83 @@ mod tests {
         assert_eq!(cell_string(&range, 10, 4), "产品收入");
         assert_eq!(cell_string(&range, 10, 7), "");
         assert_eq!(cell_string(&range, 10, 17), "");
+
+        let _ = fs::remove_file(output_path);
+    }
+
+    #[test]
+    fn lifecycle_xlsx_selection_fee_inputs_write_quote_and_markup() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let output_path =
+            std::env::temp_dir().join(format!("lamber-xlsx-selection-fee-{}.xlsx", suffix));
+
+        let mut book = umya_spreadsheet::new_file_empty_worksheet();
+        book.new_sheet("3-直接经济效益评估表").unwrap();
+        umya_spreadsheet::writer::xlsx::write(&book, &output_path).unwrap();
+
+        let mut variables = HashMap::new();
+        variables.insert(
+            "SELECTION_FEE_SUPPLIER_QUOTE".to_string(),
+            "90000".to_string(),
+        );
+        variables.insert("SELECTION_FEE_MARKUP".to_string(), "80".to_string());
+
+        internal_generate_xlsx(output_path.to_str().unwrap(), &variables).unwrap();
+
+        let mut workbook: Xlsx<_> = open_workbook(&output_path).unwrap();
+        let range = workbook.worksheet_range("3-直接经济效益评估表").unwrap();
+
+        assert!((cell_number(&range, 26, 20) - 90000.0).abs() < 0.001);
+        assert!((cell_number(&range, 29, 20) - 80.0).abs() < 0.001);
+
+        let _ = fs::remove_file(output_path);
+    }
+
+    #[test]
+    fn lifecycle_xlsx_writes_it_cashflow_per_year() {
+        let template_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../项目全生命周期文件模版/效益分析表 .xlsx");
+        assert!(
+            template_path.exists(),
+            "missing test template: {}",
+            template_path.display()
+        );
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let output_path =
+            std::env::temp_dir().join(format!("lamber-xlsx-it-cashflow-{}.xlsx", suffix));
+        fs::copy(&template_path, &output_path).unwrap();
+
+        // IT 现金流落在第 1 年和第 6 年，其余为 0（与 app 推演一致）
+        let mut variables = HashMap::new();
+        variables.insert("IT_CASH_IN_Y1".to_string(), "994690.73".to_string());
+        variables.insert("IT_CASH_OUT_Y1".to_string(), "937626.43".to_string());
+        variables.insert("IT_CASH_IN_Y6".to_string(), "52352.14".to_string());
+        variables.insert("IT_CASH_OUT_Y6".to_string(), "49348.76".to_string());
+        for y in [2, 3, 4, 5, 7, 8, 9, 10] {
+            variables.insert(format!("IT_CASH_IN_Y{}", y), "0".to_string());
+            variables.insert(format!("IT_CASH_OUT_Y{}", y), "0".to_string());
+        }
+
+        internal_generate_xlsx(output_path.to_str().unwrap(), &variables).unwrap();
+
+        let mut workbook: Xlsx<_> = open_workbook(&output_path).unwrap();
+        let range = workbook.worksheet_range("3-直接经济效益评估表").unwrap();
+
+        // 第一年 = 行53，第六年 = 行58；E 列(5)=流入，G 列(7)=流出
+        assert!((cell_number(&range, 53, 5) - 994690.73).abs() < 0.01);
+        assert!((cell_number(&range, 53, 7) - 937626.43).abs() < 0.01);
+        assert!((cell_number(&range, 58, 5) - 52352.14).abs() < 0.01);
+        assert!((cell_number(&range, 58, 7) - 49348.76).abs() < 0.01);
+        // 其余年份写 0，且旧公式被清除（不再 =G3 之类）
+        assert!((cell_number(&range, 54, 5) - 0.0).abs() < 0.01);
+        assert!((cell_number(&range, 62, 7) - 0.0).abs() < 0.01);
 
         let _ = fs::remove_file(output_path);
     }

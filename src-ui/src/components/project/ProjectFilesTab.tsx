@@ -98,6 +98,8 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
       const itTax = toTaxPercent(parsedData.it_tax, 6);
       const ctTax = toTaxPercent(parsedData.ct_tax, 6);
       const parsedItems = parsedData.items || {};
+      const selectionFeeQuote = String(parsedData.selection_fee_quote || "").trim();
+      const selectionFeeMarkup = String(parsedData.selection_fee_markup || "").trim();
       const hasDetailedItems = Object.values(parsedItems).some(item => {
         return Math.abs(Number(item?.incl_tax || 0)) > 0 || Math.abs(Number(item?.excl_tax || 0)) > 0;
       });
@@ -152,6 +154,9 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
         cost_cashflow_excl: null,
         it_rev_cashflow_excl: null,
         it_cost_cashflow_excl: null,
+        ...(selectionFeeQuote ? { selection_fee_quote: selectionFeeQuote } : {}),
+        ...(selectionFeeQuote ? { selection_fee_markup: selectionFeeMarkup } : {}),
+        ...(selectionFeeQuote ? { selection_fee_anchor: "quote" } : {}),
 
         rev_it_integration: makeParsedItem("rev_it_integration", itTax, itIncome),
         rev_it_maintenance: makeParsedItem("rev_it_maintenance", 6),

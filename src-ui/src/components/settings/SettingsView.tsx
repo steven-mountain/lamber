@@ -29,6 +29,7 @@ export default function SettingsView({ onBack }: SettingsViewProps) {
     setDensity, 
     setContrastPreference,
     setCustomAccent,
+    setAiLauncherVisible,
     resetAppearance 
   } = useAppearanceStore();
 
@@ -462,6 +463,43 @@ export default function SettingsView({ onBack }: SettingsViewProps) {
               </CardContent>
             </Card>
 
+            {/* Section 7: AI Floating Launcher */}
+            <Card className="border border-border/40 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-section-title">AI 助手入口</CardTitle>
+                <CardDescription className="text-caption">控制右下角 AI 助手悬浮图标是否显示</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between gap-4 rounded-xl bg-muted/40 p-4">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <AppIcon name="ai" size={16} className="text-primary" />
+                      右下角悬浮图标
+                    </div>
+                    <p className="text-caption text-secondary-foreground">
+                      {settings.aiLauncherVisible ? "当前会在主窗口显示 AI 助手入口。" : "当前已隐藏主窗口中的 AI 助手入口。"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={settings.aiLauncherVisible}
+                    onClick={() => setAiLauncherVisible(!settings.aiLauncherVisible)}
+                    className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${
+                      settings.aiLauncherVisible ? "bg-primary" : "bg-muted"
+                    }`}
+                  >
+                    <span className="sr-only">显示 AI 助手悬浮图标</span>
+                    <span
+                      className={`h-5 w-5 rounded-full bg-card shadow-sm transition-transform ${
+                        settings.aiLauncherVisible ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Default Restoration */}
             <div className="flex justify-end pt-2">
               <Button 
@@ -590,4 +628,3 @@ export default function SettingsView({ onBack }: SettingsViewProps) {
     </div>
   );
 }
-

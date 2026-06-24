@@ -23,6 +23,7 @@ interface AppearanceState {
   setDensity: (density: DensityPreset) => void;
   setContrastPreference: (contrast: ContrastPreference) => void;
   setCustomAccent: (enabled: boolean, value: string | null) => void;
+  setAiLauncherVisible: (visible: boolean) => void;
   resetAppearance: () => void;
 }
 
@@ -36,6 +37,21 @@ function isTauriRuntime() {
 function getSystemColorMode(): "light" | "dark" {
   if (typeof window === "undefined") return "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function normalizeAppearanceSettings(parsed: any): AppearanceSettings {
+  return {
+    colorMode: ["light", "dark", "system"].includes(parsed?.colorMode) ? parsed.colorMode : DEFAULT_APPEARANCE_SETTINGS.colorMode,
+    themePreset: ["lamber", "graphite", "navy", "forest", "warmStone"].includes(parsed?.themePreset) ? parsed.themePreset : DEFAULT_APPEARANCE_SETTINGS.themePreset,
+    fontScale: ["compact", "standard", "comfortable", "large"].includes(parsed?.fontScale) ? parsed.fontScale : DEFAULT_APPEARANCE_SETTINGS.fontScale,
+    density: ["compact", "standard", "comfortable"].includes(parsed?.density) ? parsed.density : DEFAULT_APPEARANCE_SETTINGS.density,
+    contrastPreference: ["standard", "high"].includes(parsed?.contrastPreference) ? parsed.contrastPreference : DEFAULT_APPEARANCE_SETTINGS.contrastPreference,
+    aiLauncherVisible: typeof parsed?.aiLauncherVisible === "boolean" ? parsed.aiLauncherVisible : DEFAULT_APPEARANCE_SETTINGS.aiLauncherVisible,
+    customAccent: (parsed?.customAccent && typeof parsed.customAccent.enabled === "boolean")
+      ? { enabled: parsed.customAccent.enabled, value: typeof parsed.customAccent.value === "string" ? parsed.customAccent.value : null }
+      : DEFAULT_APPEARANCE_SETTINGS.customAccent,
+    version: typeof parsed?.version === "number" ? parsed.version : DEFAULT_APPEARANCE_SETTINGS.version,
+  };
 }
 
 export const useAppearanceStore = create<AppearanceState>((set, get) => {
@@ -54,12 +70,16 @@ export const useAppearanceStore = create<AppearanceState>((set, get) => {
     if (mediaQueryList) {
       try {
         mediaQueryList.removeEventListener("change", handleSystemThemeChange);
-      } catch (err) {}
+      } catch (err) {
+        console.warn("Failed to remove system theme listener:", err);
+      }
     }
     mediaQueryList = window.matchMedia("(prefers-color-scheme: dark)");
     try {
       mediaQueryList.addEventListener("change", handleSystemThemeChange);
-    } catch (err) {}
+    } catch (err) {
+      console.warn("Failed to add system theme listener:", err);
+    }
   };
 
   const syncStateAndDOM = (newSettings: AppearanceSettings) => {
@@ -95,18 +115,7 @@ export const useAppearanceStore = create<AppearanceState>((set, get) => {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
-          const parsed = JSON.parse(raw);
-          loadedSettings = {
-            colorMode: ["light", "dark", "system"].includes(parsed.colorMode) ? parsed.colorMode : DEFAULT_APPEARANCE_SETTINGS.colorMode,
-            themePreset: ["lamber", "graphite", "navy", "forest", "warmStone"].includes(parsed.themePreset) ? parsed.themePreset : DEFAULT_APPEARANCE_SETTINGS.themePreset,
-            fontScale: ["compact", "standard", "comfortable", "large"].includes(parsed.fontScale) ? parsed.fontScale : DEFAULT_APPEARANCE_SETTINGS.fontScale,
-            density: ["compact", "standard", "comfortable"].includes(parsed.density) ? parsed.density : DEFAULT_APPEARANCE_SETTINGS.density,
-            contrastPreference: ["standard", "high"].includes(parsed.contrastPreference) ? parsed.contrastPreference : DEFAULT_APPEARANCE_SETTINGS.contrastPreference,
-            customAccent: (parsed.customAccent && typeof parsed.customAccent.enabled === "boolean") 
-              ? { enabled: parsed.customAccent.enabled, value: typeof parsed.customAccent.value === "string" ? parsed.customAccent.value : null }
-              : DEFAULT_APPEARANCE_SETTINGS.customAccent,
-            version: typeof parsed.version === "number" ? parsed.version : 3,
-          };
+          loadedSettings = normalizeAppearanceSettings(JSON.parse(raw));
         }
       } catch (e) {
         console.warn("Failed to load appearance settings, fallback to default", e);
@@ -124,7 +133,7 @@ export const useAppearanceStore = create<AppearanceState>((set, get) => {
       // Listen to cross-window Tauri sync events
       if (isTauriRuntime()) {
         listen<AppearanceSettings>(TAURI_SYNC_EVENT, (event) => {
-          const received = event.payload;
+          const received = normalizeAppearanceSettings(event.payload);
           if (JSON.stringify(received) !== JSON.stringify(get().settings)) {
             const resolved = received.colorMode === "system"
               ? getSystemColorMode()
@@ -133,7 +142,9 @@ export const useAppearanceStore = create<AppearanceState>((set, get) => {
             applyAppearance(received, resolved);
             try {
               localStorage.setItem(STORAGE_KEY, JSON.stringify(received));
-            } catch (e) {}
+            } catch (e) {
+              console.warn("Failed to persist synced appearance settings:", e);
+            }
           }
         }).catch(err => {
           console.warn("Failed to listen for appearance sync event:", err);
@@ -180,9 +191,14 @@ export const useAppearanceStore = create<AppearanceState>((set, get) => {
       });
     },
 
+    setAiLauncherVisible: (visible) => {
+      const current = get().settings;
+      if (current.aiLauncherVisible === visible) return;
+      syncStateAndDOM({ ...current, aiLauncherVisible: visible });
+    },
+
     resetAppearance: () => {
       syncStateAndDOM(DEFAULT_APPEARANCE_SETTINGS);
     },
   };
 });
-

@@ -11,7 +11,7 @@ import { useProjectStore } from "../store/useProjectStore";
 import { useSaveStore } from "../store/useSaveStore";
 import { useAiContextStore } from "../store/useAiContextStore";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
-import { domainSaveService } from "../services/domainSaveService";
+import { domainSaveService, type ProjectDetailPatch } from "../services/domainSaveService";
 import GlobalSaveButton from "../components/GlobalSaveButton";
 import { useNavigationStore } from "../store/useNavigationStore";
 
@@ -243,49 +243,6 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     }
   }, [projectStageFilter, statusOptions]);
 
-  useEffect(() => {
-    if (!selectedProject?.id) {
-      unregisterSaveHandler("project-detail");
-      return;
-    }
-
-    registerSaveHandler("project-detail", async (context) => {
-      if (context.projectId !== selectedProject.id) {
-        throw new Error("项目已切换");
-      }
-      const result = await domainSaveService.saveProjectDetail(selectedProject.id, {
-        name: editingProjectName,
-        customerName: editingCustomerName,
-        projectType: editingProjectType,
-        status: editingStatus,
-        progress: selectedProject.progress || 0,
-        deadline: selectedProject.deadline || null,
-        note: noteDrafts[selectedProject.id] ?? selectedProject.note ?? null,
-      });
-      const projWithExists = { ...result, directoryExists: selectedProject.directoryExists };
-      setSelectedProject(projWithExists);
-      useProjectStore.getState().setCurrentProject(projWithExists);
-      setProjects(prev => prev.map(p => p.id === result.id ? projWithExists : p));
-      setStatusOptions(prev => {
-        const next = mergeStatusOptions(prev, [result]);
-        persistStatusOptions(next);
-        return next;
-      });
-      return { success: true, savedScopes: ["project-detail"] };
-    });
-
-    return () => unregisterSaveHandler("project-detail");
-  }, [
-    selectedProject,
-    editingProjectName,
-    editingCustomerName,
-    editingProjectType,
-    editingStatus,
-    noteDrafts,
-    registerSaveHandler,
-    unregisterSaveHandler,
-  ]);
-
   const handleToggleViewMode = (mode: "list" | "grid") => {
     setViewMode(mode);
     localStorage.setItem("lamber_project_board_view_mode", mode);
@@ -364,6 +321,110 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
       return normalizeProjectName(project.name) === normalized;
     });
   };
+
+  useEffect(() => {
+    registerSaveHandler("project-detail", async () => {
+      const patches = new Map<string, ProjectDetailPatch>();
+      const ensurePatch = (projectId: string) => {
+        const existing = patches.get(projectId);
+        if (existing) return existing;
+        const next: ProjectDetailPatch = {};
+        patches.set(projectId, next);
+        return next;
+      };
+
+      projects.forEach(project => {
+        const draftNote = noteDrafts[project.id];
+        if (draftNote !== undefined && (project.note || "") !== draftNote) {
+          ensurePatch(project.id).note = draftNote;
+        }
+      });
+
+      if (selectedProject?.id) {
+        const nextName = editingProjectName.trim();
+        if (!nextName) {
+          return { success: false, savedScopes: [], error: "项目名称不能为空" };
+        }
+        const normalizedNextName = normalizeProjectName(nextName);
+        const duplicated = projects.some(project =>
+          project.id !== selectedProject.id && normalizeProjectName(project.name) === normalizedNextName
+        );
+        if (duplicated) {
+          return { success: false, savedScopes: [], error: `项目名称「${nextName}」已存在` };
+        }
+
+        const nextCustomerName = editingCustomerName.trim() || "未知客户";
+        const nextStatus = editingStatus.trim() || statusOptions[0] || DEFAULT_STATUS_COLUMNS[0];
+        const patch = ensurePatch(selectedProject.id);
+        if (nextName !== selectedProject.name) patch.name = nextName;
+        if (nextCustomerName !== selectedProject.customer_name) patch.customerName = nextCustomerName;
+        if (editingProjectType !== selectedProject.project_type) patch.projectType = editingProjectType;
+        if (nextStatus !== selectedProject.status) patch.status = nextStatus;
+      }
+
+      const entries = Array.from(patches.entries())
+        .filter(([, patch]) => Object.keys(patch).length > 0);
+      if (entries.length === 0) {
+        return { success: true, savedScopes: ["project-detail"] };
+      }
+
+      const savedProjects: Project[] = [];
+      for (const [projectId, patch] of entries) {
+        const result = await domainSaveService.saveProjectDetail(projectId, patch);
+        savedProjects.push(result);
+      }
+
+      const savedById = new Map(savedProjects.map(project => [project.id, project]));
+      setProjects(prev => prev.map(project => {
+        const saved = savedById.get(project.id);
+        return saved ? { ...saved, directoryExists: project.directoryExists } : project;
+      }));
+      setNoteDrafts(prev => {
+        const next = { ...prev };
+        savedProjects.forEach(project => {
+          next[project.id] = project.note || "";
+        });
+        return next;
+      });
+      setSelectedProject(current => {
+        if (!current) return current;
+        const saved = savedById.get(current.id);
+        return saved ? { ...saved, directoryExists: current.directoryExists } : current;
+      });
+      const currentProject = useProjectStore.getState().currentProject;
+      if (currentProject) {
+        const saved = savedById.get(currentProject.id);
+        if (saved) {
+          useProjectStore.getState().setCurrentProject({
+            ...saved,
+            directoryExists: currentProject.directoryExists,
+          });
+        }
+      }
+      if (savedProjects.length > 0) {
+        setStatusOptions(prev => {
+          const next = mergeStatusOptions(prev, savedProjects);
+          persistStatusOptions(next);
+          return next;
+        });
+      }
+
+      return { success: true, savedScopes: ["project-detail"] };
+    });
+
+    return () => unregisterSaveHandler("project-detail");
+  }, [
+    editingCustomerName,
+    editingProjectName,
+    editingProjectType,
+    editingStatus,
+    noteDrafts,
+    projects,
+    registerSaveHandler,
+    selectedProject,
+    statusOptions,
+    unregisterSaveHandler,
+  ]);
 
   const openCreateProjectModal = () => {
     setShowCreateModal(true);
@@ -744,6 +805,10 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
 
   const handleProjectNoteChange = (projectId: string, value: string) => {
     setNoteDrafts(prev => ({ ...prev, [projectId]: value }));
+    const project = projects.find(candidate => candidate.id === projectId);
+    if (project) {
+      useProjectStore.getState().setCurrentProject(project);
+    }
     markDirty("project-detail");
   };
 

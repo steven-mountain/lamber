@@ -65,7 +65,7 @@ export const IctCashflowTable: React.FC<IctCashflowTableProps> = ({ state, calcu
         <div>科目计划现金流出(不含税)：{formatCashflowSeries(subjectFundingAnnualCashflow?.annualCostExcl || [])}</div>
         {subjectFundingCalculationBlocked && (
           <div className="text-warning-foreground font-semibold">
-            当前覆盖校验未通过，表格保留上一次有效计算结果。
+            部分科目尚未维护收付款计划，已按「第一年一次性」临时计入现金流；已维护的多年/按比例计划照常生效。请补全计划以获得精确分布。
           </div>
         )}
       </div>

@@ -179,12 +179,18 @@ pub fn calculate_ict_benefit(input: IctInput) -> Result<IctResult, String> {
             pv_factor *= Decimal::ONE + discount_rate;
         }
 
-        let pv_in = (cash_in / pv_factor).round_dp(2);
-        let pv_out = (cash_out / pv_factor).round_dp(2);
+        // Discount at full precision and only round for display / final output.
+        // The official benefit Excel discounts the net cashflow without rounding
+        // intermediate per-year present values, so rounding pv_in/pv_out per year
+        // here would diverge from that table by up to a cent. Keep raw precision in
+        // the accumulators to stay byte-for-byte aligned with the Excel NPV.
+        let pv_in = cash_in / pv_factor;
+        let pv_out = cash_out / pv_factor;
         let pv_net = pv_in - pv_out;
 
-        let it_pv_in = (it_cash_in / pv_factor).round_dp(2);
-        let it_pv_out = (it_cash_out / pv_factor).round_dp(2);
+        let it_pv_in = it_cash_in / pv_factor;
+        let it_pv_out = it_cash_out / pv_factor;
+        let it_pv_net = it_pv_in - it_pv_out;
 
         total_pv_in += pv_in;
         total_pv_out += pv_out;
@@ -207,27 +213,29 @@ pub fn calculate_ict_benefit(input: IctInput) -> Result<IctResult, String> {
             cash_out: cash_out.to_string(),
             net_cash: net_cash.to_string(),
             cum_net_cash: cum_net_cash.to_string(),
-            pv: pv_net.to_string(),
-            cum_pv: cum_pv.to_string(),
+            pv: pv_net.round_dp(2).to_string(),
+            cum_pv: cum_pv.round_dp(2).to_string(),
             it_cash_in: it_cash_in.to_string(),
             it_cash_out: it_cash_out.to_string(),
             net_it_cash: (it_cash_in - it_cash_out).to_string(),
-            it_pv: (it_pv_in - it_pv_out).to_string(),
+            it_pv: it_pv_net.round_dp(2).to_string(),
         });
     }
 
-    let npv = total_pv_in - total_pv_out;
+    let npv_raw = total_pv_in - total_pv_out;
+    let npv = npv_raw.round_dp(2);
     let npv_rate = if total_pv_out.is_zero() {
         Decimal::ZERO
     } else {
-        (npv / total_pv_out).round_dp(4)
+        (npv_raw / total_pv_out).round_dp(4)
     };
 
-    let it_npv = total_it_pv_in - total_it_pv_out;
+    let it_npv_raw = total_it_pv_in - total_it_pv_out;
+    let it_npv = it_npv_raw.round_dp(2);
     let it_npv_rate = if total_it_pv_out.is_zero() {
         Decimal::ZERO
     } else {
-        (it_npv / total_it_pv_out).round_dp(4)
+        (it_npv_raw / total_it_pv_out).round_dp(4)
     };
 
     let dynamic_payback_str = if payback_found {
@@ -479,6 +487,12 @@ mod tests {
             cost_cashflow_excl: None,
             it_rev_cashflow_excl: None,
             it_cost_cashflow_excl: None,
+            selection_fee_quote: None,
+            selection_fee_markup: None,
+            selection_fee_actual_cost: None,
+            selection_fee_amount: None,
+            selection_fee_limit: None,
+            selection_fee_anchor: None,
             rev_it_integration: item(revenue),
             rev_it_maintenance: zero.clone(),
             rev_it_device_sales: zero.clone(),
@@ -508,6 +522,55 @@ mod tests {
             cost_mix_channel: zero.clone(),
             cost_mix_other: zero,
         }
+    }
+
+    fn cashflow_excl(values: &[(usize, &str)]) -> Vec<String> {
+        let mut result = vec!["0".to_string(); 10];
+        for (year_index, value) in values {
+            result[*year_index] = value.to_string();
+        }
+        result
+    }
+
+    #[test]
+    fn npv_discounts_net_cashflow_without_intermediate_rounding() {
+        // Regression for the one-cent gap against the official benefit Excel.
+        // The Excel discounts each year's NET cashflow at full precision
+        // (NPV(D33, J34:J43)); rounding the discounted inflow and outflow to two
+        // decimals separately before summing — as the engine used to do — inflated
+        // the result by a cent on this real case (IT device + integration revenue
+        // and cost, 95% in year 1 / 5% in year 6, mixed 13% and 6% tax rates).
+        //
+        // The per-year tax-exclusive cashflow below is what the subject funding
+        // plan produces (per-subject split, each converted and rounded to cents):
+        //   year 1: rev 994690.73, cost 937626.43
+        //   year 6: rev  52352.14, cost  49348.76
+        let mut input = input_with("0", "0", dist(&[1.0]), dist(&[1.0]));
+        input.rev_cashflow_excl = Some(cashflow_excl(&[(0, "994690.73"), (5, "52352.14")]));
+        input.cost_cashflow_excl = Some(cashflow_excl(&[(0, "937626.43"), (5, "49348.76")]));
+
+        let result = calculate_ict_benefit(input).unwrap();
+
+        // Matches the Excel benefit table to the cent (would be 56267.58 if the
+        // engine rounded the discounted inflow/outflow per year before summing).
+        assert_eq!(decimal(&result.npv), decimal("56267.57"));
+
+        // Invariant: engine NPV equals the full-precision discount of the net
+        // cashflow taken straight from the returned rows.
+        let discount_rate = Decimal::from_str("0.055").unwrap();
+        let mut expected_npv = Decimal::ZERO;
+        for row in &result.cashflow {
+            let net = decimal(&row.cash_in) - decimal(&row.cash_out);
+            if net.is_zero() {
+                continue;
+            }
+            let mut factor = Decimal::ONE;
+            for _ in 0..row.year {
+                factor *= Decimal::ONE + discount_rate;
+            }
+            expected_npv += net / factor;
+        }
+        assert_eq!(decimal(&result.npv), expected_npv.round_dp(2));
     }
 
     #[test]
@@ -706,6 +769,12 @@ mod tests {
             ]),
             it_rev_cashflow_excl: None,
             it_cost_cashflow_excl: None,
+            selection_fee_quote: None,
+            selection_fee_markup: None,
+            selection_fee_actual_cost: None,
+            selection_fee_amount: None,
+            selection_fee_limit: None,
+            selection_fee_anchor: None,
             rev_it_integration: item_with_tax("17850", "6"),
             rev_it_maintenance: zero.clone(),
             rev_it_device_sales: zero.clone(),

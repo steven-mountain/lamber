@@ -44,23 +44,22 @@ export function buildIctFundingCashflowFields(
   plans: SubjectFundingPlans,
 ) {
   const coverage = validateSubjectFundingPlanCoverage(subjects, plans);
-  const annualCashflow = buildAnnualCashflowFromSubjectFundingPlans(subjects, plans);
+  // Always derive the yearly cashflow from whatever plans ARE maintained.
+  // Subjects without a maintained plan fall back to a first-year (upfront)
+  // payment so that one un-maintained subject no longer forces the entire
+  // cashflow — including the IT breakdown — back to the legacy "all in year 1"
+  // model. Maintained multi-year / proportional plans are honored as-is.
+  const annualCashflow = buildAnnualCashflowFromSubjectFundingPlans(subjects, plans, {
+    fallbackUnmaintainedToUpfront: true,
+  });
   return {
     coverage,
     annualCashflow,
     fields: {
-      rev_cashflow_excl: coverage.valid
-        ? annualCashflow.annualRevenueExcl.map(moneyString)
-        : null,
-      cost_cashflow_excl: coverage.valid
-        ? annualCashflow.annualCostExcl.map(moneyString)
-        : null,
-      it_rev_cashflow_excl: coverage.valid
-        ? annualCashflow.annualItRevenueExcl.map(moneyString)
-        : null,
-      it_cost_cashflow_excl: coverage.valid
-        ? annualCashflow.annualItCostExcl.map(moneyString)
-        : null,
+      rev_cashflow_excl: annualCashflow.annualRevenueExcl.map(moneyString),
+      cost_cashflow_excl: annualCashflow.annualCostExcl.map(moneyString),
+      it_rev_cashflow_excl: annualCashflow.annualItRevenueExcl.map(moneyString),
+      it_cost_cashflow_excl: annualCashflow.annualItCostExcl.map(moneyString),
     },
   };
 }

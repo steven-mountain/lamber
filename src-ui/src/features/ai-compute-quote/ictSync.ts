@@ -1,5 +1,6 @@
 import { normalizeAnnualInclValues, normalizeSubjectFundingPlans, createSubjectFundingPlanId } from "../../lib/ictSubjectFundingPlan";
 import { ICT_SUBJECT_DEFINITIONS } from "../../lib/ictSubjectCatalog";
+import type { IctResult } from "../../utils/projectService";
 import type { AiComputeIctExportPreview } from "./ictExport";
 import type {
   AiComputeQuoteBlueprint,
@@ -44,6 +45,73 @@ export function buildIntelligentComputeSyncLock(
     expectedSyncRevision: projectState.syncRevision,
     sourceVersions: Object.fromEntries(amountSources.map(source => [source.id, source.sourceVersion])),
   };
+}
+
+const ICT_RESULT_METRIC_KEYS = [
+  "npv",
+  "npv_rate",
+  "margin_rate",
+  "dynamic_payback",
+  "irr",
+  "it_npv",
+  "it_npv_rate",
+  "it_margin_rate",
+] as const;
+
+function coerceIctMetric(value: unknown) {
+  if (typeof value === "string" && value.trim()) return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+function coerceCashflowRows(value: unknown): IctResult["cashflow"] {
+  if (!Array.isArray(value)) return [];
+  return value.map(row => {
+    const record = row && typeof row === "object" ? row as UnknownRecord : {};
+    return {
+      year: Number(record.year) || 0,
+      cash_in: coerceIctMetric(record.cash_in) || "0",
+      cash_out: coerceIctMetric(record.cash_out) || "0",
+      net_cash: coerceIctMetric(record.net_cash) || "0",
+      cum_net_cash: coerceIctMetric(record.cum_net_cash) || "0",
+      pv: coerceIctMetric(record.pv) || "0",
+      cum_pv: coerceIctMetric(record.cum_pv) || "0",
+    };
+  });
+}
+
+export function restoreIctResultFromProjectState(
+  projectState: Pick<IntelligentComputeProjectState, "syncRevision" | "lastResult"> | null | undefined,
+): IctResult | null {
+  if (!projectState || projectState.syncRevision <= 0) return null;
+  const raw = projectState.lastResult;
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as UnknownRecord;
+  const metrics = Object.fromEntries(
+    ICT_RESULT_METRIC_KEYS.map(key => [key, coerceIctMetric(record[key])]),
+  ) as Record<typeof ICT_RESULT_METRIC_KEYS[number], string | null>;
+  if (ICT_RESULT_METRIC_KEYS.some(key => metrics[key] === null)) return null;
+  return {
+    npv: metrics.npv!,
+    npv_rate: metrics.npv_rate!,
+    margin_rate: metrics.margin_rate!,
+    dynamic_payback: metrics.dynamic_payback!,
+    irr: metrics.irr!,
+    it_npv: metrics.it_npv!,
+    it_npv_rate: metrics.it_npv_rate!,
+    it_margin_rate: metrics.it_margin_rate!,
+    cashflow: coerceCashflowRows(record.cashflow),
+  };
+}
+
+export function projectStateSyncIncludesAmountSource(
+  projectState: Pick<IntelligentComputeProjectState, "controlledSubjects"> | null | undefined,
+  amountSourceId: string | null | undefined,
+) {
+  if (!projectState || !amountSourceId) return false;
+  return Object.values(projectState.controlledSubjects || {}).some(snapshot =>
+    snapshot.sourceLineItemIds.some(lineItemId => lineItemId.startsWith(`${amountSourceId}:`))
+  );
 }
 
 export function applySuccessfulAiComputeSync(

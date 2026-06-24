@@ -72,6 +72,9 @@ type ModelEStructureSyncResult = {
 type SelectionFeeAnchor = "quote" | "limit";
 type SelectionFeeChangeType = SelectionFeeAnchor | "markup";
 
+const normalizeSelectionFeeText = (value: unknown) =>
+  value === undefined || value === null ? "" : String(value).trim();
+
 const getModelEAmountBucketForSubject = (subject: IctSubjectDefinition): ModelEAmountBucket | null => {
   if (subject.groupId === "revIt") return { side: "revenue", scope: "it", label: "收入 IT 板块" };
   if (subject.groupId === "revCt") return { side: "revenue", scope: "ct", label: "收入 CT 板块" };
@@ -127,6 +130,39 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   const [selFee, setSelFee] = useState<string>("");
   const [selLimit, setSelLimit] = useState<string>("");
   const [selectionFeeAnchor, setSelectionFeeAnchorState] = useState<SelectionFeeAnchor>("quote");
+
+  const buildSelectionFeePayload = () => {
+    const quote = normalizeSelectionFeeText(selQuote);
+    const markup = normalizeSelectionFeeText(selMarkup);
+    const actualCost = normalizeSelectionFeeText(selActualCost);
+    const fee = normalizeSelectionFeeText(selFee);
+    const limit = normalizeSelectionFeeText(selLimit);
+    const hasSelectionFeeData = [quote, actualCost, fee, limit].some(value => value.length > 0);
+
+    return hasSelectionFeeData
+      ? {
+          selection_fee_quote: quote,
+          selection_fee_markup: markup,
+          selection_fee_actual_cost: actualCost,
+          selection_fee_amount: fee,
+          selection_fee_limit: limit,
+          selection_fee_anchor: selectionFeeAnchor,
+        }
+      : {};
+  };
+
+  const restoreSelectionFeeState = useCallback((payload?: Record<string, unknown> | null) => {
+    selectionFeeRequestSeqRef.current += 1;
+    const hasMarkupField = Boolean(
+      payload && Object.prototype.hasOwnProperty.call(payload, "selection_fee_markup")
+    );
+    setSelQuote(normalizeSelectionFeeText(payload?.selection_fee_quote));
+    setSelMarkup(hasMarkupField ? normalizeSelectionFeeText(payload?.selection_fee_markup) : "50");
+    setSelActualCost(normalizeSelectionFeeText(payload?.selection_fee_actual_cost));
+    setSelFee(normalizeSelectionFeeText(payload?.selection_fee_amount));
+    setSelLimit(normalizeSelectionFeeText(payload?.selection_fee_limit));
+    setSelectionFeeAnchorState(payload?.selection_fee_anchor === "limit" ? "limit" : "quote");
+  }, []);
 
   const setSelectionFeeAnchor = (anchor: SelectionFeeAnchor) => {
     selectionFeeRequestSeqRef.current += 1;
@@ -286,17 +322,19 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       cost_mix_marketing: serializeTaxItemForPayload(costMixForPayload.marketing),
       cost_mix_channel: serializeTaxItemForPayload(costMixForPayload.channel),
       cost_mix_other: serializeTaxItemForPayload(costMixForPayload.other),
+      ...buildSelectionFeePayload(),
     };
   };
 
   const getInputDataPayload = () => buildInputDataPayload();
 
   const performCalculation = useCallback(async () => {
-    if (!subjectFundingCoverage.valid) {
-      console.warn("Subject funding plan coverage is invalid. Keeping previous calculation result.");
-      return;
-    }
-
+    // Note: we no longer block the whole calculation when coverage is invalid.
+    // buildIctFundingCashflowFields now falls back to a first-year payment for
+    // un-maintained subjects, so maintained multi-year / proportional plans
+    // (including the IT breakdown) always flow through. Coverage warnings are
+    // still surfaced in the UI via subjectFundingCoverage so the user can fix
+    // any mismatches, but they don't silently revert cashflow to "all year 1".
     try {
       const res: any = await invoke('calculate_ict_benefit', { input: getInputDataPayload() });
       if (res) {
@@ -330,7 +368,17 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     metrics: includeCalculated ? (overrides?.metrics ?? metrics) : null,
     cashflow: includeCalculated ? (overrides?.cashflow ?? cashflowTable) : [],
     ...(overrides?.extra ?? {}),
-  }), [state, metrics, cashflowTable]);
+  }), [
+    state,
+    metrics,
+    cashflowTable,
+    selQuote,
+    selMarkup,
+    selActualCost,
+    selFee,
+    selLimit,
+    selectionFeeAnchor,
+  ]);
 
   useEffect(() => {
     updateData(AI_CONTEXT_KEY.ICT_CORE, buildAiContextPayload(false));
@@ -340,7 +388,9 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     state.projectBackground, state.projName, state.customerName, state.propertyRights,
     state.discountRate, state.projectYears, state.cashflowModel,
     state.distRev, state.distCost, state.segmentValueMode, state.cashflowSegments,
-    state.ignoredTailValue, state.balanceAllocation, state.cashflowCalculationSource, state.subjectFundingPlans, updateData, buildAiContextPayload
+    state.ignoredTailValue, state.balanceAllocation, state.cashflowCalculationSource, state.subjectFundingPlans,
+    selQuote, selMarkup, selActualCost, selFee, selLimit, selectionFeeAnchor,
+    updateData, buildAiContextPayload
   ]);
 
   useEffect(() => {
@@ -362,7 +412,9 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     state.projectBackground, metrics, cashflowTable, state.projName, state.customerName,
     state.propertyRights, state.discountRate, state.projectYears, state.cashflowModel,
     state.distRev, state.distCost, state.segmentValueMode, state.cashflowSegments,
-    state.ignoredTailValue, state.balanceAllocation, state.cashflowCalculationSource, state.subjectFundingPlans, updateData, buildAiContextPayload
+    state.ignoredTailValue, state.balanceAllocation, state.cashflowCalculationSource, state.subjectFundingPlans,
+    selQuote, selMarkup, selActualCost, selFee, selLimit, selectionFeeAnchor,
+    updateData, buildAiContextPayload
   ]);
 
   const handleSelFeeChange = async (type: SelectionFeeChangeType, val: string) => {
@@ -1178,6 +1230,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     performCalculation,
     handleSelFeeChange,
     applySelectionLimit,
+    restoreSelectionFeeState,
     performReverseCalculation,
     buildInputDataPayload,
   };

@@ -11,6 +11,7 @@ import { useIctState } from "../hooks/useIctState";
 import { useIctCalculations } from "../hooks/useIctCalculations";
 import { IctBasicInfo } from "../components/IctBasicInfo";
 import { IctCashflowTable } from "../components/IctCashflowTable";
+import { IctProposalCashflowSummary } from "../components/IctProposalCashflowSummary";
 import { IctMetricsDashboard } from "../components/IctMetricsDashboard";
 import {
   projectService,
@@ -23,6 +24,7 @@ import { useProjectStore } from "../store/useProjectStore";
 import { useSaveStore } from "../store/useSaveStore";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { domainSaveService } from "../services/domainSaveService";
+import type { LifecycleStatePayload, CashflowStatePayload } from "../services/domainSaveService";
 import {
   ICT_SUBJECT_DEFINITIONS,
   ICT_SUBJECT_GROUPS,
@@ -157,6 +159,7 @@ export default function IctLifecycle() {
   const workspaceId = useWorkspaceStore(state => state.workspaceId);
   const state = useIctState();
   const calculations = useIctCalculations(state);
+  const restoreSelectionFeeState = calculations.restoreSelectionFeeState;
   const markDirty = useSaveStore(saveState => saveState.markDirty);
   const clearDirty = useSaveStore(saveState => saveState.clearDirty);
   const registerSaveHandler = useSaveStore(saveState => saveState.registerSaveHandler);
@@ -178,6 +181,7 @@ export default function IctLifecycle() {
   const [saveAsSchemeName, setSaveAsSchemeName] = useState("");
   const [showSelectProjectModal, setShowSelectProjectModal] = useState(false);
   const [fundingPlanFocus, setFundingPlanFocus] = useState<{ planId: string; token: number } | null>(null);
+  const [cashflowSourceExpanded, setCashflowSourceExpanded] = useState(false);
 
   const buildHydrationInput = useCallback((baseInput: any, cashflowState: any) => {
     const merged = { ...(baseInput || {}) };
@@ -395,7 +399,8 @@ export default function IctLifecycle() {
       state.setIgnoredTailValue(null);
       state.setIgnoredDataHash(null);
     }
-  }, [state]);
+    restoreSelectionFeeState(params);
+  }, [state, restoreSelectionFeeState]);
 
   const loadProjectContext = useCallback(async (pId: string | null, sId?: string | null) => {
     const requestId = ++projectLoadRequestRef.current;
@@ -411,6 +416,7 @@ export default function IctLifecycle() {
       setActiveSnapshot(null);
       setPendingNewSchemeName(null);
       state.resetProjectState();
+      restoreSelectionFeeState(null);
       return;
     }
     if (!isWorkspaceReady) {
@@ -423,6 +429,7 @@ export default function IctLifecycle() {
     setActiveSnapshot(null);
     setPendingNewSchemeName(null);
     state.resetProjectState();
+    restoreSelectionFeeState(null);
 
     try {
       const project = await projectService.getProject(targetProjectId);
@@ -558,7 +565,7 @@ export default function IctLifecycle() {
       }
       console.error("Failed to load project context:", err);
     }
-  }, [state, fillCalculatorState, buildHydrationInput, isWorkspaceReady]);
+  }, [state, restoreSelectionFeeState, fillCalculatorState, buildHydrationInput, isWorkspaceReady]);
 
   useEffect(() => {
     loadProjectContext(activeProjectId, activeSchemeId);
@@ -579,6 +586,71 @@ export default function IctLifecycle() {
       ...(extraCount > 0 ? [`另有 ${extraCount} 项问题未展开。`] : []),
     ].join("\n");
   }, [calculations.subjectFundingCoverage]);
+
+  const buildLifecycleStatePayload = (): LifecycleStatePayload => ({
+    profileJson: {
+      projectName: state.projName,
+      customerName: state.customerName,
+      propertyRights: state.propertyRights,
+    },
+    parametersJson: {
+      projectYears: state.projectYears,
+      discountRate: state.discountRate,
+      ignoreTailDifference: state.ignoredTailValue !== null,
+      tailDifferenceValue: state.ignoredTailValue,
+      balanceAllocation: serializeBalanceAllocationState(state.balanceAllocation),
+      cashflowCalculationSource: state.cashflowCalculationSource,
+      subjectFundingPlanMigrationVersion: state.subjectFundingPlanMigrationVersion,
+    },
+    backgroundJson: {
+      projectBackground: state.projectBackground,
+    },
+    inputPayloadJson: calculations.buildInputDataPayload(),
+  });
+
+  const buildCashflowStatePayload = (): CashflowStatePayload => ({
+    cashflowModel: state.cashflowModel,
+    paymentModelJson: {
+      cashflowModel: state.cashflowModel,
+      revDistribution: state.distRev,
+      costDistribution: state.distCost,
+      segmentValueMode: state.segmentValueMode,
+      cashflowCalculationSource: state.cashflowCalculationSource,
+      subjectFundingPlanMigrationVersion: state.subjectFundingPlanMigrationVersion,
+    },
+    yearlyCashflowJson: {
+      cashflowTable: calculations.cashflowTable,
+      directSegmentCashflow: calculations.directSegmentCashflow,
+      subjectFundingAnnualCashflow: calculations.subjectFundingAnnualCashflow,
+    },
+    sectorCashflowJson: {
+      cashflowSegments: state.cashflowSegments,
+    },
+    assumptionsJson: {
+      projectYears: state.projectYears,
+      discountRate: state.discountRate,
+      revIt: state.revIt,
+      revCt: state.revCt,
+      revNonItCt: state.revNonItCt,
+      costIt: state.costIt,
+      costCt: state.costCt,
+      costMix: state.costMix,
+      balanceAllocation: state.balanceAllocation,
+      cashflowCalculationSource: state.cashflowCalculationSource,
+      subjectFundingPlans: state.subjectFundingPlans,
+      subjectFundingPlanMigrationVersion: state.subjectFundingPlanMigrationVersion,
+    },
+    metricsJson: calculations.metrics,
+  });
+
+  // 直接保存（保存到当前项目 / 保存当前测算）会立即重新加载项目，而 loadProjectContext
+  // 优先使用 lifecycle_state / cashflow_state 进行回填。若这里只写入效益快照，
+  // 重新加载时会读取到未更新的 lifecycle/cashflow 状态，导致刚刚的修改（如取消差额承接）被回退。
+  // 因此这两个保存入口必须同时持久化 lifecycle 与 cashflow 状态。
+  const persistLifecycleAndCashflowState = async (projectId: string) => {
+    await domainSaveService.saveLifecycleState(projectId, buildLifecycleStatePayload());
+    await domainSaveService.saveCashflowState(projectId, buildCashflowStatePayload());
+  };
 
   const handleSaveToSelectedProject = async (targetProjectId: string) => {
     if (!isWorkspaceReady) {
@@ -605,9 +677,13 @@ export default function IctLifecycle() {
         false
       );
 
+      await persistLifecycleAndCashflowState(targetProjectId);
+
       setPendingNewSchemeName(null);
       const newSchemeId = updatedProj.default_scheme_id || null;
       clearDirty("benefit-analysis");
+      clearDirty("lifecycle");
+      clearDirty("cashflow");
       navigateTo("ict_lifecycle", targetProjectId, newSchemeId);
       alert("保存测算成功！已关联到项目并生成方案。");
     } catch (error) {
@@ -642,9 +718,13 @@ export default function IctLifecycle() {
         pendingNewSchemeName ? true : false
       );
 
+      await persistLifecycleAndCashflowState(activeProject.id);
+
       setPendingNewSchemeName(null);
       const newSchemeId = updatedProj.default_scheme_id || null;
       clearDirty("benefit-analysis");
+      clearDirty("lifecycle");
+      clearDirty("cashflow");
       await loadProjectContext(activeProject.id, newSchemeId);
       alert("保存测算成功！已更新项目指标并生成历史记录。");
     } catch (error) {
@@ -1013,6 +1093,20 @@ export default function IctLifecycle() {
     state.subjectFundingPlans,
   ]);
 
+  useEffect(() => {
+    if (isHydratingRef.current || !activeProject?.id) return;
+    markDirty("benefit-analysis");
+  }, [
+    activeProject?.id,
+    markDirty,
+    selQuote,
+    selMarkup,
+    selActualCost,
+    selFee,
+    selLimit,
+    selectionFeeAnchor,
+  ]);
+
   const handleTabSwitch = async (tab: string, templateName?: string, forceIgnore = false) => {
     if (templateName && templateName !== selectedTemplate && dirtyScopes.includes("template-forms")) {
       const canProceed = await confirmOrSave();
@@ -1122,35 +1216,49 @@ export default function IctLifecycle() {
   const renderCashflowCalculationSourceControl = () => {
     const counts = subjectFundingCoverage.counts;
 
-    return (
-      <div className="table-card bg-card border border-border rounded-xl p-5 shadow-sm mb-6 flex flex-col gap-4">
-        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-extrabold text-foreground">现金流计算口径</h3>
-            <p className="mt-1 text-xs leading-relaxed text-secondary-foreground">
-              现金流依据：科目收付款计划。各科目的年度收款 / 付款计划会自动汇总为项目现金流并参与效益指标计算。
-            </p>
-          </div>
-          <div className="rounded-lg bg-primary-soft px-3 py-2 text-xs font-extrabold text-primary">
-            科目级资金计划
-          </div>
-        </div>
+    const statusBadge = subjectFundingCalculationBlocked
+      ? { cls: "bg-warning-soft text-warning-foreground", label: `${subjectFundingCoverage.issues.length} 项待处理` }
+      : { cls: "bg-success-soft text-success-foreground", label: "可用于科目级计算" };
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs font-semibold">
-          <div className="rounded-lg bg-muted/50 px-3 py-2">
-            收入计划覆盖：<span className="numeric-value font-extrabold text-foreground">{counts.revenuePlannedCount}/{counts.revenueSubjectCount}</span>
+    return (
+      <div className="table-card bg-card border border-border rounded-xl px-5 py-3 shadow-sm mb-6">
+        {/* 收起态：仅一行状态摘要 + 展开按钮，避免长期占据 1/3 页面 */}
+        <button
+          type="button"
+          onClick={() => setCashflowSourceExpanded(prev => !prev)}
+          className="w-full flex items-center justify-between gap-3 text-left"
+          aria-expanded={cashflowSourceExpanded}
+        >
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <h3 className="text-sm font-extrabold text-foreground shrink-0">现金流计算口径</h3>
+            <span className="rounded-md bg-primary-soft px-2 py-0.5 text-[11px] font-extrabold text-primary shrink-0">科目级资金计划</span>
+            <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${statusBadge.cls}`}>{statusBadge.label}</span>
+            <span className="text-[11px] font-semibold text-secondary-foreground numeric-value shrink-0">
+              收入 {counts.revenuePlannedCount}/{counts.revenueSubjectCount}　投入 {counts.costPlannedCount}/{counts.costSubjectCount}
+            </span>
           </div>
-          <div className="rounded-lg bg-muted/50 px-3 py-2">
-            投入计划覆盖：<span className="numeric-value font-extrabold text-foreground">{counts.costPlannedCount}/{counts.costSubjectCount}</span>
-          </div>
-          <div className={`rounded-lg px-3 py-2 ${subjectFundingCoverage.valid ? "bg-success-soft text-success-foreground" : "bg-warning-soft text-warning-foreground"}`}>
-            覆盖状态：{subjectFundingCoverage.valid ? "可用于科目级计算" : `${subjectFundingCoverage.issues.length} 项待处理`}
-          </div>
-        </div>
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-secondary-foreground shrink-0">
+            {cashflowSourceExpanded ? "收起" : "展开"}
+            <AppIcon name={cashflowSourceExpanded ? "chevronUp" : "chevronDown"} size={14} />
+          </span>
+        </button>
+
+        {!cashflowSourceExpanded && (
+          <p className="mt-1.5 text-[11px] leading-relaxed text-secondary-foreground">
+            现金流依据：科目收付款计划，按各科目税率逐年换算为不含税现金流并参与效益指标计算。
+            {subjectFundingCalculationBlocked && <span className="text-warning-foreground font-semibold">　部分科目未维护计划，已临时按「第一年一次性」计入，展开可补全。</span>}
+          </p>
+        )}
+
+        {cashflowSourceExpanded && (
+        <div className="mt-4 flex flex-col gap-4">
+        <p className="text-xs leading-relaxed text-secondary-foreground">
+          现金流依据：科目收付款计划。各科目的年度收款 / 付款计划会自动汇总为项目现金流并参与效益指标计算。
+        </p>
 
         <div className={`rounded-lg p-3 text-xs font-semibold leading-relaxed ${subjectFundingCalculationBlocked ? "bg-warning-soft text-warning-foreground" : "bg-success-soft text-success-foreground"}`}>
           {subjectFundingCalculationBlocked
-            ? "当前科目级计划覆盖校验未通过，系统保留上一次有效现金流/指标结果，不会回退到旧模型重算。"
+            ? "部分科目尚未维护收付款计划，已按「第一年一次性」临时计入现金流；已维护的多年/按比例计划（含 IT 部分）照常逐年生效。请补全下列计划以获得精确分布。"
             : "当前正式现金流由科目级收付款计划生成，并按各科目税率逐年换算为不含税现金流。"}
         </div>
 
@@ -1236,6 +1344,8 @@ export default function IctLifecycle() {
             一键清空全部收入和支出
           </button>
         </div>
+        </div>
+        )}
       </div>
     );
   };
@@ -1421,6 +1531,136 @@ export default function IctLifecycle() {
     </div>
   );
 
+  const renderReverseCalculationTools = () => (
+    <>
+      <h3 className="font-bold text-foreground mb-4">智能反算</h3>
+      <div className="bg-card border border-border p-4 rounded-xl flex flex-col gap-4 mb-6">
+        <p className="text-xs leading-relaxed text-secondary-foreground">
+          反算结果为含税总额参数值，系统会同步调整科目收付款计划并重新生成年度现金流。
+        </p>
+        <div className="flex flex-col gap-2">
+          <label className="text-xs font-bold text-secondary-foreground">反算目标</label>
+          {selectedReverseSubject ? (
+            <div className="flex flex-col gap-2.5">
+              <SelectedSubjectRoleSummary
+                subject={selectedReverseSubject.subject}
+                item={selectedReverseSubject.item}
+                onLocate={() => {
+                  scrollToSubject(
+                    selectedReverseSubject.ref.side,
+                    selectedReverseSubject.ref.groupId,
+                    selectedReverseSubject.ref.key,
+                    activeTab,
+                    setActiveTab
+                  );
+                }}
+                onClear={() => {
+                  setRevSubjectRefKey("");
+                }}
+              />
+              <div className="flex flex-col gap-1 text-[11px] text-secondary-foreground font-semibold bg-muted/30 p-2 rounded-lg">
+                <div>反算方向：<span className="text-foreground">{selectedReverseSubject.ref.side === 'revenue' ? '收入' : '投入'}</span></div>
+                <div>反算模式：<span className="text-foreground">{reverseCalculationContext.mode === 'locked_total_structure' ? '结构反算' : '普通反算'}</span></div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs text-secondary-foreground font-semibold bg-muted/20 p-3 rounded-lg border border-dashed border-border/60">
+              当前未指定反算目标。请在下方{activeTab === 'revenue' ? '收入' : '投入'}科目列表中点击“设置角色”进行设置。
+            </div>
+          )}
+          {selectedReverseSubject && (
+            <div className="flex flex-col gap-2 mt-1">
+              {reverseContextMessage && (
+                <span className="text-[11px] leading-relaxed text-warning-foreground bg-warning-soft rounded-md px-2 py-1 font-semibold">
+                  {reverseContextMessage}
+                </span>
+              )}
+              {reverseCalculationContext.mode === "locked_total_structure" && (
+                <span className="text-[11px] leading-relaxed text-primary bg-primary-soft rounded-md px-2 py-1 font-semibold">
+                  当前为结构反算模式：{reverseCalculationContext.structure.sideLabel}含税总金额保持 {formatReverseCurrency(reverseCalculationContext.structure.totalInclAmount)} 不变。调整“{reverseCalculationContext.structure.targetDisplayName}”时，“{reverseCalculationContext.structure.balancingDisplayName}”将自动反向补差。
+                  {state.cashflowModel === "model_e" && state.segmentValueMode === "amount" ? " 分板块现金流金额计划将同步更新。" : ""}
+                </span>
+              )}
+              {reverseCalculationContext.mode === "normal" && (
+                <span className="text-[11px] leading-relaxed text-secondary-foreground bg-muted/40 rounded-md px-2 py-1 font-semibold">
+                  调整该科目金额后，{selectedReverseSubject.ref.side === 'revenue' ? '收入' : '投入'}总额将随反算结果变化。
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2 bg-background p-1 border border-border rounded-lg">
+          <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revTargetType === 'margin' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => setRevTargetType('margin')}>目标毛利润率</button>
+          <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revTargetType === 'npv_rate' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => setRevTargetType('npv_rate')}>目标净现值率</button>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-secondary-foreground">目标值 (如0.15代表15%)</label>
+          <input type="number" step="0.0001" className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={revTargetValue} onChange={e => setRevTargetValue(e.target.value)} />
+        </div>
+        <button
+          className="flex w-full items-center justify-center gap-2 bg-primary text-primary-foreground font-bold py-2 rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={!selectedReverseSubject}
+          onClick={executeReverseCalculation}
+        >
+          <AppIcon name="reverse" size={16} /> 智能反算
+        </button>
+      </div>
+      <h3 className="font-bold text-foreground mb-4">采购甄选费测算</h3>
+      <div className="bg-card border border-border p-4 rounded-xl flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+           <div className="flex items-center gap-1.5">
+             <label className="text-xs font-semibold text-secondary-foreground">供应商报价 (元)</label>
+             <button
+               type="button"
+               aria-label="固定供应商报价"
+               aria-pressed={selectionFeeAnchor === 'quote'}
+               title="固定供应商报价"
+               onClick={() => setSelectionFeeAnchor('quote')}
+               className={`flex h-5 w-5 items-center justify-center rounded-full transition-colors ${selectionFeeAnchor === 'quote' ? 'bg-primary-soft' : 'bg-muted hover:bg-muted/80'}`}
+             >
+               <span className={`h-2.5 w-2.5 rounded-full ${selectionFeeAnchor === 'quote' ? 'bg-primary' : 'bg-secondary-foreground/35'}`} />
+             </button>
+           </div>
+           <input type="number" aria-label="供应商报价" value={selQuote} onChange={e => handleSelFeeChange('quote', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none" />
+        </div>
+        <div className="flex flex-col gap-1">
+           <label className="text-xs font-semibold text-secondary-foreground">代理服务费浮动 (+)</label>
+           <input type="number" aria-label="代理服务费浮动" value={selMarkup} onChange={e => handleSelFeeChange('markup', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none" />
+        </div>
+        <div className="flex flex-col gap-1">
+           <label className="text-xs font-semibold text-secondary-foreground">测算甄选费 / 实际测算成本</label>
+           <div className="flex gap-2">
+             <input type="text" aria-label="测算甄选费" disabled value={selFee} className="bg-muted/50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
+             <input type="text" aria-label="实际测算成本" disabled value={selActualCost} className="bg-muted/50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
+           </div>
+        </div>
+        <div className="flex flex-col gap-1 mt-2 border-t border-border pt-3">
+           <div className="flex items-center gap-1.5">
+             <label className="text-xs font-semibold text-primary">甄选最高限价 (反向测算入口)</label>
+             <button
+               type="button"
+               aria-label="固定甄选最高限价"
+               aria-pressed={selectionFeeAnchor === 'limit'}
+               title="固定甄选最高限价"
+               onClick={() => setSelectionFeeAnchor('limit')}
+               className={`flex h-5 w-5 items-center justify-center rounded-full transition-colors ${selectionFeeAnchor === 'limit' ? 'bg-primary-soft' : 'bg-muted hover:bg-muted/80'}`}
+             >
+               <span className={`h-2.5 w-2.5 rounded-full ${selectionFeeAnchor === 'limit' ? 'bg-primary' : 'bg-secondary-foreground/35'}`} />
+             </button>
+           </div>
+           <input type="number" aria-label="甄选最高限价" value={selLimit} onChange={e => handleSelFeeChange('limit', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none text-foreground font-bold" />
+        </div>
+        <button
+          onClick={applySelectionLimit}
+          disabled={!selLimit}
+          className="mt-2 bg-primary hover:bg-primary/95 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed font-bold py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all active:scale-[0.98] w-full text-xs flex items-center justify-center gap-1.5"
+        >
+          <AppIcon name="download" size={14} /> 填入集成服务
+        </button>
+      </div>
+    </>
+  );
+
   const pageDirty = dirtyScopes.some(scope => ["lifecycle", "cashflow", "benefit-analysis", "template-forms"].includes(scope));
   const saveStatusLabel = isSaving
     ? "保存中..."
@@ -1438,6 +1678,7 @@ export default function IctLifecycle() {
       : null;
   const isTabbedDocumentTemplate = activeTab === "generate"
     && (selectedTemplate.includes("会审") || selectedTemplate.includes("立项签批表") || selectedTemplate.includes("需求导入表"));
+  const showReverseCalculationTools = activeTab === 'revenue' || activeTab === 'cost';
 
   return (
     <div className="flex flex-col flex-1 animate-in fade-in duration-300 h-full overflow-hidden">
@@ -1497,8 +1738,8 @@ export default function IctLifecycle() {
         }
       />
 
-      <div className="flex flex-1 overflow-hidden">
-        <div className="w-[260px] bg-muted p-6 overflow-y-auto flex flex-col gap-4 border-r border-border shrink-0">
+      <div className={`grid flex-1 min-h-0 min-w-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden ${showReverseCalculationTools ? "xl:grid-cols-[260px_minmax(0,1fr)_300px]" : ""}`}>
+        <div className="bg-muted p-6 overflow-y-auto flex flex-col gap-4 border-r border-border">
           <h3 className="text-xs uppercase tracking-wide font-extrabold text-secondary-foreground opacity-70 mb-1">测算流程</h3>
           <div className="flex flex-col gap-1">
             <button className={`px-4 py-3 rounded-lg font-semibold text-sm flex items-center gap-2.5 transition-colors ${activeTab === 'basic' ? 'bg-primary-soft text-primary' : 'text-secondary-foreground hover:bg-secondary hover:text-primary'}`} onClick={() => handleTabSwitch("basic")}><AppIcon name="project" size={18} /> 项目概况与参数</button>
@@ -1529,16 +1770,16 @@ export default function IctLifecycle() {
           </div>
         </div>
 
-        <div className="flex-1 p-6 overflow-y-auto bg-background flex flex-col">
+        <div className="min-w-0 p-4 sm:p-6 overflow-y-auto bg-background flex flex-col">
           {activeProject ? (
-            <div className="bg-card border border-border rounded-xl p-4 mb-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-sm animate-in slide-in-from-top duration-300">
-              <div className="flex items-center gap-3">
+            <div className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center gap-4 shadow-sm animate-in slide-in-from-top duration-300">
+              <div className="flex min-w-0 items-start sm:items-center gap-3">
                 <div className="bg-primary/10 p-2.5 rounded-lg text-primary shrink-0">
                   <AppIcon name="project" size={20} />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-extrabold text-foreground text-sm">{activeProject.name}</span>
+                    <span className="font-extrabold text-foreground text-sm break-words">{activeProject.name}</span>
                     <span className="text-xs text-secondary-foreground">({activeProject.customer_name})</span>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
                       activeProject.benefit_status === 'normal'
@@ -1559,7 +1800,7 @@ export default function IctLifecycle() {
                   </div>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2.5 self-end lg:self-auto shrink-0">
+              <div className="grid w-full min-w-0 grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto] lg:w-auto lg:min-w-[420px] lg:max-w-[560px]">
                 <select
                   onChange={async (e) => {
                     const pid = e.target.value;
@@ -1572,7 +1813,7 @@ export default function IctLifecycle() {
                     }
                   }}
                   value={activeProject.id}
-                  className="bg-card border border-input px-3 py-1.5 rounded-lg text-xs outline-none focus:border-ring font-semibold text-foreground cursor-pointer min-w-[160px] mr-1"
+                  className="w-full min-w-0 bg-card border border-input px-3 py-1.5 rounded-lg text-xs outline-none focus:border-ring font-semibold text-foreground cursor-pointer"
                 >
                   <option value="free">断开关联 (进入自由测算)</option>
                   {projects.map(p => (
@@ -1583,7 +1824,7 @@ export default function IctLifecycle() {
                 <button
                   id="save_benefit_btn"
                   onClick={handleSaveToCurrent}
-                  className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-lg text-xs hover:bg-primary/90 transition-all shadow-sm flex items-center gap-1.5 active:scale-[0.98]"
+                  className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-lg text-xs hover:bg-primary/90 transition-all shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] whitespace-nowrap"
                 >
                   <AppIcon name="save" size={14} /> 保存到当前项目
                 </button>
@@ -1593,27 +1834,27 @@ export default function IctLifecycle() {
                     setSaveAsSchemeName(activeScheme?.name ? `${activeScheme.name}_复本` : "新方案");
                     setShowSaveAsModal(true);
                   }}
-                  className="bg-card border border-border text-foreground hover:bg-secondary font-bold px-4 py-2 rounded-lg text-xs transition-all shadow-sm flex items-center gap-1.5 active:scale-[0.98]"
+                  className="bg-card border border-border text-foreground hover:bg-secondary font-bold px-4 py-2 rounded-lg text-xs transition-all shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] whitespace-nowrap"
                 >
                   <AppIcon name="copy" size={14} /> 另存为新方案
                 </button>
               </div>
             </div>
           ) : (
-            <div className="bg-card border border-border rounded-xl p-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
-              <div className="flex items-center gap-3">
+            <div className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center gap-4 shadow-sm">
+              <div className="flex min-w-0 items-start sm:items-center gap-3">
                 <div className="bg-secondary p-2.5 rounded-lg text-primary shrink-0">
                   <AppIcon name="project" size={20} />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="font-extrabold text-foreground text-sm flex items-center gap-2">
-                    <span>自由测算模式</span>
+                    <span className="whitespace-nowrap">自由测算模式</span>
                     <span className="text-[10px] bg-secondary text-secondary-foreground font-bold px-2 py-0.5 rounded-full">未绑定项目</span>
                   </div>
-                  <div className="text-xs text-secondary-foreground mt-0.5">你可以输入参数进行效益测算。如需保存，请在右侧选择关联一个项目：</div>
+                  <div className="text-xs leading-relaxed text-secondary-foreground mt-0.5">你可以输入参数进行效益测算。如需保存，请在右侧选择关联一个项目：</div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+              <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] lg:w-auto lg:min-w-[360px] lg:max-w-[520px]">
                 <select
                   onChange={async (e) => {
                     const pid = e.target.value;
@@ -1624,7 +1865,7 @@ export default function IctLifecycle() {
                     }
                   }}
                   value=""
-                  className="bg-card border border-input px-3 py-1.5 rounded-lg text-xs outline-none focus:border-ring font-semibold text-foreground cursor-pointer min-w-[200px]"
+                  className="w-full min-w-0 bg-card border border-input px-3 py-1.5 rounded-lg text-xs outline-none focus:border-ring font-semibold text-foreground cursor-pointer"
                 >
                   <option value="" disabled>-- 关联已有项目 --</option>
                   {projects.map(p => (
@@ -1634,7 +1875,7 @@ export default function IctLifecycle() {
                 <button
                   id="save_free_benefit_btn"
                   onClick={() => setShowSelectProjectModal(true)}
-                  className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-lg text-xs hover:bg-primary/90 transition-all shadow-sm flex items-center gap-1.5 active:scale-[0.98]"
+                  className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-lg text-xs hover:bg-primary/90 transition-all shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] whitespace-nowrap"
                 >
                   <AppIcon name="save" size={14} /> 保存当前测算
                 </button>
@@ -1650,6 +1891,11 @@ export default function IctLifecycle() {
             <div>
               {renderCashflowCalculationSourceControl()}
               {renderBalanceControl("revenue")}
+              {showReverseCalculationTools && (
+                <div className="mb-6 flex flex-col xl:hidden">
+                  {renderReverseCalculationTools()}
+                </div>
+              )}
               <div className="mb-4 text-xs text-primary bg-primary-soft p-3 rounded-lg border border-primary/20">
                 <span className="inline-flex items-start gap-2"><AppIcon name="info" size={16} className="mt-0.5" /> <span>提示：在「CT收入」中填写的产品或专线含税收入，将会自动【1:1平过】填入对应的「CT投入」中。</span></span>
               </div>
@@ -1663,6 +1909,11 @@ export default function IctLifecycle() {
             <div>
               {renderCashflowCalculationSourceControl()}
               {renderBalanceControl("investment")}
+              {showReverseCalculationTools && (
+                <div className="mb-6 flex flex-col xl:hidden">
+                  {renderReverseCalculationTools()}
+                </div>
+              )}
               {renderTaxGroup("IT/移动云投入", 'costIt', costIt, ICT_SUBJECT_GROUPS.costIt)}
               {renderTaxGroup("CT投入", 'costCt', costCt, ICT_SUBJECT_GROUPS.costCt)}
               {renderTaxGroup("非IT/CT投入 & 综合类成本", 'costMix', costMix, ICT_SUBJECT_GROUPS.costMix)}
@@ -1670,9 +1921,10 @@ export default function IctLifecycle() {
           )}
 
           {activeTab === "cashflow" && (
-            <div>
+            <div className="flex flex-col gap-6">
               {renderCashflowCalculationSourceControl()}
               <IctCashflowTable state={state} calculations={calculations} />
+              <IctProposalCashflowSummary state={state} calculations={calculations} />
             </div>
           )}
 
@@ -1680,7 +1932,19 @@ export default function IctLifecycle() {
             {!isTabbedDocumentTemplate && <h3 className="text-lg font-bold text-foreground">即将生成：{selectedTemplate}</h3>}
             <TemplateForms
               selectedTemplate={selectedTemplate}
-              projectData={{ basic: {proj_name: projName, customer_name: customerName, project_years: projectYears}, cost: { it: costIt, ct: costCt, mix: costMix }, revenue: { it: revIt, ct: revCt, non_it_ct: revNonItCt } }}
+              projectData={{
+                basic: {proj_name: projName, customer_name: customerName, project_years: projectYears},
+                cost: { it: costIt, ct: costCt, mix: costMix },
+                revenue: { it: revIt, ct: revCt, non_it_ct: revNonItCt },
+                selectionFee: {
+                  quote: selQuote,
+                  markup: selMarkup,
+                  actualCost: selActualCost,
+                  amount: selFee,
+                  limit: selLimit,
+                  anchor: selectionFeeAnchor,
+                },
+              }}
               metrics={metrics}
               projectBackground={state.projectBackground}
               setProjectBackground={state.setProjectBackground}
@@ -1697,133 +1961,9 @@ export default function IctLifecycle() {
           {!isTabbedDocumentTemplate && <IctMetricsDashboard metrics={metrics} />}
         </div>
 
-        {(activeTab === 'revenue' || activeTab === 'cost') && (
-          <div className="w-[300px] bg-card border-l border-border p-6 flex flex-col shrink-0 overflow-y-auto animate-in slide-in-from-right duration-200">
-            <h3 className="font-bold text-foreground mb-4">智能反算</h3>
-            <div className="bg-card border border-border p-4 rounded-xl flex flex-col gap-4 mb-6">
-              <p className="text-xs leading-relaxed text-secondary-foreground">
-                反算结果为含税总额参数值，系统会同步调整科目收付款计划并重新生成年度现金流。
-              </p>
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-secondary-foreground">反算目标</label>
-                {selectedReverseSubject ? (
-                  <div className="flex flex-col gap-2.5">
-                    <SelectedSubjectRoleSummary
-                      subject={selectedReverseSubject.subject}
-                      item={selectedReverseSubject.item}
-                      onLocate={() => {
-                        scrollToSubject(
-                          selectedReverseSubject.ref.side,
-                          selectedReverseSubject.ref.groupId,
-                          selectedReverseSubject.ref.key,
-                          activeTab,
-                          setActiveTab
-                        );
-                      }}
-                      onClear={() => {
-                        setRevSubjectRefKey("");
-                      }}
-                    />
-                    <div className="flex flex-col gap-1 text-[11px] text-secondary-foreground font-semibold bg-muted/30 p-2 rounded-lg">
-                      <div>反算方向：<span className="text-foreground">{selectedReverseSubject.ref.side === 'revenue' ? '收入' : '投入'}</span></div>
-                      <div>反算模式：<span className="text-foreground">{reverseCalculationContext.mode === 'locked_total_structure' ? '结构反算' : '普通反算'}</span></div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-xs text-secondary-foreground font-semibold bg-muted/20 p-3 rounded-lg border border-dashed border-border/60">
-                    当前未指定反算目标。请在下方{activeTab === 'revenue' ? '收入' : '投入'}科目列表中点击“设置角色”进行设置。
-                  </div>
-                )}
-                {selectedReverseSubject && (
-                  <div className="flex flex-col gap-2 mt-1">
-                    {reverseContextMessage && (
-                      <span className="text-[11px] leading-relaxed text-warning-foreground bg-warning-soft rounded-md px-2 py-1 font-semibold">
-                        {reverseContextMessage}
-                      </span>
-                    )}
-                    {reverseCalculationContext.mode === "locked_total_structure" && (
-                      <span className="text-[11px] leading-relaxed text-primary bg-primary-soft rounded-md px-2 py-1 font-semibold">
-                        当前为结构反算模式：{reverseCalculationContext.structure.sideLabel}含税总金额保持 {formatReverseCurrency(reverseCalculationContext.structure.totalInclAmount)} 不变。调整“{reverseCalculationContext.structure.targetDisplayName}”时，“{reverseCalculationContext.structure.balancingDisplayName}”将自动反向补差。
-                        {state.cashflowModel === "model_e" && state.segmentValueMode === "amount" ? " 分板块现金流金额计划将同步更新。" : ""}
-                      </span>
-                    )}
-                    {reverseCalculationContext.mode === "normal" && (
-                      <span className="text-[11px] leading-relaxed text-secondary-foreground bg-muted/40 rounded-md px-2 py-1 font-semibold">
-                        调整该科目金额后，{selectedReverseSubject.ref.side === 'revenue' ? '收入' : '投入'}总额将随反算结果变化。
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="flex gap-2 bg-background p-1 border border-border rounded-lg">
-                <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revTargetType === 'margin' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => setRevTargetType('margin')}>目标毛利润率</button>
-                <button className={`flex-1 py-1.5 text-sm font-semibold rounded-md ${revTargetType === 'npv_rate' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-secondary-foreground'}`} onClick={() => setRevTargetType('npv_rate')}>目标净现值率</button>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-secondary-foreground">目标值 (如0.15代表15%)</label>
-                <input type="number" step="0.0001" className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={revTargetValue} onChange={e => setRevTargetValue(e.target.value)} />
-              </div>
-              <button
-                className="flex w-full items-center justify-center gap-2 bg-primary text-primary-foreground font-bold py-2 rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!selectedReverseSubject}
-                onClick={executeReverseCalculation}
-              >
-                <AppIcon name="reverse" size={16} /> 智能反算
-              </button>
-            </div>
-            <h3 className="font-bold text-foreground mb-4">采购甄选费测算</h3>
-            <div className="bg-card border border-border p-4 rounded-xl flex flex-col gap-3">
-              <div className="flex flex-col gap-1">
-                 <div className="flex items-center gap-1.5">
-                   <label className="text-xs font-semibold text-secondary-foreground">供应商报价 (元)</label>
-                   <button
-                     type="button"
-                     aria-label="固定供应商报价"
-                     aria-pressed={selectionFeeAnchor === 'quote'}
-                     title="固定供应商报价"
-                     onClick={() => setSelectionFeeAnchor('quote')}
-                     className={`flex h-5 w-5 items-center justify-center rounded-full transition-colors ${selectionFeeAnchor === 'quote' ? 'bg-primary-soft' : 'bg-muted hover:bg-muted/80'}`}
-                   >
-                     <span className={`h-2.5 w-2.5 rounded-full ${selectionFeeAnchor === 'quote' ? 'bg-primary' : 'bg-secondary-foreground/35'}`} />
-                   </button>
-                 </div>
-                 <input type="number" aria-label="供应商报价" value={selQuote} onChange={e => handleSelFeeChange('quote', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none" />
-              </div>
-              <div className="flex flex-col gap-1">
-                 <label className="text-xs font-semibold text-secondary-foreground">代理服务费浮动 (+)</label>
-                 <input type="number" aria-label="代理服务费浮动" value={selMarkup} onChange={e => handleSelFeeChange('markup', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none" />
-              </div>
-              <div className="flex flex-col gap-1">
-                 <label className="text-xs font-semibold text-secondary-foreground">测算甄选费 / 实际测算成本</label>
-                 <div className="flex gap-2">
-                   <input type="text" aria-label="测算甄选费" disabled value={selFee} className="bg-muted/50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
-                   <input type="text" aria-label="实际测算成本" disabled value={selActualCost} className="bg-muted/50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
-                 </div>
-              </div>
-              <div className="flex flex-col gap-1 mt-2 border-t border-border pt-3">
-                 <div className="flex items-center gap-1.5">
-                   <label className="text-xs font-semibold text-primary">甄选最高限价 (反向测算入口)</label>
-                   <button
-                     type="button"
-                     aria-label="固定甄选最高限价"
-                     aria-pressed={selectionFeeAnchor === 'limit'}
-                     title="固定甄选最高限价"
-                     onClick={() => setSelectionFeeAnchor('limit')}
-                     className={`flex h-5 w-5 items-center justify-center rounded-full transition-colors ${selectionFeeAnchor === 'limit' ? 'bg-primary-soft' : 'bg-muted hover:bg-muted/80'}`}
-                   >
-                     <span className={`h-2.5 w-2.5 rounded-full ${selectionFeeAnchor === 'limit' ? 'bg-primary' : 'bg-secondary-foreground/35'}`} />
-                   </button>
-                 </div>
-                 <input type="number" aria-label="甄选最高限价" value={selLimit} onChange={e => handleSelFeeChange('limit', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none text-foreground font-bold" />
-              </div>
-              <button
-                onClick={applySelectionLimit}
-                disabled={!selLimit}
-                className="mt-2 bg-primary hover:bg-primary/95 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed font-bold py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all active:scale-[0.98] w-full text-xs flex items-center justify-center gap-1.5"
-              >
-                <AppIcon name="download" size={14} /> 填入集成服务
-              </button>
-            </div>
+        {showReverseCalculationTools && (
+          <div className="hidden min-w-0 bg-card border-l border-border p-6 xl:flex flex-col overflow-y-auto animate-in slide-in-from-right duration-200">
+            {renderReverseCalculationTools()}
           </div>
         )}
       </div>

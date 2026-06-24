@@ -10,6 +10,7 @@ import AiFloatingLauncher from "./components/ai/AiFloatingLauncher";
 import AiFloatingWindow from "./components/ai/AiFloatingWindow";
 import AppIcon, { type AppIconName } from "./components/icons/AppIcon";
 import WorkspaceGate from "./components/workspace/WorkspaceGate";
+import { useAppearanceStore } from "./store/useAppearanceStore";
 import { useAiContextStore } from "./store/useAiContextStore";
 import { useNavigationStore } from "./store/useNavigationStore";
 import { useWorkspaceStore } from "./store/useWorkspaceStore";
@@ -34,6 +35,7 @@ function getAiAssistantView() {
 
 export default function App() {
   const { currentView, settingsReturnView, navigateTo } = useNavigationStore();
+  const aiLauncherVisible = useAppearanceStore(state => state.settings.aiLauncherVisible);
   const setActiveModule = useAiContextStore(state => state.setActiveModule);
   const { isWorkspaceReady, refreshWorkspaceState } = useWorkspaceStore();
   const aiAssistantView = getAiAssistantView();
@@ -154,7 +156,7 @@ export default function App() {
         </div>
       )}
 
-      <AiFloatingLauncher currentView={currentView} />
+      {aiLauncherVisible && <AiFloatingLauncher currentView={currentView} />}
     </div>
   );
 }

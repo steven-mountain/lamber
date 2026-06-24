@@ -1,6 +1,6 @@
 import type { IctSubjectGroupId, IctSubjectSide } from "./ictSubjectCatalog";
 
-export type SubjectFundingPlanMode = "upfront" | "equal" | "custom";
+export type SubjectFundingPlanMode = "upfront" | "equal" | "proportional" | "custom";
 export type SubjectFundingPlanSource = "manual" | "template" | "migration" | "ai_compute_quote" | "intelligent_compute";
 export type CashflowCalculationSource = "legacy_model" | "subject_funding_plans";
 
@@ -44,6 +44,7 @@ export interface SubjectFundingPlan {
   enabled: boolean;
   source: SubjectFundingPlanSource;
   equalYears?: number;
+  annualPercentages?: number[];
   lastValidAnnualInclValues?: number[];
   lastChangeReason?: SubjectFundingPlanLastChangeReason;
   lastChangedAt?: string;
@@ -193,6 +194,71 @@ export const buildEqualAnnualInclValues = (subjectAmountIncl: number, equalYears
   return values;
 };
 
+const PERCENT_EPSILON = 1e-6;
+
+export const normalizeAnnualPercentages = (values: unknown): number[] => {
+  const source = Array.isArray(values) ? values : [];
+  return Array.from({ length: PLAN_YEARS }, (_, index) => {
+    const numeric = Number(source[index] ?? 0);
+    if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+    // store up to 4 decimal places of a percentage (e.g. 95, 5, 33.3333)
+    return Math.min(100, Math.round(numeric * 10000) / 10000);
+  });
+};
+
+export const sumAnnualPercentages = (values: unknown): number =>
+  normalizeAnnualPercentages(values).reduce((sum, value) => sum + value, 0);
+
+export const isAnnualPercentagesComplete = (values: unknown): boolean =>
+  Math.abs(sumAnnualPercentages(values) - 100) < 1e-4;
+
+export const buildDefaultAnnualPercentages = (): number[] => {
+  const values = Array(PLAN_YEARS).fill(0);
+  values[0] = 100;
+  return values;
+};
+
+/**
+ * Distribute a subject's inclusive amount across years by percentage.
+ * Percentages are expected to sum to 100; any rounding tail is folded into
+ * the last year that carries a non-zero percentage so the yearly total always
+ * equals the subject amount (in integer cents).
+ */
+export const buildProportionalAnnualInclValues = (
+  subjectAmountIncl: number,
+  percentages: unknown,
+): number[] => {
+  const values = Array(PLAN_YEARS).fill(0);
+  const pcts = normalizeAnnualPercentages(percentages);
+  const totalCents = toMoneyCents(subjectAmountIncl);
+  if (totalCents <= 0) return values;
+
+  const pctSum = pcts.reduce((sum, value) => sum + value, 0);
+  if (pctSum <= PERCENT_EPSILON) {
+    values[0] = totalCents / 100;
+    return values;
+  }
+
+  let allocatedCents = 0;
+  let lastNonZeroIndex = -1;
+  for (let index = 0; index < PLAN_YEARS; index += 1) {
+    if (pcts[index] <= 0) continue;
+    const cents = Math.round((totalCents * pcts[index]) / pctSum);
+    values[index] = cents / 100;
+    allocatedCents += cents;
+    lastNonZeroIndex = index;
+  }
+
+  // Fold the rounding remainder into the last non-zero year.
+  const diffCents = totalCents - allocatedCents;
+  if (diffCents !== 0 && lastNonZeroIndex >= 0) {
+    values[lastNonZeroIndex] = roundFundingMoney(
+      values[lastNonZeroIndex] + diffCents / 100,
+    );
+  }
+  return values;
+};
+
 export const createDefaultSubjectFundingPlan = (
   subjectRef: SubjectFundingSubjectRef,
   subjectAmountIncl: number,
@@ -227,6 +293,7 @@ export const normalizeSubjectFundingPlan = (value: unknown): SubjectFundingPlan 
     subject_ref?: Partial<SubjectFundingSubjectRef>;
     annual_incl_values?: unknown;
     equal_years?: number;
+    annual_percentages?: unknown;
   };
   const rawRef = raw.subjectRef || raw.subject_ref;
   if (!rawRef || rawRef.side !== "revenue" && rawRef.side !== "cost" || !rawRef.groupId || !rawRef.key) {
@@ -239,7 +306,9 @@ export const normalizeSubjectFundingPlan = (value: unknown): SubjectFundingPlan 
     key: String(rawRef.key),
   };
   const mode: SubjectFundingPlanMode =
-    raw.mode === "equal" || raw.mode === "custom" || raw.mode === "upfront" ? raw.mode : "upfront";
+    raw.mode === "equal" || raw.mode === "custom" || raw.mode === "proportional" || raw.mode === "upfront"
+      ? raw.mode
+      : "upfront";
   const source: SubjectFundingPlanSource =
     raw.source === "template"
     || raw.source === "migration"
@@ -258,6 +327,7 @@ export const normalizeSubjectFundingPlan = (value: unknown): SubjectFundingPlan 
     enabled: raw.enabled !== false,
     source,
     equalYears: clampFundingPlanYears(Number(raw.equalYears ?? raw.equal_years ?? PLAN_YEARS)),
+    annualPercentages: normalizeAnnualPercentages(raw.annualPercentages ?? raw.annual_percentages),
     lastChangeReason: raw.lastChangeReason,
     lastChangedAt: typeof raw.lastChangedAt === "string" ? raw.lastChangedAt : undefined,
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : undefined,
@@ -282,16 +352,55 @@ export function updateSubjectFundingPlanMode(
   equalYears: number = 10,
   reason: SubjectFundingPlanLastChangeReason = "manual_plan_edit"
 ): SubjectFundingPlan {
+  // When switching to proportional, reuse stored percentages if present,
+  // otherwise default to "100% in year 1" so the amount is fully scheduled.
+  const annualPercentages = mode === "proportional"
+    ? (sumAnnualPercentages(plan.annualPercentages) > 0
+        ? normalizeAnnualPercentages(plan.annualPercentages)
+        : buildDefaultAnnualPercentages())
+    : plan.annualPercentages;
+
   const newValues = mode === "upfront"
     ? buildUpfrontAnnualInclValues(subjectAmountIncl)
     : mode === "equal"
       ? buildEqualAnnualInclValues(subjectAmountIncl, equalYears)
-      : normalizeAnnualInclValues(plan.annualInclValues);
+      : mode === "proportional"
+        ? buildProportionalAnnualInclValues(subjectAmountIncl, annualPercentages)
+        : normalizeAnnualInclValues(plan.annualInclValues);
   return {
     ...plan,
     mode,
     equalYears: mode === "equal" ? clampFundingPlanYears(equalYears) : plan.equalYears,
+    annualPercentages,
     annualInclValues: newValues,
+    enabled: true,
+    lastValidAnnualInclValues: plan.annualInclValues,
+    lastChangeReason: reason,
+    lastChangedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function updateSubjectFundingPlanPercentage(
+  plan: SubjectFundingPlan,
+  subjectAmountIncl: number,
+  yearIndex: number,
+  percentage: number,
+  reason: SubjectFundingPlanLastChangeReason = "manual_plan_edit"
+): SubjectFundingPlan {
+  const annualPercentages = normalizeAnnualPercentages(plan.annualPercentages);
+  if (yearIndex >= 0 && yearIndex < PLAN_YEARS) {
+    const numeric = Number(percentage);
+    annualPercentages[yearIndex] =
+      Number.isFinite(numeric) && numeric > 0
+        ? Math.min(100, Math.round(numeric * 10000) / 10000)
+        : 0;
+  }
+  return {
+    ...plan,
+    mode: "proportional",
+    annualPercentages,
+    annualInclValues: buildProportionalAnnualInclValues(subjectAmountIncl, annualPercentages),
     enabled: true,
     lastValidAnnualInclValues: plan.annualInclValues,
     lastChangeReason: reason,
@@ -499,9 +608,21 @@ const addAnnualValue = (target: number[], index: number, value: number) => {
   target[index] = roundSignedFundingMoney(target[index] + value);
 };
 
+export type BuildAnnualCashflowOptions = {
+  /**
+   * When true, subjects that carry an amount but have no enabled funding plan
+   * (or whose plan is disabled) are still included in the cashflow as a
+   * first-year ("upfront") payment, instead of being silently dropped. This
+   * keeps the totals (and the IT breakdown) intact while still honoring any
+   * subjects that DO have a maintained multi-year / proportional plan.
+   */
+  fallbackUnmaintainedToUpfront?: boolean;
+};
+
 export const buildAnnualCashflowFromSubjectFundingPlans = (
   subjects: SubjectFundingPlanCoverageSubject[],
   plans: SubjectFundingPlans,
+  options: BuildAnnualCashflowOptions = {},
 ): SubjectFundingAnnualCashflow => {
   const annualRevenueIncl = Array(PLAN_YEARS).fill(0);
   const annualCostIncl = Array(PLAN_YEARS).fill(0);
@@ -515,11 +636,18 @@ export const buildAnnualCashflowFromSubjectFundingPlans = (
     if (subjectCents <= 0) return;
 
     const plan = plans[createSubjectFundingPlanId(subject.subjectRef)];
-    if (!plan?.enabled) return;
-
     const taxRate = Number(subject.taxRate);
     const divisor = 1 + (Number.isFinite(taxRate) ? taxRate : 0) / 100;
-    const annualValues = normalizeAnnualInclValues(plan.annualInclValues);
+
+    let annualValues: number[];
+    if (plan?.enabled) {
+      annualValues = normalizeAnnualInclValues(plan.annualInclValues);
+    } else if (options.fallbackUnmaintainedToUpfront) {
+      // No maintained plan → schedule the full amount in the first year.
+      annualValues = buildUpfrontAnnualInclValues(subjectCents / 100);
+    } else {
+      return;
+    }
 
     annualValues.forEach((annualIncl, index) => {
       const inclValue = roundFundingMoney(annualIncl);
@@ -602,6 +730,22 @@ export const syncSubjectFundingPlanToAmount = (
     return {
       ...plans,
       [id]: createDefaultSubjectFundingPlan(subjectRef, newCents / 100),
+    };
+  }
+
+  // amount > 0, proportional plan → re-derive yearly amounts from stored percentages
+  if (existing.mode === "proportional" && sumAnnualPercentages(existing.annualPercentages) > 0) {
+    return {
+      ...plans,
+      [id]: {
+        ...existing,
+        annualInclValues: buildProportionalAnnualInclValues(newCents / 100, existing.annualPercentages),
+        lastValidAnnualInclValues: existing.annualInclValues,
+        enabled: true,
+        lastChangeReason: reason,
+        lastChangedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
     };
   }
 

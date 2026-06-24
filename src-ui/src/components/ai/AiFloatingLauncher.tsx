@@ -49,6 +49,10 @@ function getDefaultLauncherPosition(): FloatingPosition {
   };
 }
 
+function getLauncherTransform(position: FloatingPosition) {
+  return `translate3d(${position.x}px, ${position.y}px, 0)`;
+}
+
 function readPosition(key: string): FloatingPosition | null {
   try {
     const raw = localStorage.getItem(key);
@@ -74,19 +78,61 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
   const [position, setPosition] = useState<FloatingPosition>(() => (
     clampLauncherPosition(readPosition(AI_LAUNCHER_POSITION_KEY) || getDefaultLauncherPosition())
   ));
+  const launcherRef = useRef<HTMLButtonElement | null>(null);
+  const positionRef = useRef(position);
   const dragStateRef = useRef<DragState | null>(null);
+  const queuedPositionRef = useRef<FloatingPosition | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+
+  const renderLauncherPosition = (nextPosition: FloatingPosition) => {
+    if (!launcherRef.current) return;
+    launcherRef.current.style.transform = getLauncherTransform(nextPosition);
+  };
+
+  const renderLauncherPositionImmediately = (nextPosition: FloatingPosition) => {
+    if (animationFrameRef.current !== null) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    queuedPositionRef.current = null;
+    renderLauncherPosition(nextPosition);
+  };
+
+  const scheduleLauncherPositionRender = (nextPosition: FloatingPosition) => {
+    queuedPositionRef.current = nextPosition;
+    if (animationFrameRef.current !== null) return;
+
+    animationFrameRef.current = window.requestAnimationFrame(() => {
+      animationFrameRef.current = null;
+      const queuedPosition = queuedPositionRef.current;
+      queuedPositionRef.current = null;
+      if (queuedPosition) {
+        renderLauncherPosition(queuedPosition);
+      }
+    });
+  };
 
   useEffect(() => {
     const handleResize = () => {
-      setPosition((current) => {
-        const nextPosition = clampLauncherPosition(current);
-        savePosition(AI_LAUNCHER_POSITION_KEY, nextPosition);
-        return nextPosition;
-      });
+      const nextPosition = clampLauncherPosition(positionRef.current);
+      positionRef.current = nextPosition;
+      setPosition(nextPosition);
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      queuedPositionRef.current = null;
+      renderLauncherPosition(nextPosition);
+      savePosition(AI_LAUNCHER_POSITION_KEY, nextPosition);
     };
 
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
   }, []);
 
   const openAiWindow = async () => {
@@ -141,14 +187,15 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
+    const currentPosition = positionRef.current;
     dragStateRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      originX: position.x,
-      originY: position.y,
-      lastX: position.x,
-      lastY: position.y,
+      originX: currentPosition.x,
+      originY: currentPosition.y,
+      lastX: currentPosition.x,
+      lastY: currentPosition.y,
       moved: false,
     };
   };
@@ -169,42 +216,59 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
     });
     dragState.lastX = nextPosition.x;
     dragState.lastY = nextPosition.y;
-    setPosition(nextPosition);
+    positionRef.current = nextPosition;
+    scheduleLauncherPositionRender(nextPosition);
   };
 
-  const handlePointerUp = async (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const finishPointerInteraction = async (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    openWindowWhenClick: boolean
+  ) => {
     const dragState = dragStateRef.current;
     if (!dragState || dragState.pointerId !== event.pointerId) return;
 
-    event.currentTarget.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
     dragStateRef.current = null;
 
     const nextPosition = { x: dragState.lastX, y: dragState.lastY };
+    positionRef.current = nextPosition;
+    setPosition(nextPosition);
+    renderLauncherPositionImmediately(nextPosition);
     savePosition(AI_LAUNCHER_POSITION_KEY, nextPosition);
 
-    if (!dragState.moved) {
+    if (openWindowWhenClick && !dragState.moved) {
       await openAiWindow();
     }
   };
 
   return (
     <button
+      ref={launcherRef}
       type="button"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
+      onPointerUp={(event) => {
+        void finishPointerInteraction(event, true);
+      }}
+      onPointerCancel={(event) => {
+        void finishPointerInteraction(event, false);
+      }}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           openAiWindow();
         }
       }}
-      className="fixed z-50 flex h-14 w-14 touch-none items-center justify-center rounded-full border border-slate-200 bg-white text-blue-600 shadow-md transition-all hover:scale-105 hover:bg-blue-600 hover:text-white hover:shadow-lg active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-      style={{ left: `${position.x}px`, top: `${position.y}px` }}
+      className="group fixed left-0 top-0 z-50 h-14 w-14 touch-none rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+      style={{ transform: getLauncherTransform(positionRef.current || position), willChange: 'transform' }}
       title="打开 AI 助手"
       aria-label="打开 AI 助手"
     >
-      <AppIcon name="ai" size={28} />
+      <span className="flex h-full w-full items-center justify-center rounded-full border border-slate-200 bg-white text-blue-600 shadow-md transition-[background-color,color,box-shadow,transform] duration-150 group-hover:scale-105 group-hover:bg-blue-600 group-hover:text-white group-hover:shadow-lg group-active:scale-95">
+        <AppIcon name="ai" size={28} />
+      </span>
     </button>
   );
 }

@@ -102,6 +102,8 @@ export interface ExcelParsedData {
   ct_tax: number;
   payment_collect: string;
   payment_pay: string;
+  selection_fee_quote?: string | null;
+  selection_fee_markup?: string | null;
   items?: Record<string, {
     incl_tax: number;
     excl_tax: number;

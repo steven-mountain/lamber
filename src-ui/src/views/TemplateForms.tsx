@@ -51,8 +51,8 @@ interface Props {
 type ProjectScale = "large" | "small"
 type SelfThreeRequirement = "integration" | "maintenance"
 type MeetingReviewTabId = "basic" | "content" | "business" | "risk" | "confirm"
-type ApprovalTemplateTabId = "basic" | "service" | "business" | "approval" | "confirm"
-type DemandTemplateTabId = "basic" | "content" | "business" | "delivery" | "confirm"
+type ApprovalTemplateTabId = "content" | "confirm"
+type DemandTemplateTabId = "content" | "confirm"
 
 const MEETING_REVIEW_TABS: Array<{ id: MeetingReviewTabId; label: string }> = [
   { id: "basic", label: "会审基础信息" },
@@ -63,18 +63,12 @@ const MEETING_REVIEW_TABS: Array<{ id: MeetingReviewTabId; label: string }> = [
 ]
 
 const APPROVAL_TEMPLATE_TABS: Array<{ id: ApprovalTemplateTabId; label: string }> = [
-  { id: "basic", label: "项目基础信息" },
-  { id: "service", label: "服务内容" },
-  { id: "business", label: "商务条款" },
-  { id: "approval", label: "立项与采购" },
+  { id: "content", label: "签批信息" },
   { id: "confirm", label: "生成确认" },
 ]
 
 const DEMAND_TEMPLATE_TABS: Array<{ id: DemandTemplateTabId; label: string }> = [
-  { id: "basic", label: "需求基础信息" },
-  { id: "content", label: "需求内容" },
-  { id: "business", label: "商务与预算" },
-  { id: "delivery", label: "实施与风险" },
+  { id: "content", label: "需求信息" },
   { id: "confirm", label: "生成确认" },
 ]
 
@@ -214,8 +208,8 @@ export default function TemplateForms({
   const [selfThreeValue, setSelfThreeValue] = useState(SELF_THREE_OPTIONS[0].value)
   const [syncTrigger, setSyncTrigger] = useState(0) // Added to trigger AI sync on ref changes
   const [meetingReviewTab, setMeetingReviewTab] = useState<MeetingReviewTabId>("basic")
-  const [approvalTemplateTab, setApprovalTemplateTab] = useState<ApprovalTemplateTabId>("basic")
-  const [demandTemplateTab, setDemandTemplateTab] = useState<DemandTemplateTabId>("basic")
+  const [approvalTemplateTab, setApprovalTemplateTab] = useState<ApprovalTemplateTabId>("content")
+  const [demandTemplateTab, setDemandTemplateTab] = useState<DemandTemplateTabId>("content")
 
   const [isMidThreeModalOpen, setIsMidThreeModalOpen] = useState(false)
   const [midThreeSearch, setMidThreeSearch] = useState("")
@@ -256,6 +250,23 @@ export default function TemplateForms({
   const customCtRevenueBusinessNames = getBusinessNames({ side: "revenue", documentPrefix: "CT" })
   const joinedBusinessNames = (names: string[]) => names.join("、")
   const excelSubjectVariables = buildExcelSubjectVariables(projectData)
+  const normalizeSelectionFeeVariable = (value: unknown) =>
+    value === undefined || value === null ? "" : String(value).trim()
+  const selectionFeeData = projectData.selectionFee || {}
+  const selectionFeeQuote = normalizeSelectionFeeVariable(selectionFeeData.quote ?? projectData.selection_fee_quote)
+  const selectionFeeMarkup = normalizeSelectionFeeVariable(selectionFeeData.markup ?? projectData.selection_fee_markup)
+  const hasSelectionFeeData = [
+    selectionFeeQuote,
+    normalizeSelectionFeeVariable(selectionFeeData.actualCost ?? projectData.selection_fee_actual_cost),
+    normalizeSelectionFeeVariable(selectionFeeData.amount ?? projectData.selection_fee_amount),
+    normalizeSelectionFeeVariable(selectionFeeData.limit ?? projectData.selection_fee_limit),
+  ].some(value => value.length > 0)
+  const excelSelectionFeeVariables = hasSelectionFeeData
+    ? {
+        SELECTION_FEE_SUPPLIER_QUOTE: selectionFeeQuote,
+        SELECTION_FEE_MARKUP: selectionFeeMarkup,
+      }
+    : {}
 
   const formDataRef = useRef<Record<string, string>>({});
   const [formData, setFormData] = useState<Record<string, string>>({});
@@ -460,8 +471,8 @@ export default function TemplateForms({
 
   useEffect(() => {
     setMeetingReviewTab("basic");
-    setApprovalTemplateTab("basic");
-    setDemandTemplateTab("basic");
+    setApprovalTemplateTab("content");
+    setDemandTemplateTab("content");
   }, [selectedTemplate]);
 
   // --- Auto-save and image migration ---
@@ -1205,6 +1216,7 @@ export default function TemplateForms({
 
       // --- Excel Specific Variable Back-filling ---
       ...excelSubjectVariables,
+      ...excelSelectionFeeVariables,
       ...(() => {
         const cfVars: Record<string, string> = {}
         const cashflows = Array.isArray(metrics?.cashflow)
@@ -1879,7 +1891,6 @@ export default function TemplateForms({
                 templateName={selectedTemplate}
                 currentSchemeLabel={currentSchemeLabel}
                 completion={meetingCompletion}
-                metrics={metrics}
                 onGenerate={handleGenerate}
                 {...projectInfoForConfirmation}
               />
@@ -1899,133 +1910,129 @@ export default function TemplateForms({
             metrics={metrics}
             onGenerate={handleGenerate}
           >
-            {approvalTemplateTab === "basic" && (
-              <TemplateTabSection>
-                <div className="flex flex-col gap-1">
-                  <CommonPresetFieldHeader
-                    fieldKey={PRESET_FIELD_KEYS.projectBackground}
-                    kind="text_snippet"
-                    value={projectBackground}
-                    onApply={setProjectBackground}
-                  >
-                    项目背景
-                  </CommonPresetFieldHeader>
-                  <textarea
-                    name="gen_proj_bg"
-                    rows={4}
-                    value={projectBackground}
-                    onChange={e => setProjectBackground(e.target.value)}
-                    className="bg-card border border-input px-3 py-2 rounded-md"
-                    placeholder="请输入项目背景..."
-                  />
-                </div>
-              </TemplateTabSection>
-            )}
-
-            {approvalTemplateTab === "service" && (
+            {approvalTemplateTab === "content" && (
               <TemplateTabSection>
                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                  <div className="flex flex-col gap-1">
-                    <CommonPresetFieldHeader
-                      fieldKey={PRESET_FIELD_KEYS.approvalItServiceContent}
-                      kind="text_snippet"
-                      value={formData.gen_sign_it_content ?? defaultSignItContent}
-                      onApply={(nextValue) => handleFieldChange("gen_sign_it_content", nextValue)}
-                      labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
-                    >
-                      <span>IT服务内容</span>
-                      <span className="text-xs text-secondary-foreground font-normal">为空则用系统默认</span>
-                    </CommonPresetFieldHeader>
-                    <textarea
-                      name="gen_sign_it_content"
-                      rows={4}
-                      {...getBind("gen_sign_it_content", defaultSignItContent)}
-                      className="bg-card border border-input px-3 py-2 rounded-md"
-                      placeholder={defaultSignItContent}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <CommonPresetFieldHeader
-                      fieldKey={PRESET_FIELD_KEYS.approvalCtServiceContent}
-                      kind="text_snippet"
-                      value={formData.gen_sign_ct_content ?? defaultSignCtContent}
-                      onApply={(nextValue) => handleFieldChange("gen_sign_ct_content", nextValue)}
-                      labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
-                    >
-                      <span>CT服务内容</span>
-                      <span className="text-xs text-secondary-foreground font-normal">为空则用系统默认</span>
-                    </CommonPresetFieldHeader>
-                    <textarea
-                      name="gen_sign_ct_content"
-                      rows={4}
-                      {...getBind("gen_sign_ct_content", defaultSignCtContent)}
-                      className="bg-card border border-input px-3 py-2 rounded-md"
-                      placeholder={defaultSignCtContent}
-                    />
-                  </div>
+                  <TemplateSubmoduleCard className="xl:col-span-2">
+                    <div className="flex flex-col gap-1">
+                      <CommonPresetFieldHeader
+                        fieldKey={PRESET_FIELD_KEYS.projectBackground}
+                        kind="text_snippet"
+                        value={projectBackground}
+                        onApply={setProjectBackground}
+                      >
+                        项目背景
+                      </CommonPresetFieldHeader>
+                      <textarea
+                        name="gen_proj_bg"
+                        rows={4}
+                        value={projectBackground}
+                        onChange={e => setProjectBackground(e.target.value)}
+                        className="bg-card border border-input px-3 py-2 rounded-md"
+                        placeholder="请输入项目背景..."
+                      />
+                    </div>
+                  </TemplateSubmoduleCard>
+
+                  <TemplateSubmoduleCard>
+                    <div className="flex flex-col gap-1">
+                      <CommonPresetFieldHeader
+                        fieldKey={PRESET_FIELD_KEYS.approvalItServiceContent}
+                        kind="text_snippet"
+                        value={formData.gen_sign_it_content ?? defaultSignItContent}
+                        onApply={(nextValue) => handleFieldChange("gen_sign_it_content", nextValue)}
+                        labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
+                      >
+                        <span>IT服务内容</span>
+                        <span className="text-xs text-secondary-foreground font-normal">为空则用系统默认</span>
+                      </CommonPresetFieldHeader>
+                      <textarea
+                        name="gen_sign_it_content"
+                        rows={4}
+                        {...getBind("gen_sign_it_content", defaultSignItContent)}
+                        className="bg-card border border-input px-3 py-2 rounded-md"
+                        placeholder={defaultSignItContent}
+                      />
+                    </div>
+                  </TemplateSubmoduleCard>
+
+                  <TemplateSubmoduleCard>
+                    <div className="flex flex-col gap-1">
+                      <CommonPresetFieldHeader
+                        fieldKey={PRESET_FIELD_KEYS.approvalCtServiceContent}
+                        kind="text_snippet"
+                        value={formData.gen_sign_ct_content ?? defaultSignCtContent}
+                        onApply={(nextValue) => handleFieldChange("gen_sign_ct_content", nextValue)}
+                        labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
+                      >
+                        <span>CT服务内容</span>
+                        <span className="text-xs text-secondary-foreground font-normal">为空则用系统默认</span>
+                      </CommonPresetFieldHeader>
+                      <textarea
+                        name="gen_sign_ct_content"
+                        rows={4}
+                        {...getBind("gen_sign_ct_content", defaultSignCtContent)}
+                        className="bg-card border border-input px-3 py-2 rounded-md"
+                        placeholder={defaultSignCtContent}
+                      />
+                    </div>
+                  </TemplateSubmoduleCard>
+
+                  <TemplateSubmoduleCard>
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="flex flex-col gap-1">
+                        <CommonPresetFieldHeader
+                          fieldKey={PRESET_FIELD_KEYS.paymentRevenueCollectionMethod}
+                          kind="text_snippet"
+                          value={revCollection}
+                          onApply={setRevCollection}
+                        >
+                          收入侧收款方式
+                        </CommonPresetFieldHeader>
+                        <input
+                          type="text"
+                          name="gen_rev_collection"
+                          value={revCollection}
+                          onChange={e => setRevCollection(e.target.value)}
+                          className="bg-card border border-input px-3 py-2 rounded-md"
+                          placeholder="请输入收入侧收款方式..."
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <CommonPresetFieldHeader
+                          fieldKey={PRESET_FIELD_KEYS.paymentExpenditurePaymentMethod}
+                          kind="text_snippet"
+                          value={expPayment}
+                          onApply={setExpPayment}
+                        >
+                          支出侧付款方式
+                        </CommonPresetFieldHeader>
+                        <input
+                          type="text"
+                          name="gen_exp_payment"
+                          value={expPayment}
+                          onChange={e => setExpPayment(e.target.value)}
+                          className="bg-card border border-input px-3 py-2 rounded-md"
+                          placeholder="请输入支出侧付款方式..."
+                        />
+                      </div>
+                    </div>
+                  </TemplateSubmoduleCard>
+
+                  <TemplateSubmoduleCard>
+                    <div className="flex h-full flex-col justify-center gap-3">
+                      <div className="text-sm font-bold text-foreground">立项与采购</div>
+                      <label className="text-sm font-semibold flex items-center gap-2">
+                        <input type="checkbox" name="gen_is_advance" {...getBindCheckbox("gen_is_advance")} className="w-4 h-4" />
+                        是否涉及垫资
+                      </label>
+                      <label className="text-sm font-semibold flex items-center gap-2">
+                        <input type="checkbox" name="gen_after_approval_selection" {...getBindCheckbox("gen_after_approval_selection")} className="w-4 h-4" />
+                        是否立项后甄选
+                      </label>
+                    </div>
+                  </TemplateSubmoduleCard>
                 </div>
-              </TemplateTabSection>
-            )}
-
-            {approvalTemplateTab === "business" && (
-              <TemplateTabSection>
-                <TemplateSubmoduleCard>
-                  <div className="grid grid-cols-1 gap-4">
-                    <div className="flex flex-col gap-1">
-                      <CommonPresetFieldHeader
-                        fieldKey={PRESET_FIELD_KEYS.paymentRevenueCollectionMethod}
-                        kind="text_snippet"
-                        value={revCollection}
-                        onApply={setRevCollection}
-                      >
-                        收入侧收款方式
-                      </CommonPresetFieldHeader>
-                      <input
-                        type="text"
-                        name="gen_rev_collection"
-                        value={revCollection}
-                        onChange={e => setRevCollection(e.target.value)}
-                        className="bg-card border border-input px-3 py-2 rounded-md"
-                        placeholder="请输入收入侧收款方式..."
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <CommonPresetFieldHeader
-                        fieldKey={PRESET_FIELD_KEYS.paymentExpenditurePaymentMethod}
-                        kind="text_snippet"
-                        value={expPayment}
-                        onApply={setExpPayment}
-                      >
-                        支出侧付款方式
-                      </CommonPresetFieldHeader>
-                      <input
-                        type="text"
-                        name="gen_exp_payment"
-                        value={expPayment}
-                        onChange={e => setExpPayment(e.target.value)}
-                        className="bg-card border border-input px-3 py-2 rounded-md"
-                        placeholder="请输入支出侧付款方式..."
-                      />
-                    </div>
-                  </div>
-                </TemplateSubmoduleCard>
-              </TemplateTabSection>
-            )}
-
-            {approvalTemplateTab === "approval" && (
-              <TemplateTabSection>
-                <TemplateSubmoduleCard>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
-                    <label className="text-sm font-semibold flex items-center gap-2">
-                      <input type="checkbox" name="gen_is_advance" {...getBindCheckbox("gen_is_advance")} className="w-4 h-4" />
-                      是否涉及垫资
-                    </label>
-                    <label className="text-sm font-semibold flex items-center gap-2">
-                      <input type="checkbox" name="gen_after_approval_selection" {...getBindCheckbox("gen_after_approval_selection")} className="w-4 h-4" />
-                      是否立项后甄选
-                    </label>
-                  </div>
-                </TemplateSubmoduleCard>
               </TemplateTabSection>
             )}
 
@@ -2034,7 +2041,6 @@ export default function TemplateForms({
                 templateName={selectedTemplate}
                 currentSchemeLabel={currentSchemeLabel}
                 completion={approvalCompletion}
-                metrics={metrics}
                 onGenerate={handleGenerate}
                 {...projectInfoForConfirmation}
               />
@@ -2054,54 +2060,57 @@ export default function TemplateForms({
             metrics={metrics}
             onGenerate={handleGenerate}
           >
-            {demandTemplateTab === "basic" && (
-              <TemplateTabSection>
-                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                  <div className="flex flex-col gap-1">
-                    <CommonPresetFieldHeader
-                      fieldKey={PRESET_FIELD_KEYS.demandUnit}
-                      kind="short_value"
-                      value={formData.gen_demand_branch_name ?? "XXX分公司"}
-                      onApply={(nextValue) => handleFieldChange("gen_demand_branch_name", nextValue)}
-                    >
-                      项目需求单位
-                    </CommonPresetFieldHeader>
-                    <input type="text" name="gen_demand_branch_name" {...getBind("gen_demand_branch_name", "XXX分公司")} className="bg-card border border-input px-3 py-2 rounded-md" />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <CommonPresetFieldHeader
-                      fieldKey={PRESET_FIELD_KEYS.demandCustomerConfirmation}
-                      kind="short_value"
-                      value={formData.gen_demand_customer_confirm ?? "微信截图"}
-                      onApply={(nextValue) => handleFieldChange("gen_demand_customer_confirm", nextValue)}
-                    >
-                      客户确认
-                    </CommonPresetFieldHeader>
-                    <input type="text" name="gen_demand_customer_confirm" {...getBind("gen_demand_customer_confirm", "微信截图")} className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
-                  </div>
-                </div>
-              </TemplateTabSection>
-            )}
-
             {demandTemplateTab === "content" && (
               <TemplateTabSection>
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="flex flex-col gap-1">
-                    <CommonPresetFieldHeader
-                      fieldKey={PRESET_FIELD_KEYS.demandServiceContent}
-                      kind="text_snippet"
-                      value={formData.gen_demand_service_content ?? "IT；CT"}
-                      onApply={(nextValue) => handleFieldChange("gen_demand_service_content", nextValue)}
-                    >
-                      服务内容
-                    </CommonPresetFieldHeader>
-                    <textarea name="gen_demand_service_content" {...getBind("gen_demand_service_content", "IT；CT")} rows={3} className="bg-card border border-input px-3 py-2 rounded-md" />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <CommonPresetLabelHeader>设备清单</CommonPresetLabelHeader>
-                    <input type="text" name="gen_demand_device_list" {...getBind("gen_demand_device_list", "不涉及")} className="bg-card border border-input px-3 py-2 rounded-md" />
-                  </div>
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                   <TemplateSubmoduleCard>
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="flex flex-col gap-1">
+                        <CommonPresetFieldHeader
+                          fieldKey={PRESET_FIELD_KEYS.demandUnit}
+                          kind="short_value"
+                          value={formData.gen_demand_branch_name ?? "XXX分公司"}
+                          onApply={(nextValue) => handleFieldChange("gen_demand_branch_name", nextValue)}
+                        >
+                          项目需求单位
+                        </CommonPresetFieldHeader>
+                        <input type="text" name="gen_demand_branch_name" {...getBind("gen_demand_branch_name", "XXX分公司")} className="bg-card border border-input px-3 py-2 rounded-md" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <CommonPresetFieldHeader
+                          fieldKey={PRESET_FIELD_KEYS.demandCustomerConfirmation}
+                          kind="short_value"
+                          value={formData.gen_demand_customer_confirm ?? "微信截图"}
+                          onApply={(nextValue) => handleFieldChange("gen_demand_customer_confirm", nextValue)}
+                        >
+                          客户确认
+                        </CommonPresetFieldHeader>
+                        <input type="text" name="gen_demand_customer_confirm" {...getBind("gen_demand_customer_confirm", "微信截图")} className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
+                      </div>
+                    </div>
+                  </TemplateSubmoduleCard>
+
+                  <TemplateSubmoduleCard>
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="flex flex-col gap-1">
+                        <CommonPresetFieldHeader
+                          fieldKey={PRESET_FIELD_KEYS.demandServiceContent}
+                          kind="text_snippet"
+                          value={formData.gen_demand_service_content ?? "IT；CT"}
+                          onApply={(nextValue) => handleFieldChange("gen_demand_service_content", nextValue)}
+                        >
+                          服务内容
+                        </CommonPresetFieldHeader>
+                        <textarea name="gen_demand_service_content" {...getBind("gen_demand_service_content", "IT；CT")} rows={3} className="bg-card border border-input px-3 py-2 rounded-md" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <CommonPresetLabelHeader>设备清单</CommonPresetLabelHeader>
+                        <input type="text" name="gen_demand_device_list" {...getBind("gen_demand_device_list", "不涉及")} className="bg-card border border-input px-3 py-2 rounded-md" />
+                      </div>
+                    </div>
+                  </TemplateSubmoduleCard>
+
+                  <TemplateSubmoduleCard className="xl:col-span-2">
                     <div className="flex justify-between items-center mb-3">
                       <label className="text-sm font-bold text-foreground">技术方案可行性清单 (设备需求清单)</label>
                       <button type="button" onClick={addTechItem} className="text-xs bg-primary-soft text-primary px-3 py-1.5 rounded font-semibold hover:bg-primary-soft/80">+ 新增一行</button>
@@ -2120,41 +2129,68 @@ export default function TemplateForms({
                       ))}
                     </div>
                   </TemplateSubmoduleCard>
-                </div>
-              </TemplateTabSection>
-            )}
 
-            {demandTemplateTab === "business" && (
-              <TemplateTabSection>
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="flex flex-col gap-1">
-                    <CommonPresetLabelHeader>业务模式</CommonPresetLabelHeader>
-                    <select name="gen_demand_it_business_mode" {...getBind("gen_demand_it_business_mode", "服务模式")} className="bg-card border border-input px-3 py-2 rounded-md">
-                      <option value="服务模式">服务模式</option>
-                      <option value="投资">投资</option>
-                    </select>
-                  </div>
                   <TemplateSubmoduleCard>
-                    <div className="flex flex-col gap-3">
-                      <label className="text-sm font-bold text-foreground flex items-center gap-2">
-                        <input type="checkbox" checked={hasPublicUrl} onChange={e => {
-                          setHasPublicUrl(e.target.checked);
-                          handleFieldChange("gen_has_public_url", e.target.checked ? "on" : "off");
-                          if (!e.target.checked) {
-                            setAttach2Images([]);
-                            handleFieldChange("gen_demand_public_url", "");
-                          }
-                        }} className="w-4 h-4" />
-                        项目有效的公示网址及招标文件
-                      </label>
-                      {hasPublicUrl && (
-                        <input type="text" name="gen_demand_public_url" {...getBind("gen_demand_public_url")} placeholder="https://..." className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
-                      )}
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="flex flex-col gap-1">
+                        <CommonPresetLabelHeader>业务模式</CommonPresetLabelHeader>
+                        <select name="gen_demand_it_business_mode" {...getBind("gen_demand_it_business_mode", "服务模式")} className="bg-card border border-input px-3 py-2 rounded-md">
+                          <option value="服务模式">服务模式</option>
+                          <option value="投资">投资</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-3">
+                        <label className="text-sm font-bold text-foreground flex items-center gap-2">
+                          <input type="checkbox" checked={hasPublicUrl} onChange={e => {
+                            setHasPublicUrl(e.target.checked);
+                            handleFieldChange("gen_has_public_url", e.target.checked ? "on" : "off");
+                            if (!e.target.checked) {
+                              setAttach2Images([]);
+                              handleFieldChange("gen_demand_public_url", "");
+                            }
+                          }} className="w-4 h-4" />
+                          项目有效的公示网址及招标文件
+                        </label>
+                        {hasPublicUrl && (
+                          <input type="text" name="gen_demand_public_url" {...getBind("gen_demand_public_url")} placeholder="https://..." className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
+                        )}
+                      </div>
+                    </div>
+                  </TemplateSubmoduleCard>
+
+                  <TemplateSubmoduleCard>
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="flex flex-col gap-1">
+                        <CommonPresetFieldHeader
+                          fieldKey={PRESET_FIELD_KEYS.demandDeploymentEnvironment}
+                          kind="text_snippet"
+                          value={formData.gen_demand_env_require ?? "客户提供部署环境，不包含在本次项目范围内"}
+                          onApply={(nextValue) => handleFieldChange("gen_demand_env_require", nextValue)}
+                        >
+                          部署环境要求
+                        </CommonPresetFieldHeader>
+                        <input type="text" name="gen_demand_env_require" {...getBind("gen_demand_env_require", "客户提供部署环境，不包含在本次项目范围内")} className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
+                      </div>
+                      <div className="flex flex-col gap-3">
+                        <label className="text-sm font-bold text-foreground flex items-center gap-2">
+                          <input type="checkbox" checked={hasSecurity} onChange={e => {
+                            setHasSecurity(e.target.checked);
+                            handleFieldChange("gen_has_security", e.target.checked ? "on" : "off");
+                            if (!e.target.checked) {
+                              handleFieldChange("gen_demand_security_detail", "");
+                            }
+                          }} className="w-4 h-4" />
+                          信息安全、密评
+                        </label>
+                        {hasSecurity && (
+                          <input type="text" name="gen_demand_security_detail" {...getBind("gen_demand_security_detail")} placeholder="例如：已做密评/待补充" className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
+                        )}
+                      </div>
                     </div>
                   </TemplateSubmoduleCard>
 
                   {hasPublicUrl && (
-                    <TemplateSubmoduleCard>
+                    <TemplateSubmoduleCard className="xl:col-span-2">
                       <label className="text-sm font-bold text-foreground">附件2截图（招标文件/挂网截图）</label>
                       <input type="file" multiple accept="image/*" className="hidden" ref={fileInput2Ref} onChange={(e) => handleImageUpload(e, setAttach2Images, "attach2")} />
                       <div
@@ -2196,44 +2232,8 @@ export default function TemplateForms({
                       </div>
                     </TemplateSubmoduleCard>
                   )}
-                </div>
-              </TemplateTabSection>
-            )}
 
-            {demandTemplateTab === "delivery" && (
-              <TemplateTabSection>
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="flex flex-col gap-1">
-                    <CommonPresetFieldHeader
-                      fieldKey={PRESET_FIELD_KEYS.demandDeploymentEnvironment}
-                      kind="text_snippet"
-                      value={formData.gen_demand_env_require ?? "客户提供部署环境，不包含在本次项目范围内"}
-                      onApply={(nextValue) => handleFieldChange("gen_demand_env_require", nextValue)}
-                    >
-                      部署环境要求
-                    </CommonPresetFieldHeader>
-                    <input type="text" name="gen_demand_env_require" {...getBind("gen_demand_env_require", "客户提供部署环境，不包含在本次项目范围内")} className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
-                  </div>
-
-                  <TemplateSubmoduleCard>
-                    <div className="flex flex-col gap-3">
-                      <label className="text-sm font-bold text-foreground flex items-center gap-2">
-                        <input type="checkbox" checked={hasSecurity} onChange={e => {
-                          setHasSecurity(e.target.checked);
-                          handleFieldChange("gen_has_security", e.target.checked ? "on" : "off");
-                          if (!e.target.checked) {
-                            handleFieldChange("gen_demand_security_detail", "");
-                          }
-                        }} className="w-4 h-4" />
-                        信息安全、密评
-                      </label>
-                      {hasSecurity && (
-                        <input type="text" name="gen_demand_security_detail" {...getBind("gen_demand_security_detail")} placeholder="例如：已做密评/待补充" className="bg-card border border-input px-3 py-2 rounded-md text-foreground" />
-                      )}
-                    </div>
-                  </TemplateSubmoduleCard>
-
-                  <TemplateSubmoduleCard>
+                  <TemplateSubmoduleCard className="xl:col-span-2">
                     <label className="text-sm font-bold text-foreground">附件1截图（客户确认材料）</label>
                     <input type="file" multiple accept="image/*" className="hidden" ref={fileInput1Ref} onChange={(e) => handleImageUpload(e, setAttach1Images, "attach1")} />
                     <div
@@ -2283,7 +2283,6 @@ export default function TemplateForms({
                 templateName={selectedTemplate}
                 currentSchemeLabel={currentSchemeLabel}
                 completion={demandCompletion}
-                metrics={metrics}
                 onGenerate={handleGenerate}
                 {...projectInfoForConfirmation}
               />

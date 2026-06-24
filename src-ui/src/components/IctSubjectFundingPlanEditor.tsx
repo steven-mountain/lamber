@@ -4,9 +4,12 @@ import {
   buildEqualAnnualInclValues,
   createDefaultSubjectFundingPlan,
   createSubjectFundingPlanId,
+  normalizeAnnualPercentages,
   setSubjectFundingPlanEnabled,
+  sumAnnualPercentages,
   updateSubjectFundingPlanAnnualValue,
   updateSubjectFundingPlanMode,
+  updateSubjectFundingPlanPercentage,
   validateSubjectFundingPlan,
   type SubjectFundingPlan,
   type SubjectFundingPlanLastChangeReason,
@@ -32,8 +35,13 @@ const formatMoney = (value: number) =>
 const modeLabels: Record<SubjectFundingPlanMode, string> = {
   upfront: "第一年一次性",
   equal: "平均分年",
+  proportional: "按比例",
   custom: "自定义年度金额",
 };
+
+const formatPercent = (value: number) =>
+  `${(Number.isFinite(value) ? Math.round(value * 10000) / 10000 : 0)
+    .toLocaleString("zh-CN", { maximumFractionDigits: 4 })}%`;
 
 const reasonTexts: Record<SubjectFundingPlanLastChangeReason, string> = {
   manual_plan_edit: "用户已手工维护计划",
@@ -69,6 +77,9 @@ export default function IctSubjectFundingPlanEditor({
   const validation = validateSubjectFundingPlan(plan, subjectAmountIncl);
   const annualValues = activePlan.annualInclValues;
   const equalYears = activePlan.equalYears || 10;
+  const annualPercentages = normalizeAnnualPercentages(activePlan.annualPercentages);
+  const percentageSum = sumAnnualPercentages(activePlan.annualPercentages);
+  const percentageComplete = Math.abs(percentageSum - 100) < 1e-4;
   const isDisabled = plan && !plan.enabled;
 
   useEffect(() => {
@@ -97,6 +108,10 @@ export default function IctSubjectFundingPlanEditor({
       enabled: true,
       updatedAt: new Date().toISOString(),
     });
+  };
+
+  const handlePercentageChange = (yearIndex: number, percentage: number) => {
+    onPlanChange(updateSubjectFundingPlanPercentage(activePlan, subjectAmountIncl, yearIndex, percentage));
   };
 
   const statusLabel = !plan
@@ -155,7 +170,7 @@ export default function IctSubjectFundingPlanEditor({
             </label>
           </div>
 
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {(Object.keys(modeLabels) as SubjectFundingPlanMode[]).map(mode => (
               <label
                 key={mode}
@@ -187,6 +202,38 @@ export default function IctSubjectFundingPlanEditor({
                 ))}
               </select>
               <span>从第 1 年开始平均分摊，尾差并入最后一年。</span>
+            </div>
+          )}
+
+          {activePlan.mode === "proportional" && (
+            <div className="mt-3 rounded-md bg-card/70 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-secondary-foreground">
+                <span>按比例分配（各年填写百分比，合计需为 100%，系统自动换算为年度金额）</span>
+                <span className={percentageComplete ? "text-success-foreground" : "text-warning-foreground"}>
+                  比例合计：{formatPercent(percentageSum)}
+                  {percentageComplete ? "（已满 100%）" : `（${percentageSum > 100 ? "超出" : "尚差"} ${formatPercent(Math.abs(100 - percentageSum))}）`}
+                </span>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                {Array.from({ length: 10 }, (_, index) => (
+                  <label key={index} className="flex flex-col gap-1 text-[10px] font-bold text-secondary-foreground">
+                    第 {index + 1} 年(%)
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="any"
+                      value={Number(annualPercentages[index] || 0) === 0 ? "" : annualPercentages[index]}
+                      placeholder="0"
+                      onChange={event => handlePercentageChange(index, Number(event.target.value))}
+                      className="rounded-md bg-card px-2.5 py-2 text-xs font-semibold text-foreground outline-none ring-1 ring-ring/20 focus:ring-ring"
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="mt-2 text-[10px] leading-relaxed text-secondary-foreground">
+                例如第 1 年填 95、第 6 年填 5，即第 1 年{actionLabel} 95%、第 6 年{actionLabel} 5%；下方为换算后的年度{actionLabel}金额（含税），尾差并入最后一个有比例的年度。
+              </div>
             </div>
           )}
 

@@ -58,6 +58,12 @@ export interface IctInput {
   cost_cashflow_excl?: string[] | null;
   it_rev_cashflow_excl?: string[] | null;
   it_cost_cashflow_excl?: string[] | null;
+  selection_fee_quote?: string;
+  selection_fee_markup?: string;
+  selection_fee_actual_cost?: string;
+  selection_fee_amount?: string;
+  selection_fee_limit?: string;
+  selection_fee_anchor?: "quote" | "limit";
   [key: string]: any;
 }
 

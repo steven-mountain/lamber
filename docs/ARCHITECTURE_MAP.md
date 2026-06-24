@@ -135,6 +135,8 @@ ICT balance allocation rules are stored as configuration, not as a second source
 
 Frontend global save goes through `domainSaveService` and `useSaveStore` registered handlers. The save store does not read business component state directly; each mounted page registers the handler responsible for serializing its current local state.
 
+Project Board keeps a page-level `project-detail` save handler registered while the board is mounted. The handler owns both the detail drawer metadata draft and board-card note drafts, because note edits can mark `project-detail` dirty even when the drawer is closed. Card note edits must set the corresponding project as the current project before marking dirty so the global save context points to the dirty project.
+
 Each save handler returns the dirty scopes it actually persisted. `useSaveStore.saveCurrentProject()` snapshots workspace/project/dirty scopes at save start, rejects unregistered scopes, keeps failed scopes dirty, and re-checks workspace/project before clearing anything. Template forms use the same store: ordinary autosave may clear `template-forms` after success, while Ctrl/Command+S and the global save button must receive a failing handler result if template state or asset-reference persistence fails.
 
 ### 4.0.2 Common materials and preset fill flow

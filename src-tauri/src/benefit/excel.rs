@@ -30,6 +30,8 @@ pub struct ExcelParsedData {
     pub ct_tax: f64,
     pub payment_collect: String,
     pub payment_pay: String,
+    pub selection_fee_quote: Option<String>,
+    pub selection_fee_markup: Option<String>,
     pub items: HashMap<String, ExcelParsedTaxItem>,
 }
 
@@ -553,6 +555,8 @@ fn parse_lifecycle_benefit_excel(
         .map(|range| get_cell_i32(range, "B8"))
         .unwrap_or(0);
     let discount_rate = get_cell_f64(&econ_range, "D33");
+    let selection_fee_quote = get_cell_string(&econ_range, "T26").trim().to_string();
+    let selection_fee_markup = get_cell_string(&econ_range, "T29").trim().to_string();
 
     Ok(Some(ExcelParsedData {
         project_name: if project_name_from_econ.is_empty() {
@@ -580,6 +584,8 @@ fn parse_lifecycle_benefit_excel(
         ct_tax: 0.06,
         payment_collect: String::new(),
         payment_pay: String::new(),
+        selection_fee_quote: (!selection_fee_quote.is_empty()).then_some(selection_fee_quote),
+        selection_fee_markup: (!selection_fee_markup.is_empty()).then_some(selection_fee_markup),
         items,
     }))
 }
@@ -705,6 +711,8 @@ pub fn parse_benefit_excel_internal(resolved_path: &Path) -> Result<ExcelParsedD
         ct_tax: get_f64(ct_tax_col),
         payment_collect: get_string(pay_collect_col),
         payment_pay: get_string(pay_pay_col),
+        selection_fee_quote: None,
+        selection_fee_markup: None,
         items: HashMap::new(),
     })
 }
@@ -730,6 +738,20 @@ pub fn auto_import_excel_calculation(
 
     let it_tax = to_tax_percent(parsed_data.it_tax, 6.0);
     let ct_tax = to_tax_percent(parsed_data.ct_tax, 6.0);
+    let selection_fee_quote = parsed_data
+        .selection_fee_quote
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let selection_fee_markup = if selection_fee_quote.is_some() {
+        parsed_data
+            .selection_fee_markup
+            .as_ref()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    } else {
+        None
+    };
 
     let has_detailed_items = parsed_data
         .items
@@ -827,6 +849,12 @@ pub fn auto_import_excel_calculation(
         cost_cashflow_excl: None,
         it_rev_cashflow_excl: None,
         it_cost_cashflow_excl: None,
+        selection_fee_quote: selection_fee_quote.clone(),
+        selection_fee_markup,
+        selection_fee_actual_cost: None,
+        selection_fee_amount: None,
+        selection_fee_limit: None,
+        selection_fee_anchor: selection_fee_quote.map(|_| "quote".to_string()),
         subject_funding_plans: None,
         subject_funding_plan_migration_version: Some(1),
 
@@ -876,4 +904,34 @@ pub fn auto_import_excel_calculation(
     )?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_benefit_excel_internal;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn parse_lifecycle_excel_reads_selection_fee_inputs() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let output_path =
+            std::env::temp_dir().join(format!("lamber-parse-selection-fee-{}.xlsx", suffix));
+
+        let mut book = umya_spreadsheet::new_file_empty_worksheet();
+        let sheet = book.new_sheet("3-直接经济效益评估表").unwrap();
+        sheet.get_cell_mut("T26").set_value("90000");
+        sheet.get_cell_mut("T29").set_value("80");
+        umya_spreadsheet::writer::xlsx::write(&book, &output_path).unwrap();
+
+        let parsed = parse_benefit_excel_internal(&output_path).unwrap();
+
+        assert_eq!(parsed.selection_fee_quote.as_deref(), Some("90000"));
+        assert_eq!(parsed.selection_fee_markup.as_deref(), Some("80"));
+
+        let _ = fs::remove_file(output_path);
+    }
 }

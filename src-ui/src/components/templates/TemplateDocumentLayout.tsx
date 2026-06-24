@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import AppIcon from "../icons/AppIcon";
+import { IctMetricsCards } from "../IctMetricsDashboard";
 
 export interface TemplateLayoutTab<T extends string = string> {
   id: T;
@@ -27,28 +28,6 @@ export function getTemplateCompletion(items: TemplateCompletionItem[]): Template
   };
 }
 
-const formatMoney = (value: unknown) => {
-  const numeric = Number(value);
-  return Number.isFinite(numeric)
-    ? new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY" }).format(numeric)
-    : "--";
-};
-
-const formatPercent = (value: unknown) => {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? `${(numeric * 100).toFixed(2)}%` : "--";
-};
-
-function metricCards(metrics: any) {
-  return [
-    { label: "项目净现值 NPV", value: formatMoney(metrics?.npv), tone: "" },
-    { label: "净现值率", value: formatPercent(metrics?.npv_rate), tone: "text-success" },
-    { label: "毛利率", value: formatPercent(metrics?.margin_rate), tone: "text-success" },
-    { label: "动态回收期", value: metrics?.dynamic_payback || "--", tone: "" },
-    { label: "IRR", value: metrics?.irr || "--", tone: "" },
-  ];
-}
-
 interface TemplateDocumentLayoutProps<T extends string> {
   templateName: string;
   title: string;
@@ -73,7 +52,7 @@ export function TemplateDocumentLayout<T extends string>({
   children,
 }: TemplateDocumentLayoutProps<T>) {
   return (
-    <div className="flex flex-col gap-4 pb-28">
+    <div className="flex flex-col gap-4 pb-6">
       <div className="sticky top-0 z-20 rounded-xl bg-card/95 p-3 shadow-sm ring-1 ring-border/60 backdrop-blur">
         <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -140,7 +119,6 @@ interface TemplateConfirmationPanelProps {
   customerName?: string;
   projectYears?: number | string;
   completion: TemplateCompletion;
-  metrics: any;
   onGenerate: () => void;
 }
 
@@ -151,7 +129,6 @@ export function TemplateConfirmationPanel({
   customerName,
   projectYears,
   completion,
-  metrics,
   onGenerate,
 }: TemplateConfirmationPanelProps) {
   return (
@@ -180,7 +157,6 @@ export function TemplateConfirmationPanel({
             <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${completion.percent}%` }} />
           </div>
         </div>
-        <TemplateMetricsGrid metrics={metrics} className="xl:col-span-2" />
         <button
           type="button"
           className="inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground font-bold py-3 px-6 rounded-lg shadow-sm hover:opacity-90 transition-opacity xl:col-span-2"
@@ -193,37 +169,20 @@ export function TemplateConfirmationPanel({
   );
 }
 
-function TemplateMetricsGrid({ metrics, className = "" }: { metrics: any; className?: string }) {
-  return (
-    <div className={`grid grid-cols-1 gap-3 md:grid-cols-5 ${className}`}>
-      {metricCards(metrics).map(metric => (
-        <div key={metric.label} className="rounded-xl bg-muted/40 p-3 shadow-sm">
-          <span className="block text-[11px] font-bold text-secondary-foreground">{metric.label}</span>
-          <span className={`mt-1 block text-sm font-extrabold numeric-value ${metric.tone}`}>{metric.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function TemplateBottomMetricsBar({ metrics, onGenerate }: { metrics: any; onGenerate: () => void }) {
   return (
-    <div className="fixed bottom-4 left-[284px] right-6 z-30 rounded-xl bg-card/95 p-3 shadow-lg ring-1 ring-border/60 backdrop-blur">
-      <div className="grid grid-cols-2 items-center gap-3 md:grid-cols-[repeat(5,minmax(0,1fr))_auto]">
-        {metricCards(metrics).map(metric => (
-          <div key={metric.label} className="min-w-0 rounded-lg bg-muted/50 px-3 py-2">
-            <span className="block text-[10px] font-bold text-secondary-foreground">{metric.label}</span>
-            <span className={`block truncate text-sm font-extrabold numeric-value ${metric.tone}`}>{metric.value}</span>
-          </div>
-        ))}
+    <div className="rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/60">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-bold text-secondary-foreground">实时效益评估结果</h3>
         <button
           type="button"
-          className="col-span-2 inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-bold text-primary-foreground shadow-sm transition-opacity hover:opacity-90 md:col-span-1"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
           onClick={onGenerate}
         >
           <AppIcon name="generate" size={18} /> 立即生成文件
         </button>
       </div>
+      <IctMetricsCards metrics={metrics} />
     </div>
   );
 }

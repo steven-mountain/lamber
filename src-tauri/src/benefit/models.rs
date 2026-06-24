@@ -92,6 +92,21 @@ pub struct IctInput {
     pub it_rev_cashflow_excl: Option<Vec<String>>,
     pub it_cost_cashflow_excl: Option<Vec<String>>,
 
+    // Optional procurement selection-fee helper inputs. These are persisted for
+    // Excel template back-filling only and are not part of benefit math.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_fee_quote: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_fee_markup: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_fee_actual_cost: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_fee_amount: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_fee_limit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_fee_anchor: Option<String>,
+
     pub rev_it_integration: IctItem,
     pub rev_it_maintenance: IctItem,
     pub rev_it_device_sales: IctItem,

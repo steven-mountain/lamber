@@ -71,6 +71,8 @@ schema v7 新增：
 
 同步成功后，前端先应用后端返回的最新 `projectState.syncRevision/stateVersion/controlledSubjects`，再显示“已同步”，并清空旧同步预览。后续手动同步或查看明细必须基于最新 ICT 状态重新生成，不能复用覆盖前的 revision 或来源集合。
 
+打开智算页面时，右侧效益结论从 `projectState.lastResult` 恢复最近一次正式 ICT 计算结果。恢复只读取已保存的正式指标：`syncRevision` 必须大于 0，且 `lastResult` 必须包含完整 `IctResult` 指标字段；空对象或不完整结果保持待同步。只有 `controlledSubjects.sourceLineItemIds` 中包含当前金额来源 ID 时，页面才恢复“已同步”状态；否则仍可展示正式指标，但当前来源保持待同步，等待用户手动或自动同步刷新。
+
 ICT 标准收入/成本科目的金额、税率和资金计划由智算完全覆盖；产权、现金流模型和其他非智算金额参数沿用当前正式状态。同步请求只提交来源 revision 和同步输出，不提交可由 ICT 管理的智算编辑状态。
 
 金额口径：
