@@ -84,7 +84,9 @@ const {
   buildIntelligentComputeSyncLock,
   clearAiComputeControlForMappingChange,
   getAiComputeSyncFingerprint,
+  projectStateSyncIncludesAmountSource,
   reconcileAiComputeBlueprintFromIct,
+  restoreIctResultFromProjectState,
   restoreAiComputeFormulaControl,
 } = loadTs("ictSync.ts");
 const {
@@ -242,6 +244,54 @@ const returnedSyncLock = buildIntelligentComputeSyncLock(
   [h200BaselineSource, normalAmountSource],
 );
 assert.equal(returnedSyncLock.expectedSyncRevision, 3);
+const persistedIctResult = restoreIctResultFromProjectState({
+  syncRevision: 4,
+  lastResult: {
+    npv: 900,
+    npv_rate: "0.12",
+    margin_rate: "0.28",
+    dynamic_payback: ">10",
+    irr: "--",
+    it_npv: "800",
+    it_npv_rate: "0.1",
+    it_margin_rate: "0.26",
+    cashflow: [{ year: 1, cash_in: 100, cash_out: "20", net_cash: "80", cum_net_cash: "80", pv: "76", cum_pv: "76" }],
+  },
+});
+assert.equal(persistedIctResult.npv, "900");
+assert.equal(persistedIctResult.cashflow[0].cash_in, "100");
+assert.equal(restoreIctResultFromProjectState({ syncRevision: 0, lastResult: { npv: "1" } }), null);
+assert.equal(restoreIctResultFromProjectState({ syncRevision: 1, lastResult: { npv: "1" } }), null);
+assert.equal(
+  projectStateSyncIncludesAmountSource({
+    controlledSubjects: {
+      "revenue:rev_it_cloud": {
+        side: "revenue",
+        ictSubjectCode: "rev_it_cloud",
+        amountInclTax: 100,
+        taxRate: 0.06,
+        yearlyAmounts: [100],
+        sourceLineItemIds: ["source-quote:item-1"],
+      },
+    },
+  }, "source-quote"),
+  true,
+);
+assert.equal(
+  projectStateSyncIncludesAmountSource({
+    controlledSubjects: {
+      "revenue:rev_it_cloud": {
+        side: "revenue",
+        ictSubjectCode: "rev_it_cloud",
+        amountInclTax: 100,
+        taxRate: 0.06,
+        yearlyAmounts: [100],
+        sourceLineItemIds: ["source-other:item-1"],
+      },
+    },
+  }, "source-quote"),
+  false,
+);
 
 // 金额来源交换包：只导出当前来源业务结构，不携带项目身份、版本或同步控制状态。
 const h200ForExchange = createH200Blueprint();

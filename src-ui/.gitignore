@@ -1,2 +1,5 @@
 # Frontend build output
 dist/
+
+# TypeScript build info (incremental compilation cache)
+*.tsbuildinfo

@@ -16,6 +16,7 @@ import {
   summarizeQuote,
 } from "./calculations";
 import BenefitConclusionSidebar from "./BenefitConclusionSidebar";
+import { buildQuoteNarrative } from "./quoteNarrative";
 import CalculationItemCard from "./CalculationItemCard";
 import { getFormulaParameterReferences } from "./formulaEngine";
 import {
@@ -311,6 +312,15 @@ export default function AiComputeQuoteView() {
       .filter(item => item.enabled)
       .sort((left, right) => right.amountInclTax - left.amountInclTax)[0]?.name || "--",
     [store.blueprint.costItems],
+  );
+  const quoteNarrative = useMemo(
+    () => buildQuoteNarrative(store.blueprint, summary, ictResult, {
+      projectName: activeProject?.name || "",
+      sourceName: store.amountSources.find(source => source.id === store.activeAmountSourceId)?.name,
+      projectYears: getAiComputeProjectCycleYears(store.blueprint.parameters),
+      discountRatePercent: getAiComputeDiscountRatePercent(store.blueprint.parameters),
+    }),
+    [store.blueprint, summary, ictResult, activeProject?.name, store.amountSources, store.activeAmountSourceId],
   );
   const sensitivityRows = useMemo(() => runAiComputeQuoteSensitivity(store.blueprint, {
     parameterId: sensitivityParameterId,
@@ -900,6 +910,7 @@ export default function AiComputeQuoteView() {
             majorCost={majorCost}
             outputCount={outputPackage.length}
             syncDetailsAvailable={Boolean(ictExportPreview)}
+            narrativeText={quoteNarrative}
             onShowOutput={() => setShowOutput(true)}
             onShowSyncDetails={() => setShowSyncDetails(true)}
           />
@@ -2087,7 +2098,7 @@ function ParameterCard({
             ? 1
             : isAiComputeDiscountRateParameter(parameter)
               ? 0.1
-              : undefined}
+              : "any"}
           value={parameter.value}
           onFocus={onSelect}
           onChange={event => store.updateParameter(parameter.id, { value: toNumber(event.target.value) })}

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import AppIcon from "../../components/icons/AppIcon";
 import { Button } from "../../components/ui/button";
 import type { IctResult } from "../../utils/projectService";
@@ -13,6 +14,7 @@ type Props = {
   majorCost: string;
   outputCount: number;
   syncDetailsAvailable: boolean;
+  narrativeText: string;
   onShowOutput: () => void;
   onShowSyncDetails: () => void;
 };
@@ -85,9 +87,32 @@ export default function BenefitConclusionSidebar({
   majorCost,
   outputCount,
   syncDetailsAvailable,
+  narrativeText,
   onShowOutput,
   onShowSyncDetails,
 }: Props) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+
+  const handleCopyNarrative = async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(narrativeText);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = narrativeText;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setCopyState("copied");
+    } catch {
+      setCopyState("error");
+    }
+    window.setTimeout(() => setCopyState("idle"), 2000);
+  };
   const margin = ictResult ? Number(ictResult.margin_rate) : Number.NaN;
   const npv = ictResult ? Number(ictResult.npv) : Number.NaN;
   const conclusion = !ictResult
@@ -184,6 +209,14 @@ export default function BenefitConclusionSidebar({
       </section>
 
       <section className="mt-4 grid gap-2">
+        <Button variant="default" onClick={handleCopyNarrative}>
+          <AppIcon name={copyState === "copied" ? "success" : "copy"} />
+          {copyState === "copied"
+            ? "已复制，去微信粘贴"
+            : copyState === "error"
+              ? "复制失败，请重试"
+              : "复制测算说明"}
+        </Button>
         <Button variant="secondary" onClick={onShowOutput}>
           <AppIcon name="document" />
           查看输出包
