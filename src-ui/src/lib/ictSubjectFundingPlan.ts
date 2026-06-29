@@ -608,6 +608,46 @@ const addAnnualValue = (target: number[], index: number, value: number) => {
   target[index] = roundSignedFundingMoney(target[index] + value);
 };
 
+/**
+ * Restore a subject from tax-inclusive to tax-exclusive using the
+ * "先还原后分摊" convention: de-tax the subject's *whole* inclusive total once
+ * (rounded to cents), then split that exclusive total across years in
+ * proportion to each year's inclusive cents. Any rounding tail is folded into
+ * the last funded year so the yearly figures always sum exactly to the
+ * subject's rounded tax-exclusive total — matching the 立项材料 subject table
+ * and avoiding the 1-cent drift caused by de-taxing each year independently.
+ *
+ * @param inclCentsByYear per-year inclusive amounts, in integer cents
+ * @param divisor 1 + taxRate (e.g. 1.13 for a 13% line)
+ * @returns per-year exclusive amounts, in integer cents
+ */
+const distributeExclCentsByInclWeights = (
+  inclCentsByYear: number[],
+  divisor: number,
+): number[] => {
+  const result = Array(PLAN_YEARS).fill(0);
+  const totalInclCents = inclCentsByYear.reduce((sum, cents) => sum + cents, 0);
+  if (totalInclCents <= 0 || !(divisor > 0)) return result;
+
+  const totalExclCents = Math.round(totalInclCents / divisor);
+  let allocatedCents = 0;
+  let lastFundedIndex = -1;
+  for (let index = 0; index < PLAN_YEARS; index += 1) {
+    const inclCents = inclCentsByYear[index];
+    if (inclCents <= 0) continue;
+    const cents = Math.round((totalExclCents * inclCents) / totalInclCents);
+    result[index] = cents;
+    allocatedCents += cents;
+    lastFundedIndex = index;
+  }
+
+  const diffCents = totalExclCents - allocatedCents;
+  if (diffCents !== 0 && lastFundedIndex >= 0) {
+    result[lastFundedIndex] += diffCents;
+  }
+  return result;
+};
+
 export type BuildAnnualCashflowOptions = {
   /**
    * When true, subjects that carry an amount but have no enabled funding plan
@@ -649,9 +689,14 @@ export const buildAnnualCashflowFromSubjectFundingPlans = (
       return;
     }
 
-    annualValues.forEach((annualIncl, index) => {
-      const inclValue = roundFundingMoney(annualIncl);
-      const exclValue = roundSignedFundingMoney(inclValue / divisor);
+    // 先把整笔含税额还原成不含税（取整一次），再按各年含税占比分摊，
+    // 与立项材料科目表口径一致，避免逐年还原产生的尾差。
+    const inclCentsByYear = annualValues.map(annualIncl => toMoneyCents(annualIncl));
+    const exclCentsByYear = distributeExclCentsByInclWeights(inclCentsByYear, divisor);
+
+    inclCentsByYear.forEach((inclCents, index) => {
+      const inclValue = inclCents / 100;
+      const exclValue = exclCentsByYear[index] / 100;
       if (subject.subjectRef.side === "revenue") {
         addAnnualValue(annualRevenueIncl, index, inclValue);
         addAnnualValue(annualRevenueExcl, index, exclValue);
@@ -918,11 +963,16 @@ export const buildAnnualCashflowSubjectContributions = (
     if (!plan || !plan.enabled) continue; // Should be caught by validation earlier
 
     const annualValues = normalizeAnnualInclValues(plan.annualInclValues);
+    // 与 buildAnnualCashflowFromSubjectFundingPlans 同源：先还原整笔、再按年分摊，
+    // 保证下钻每年不含税之和等于科目还原后的不含税总额。
+    const divisor = 1 + subject.taxRate / 100;
+    const inclCentsByYear = annualValues.map(annualIncl => toMoneyCents(annualIncl));
+    const exclCentsByYear = distributeExclCentsByInclWeights(inclCentsByYear, divisor);
     for (let yearIndex = 0; yearIndex < PLAN_YEARS; yearIndex++) {
       const incl = annualValues[yearIndex];
       if (incl === 0) continue;
 
-      const excl = Number((incl / (1 + subject.taxRate / 100)).toFixed(2));
+      const excl = exclCentsByYear[yearIndex] / 100;
       result[yearIndex].push({
         yearIndex,
         side: subject.subjectRef.side,
