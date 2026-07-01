@@ -162,6 +162,7 @@ fn main() {
             project_state::sync_intelligent_compute_to_ict,
             project_state::save_benefit_analysis,
             project_state::get_benefit_schemes,
+            project_state::update_scheme_stage,
             project_state::save_template_state,
             project_state::get_template_state,
             project_state::list_template_states,

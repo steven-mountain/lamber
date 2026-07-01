@@ -6,6 +6,51 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-07-01
+
+### ICT 测算表内"甄选前 / 甄选后"方案切换（第 2 阶段）
+
+Modified:
+- `IctLifecycle.tsx` 顶部横幅由静态"当前方案"文本改为二段式切换控件 `[甄选前][甄选后] 更多方案 ▾`：
+  - 组件内新增 `schemes` 状态（在 `loadProjectContext` 中随项目一并加载/重置），按 `updated_at` 倒序推导每阶段主方案 `preScheme` / `postScheme`；未标注方案及同阶段历史方案统一进入"更多方案"下拉。
+  - 点击已存在阶段按钮：先走 `confirmOrSave()` 未保存确认，再 `navigateTo("ict_lifecycle", projectId, schemeId)` 复用既有加载路径切换方案（不新增并行状态）。
+  - 点击"甄选后（未生成）"：当前方案未打标签时就地 `update_scheme_stage`；当前方案已属另一阶段时复用"另存为新方案"弹窗派生新方案（默认名 `${项目名}_甄选后`，`stage=post_selection`，以当前测算数据为起点）。
+  - `domainSaveService.saveBenefitAnalysis` / `handleSaveAsNew` 透传 `stage`，另存为弹窗支持"派生阶段方案"标题与说明。
+- 文档生成安全提示：`handleTabSwitch` 中，点击模板名含"签批"且 `activeScheme.stage !== "post_selection"` 时给出非阻断 `confirm`（继续 / 取消），不强制拦截，兼容甄选前预生成草稿。
+- 顺带修复 `IctLifecycle.tsx` 两处历史全角空格（U+3000）触发的 `no-irregular-whitespace` lint 报错（改为 `{"　"}` 表达式，渲染不变）。
+
+Decisions:
+- 方案切换复用项目下拉/返回按钮相同的 `confirmOrSave` + `navigateTo` 路径，避免引入第二套 activeScheme 加载逻辑。
+- "甄选后未生成"分两种语义：当前方案未标注 → 就地打标（对应"首次测算生成甄选前方案"）；当前方案已标注 → 派生新方案（对应"基于甄选前创建甄选后"），避免误建重复方案。
+- 未改动测算引擎、快照结构/版本号、Excel/Word 模板与坐标映射。
+
+Fixed:
+- 派生"甄选后"方案后点击"甄选前"无法切换（需退出重进才生效）：根因是 `activeScheme`（本地态）与导航 store `activeSchemeId` 两个真相源漂移——保存/派生走 `loadProjectContext` 直接加载不刷新 store，导致 store 陈旧地仍指向目标方案，`navigateTo` 写入相同值不触发 `[activeProjectId, activeSchemeId]` 加载 effect。`switchToScheme` 改为：始终 `navigateTo` 同步 store，并在 store 已指向目标 id 时直接 `loadProjectContext` 兜底，保证切换必然生效。
+- 甄选前/甄选后切换控件位置随方案名长短漂移：把阶段切换控件移到当前方案行的固定最左侧（`shrink-0`），方案名放其右侧并 `truncate`，单行不换行，位置稳定。
+- 切换方案时顶部项目卡片（红框）跳动/闪一下：根因是 `loadProjectContext` 开头同步 `setActiveProject(null)` 等清空，异步取数期间 `activeProject === null` 令卡片瞬间切成"自由测算模式"布局再切回。改为**同项目内切换只保留项目级/方案级展示状态、不整块清空**（`isSameProject` 判定，比较导航目标与 `useProjectStore` 当前项目），仅跨项目时才清空；同项目下这些状态在数据就绪后从旧值平滑更新到新值。
+- **数据串档（严重，架构级修复）**：修改"甄选后"金额后切到"甄选前"，甄选前数据也被改（反之亦然）。
+  - 根因：测算"工作副本"存放在 `project_lifecycle_states` / `project_cashflow_states` 两张表，且是 `project_id UNIQUE` 的**项目级单例**（每项目仅一行）；同时科目金额编辑标记的是 `cashflow` scope，保存时只写这份共享副本、不落各方案快照，加载又优先读它。于是甄选前/甄选后自始至终读写同一行数据。
+  - 修复：把工作副本改为**按方案存储**。
+    - 后端 schema 迁移 v8 → v9：两表新增 `scheme_id` 列，唯一键由 `project_id` 改为 `(project_id, scheme_id)`（SQLite 建新表→拷贝→删旧→改名重建）；既有行归属到项目 `default_scheme_id`（无默认方案则归入 `''` 桶）。
+    - `save_lifecycle_state` / `save_cashflow_state` / `get_lifecycle_state` / `get_cashflow_state` 命令新增 `scheme_id` 入参，按 `(project_id, scheme_id)` upsert / 读取；智算导入路径写入项目默认方案桶（`resolve_default_scheme_bucket`）；`get_project_full_state` 返回默认方案桶（供智算视图/文档导出等按项目取的消费方沿用）。
+    - 前端：`domainSaveService` 的四个状态读写方法新增 `schemeId`；`IctLifecycle` 的 lifecycle/cashflow 保存 handler 与 `persistLifecycleAndCashflowState` 均带上当前 `activeScheme.id`；`loadProjectContext` 改为按选中方案精确加载**该方案自己的草稿**（`loadLifecycleState/loadCashflowState(project, schemeId)`），无草稿再回落到该方案快照，无选中方案才回退到项目默认桶/legacy。
+  - 效果：甄选前/甄选后是两份完全独立的工作副本，编辑与切换互不影响。此修复取代当日早前基于 `default_scheme_id` 的临时判定（`preferCurrentState` 门控），后者因金额编辑只落 `cashflow` scope、既不建快照也不改 default 而无法成立。
+  - 迁移测试：`v8_lifecycle_cashflow_states_gain_scheme_id_and_allow_multiple_per_project`（含既有行回填、去除 project_id 唯一约束、(project_id, scheme_id) 仍唯一）；`fresh_database_uses_schema_v9_*` 校验全新库落到 v9 且两表含 `scheme_id`。
+
+### 测算方案甄选阶段标签（甄选前 / 甄选后）
+
+Modified:
+- `BenefitAnalysisScheme` 新增可选 `stage` 字段（`pre_selection` / `post_selection` / `None`），随 serde 默认值兼容历史数据。
+- 数据库 `benefit_schemes` 表新增 `stage TEXT` 列；`schema_version` 迁移 7 → 8（幂等 `ALTER TABLE ... ADD COLUMN`，既有行默认未标注）。
+- `save_benefit_analysis` 命令新增 `stage` 入参：新建方案按传入 stage 写入；更新既有方案用 `COALESCE(?, stage)` 保留原标签（普通保存不清空）。
+- 新增 `update_scheme_stage(project_id, scheme_id, stage)` 命令：独立改写方案阶段标签，不产生新的效益快照；空/非法值归一化为未标注。
+- 读取路径（`get_benefit_schemes`、`get_project_full_state`）与 JSON/SQLite 仓储、JSON→SQLite 迁移全部同步读写 `stage`。
+- 前端：`ProjectBoard` 方案 chip 展示阶段标签，并在快照面板提供“甄选前/甄选后”分段按钮设置/取消标注；`IctLifecycle` 当前方案横幅展示阶段 chip；新增 `lib/schemeStage.ts` 统一标签、配色与归一化。
+
+Decisions:
+- 阶段标签仅用于区分与展示两版效益分析（甄选前用预算/最高限价成本、甄选后用中标实际成本），不改动 `calculator.rs` 测算引擎、NPV、现金流、税额、科目金额或 0 容差校验。
+- 甄选前/甄选后作为**同一项目下的不同方案**并列存在，靠 stage 打标而非新建项目，便于对比与后续《甄选结果签批表》取数（第 2 阶段）。
+
 ## 2026-06-17
 
 ### 采购甄选费 Excel 回填

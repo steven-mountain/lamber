@@ -5,6 +5,7 @@ import AppIcon from "../components/icons/AppIcon";
 import TemplateForms from "./TemplateForms";
 import { useNavigationStore } from "../store/useNavigationStore";
 import { validateFinancialData, type ValidationReport } from "../lib/financeValidator";
+import { SCHEME_STAGE_OPTIONS, getSchemeStageLabel, type SchemeStage } from "../lib/schemeStage";
 import { useAiContextStore } from "../store/useAiContextStore";
 import { AI_CONTEXT_KEY, buildAiContextKey } from "../utils/aiContextKeys";
 import { useIctState } from "../hooks/useIctState";
@@ -173,12 +174,15 @@ export default function IctLifecycle() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
+  const [schemes, setSchemes] = useState<BenefitAnalysisScheme[]>([]);
   const [activeScheme, setActiveScheme] = useState<BenefitAnalysisScheme | null>(null);
   const [activeSnapshot, setActiveSnapshot] = useState<BenefitAnalysisSnapshot | null>(null);
   const [pendingNewSchemeName, setPendingNewSchemeName] = useState<string | null>(null);
 
   const [showSaveAsModal, setShowSaveAsModal] = useState(false);
   const [saveAsSchemeName, setSaveAsSchemeName] = useState("");
+  // 另存为新方案时要打的甄选阶段标签（派生"甄选后"方案时使用），普通另存为为 null。
+  const [saveAsSchemeStage, setSaveAsSchemeStage] = useState<SchemeStage | null>(null);
   const [showSelectProjectModal, setShowSelectProjectModal] = useState(false);
   const [fundingPlanFocus, setFundingPlanFocus] = useState<{ planId: string; token: number } | null>(null);
   const [cashflowSourceExpanded, setCashflowSourceExpanded] = useState(false);
@@ -412,6 +416,7 @@ export default function IctLifecycle() {
       localStorage.removeItem("lamber_active_scheme_id");
       setActiveProject(null);
       useProjectStore.getState().setCurrentProject(null);
+      setSchemes([]);
       setActiveScheme(null);
       setActiveSnapshot(null);
       setPendingNewSchemeName(null);
@@ -423,10 +428,19 @@ export default function IctLifecycle() {
       return;
     }
 
+    // 同一项目内切换方案时，不清空项目级/方案级展示状态：否则 activeProject 会先变 null，
+    // 顶部项目卡片（红框）瞬间切成"自由测算模式"布局、数据回来后再切回来，造成一次跳动。
+    // 仅在切换到不同项目时才整块清空；同项目下这些状态会在数据就绪后从旧值平滑更新到新值。
+    const previousProjectId = useProjectStore.getState().currentProject?.id || null;
+    const isSameProject = targetProjectId === previousProjectId;
+
     isHydratingRef.current = true;
-    setActiveProject(null);
-    setActiveScheme(null);
-    setActiveSnapshot(null);
+    if (!isSameProject) {
+      setActiveProject(null);
+      setSchemes([]);
+      setActiveScheme(null);
+      setActiveSnapshot(null);
+    }
     setPendingNewSchemeName(null);
     state.resetProjectState();
     restoreSelectionFeeState(null);
@@ -439,6 +453,7 @@ export default function IctLifecycle() {
         localStorage.removeItem("lamber_active_scheme_id");
         setActiveProject(null);
         useProjectStore.getState().setCurrentProject(null);
+        setSchemes([]);
         setActiveScheme(null);
         setActiveSnapshot(null);
         setPendingNewSchemeName(null);
@@ -482,6 +497,7 @@ export default function IctLifecycle() {
       });
       if (requestId !== projectLoadRequestRef.current) return;
       const projectSchemes = fullState?.schemes || await projectService.getSchemes(project.id);
+      setSchemes(projectSchemes);
       let schemeToSelect: BenefitAnalysisScheme | null = null;
       if (targetSchemeId) {
         schemeToSelect = projectSchemes.find(s => s.id === targetSchemeId) || null;
@@ -490,12 +506,32 @@ export default function IctLifecycle() {
         schemeToSelect = projectSchemes.find(s => s.id === project.default_scheme_id) || projectSchemes[0] || null;
       }
 
-      const currentLifecycleInput = fullState?.lifecycleState?.inputPayloadJson;
-      const baseHydrationInput = currentLifecycleInput || fullState?.legacyLifecycleInput || null;
+      // 工作副本（lifecycle/cashflow state）现按 (project, scheme) 独立存储：加载选中方案时，
+      // 只读取“该方案自己的草稿”，方案之间彻底隔离，不再共用项目级单例。
+      // 无选中方案（自由/历史项目）才回退到项目级默认桶(fullState)与 legacy 输入。
+      let draftLifecycle: any = null;
+      let draftCashflow: any = null;
+      if (schemeToSelect) {
+        [draftLifecycle, draftCashflow] = await Promise.all([
+          domainSaveService.loadLifecycleState(project.id, schemeToSelect.id).catch(() => null),
+          domainSaveService.loadCashflowState(project.id, schemeToSelect.id).catch(() => null),
+        ]);
+        if (requestId !== projectLoadRequestRef.current) return;
+      } else {
+        draftLifecycle = fullState?.lifecycleState || null;
+        draftCashflow = fullState?.cashflowState || null;
+      }
+
+      const currentLifecycleInput = draftLifecycle?.inputPayloadJson;
+      // 选中方案时不回退到 legacy 输入：没有草稿就走该方案的快照（下方分支），避免串入项目级历史数据。
+      const baseHydrationInput =
+        currentLifecycleInput || (schemeToSelect ? null : fullState?.legacyLifecycleInput) || null;
       const currentHydrationInput = baseHydrationInput
-        ? buildHydrationInput(baseHydrationInput, fullState?.cashflowState)
+        ? buildHydrationInput(baseHydrationInput, draftCashflow)
         : null;
-      const preferCurrentState = Boolean(currentHydrationInput && (currentLifecycleInput || fullState?.cashflowState));
+      const preferCurrentState = Boolean(
+        currentHydrationInput && (currentLifecycleInput || draftCashflow)
+      );
 
       if (schemeToSelect) {
         setActiveScheme(schemeToSelect);
@@ -647,9 +683,9 @@ export default function IctLifecycle() {
   // 优先使用 lifecycle_state / cashflow_state 进行回填。若这里只写入效益快照，
   // 重新加载时会读取到未更新的 lifecycle/cashflow 状态，导致刚刚的修改（如取消差额承接）被回退。
   // 因此这两个保存入口必须同时持久化 lifecycle 与 cashflow 状态。
-  const persistLifecycleAndCashflowState = async (projectId: string) => {
-    await domainSaveService.saveLifecycleState(projectId, buildLifecycleStatePayload());
-    await domainSaveService.saveCashflowState(projectId, buildCashflowStatePayload());
+  const persistLifecycleAndCashflowState = async (projectId: string, schemeId: string | null) => {
+    await domainSaveService.saveLifecycleState(projectId, schemeId, buildLifecycleStatePayload());
+    await domainSaveService.saveCashflowState(projectId, schemeId, buildCashflowStatePayload());
   };
 
   const handleSaveToSelectedProject = async (targetProjectId: string) => {
@@ -677,7 +713,7 @@ export default function IctLifecycle() {
         false
       );
 
-      await persistLifecycleAndCashflowState(targetProjectId);
+      await persistLifecycleAndCashflowState(targetProjectId, updatedProj.default_scheme_id || null);
 
       setPendingNewSchemeName(null);
       const newSchemeId = updatedProj.default_scheme_id || null;
@@ -718,7 +754,8 @@ export default function IctLifecycle() {
         pendingNewSchemeName ? true : false
       );
 
-      await persistLifecycleAndCashflowState(activeProject.id);
+      // 工作副本写入本次保存对应的方案桶（新建方案时即后端返回的 default_scheme_id）。
+      await persistLifecycleAndCashflowState(activeProject.id, updatedProj.default_scheme_id || null);
 
       setPendingNewSchemeName(null);
       const newSchemeId = updatedProj.default_scheme_id || null;
@@ -754,20 +791,109 @@ export default function IctLifecycle() {
         saveAsSchemeName.trim(),
         payload,
         metrics,
-        true
+        true,
+        saveAsSchemeStage
       );
+
+      // 另存为/派生的新方案，其工作副本以当前数据为起点写入新方案自己的桶（scheme_id）。
+      // 每个方案的工作副本相互独立，互不覆盖。
+      await persistLifecycleAndCashflowState(activeProject.id, updatedProj.default_scheme_id || null);
 
       setShowSaveAsModal(false);
       setSaveAsSchemeName("");
+      setSaveAsSchemeStage(null);
       setPendingNewSchemeName(null);
 
       const newSchemeId = updatedProj.default_scheme_id || null;
       clearDirty("benefit-analysis");
+      clearDirty("lifecycle");
+      clearDirty("cashflow");
       await loadProjectContext(activeProject.id, newSchemeId);
       alert("另存为新方案成功！");
     } catch (error) {
       console.error("另存为失败:", error);
       alert("另存为失败: " + error);
+    }
+  };
+
+  // 按更新时间倒序排列，方便在同一 stage 有多个方案时取"最近更新的一个"。
+  const sortedSchemes = useMemo(
+    () => [...schemes].sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || "")),
+    [schemes]
+  );
+  // 每个阶段取最近更新的方案作为主方案。
+  const preScheme = useMemo(
+    () => sortedSchemes.find(s => s.stage === "pre_selection") || null,
+    [sortedSchemes]
+  );
+  const postScheme = useMemo(
+    () => sortedSchemes.find(s => s.stage === "post_selection") || null,
+    [sortedSchemes]
+  );
+  // 未打阶段标签的方案，以及同阶段的其余方案，统一收纳进"更多方案"下拉。
+  const otherSchemes = useMemo(
+    () => sortedSchemes.filter(s => s.id !== preScheme?.id && s.id !== postScheme?.id),
+    [sortedSchemes, preScheme, postScheme]
+  );
+
+  // 切换到指定方案：先走未保存变更确认，再复用与项目下拉一致的导航加载路径。
+  const switchToScheme = async (schemeId: string) => {
+    if (!activeProject || pendingNewSchemeName) return;
+    if (schemeId === activeScheme?.id) return;
+    const canProceed = await confirmOrSave();
+    if (!canProceed) return;
+    // 导航 store 的 activeSchemeId 是"返回/重进"依赖的来源，这里始终同步更新。
+    // 但保存/派生方案走的是 loadProjectContext 直接加载，不会刷新 store —— 此时 store
+    // 可能陈旧地仍指向目标方案：navigateTo 写入相同值不会改变 [activeProjectId,
+    // activeSchemeId] 依赖，加载 effect 不触发，切换会"看似无效"。故当 store 已指向目标 id
+    // 时，直接调用 loadProjectContext 兜底，保证切换必然生效。
+    const navSchemeId = useNavigationStore.getState().activeSchemeId;
+    navigateTo("ict_lifecycle", activeProject.id, schemeId);
+    if (navSchemeId === schemeId) {
+      await loadProjectContext(activeProject.id, schemeId);
+    }
+  };
+
+  // 就地更新当前方案的甄选阶段标签（不派生新方案），并同步本地方案列表。
+  const applyActiveSchemeStage = async (stage: SchemeStage | null) => {
+    if (!activeProject || !activeScheme || pendingNewSchemeName) return;
+    try {
+      const updated = await projectService.updateSchemeStage(
+        activeProject.id,
+        activeScheme.id,
+        stage
+      );
+      setActiveScheme(updated);
+      setSchemes(prev => prev.map(s => (s.id === updated.id ? updated : s)));
+    } catch (error) {
+      console.error("更新甄选阶段失败:", error);
+      alert("更新甄选阶段失败: " + error);
+    }
+  };
+
+  // 以当前测算数据为起点，派生一个带阶段标签的新方案（复用"另存为新方案"弹窗）。
+  const handleDeriveStageScheme = (stage: SchemeStage) => {
+    const base = activeProject?.name || activeScheme?.name || "方案";
+    setSaveAsSchemeStage(stage);
+    setSaveAsSchemeName(`${base}_${getSchemeStageLabel(stage)}`);
+    setShowSaveAsModal(true);
+  };
+
+  // 二段式阶段按钮点击：已存在则切换加载；不存在时按当前方案是否已标注决定"就地打标"或"派生新方案"。
+  const handleStageButtonClick = async (stage: SchemeStage) => {
+    if (!activeProject || pendingNewSchemeName) return;
+    const target = stage === "pre_selection" ? preScheme : postScheme;
+    if (target) {
+      await switchToScheme(target.id);
+      return;
+    }
+    if (!activeScheme) return;
+    if (!activeScheme.stage) {
+      // 当前方案尚未打阶段标签（如首次测算生成的方案）：直接标注为该阶段。
+      await applyActiveSchemeStage(stage);
+    } else {
+      // 当前方案已属另一阶段：基于当前数据派生一个该阶段的新方案。
+      handleDeriveStageScheme(stage);
     }
   };
 
@@ -950,7 +1076,9 @@ export default function IctLifecycle() {
         throw new Error("项目或工作区已切换");
       }
       const inputPayload = calculations.buildInputDataPayload();
-      await domainSaveService.saveLifecycleState(activeProject.id, {
+      // 工作副本写入当前方案自己的桶，保证方案间隔离。
+      const lifecycleSchemeId = activeScheme?.id || activeProject.default_scheme_id || null;
+      await domainSaveService.saveLifecycleState(activeProject.id, lifecycleSchemeId, {
         profileJson: {
           projectName: state.projName,
           customerName: state.customerName,
@@ -1011,7 +1139,9 @@ export default function IctLifecycle() {
         },
         metricsJson: calculations.metrics,
       };
-      await domainSaveService.saveCashflowState(activeProject.id, cashflowState);
+      // 工作副本写入当前方案自己的桶，保证方案间隔离。
+      const cashflowSchemeId = activeScheme?.id || activeProject.default_scheme_id || null;
+      await domainSaveService.saveCashflowState(activeProject.id, cashflowSchemeId, cashflowState);
       return { success: true, savedScopes: ["cashflow"] };
     });
 
@@ -1124,6 +1254,21 @@ export default function IctLifecycle() {
         alert(blockingMessage);
         return;
       }
+
+      // 甄选结果签批表等"签批"类文档，建议基于甄选后方案生成。非阻断提示，用户可继续。
+      if (
+        templateName &&
+        templateName.includes("签批") &&
+        activeScheme &&
+        activeScheme.stage !== "post_selection"
+      ) {
+        const proceed = window.confirm(
+          `当前方案「${activeScheme.name}」为${getSchemeStageLabel(activeScheme.stage)}阶段。\n` +
+            `“${templateName.replace(/\.(docx|xlsx)$/i, "")}”通常应基于甄选后方案生成，\n` +
+            `建议先切换到“甄选后”方案再生成。\n\n确定：仍然继续生成\n取消：返回切换方案`
+        );
+        if (!proceed) return;
+      }
     }
 
     const currentHash = buildFinancialStateHash({ revIt, revCt, revNonItCt, costIt, costCt, costMix });
@@ -1234,7 +1379,7 @@ export default function IctLifecycle() {
             <span className="rounded-md bg-primary-soft px-2 py-0.5 text-[11px] font-extrabold text-primary shrink-0">科目级资金计划</span>
             <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${statusBadge.cls}`}>{statusBadge.label}</span>
             <span className="text-[11px] font-semibold text-secondary-foreground numeric-value shrink-0">
-              收入 {counts.revenuePlannedCount}/{counts.revenueSubjectCount}　投入 {counts.costPlannedCount}/{counts.costSubjectCount}
+              收入 {counts.revenuePlannedCount}/{counts.revenueSubjectCount}{"　"}投入 {counts.costPlannedCount}/{counts.costSubjectCount}
             </span>
           </div>
           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-secondary-foreground shrink-0">
@@ -1246,7 +1391,7 @@ export default function IctLifecycle() {
         {!cashflowSourceExpanded && (
           <p className="mt-1.5 text-[11px] leading-relaxed text-secondary-foreground">
             现金流依据：科目收付款计划，按各科目税率逐年换算为不含税现金流并参与效益指标计算。
-            {subjectFundingCalculationBlocked && <span className="text-warning-foreground font-semibold">　部分科目未维护计划，已临时按「第一年一次性」计入，展开可补全。</span>}
+            {subjectFundingCalculationBlocked && <span className="text-warning-foreground font-semibold">{"　"}部分科目未维护计划，已临时按「第一年一次性」计入，展开可补全。</span>}
           </p>
         )}
 
@@ -1791,11 +1936,70 @@ export default function IctLifecycle() {
                       效益状态: {activeProject.benefit_status === 'normal' ? '最新' : activeProject.benefit_status === 'outdated' ? '已失效' : '未测算'}
                     </span>
                   </div>
-                  <div className="text-xs text-secondary-foreground mt-0.5">
+                  <div className="text-xs text-secondary-foreground mt-0.5 flex items-center gap-2 min-w-0">
                     {pendingNewSchemeName ? (
-                      <span>拟新建方案: <span className="font-semibold text-primary">{pendingNewSchemeName}</span> (未保存)</span>
+                      <span className="truncate">拟新建方案: <span className="font-semibold text-primary">{pendingNewSchemeName}</span> (未保存)</span>
                     ) : (
-                      <span>当前方案: <span className="font-semibold text-primary">{activeScheme?.name || "默认方案"}</span> {activeSnapshot ? `(v${activeSnapshot.version})` : ''}</span>
+                      <>
+                        {/* 阶段切换控件放在固定的最左侧，位置不随方案名长短变化；方案名放其右侧并按需截断。 */}
+                        {activeScheme && (
+                          <span className="inline-flex items-center gap-1.5 shrink-0">
+                            <span className="inline-flex overflow-hidden rounded-md border border-border">
+                              {SCHEME_STAGE_OPTIONS.map((option, idx) => {
+                                const stageScheme = option.value === "pre_selection" ? preScheme : postScheme;
+                                const exists = Boolean(stageScheme);
+                                const isActive = exists && activeScheme.id === stageScheme!.id;
+                                const title = exists
+                                  ? isActive
+                                    ? `当前即为${option.label}方案`
+                                    : `切换到${option.label}方案：${stageScheme!.name}`
+                                  : activeScheme.stage
+                                    ? `基于当前方案派生一个${option.label}方案`
+                                    : `将当前方案标注为${option.label}`;
+                                return (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => handleStageButtonClick(option.value)}
+                                    className={`px-2 py-0.5 text-[10px] font-semibold transition-all ${idx > 0 ? "border-l border-border" : ""} ${
+                                      isActive
+                                        ? option.chipClass
+                                        : exists
+                                          ? "bg-card text-secondary-foreground hover:bg-secondary"
+                                          : "bg-muted/30 text-secondary-foreground/60 hover:bg-secondary"
+                                    }`}
+                                    title={title}
+                                  >
+                                    {option.label}{!exists && "（未生成）"}
+                                  </button>
+                                );
+                              })}
+                            </span>
+                            {otherSchemes.length > 0 && (
+                              <select
+                                value=""
+                                onChange={async (e) => {
+                                  const sid = e.target.value;
+                                  e.target.value = "";
+                                  if (sid) await switchToScheme(sid);
+                                }}
+                                className="bg-card border border-border rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-secondary-foreground outline-none focus:border-ring cursor-pointer"
+                                title="其他方案（未标注阶段 / 同阶段历史方案）"
+                              >
+                                <option value="" disabled>更多方案 ▾</option>
+                                {otherSchemes.map(s => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.name}
+                                    {getSchemeStageLabel(s.stage) !== "未标注" ? `（${getSchemeStageLabel(s.stage)}）` : ""}
+                                    {s.id === activeScheme.id ? "（当前）" : ""}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </span>
+                        )}
+                        <span className="truncate min-w-0">当前方案: <span className="font-semibold text-primary">{activeScheme?.name || "默认方案"}</span> {activeSnapshot ? `(v${activeSnapshot.version})` : ''}</span>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1831,6 +2035,7 @@ export default function IctLifecycle() {
                 <button
                   id="save_as_new_benefit_btn"
                   onClick={() => {
+                    setSaveAsSchemeStage(null);
                     setSaveAsSchemeName(activeScheme?.name ? `${activeScheme.name}_复本` : "新方案");
                     setShowSaveAsModal(true);
                   }}
@@ -2055,16 +2260,25 @@ export default function IctLifecycle() {
             className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm overflow-hidden"
           >
             <div className="px-6 py-4 border-b border-border bg-muted/30 flex items-center justify-between">
-              <h4 className="font-bold text-sm text-foreground">另存为新方案</h4>
+              <h4 className="font-bold text-sm text-foreground">
+                {saveAsSchemeStage ? `派生${getSchemeStageLabel(saveAsSchemeStage)}方案` : "另存为新方案"}
+              </h4>
               <button
                 type="button"
-                onClick={() => setShowSaveAsModal(false)}
+                onClick={() => { setShowSaveAsModal(false); setSaveAsSchemeStage(null); }}
                 className="text-secondary-foreground hover:bg-secondary p-1 rounded-md"
               >
                 <AppIcon name="close" size={14} />
               </button>
             </div>
             <div className="p-6">
+              {saveAsSchemeStage && (
+                <p className="text-xs text-secondary-foreground mb-3 leading-relaxed">
+                  将以当前方案的最新数据为起点，创建一个标注为
+                  <span className="font-semibold text-primary">「{getSchemeStageLabel(saveAsSchemeStage)}」</span>
+                  的新方案。保存后可在此基础上按甄选实际报价调整。
+                </p>
+              )}
               <label className="text-xs font-semibold text-secondary-foreground block mb-1.5">方案名称 <span className="text-red-500">*</span></label>
               <input
                 id="save_as_new_scheme_name_input"
@@ -2082,7 +2296,7 @@ export default function IctLifecycle() {
             <div className="border-t border-border p-3 bg-muted/10 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setShowSaveAsModal(false)}
+                onClick={() => { setShowSaveAsModal(false); setSaveAsSchemeStage(null); }}
                 className="px-3 py-1.5 border border-border hover:bg-secondary rounded-lg text-xs font-semibold text-secondary-foreground transition-all"
               >
                 取消

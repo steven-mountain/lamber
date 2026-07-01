@@ -356,7 +356,7 @@ impl ProjectRepository for SqliteProjectRepository {
     fn get_schemes(&self, project_id: &str) -> Result<Vec<BenefitAnalysisScheme>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
-            .prepare("SELECT id, project_id, name, created_at, updated_at FROM benefit_schemes WHERE project_id = ?1")
+            .prepare("SELECT id, project_id, name, stage, created_at, updated_at FROM benefit_schemes WHERE project_id = ?1")
             .map_err(|e| e.to_string())?;
 
         let scheme_iter = stmt
@@ -365,8 +365,9 @@ impl ProjectRepository for SqliteProjectRepository {
                     id: row.get(0)?,
                     project_id: row.get(1)?,
                     name: row.get(2)?,
-                    created_at: row.get(3)?,
-                    updated_at: row.get(4)?,
+                    stage: row.get(3)?,
+                    created_at: row.get(4)?,
+                    updated_at: row.get(5)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -381,11 +382,12 @@ impl ProjectRepository for SqliteProjectRepository {
     fn save_scheme(&self, scheme: &BenefitAnalysisScheme) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute(
-            "INSERT OR REPLACE INTO benefit_schemes (id, project_id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT OR REPLACE INTO benefit_schemes (id, project_id, name, stage, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             rusqlite::params![
                 scheme.id,
                 scheme.project_id,
                 scheme.name,
+                scheme.stage,
                 scheme.created_at,
                 scheme.updated_at,
             ],

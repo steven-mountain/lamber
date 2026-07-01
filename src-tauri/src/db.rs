@@ -46,6 +46,7 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
             id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL,
             name TEXT NOT NULL,
+            stage TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -179,7 +180,8 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS project_lifecycle_states (
             id TEXT PRIMARY KEY,
-            project_id TEXT NOT NULL UNIQUE,
+            project_id TEXT NOT NULL,
+            scheme_id TEXT NOT NULL DEFAULT '',
             lifecycle_version INTEGER NOT NULL DEFAULT 1,
             profile_json TEXT NOT NULL DEFAULT '{}',
             parameters_json TEXT NOT NULL DEFAULT '{}',
@@ -187,6 +189,7 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
             input_payload_json TEXT NOT NULL DEFAULT '{}',
             updated_at TEXT NOT NULL,
             created_at TEXT NOT NULL,
+            UNIQUE(project_id, scheme_id),
             FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
         );",
         [],
@@ -195,7 +198,8 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS project_cashflow_states (
             id TEXT PRIMARY KEY,
-            project_id TEXT NOT NULL UNIQUE,
+            project_id TEXT NOT NULL,
+            scheme_id TEXT NOT NULL DEFAULT '',
             cashflow_version INTEGER NOT NULL DEFAULT 1,
             cashflow_model TEXT,
             payment_model_json TEXT NOT NULL DEFAULT '{}',
@@ -205,6 +209,7 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
             metrics_json TEXT NOT NULL DEFAULT '{}',
             updated_at TEXT NOT NULL,
             created_at TEXT NOT NULL,
+            UNIQUE(project_id, scheme_id),
             FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
         );",
         [],
@@ -709,6 +714,134 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
         }
     }
 
+    // Run migration checks from Version 7 to 8: add benefit_schemes.stage (甄选阶段标签)
+    {
+        let version = {
+            let mut stmt =
+                conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
+            let mut rows = stmt.query([])?;
+            if let Some(row) = rows.next()? {
+                let val_str: String = row.get(0)?;
+                val_str.parse::<i32>().unwrap_or(1)
+            } else {
+                1
+            }
+        };
+        if version < 8 {
+            let scheme_columns: Vec<String> = {
+                let mut col_stmt = conn.prepare("PRAGMA table_info(benefit_schemes)")?;
+                let col_iter = col_stmt.query_map([], |r| r.get::<_, String>(1))?;
+                let mut cols = Vec::new();
+                for col in col_iter {
+                    cols.push(col?);
+                }
+                cols
+            };
+            if !scheme_columns.contains(&"stage".to_string()) {
+                conn.execute("ALTER TABLE benefit_schemes ADD COLUMN stage TEXT;", [])?;
+            }
+
+            let now = chrono::Utc::now().to_rfc3339();
+            conn.execute(
+                "UPDATE app_settings SET value = '8', updated_at = ?1 WHERE key = 'schema_version'",
+                [now],
+            )?;
+        }
+    }
+
+    // Run migration checks from Version 8 to 9: 测算工作副本(lifecycle/cashflow state)改为按方案存储。
+    // 两张状态表原本 project_id UNIQUE（每项目一行），现改为 (project_id, scheme_id) 唯一，
+    // 既有行归属到项目 default_scheme_id（无默认方案则归入 '' 桶）。因需去掉旧的 project_id
+    // 唯一约束，采用 SQLite 标准的“建新表→拷贝→删旧→改名”重建方式。
+    {
+        let version = {
+            let mut stmt =
+                conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
+            let mut rows = stmt.query([])?;
+            if let Some(row) = rows.next()? {
+                let val_str: String = row.get(0)?;
+                val_str.parse::<i32>().unwrap_or(1)
+            } else {
+                1
+            }
+        };
+        if version < 9 {
+            let table_has_column = |conn: &Connection, table: &str, column: &str| -> Result<bool> {
+                let mut col_stmt = conn.prepare(&format!("PRAGMA table_info({})", table))?;
+                let col_iter = col_stmt.query_map([], |r| r.get::<_, String>(1))?;
+                let mut found = false;
+                for col in col_iter {
+                    if col? == column {
+                        found = true;
+                    }
+                }
+                Ok(found)
+            };
+
+            if !table_has_column(&conn, "project_lifecycle_states", "scheme_id")? {
+                conn.execute_batch(
+                    "CREATE TABLE project_lifecycle_states_v9 (
+                        id TEXT PRIMARY KEY,
+                        project_id TEXT NOT NULL,
+                        scheme_id TEXT NOT NULL DEFAULT '',
+                        lifecycle_version INTEGER NOT NULL DEFAULT 1,
+                        profile_json TEXT NOT NULL DEFAULT '{}',
+                        parameters_json TEXT NOT NULL DEFAULT '{}',
+                        background_json TEXT NOT NULL DEFAULT '{}',
+                        input_payload_json TEXT NOT NULL DEFAULT '{}',
+                        updated_at TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        UNIQUE(project_id, scheme_id),
+                        FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+                    );
+                    INSERT INTO project_lifecycle_states_v9 (id, project_id, scheme_id, lifecycle_version, profile_json, parameters_json, background_json, input_payload_json, updated_at, created_at)
+                        SELECT ls.id, ls.project_id,
+                               COALESCE((SELECT default_scheme_id FROM projects WHERE id = ls.project_id), ''),
+                               ls.lifecycle_version, ls.profile_json, ls.parameters_json, ls.background_json, ls.input_payload_json, ls.updated_at, ls.created_at
+                        FROM project_lifecycle_states ls;
+                    DROP TABLE project_lifecycle_states;
+                    ALTER TABLE project_lifecycle_states_v9 RENAME TO project_lifecycle_states;
+                    CREATE INDEX IF NOT EXISTS idx_project_lifecycle_project_id ON project_lifecycle_states(project_id);",
+                )?;
+            }
+
+            if !table_has_column(&conn, "project_cashflow_states", "scheme_id")? {
+                conn.execute_batch(
+                    "CREATE TABLE project_cashflow_states_v9 (
+                        id TEXT PRIMARY KEY,
+                        project_id TEXT NOT NULL,
+                        scheme_id TEXT NOT NULL DEFAULT '',
+                        cashflow_version INTEGER NOT NULL DEFAULT 1,
+                        cashflow_model TEXT,
+                        payment_model_json TEXT NOT NULL DEFAULT '{}',
+                        yearly_cashflow_json TEXT NOT NULL DEFAULT '{}',
+                        sector_cashflow_json TEXT NOT NULL DEFAULT '{}',
+                        assumptions_json TEXT NOT NULL DEFAULT '{}',
+                        metrics_json TEXT NOT NULL DEFAULT '{}',
+                        updated_at TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        UNIQUE(project_id, scheme_id),
+                        FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+                    );
+                    INSERT INTO project_cashflow_states_v9 (id, project_id, scheme_id, cashflow_version, cashflow_model, payment_model_json, yearly_cashflow_json, sector_cashflow_json, assumptions_json, metrics_json, updated_at, created_at)
+                        SELECT cs.id, cs.project_id,
+                               COALESCE((SELECT default_scheme_id FROM projects WHERE id = cs.project_id), ''),
+                               cs.cashflow_version, cs.cashflow_model, cs.payment_model_json, cs.yearly_cashflow_json, cs.sector_cashflow_json, cs.assumptions_json, cs.metrics_json, cs.updated_at, cs.created_at
+                        FROM project_cashflow_states cs;
+                    DROP TABLE project_cashflow_states;
+                    ALTER TABLE project_cashflow_states_v9 RENAME TO project_cashflow_states;
+                    CREATE INDEX IF NOT EXISTS idx_project_cashflow_project_id ON project_cashflow_states(project_id);",
+                )?;
+            }
+
+            let now = chrono::Utc::now().to_rfc3339();
+            conn.execute(
+                "UPDATE app_settings SET value = '9', updated_at = ?1 WHERE key = 'schema_version'",
+                [now],
+            )?;
+        }
+    }
+
     Ok(conn)
 }
 
@@ -1010,8 +1143,8 @@ mod tests {
     }
 
     #[test]
-    fn fresh_database_uses_schema_v7_and_defaults_projects_to_ict() {
-        let path = temp_db_path("fresh-v7");
+    fn fresh_database_uses_schema_v9_and_defaults_projects_to_ict() {
+        let path = temp_db_path("fresh-v9");
         let conn = init_db(&path).unwrap();
         let version: String = conn
             .query_row(
@@ -1020,7 +1153,44 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, "7");
+        assert_eq!(version, "9");
+        // v8 引入 benefit_schemes.stage（甄选阶段标签）
+        let has_stage: bool = {
+            let mut col_stmt = conn.prepare("PRAGMA table_info(benefit_schemes)").unwrap();
+            let mut rows = col_stmt.query([]).unwrap();
+            let mut found = false;
+            while let Some(row) = rows.next().unwrap() {
+                let name: String = row.get(1).unwrap();
+                if name == "stage" {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        };
+        assert!(has_stage, "benefit_schemes 应包含 stage 列");
+        // v9 引入 project_lifecycle_states / project_cashflow_states 的 scheme_id 列（工作副本按方案存储）
+        let table_has_scheme_id = |table: &str| -> bool {
+            let mut col_stmt = conn
+                .prepare(&format!("PRAGMA table_info({})", table))
+                .unwrap();
+            let mut rows = col_stmt.query([]).unwrap();
+            while let Some(row) = rows.next().unwrap() {
+                let name: String = row.get(1).unwrap();
+                if name == "scheme_id" {
+                    return true;
+                }
+            }
+            false
+        };
+        assert!(
+            table_has_scheme_id("project_lifecycle_states"),
+            "project_lifecycle_states 应包含 scheme_id 列"
+        );
+        assert!(
+            table_has_scheme_id("project_cashflow_states"),
+            "project_cashflow_states 应包含 scheme_id 列"
+        );
         conn.execute(
             "INSERT INTO projects (
                 id, name, customer_name, status, benefit_status, created_at, updated_at,
@@ -1084,6 +1254,219 @@ mod tests {
             )
             .unwrap();
         assert_eq!(legacy_setting_count, 1);
+        drop(conn);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn v7_benefit_schemes_gains_stage_column_and_preserves_rows() {
+        // 模拟生产环境中已存在、但 benefit_schemes 缺少 stage 列的 v7 数据库。
+        let path = temp_db_path("v7-stage-migration");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "
+                PRAGMA foreign_keys = ON;
+                CREATE TABLE app_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE benefit_schemes (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                ",
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO app_settings (key, value, updated_at)
+                 VALUES ('schema_version', '7', '2026-06-01T00:00:00Z')",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO benefit_schemes (id, project_id, name, created_at, updated_at)
+                 VALUES ('scheme-1', 'proj-1', '甄选前方案', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z')",
+                [],
+            )
+            .unwrap();
+        }
+
+        let conn = init_db(&path).unwrap();
+
+        let version: String = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = 'schema_version'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, "9");
+
+        // 迁移后可读写 stage，且既有行的 stage 默认为 NULL（未标注）。
+        let (name, stage): (String, Option<String>) = conn
+            .query_row(
+                "SELECT name, stage FROM benefit_schemes WHERE id = 'scheme-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(name, "甄选前方案");
+        assert_eq!(stage, None);
+
+        conn.execute(
+            "UPDATE benefit_schemes SET stage = 'post_selection' WHERE id = 'scheme-1'",
+            [],
+        )
+        .unwrap();
+        let updated_stage: Option<String> = conn
+            .query_row(
+                "SELECT stage FROM benefit_schemes WHERE id = 'scheme-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(updated_stage.as_deref(), Some("post_selection"));
+
+        drop(conn);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn v8_lifecycle_cashflow_states_gain_scheme_id_and_allow_multiple_per_project() {
+        // 模拟 v8 数据库：状态表还是 project_id UNIQUE、无 scheme_id，且每项目一行。
+        let path = temp_db_path("v8-scheme-state-migration");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "
+                PRAGMA foreign_keys = ON;
+                CREATE TABLE app_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE projects (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    customer_name TEXT NOT NULL,
+                    project_type TEXT NOT NULL DEFAULT 'ict',
+                    status TEXT NOT NULL DEFAULT '需求导入',
+                    benefit_status TEXT NOT NULL DEFAULT 'not_started',
+                    default_scheme_id TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    total_revenue_incl REAL NOT NULL DEFAULT 0,
+                    total_cost_incl REAL NOT NULL DEFAULT 0,
+                    project_years INTEGER NOT NULL DEFAULT 1,
+                    discount_rate REAL NOT NULL DEFAULT 0.055,
+                    cashflow_model TEXT NOT NULL DEFAULT 'model_a',
+                    folder_name TEXT
+                );
+                CREATE TABLE project_lifecycle_states (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL UNIQUE,
+                    lifecycle_version INTEGER NOT NULL DEFAULT 1,
+                    profile_json TEXT NOT NULL DEFAULT '{}',
+                    parameters_json TEXT NOT NULL DEFAULT '{}',
+                    background_json TEXT NOT NULL DEFAULT '{}',
+                    input_payload_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE project_cashflow_states (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL UNIQUE,
+                    cashflow_version INTEGER NOT NULL DEFAULT 1,
+                    cashflow_model TEXT,
+                    payment_model_json TEXT NOT NULL DEFAULT '{}',
+                    yearly_cashflow_json TEXT NOT NULL DEFAULT '{}',
+                    sector_cashflow_json TEXT NOT NULL DEFAULT '{}',
+                    assumptions_json TEXT NOT NULL DEFAULT '{}',
+                    metrics_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                ",
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO app_settings (key, value, updated_at)
+                 VALUES ('schema_version', '8', '2026-06-01T00:00:00Z')",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO projects (id, name, customer_name, default_scheme_id, created_at, updated_at)
+                 VALUES ('proj-1', '甄选项目', '客户A', 'scheme-pre', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z')",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO project_lifecycle_states (id, project_id, lifecycle_version, input_payload_json, updated_at, created_at)
+                 VALUES ('lc-1', 'proj-1', 3, '{\"amount\":\"pre\"}', 'now', 'now')",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO project_cashflow_states (id, project_id, cashflow_version, updated_at, created_at)
+                 VALUES ('cf-1', 'proj-1', 3, 'now', 'now')",
+                [],
+            )
+            .unwrap();
+        }
+
+        let conn = init_db(&path).unwrap();
+
+        let version: String = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = 'schema_version'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, "9");
+
+        // 既有行被归属到项目 default_scheme_id，且数据保留。
+        let (scheme_id, payload): (String, String) = conn
+            .query_row(
+                "SELECT scheme_id, input_payload_json FROM project_lifecycle_states WHERE id = 'lc-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(scheme_id, "scheme-pre");
+        assert_eq!(payload, "{\"amount\":\"pre\"}");
+
+        // 旧的 project_id 唯一约束已解除：同项目可写入第二个方案的工作副本。
+        conn.execute(
+            "INSERT INTO project_lifecycle_states (id, project_id, scheme_id, lifecycle_version, input_payload_json, updated_at, created_at)
+             VALUES ('lc-2', 'proj-1', 'scheme-post', 1, '{\"amount\":\"post\"}', 'now', 'now')",
+            [],
+        )
+        .expect("同项目应能写入不同方案的工作副本");
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM project_lifecycle_states WHERE project_id = 'proj-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+
+        // (project_id, scheme_id) 仍唯一：重复同一方案应冲突。
+        let dup = conn.execute(
+            "INSERT INTO project_lifecycle_states (id, project_id, scheme_id, lifecycle_version, input_payload_json, updated_at, created_at)
+             VALUES ('lc-3', 'proj-1', 'scheme-post', 1, '{}', 'now', 'now')",
+            [],
+        );
+        assert!(dup.is_err(), "同一 (project_id, scheme_id) 应违反唯一约束");
+
         drop(conn);
         let _ = std::fs::remove_file(path);
     }

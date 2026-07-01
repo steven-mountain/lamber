@@ -320,6 +320,7 @@ impl ProjectService {
                 id: scheme_id.clone(),
                 project_id: project_id.clone(),
                 name: scheme_name,
+                stage: None,
                 created_at: timestamp.clone(),
                 updated_at: timestamp.clone(),
             };
@@ -334,6 +335,7 @@ impl ProjectService {
                     id: scheme_id.clone(),
                     project_id: project_id.clone(),
                     name: scheme_name,
+                    stage: None,
                     created_at: timestamp.clone(),
                     updated_at: timestamp.clone(),
                 };

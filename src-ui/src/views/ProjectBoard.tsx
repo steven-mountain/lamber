@@ -14,6 +14,7 @@ import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { domainSaveService, type ProjectDetailPatch } from "../services/domainSaveService";
 import GlobalSaveButton from "../components/GlobalSaveButton";
 import { useNavigationStore } from "../store/useNavigationStore";
+import { SCHEME_STAGE_OPTIONS, getSchemeStageOption, type SchemeStage } from "../lib/schemeStage";
 
 interface CandidateFile {
   name: string;
@@ -584,6 +585,27 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     } catch (err) {
       console.error(err);
       setSnapshots([]);
+    }
+  };
+
+  const handleSchemeStageChange = async (
+    scheme: BenefitAnalysisScheme,
+    stage: SchemeStage | null
+  ) => {
+    if (!selectedProject) return;
+    // 点击已选中的阶段则取消标注（切换为未标注）。
+    const nextStage = (scheme.stage ?? null) === stage ? null : stage;
+    try {
+      const updated = await projectService.updateSchemeStage(
+        selectedProject.id,
+        scheme.id,
+        nextStage
+      );
+      setSchemes(prev => prev.map(s => (s.id === updated.id ? updated : s)));
+      setSelectedScheme(prev => (prev && prev.id === updated.id ? updated : prev));
+    } catch (err) {
+      console.error(err);
+      alert("更新甄选阶段失败: " + err);
     }
   };
 
@@ -2238,6 +2260,14 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                               title={scheme.name}
                             >
                               <span className="truncate max-w-[160px]">{scheme.name}</span>
+                              {(() => {
+                                const stageOption = getSchemeStageOption(scheme.stage);
+                                return stageOption ? (
+                                  <span className={`text-[8px] px-1 py-0.5 rounded shrink-0 ${stageOption.chipClass}`}>
+                                    {stageOption.short}
+                                  </span>
+                                ) : null;
+                              })()}
                               {isDefault && <span className="bg-primary text-primary-foreground text-[8px] px-1 rounded shrink-0">默认</span>}
                             </button>
                             <button
@@ -2273,6 +2303,30 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
                         >
                           <AppIcon name="calculator" size={12} /> 开展测算
                         </button>
+                      </div>
+
+                      {/* 甄选阶段标签 */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-secondary-foreground shrink-0">甄选阶段</span>
+                        <div className="flex gap-1.5">
+                          {SCHEME_STAGE_OPTIONS.map((option) => {
+                            const active = selectedScheme.stage === option.value;
+                            return (
+                              <button
+                                key={option.value}
+                                onClick={() => handleSchemeStageChange(selectedScheme, option.value)}
+                                className={`text-xs px-2.5 py-1 rounded-md font-semibold transition-all ${
+                                  active
+                                    ? option.chipClass
+                                    : "bg-muted/40 text-secondary-foreground hover:bg-secondary"
+                                }`}
+                                title={active ? "点击取消标注" : `标注为${option.label}`}
+                              >
+                                {option.label}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
 
                       <div className="space-y-3">

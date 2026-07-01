@@ -210,6 +210,8 @@ pub struct TemplateStatePayload {
 pub struct StoredLifecycleState {
     pub id: String,
     pub project_id: String,
+    /// 工作副本所属的测算方案 id（空串表示项目级/未分配草稿，如智算导入的初始种子）。
+    pub scheme_id: String,
     pub lifecycle_version: i64,
     pub profile_json: Value,
     pub parameters_json: Value,
@@ -224,6 +226,8 @@ pub struct StoredLifecycleState {
 pub struct StoredCashflowState {
     pub id: String,
     pub project_id: String,
+    /// 工作副本所属的测算方案 id（空串表示项目级/未分配草稿）。
+    pub scheme_id: String,
     pub cashflow_version: i64,
     pub cashflow_model: Option<String>,
     pub payment_model_json: Value,
@@ -324,22 +328,24 @@ fn parse_json_column(raw: String) -> Value {
 fn get_lifecycle_state_locked(
     conn: &rusqlite::Connection,
     project_id: &str,
+    scheme_id: &str,
 ) -> Result<Option<StoredLifecycleState>, String> {
     conn.query_row(
-        "SELECT id, project_id, lifecycle_version, profile_json, parameters_json, background_json, input_payload_json, created_at, updated_at
-         FROM project_lifecycle_states WHERE project_id = ?1",
-        [project_id],
+        "SELECT id, project_id, scheme_id, lifecycle_version, profile_json, parameters_json, background_json, input_payload_json, created_at, updated_at
+         FROM project_lifecycle_states WHERE project_id = ?1 AND scheme_id = ?2",
+        params![project_id, scheme_id],
         |row| {
             Ok(StoredLifecycleState {
                 id: row.get(0)?,
                 project_id: row.get(1)?,
-                lifecycle_version: row.get(2)?,
-                profile_json: parse_json_column(row.get(3)?),
-                parameters_json: parse_json_column(row.get(4)?),
-                background_json: parse_json_column(row.get(5)?),
-                input_payload_json: parse_json_column(row.get(6)?),
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
+                scheme_id: row.get(2)?,
+                lifecycle_version: row.get(3)?,
+                profile_json: parse_json_column(row.get(4)?),
+                parameters_json: parse_json_column(row.get(5)?),
+                background_json: parse_json_column(row.get(6)?),
+                input_payload_json: parse_json_column(row.get(7)?),
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
             })
         },
     )
@@ -350,30 +356,50 @@ fn get_lifecycle_state_locked(
 fn get_cashflow_state_locked(
     conn: &rusqlite::Connection,
     project_id: &str,
+    scheme_id: &str,
 ) -> Result<Option<StoredCashflowState>, String> {
     conn.query_row(
-        "SELECT id, project_id, cashflow_version, cashflow_model, payment_model_json, yearly_cashflow_json,
+        "SELECT id, project_id, scheme_id, cashflow_version, cashflow_model, payment_model_json, yearly_cashflow_json,
             sector_cashflow_json, assumptions_json, metrics_json, created_at, updated_at
-         FROM project_cashflow_states WHERE project_id = ?1",
-        [project_id],
+         FROM project_cashflow_states WHERE project_id = ?1 AND scheme_id = ?2",
+        params![project_id, scheme_id],
         |row| {
             Ok(StoredCashflowState {
                 id: row.get(0)?,
                 project_id: row.get(1)?,
-                cashflow_version: row.get(2)?,
-                cashflow_model: row.get(3)?,
-                payment_model_json: parse_json_column(row.get(4)?),
-                yearly_cashflow_json: parse_json_column(row.get(5)?),
-                sector_cashflow_json: parse_json_column(row.get(6)?),
-                assumptions_json: parse_json_column(row.get(7)?),
-                metrics_json: parse_json_column(row.get(8)?),
-                created_at: row.get(9)?,
-                updated_at: row.get(10)?,
+                scheme_id: row.get(2)?,
+                cashflow_version: row.get(3)?,
+                cashflow_model: row.get(4)?,
+                payment_model_json: parse_json_column(row.get(5)?),
+                yearly_cashflow_json: parse_json_column(row.get(6)?),
+                sector_cashflow_json: parse_json_column(row.get(7)?),
+                assumptions_json: parse_json_column(row.get(8)?),
+                metrics_json: parse_json_column(row.get(9)?),
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
             })
         },
     )
     .optional()
     .map_err(|e| e.to_string())
+}
+
+/// 解析项目级"默认草稿"应归属的方案 id：优先 default_scheme_id，否则空串（未分配桶）。
+/// 用于智算导入、以及 get_project_full_state 这类只知道 project_id 的路径。
+fn resolve_default_scheme_bucket(
+    conn: &rusqlite::Connection,
+    project_id: &str,
+) -> Result<String, String> {
+    let default_scheme: Option<String> = conn
+        .query_row(
+            "SELECT default_scheme_id FROM projects WHERE id = ?1",
+            [project_id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .flatten();
+    Ok(default_scheme.unwrap_or_default())
 }
 
 fn get_template_state_locked(
@@ -731,17 +757,20 @@ pub async fn get_project_detail(
 pub async fn save_lifecycle_state(
     runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     project_id: String,
+    scheme_id: Option<String>,
     lifecycle_state: LifecycleStatePayload,
 ) -> Result<StoredLifecycleState, String> {
     runtime.require_workspace()?;
     let db = runtime.require_db()?;
     let conn = db.lock().map_err(|e| e.to_string())?;
     ensure_project_exists(&conn, &project_id)?;
+    // 工作副本按 (project_id, scheme_id) 存储；未提供 scheme_id 时归入项目默认草稿桶。
+    let scheme_id = scheme_id.unwrap_or_default();
     let now = now_iso();
     let existing_id: Option<String> = conn
         .query_row(
-            "SELECT id FROM project_lifecycle_states WHERE project_id = ?1",
-            [&project_id],
+            "SELECT id FROM project_lifecycle_states WHERE project_id = ?1 AND scheme_id = ?2",
+            params![&project_id, &scheme_id],
             |row| row.get(0),
         )
         .optional()
@@ -749,10 +778,10 @@ pub async fn save_lifecycle_state(
     let id = existing_id.unwrap_or_else(|| generate_id("lifecycle"));
     conn.execute(
         "INSERT INTO project_lifecycle_states (
-            id, project_id, lifecycle_version, profile_json, parameters_json, background_json,
+            id, project_id, scheme_id, lifecycle_version, profile_json, parameters_json, background_json,
             input_payload_json, created_at, updated_at
-         ) VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8)
-         ON CONFLICT(project_id) DO UPDATE SET
+         ) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9)
+         ON CONFLICT(project_id, scheme_id) DO UPDATE SET
             lifecycle_version = lifecycle_version + 1,
             profile_json = excluded.profile_json,
             parameters_json = excluded.parameters_json,
@@ -762,6 +791,7 @@ pub async fn save_lifecycle_state(
         params![
             id,
             project_id,
+            scheme_id,
             json_string(&lifecycle_state.profile_json)?,
             json_string(&lifecycle_state.parameters_json)?,
             json_string(&lifecycle_state.background_json)?,
@@ -771,7 +801,7 @@ pub async fn save_lifecycle_state(
         ],
     )
     .map_err(|e| e.to_string())?;
-    get_lifecycle_state_locked(&conn, &project_id)?
+    get_lifecycle_state_locked(&conn, &project_id, &scheme_id)?
         .ok_or_else(|| "LifecycleStateSaveFailed".to_string())
 }
 
@@ -779,29 +809,33 @@ pub async fn save_lifecycle_state(
 pub async fn get_lifecycle_state(
     runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     project_id: String,
+    scheme_id: Option<String>,
 ) -> Result<Option<StoredLifecycleState>, String> {
     runtime.require_workspace()?;
     let db = runtime.require_db()?;
     let conn = db.lock().map_err(|e| e.to_string())?;
     ensure_project_exists(&conn, &project_id)?;
-    get_lifecycle_state_locked(&conn, &project_id)
+    let scheme_id = scheme_id.unwrap_or_default();
+    get_lifecycle_state_locked(&conn, &project_id, &scheme_id)
 }
 
 #[tauri::command]
 pub async fn save_cashflow_state(
     runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     project_id: String,
+    scheme_id: Option<String>,
     cashflow_state: CashflowStatePayload,
 ) -> Result<StoredCashflowState, String> {
     runtime.require_workspace()?;
     let db = runtime.require_db()?;
     let conn = db.lock().map_err(|e| e.to_string())?;
     ensure_project_exists(&conn, &project_id)?;
+    let scheme_id = scheme_id.unwrap_or_default();
     let now = now_iso();
     let existing_id: Option<String> = conn
         .query_row(
-            "SELECT id FROM project_cashflow_states WHERE project_id = ?1",
-            [&project_id],
+            "SELECT id FROM project_cashflow_states WHERE project_id = ?1 AND scheme_id = ?2",
+            params![&project_id, &scheme_id],
             |row| row.get(0),
         )
         .optional()
@@ -809,10 +843,10 @@ pub async fn save_cashflow_state(
     let id = existing_id.unwrap_or_else(|| generate_id("cashflow"));
     conn.execute(
         "INSERT INTO project_cashflow_states (
-            id, project_id, cashflow_version, cashflow_model, payment_model_json, yearly_cashflow_json,
+            id, project_id, scheme_id, cashflow_version, cashflow_model, payment_model_json, yearly_cashflow_json,
             sector_cashflow_json, assumptions_json, metrics_json, created_at, updated_at
-         ) VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-         ON CONFLICT(project_id) DO UPDATE SET
+         ) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+         ON CONFLICT(project_id, scheme_id) DO UPDATE SET
             cashflow_version = cashflow_version + 1,
             cashflow_model = excluded.cashflow_model,
             payment_model_json = excluded.payment_model_json,
@@ -824,6 +858,7 @@ pub async fn save_cashflow_state(
         params![
             id,
             project_id,
+            scheme_id,
             cashflow_state.cashflow_model,
             json_string(&cashflow_state.payment_model_json)?,
             json_string(&cashflow_state.yearly_cashflow_json)?,
@@ -835,7 +870,7 @@ pub async fn save_cashflow_state(
         ],
     )
     .map_err(|e| e.to_string())?;
-    get_cashflow_state_locked(&conn, &project_id)?
+    get_cashflow_state_locked(&conn, &project_id, &scheme_id)?
         .ok_or_else(|| "CashflowStateSaveFailed".to_string())
 }
 
@@ -843,12 +878,14 @@ pub async fn save_cashflow_state(
 pub async fn get_cashflow_state(
     runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     project_id: String,
+    scheme_id: Option<String>,
 ) -> Result<Option<StoredCashflowState>, String> {
     runtime.require_workspace()?;
     let db = runtime.require_db()?;
     let conn = db.lock().map_err(|e| e.to_string())?;
     ensure_project_exists(&conn, &project_id)?;
-    get_cashflow_state_locked(&conn, &project_id)
+    let scheme_id = scheme_id.unwrap_or_default();
+    get_cashflow_state_locked(&conn, &project_id, &scheme_id)
 }
 
 #[tauri::command]
@@ -902,6 +939,8 @@ fn apply_ai_compute_quote_to_ict_locked(
     intelligent_sync: Option<(i64, HashMap<String, i64>, Value)>,
 ) -> Result<AiComputeIctImportResult, String> {
     ensure_project_exists(conn, project_id)?;
+    // 智算导入的工作副本归入项目默认草稿桶（无默认方案则为空串）。
+    let scheme_bucket = resolve_default_scheme_bucket(conn, project_id)?;
     const REVENUE_SUBJECT_CODES: [&str; 9] = [
         "rev_it_integration",
         "rev_it_maintenance",
@@ -1018,8 +1057,8 @@ fn apply_ai_compute_quote_to_ict_locked(
     }
     let lifecycle_id: Option<String> = tx
         .query_row(
-            "SELECT id FROM project_lifecycle_states WHERE project_id = ?1",
-            [&project_id],
+            "SELECT id FROM project_lifecycle_states WHERE project_id = ?1 AND scheme_id = ?2",
+            params![&project_id, &scheme_bucket],
             |row| row.get(0),
         )
         .optional()
@@ -1027,10 +1066,10 @@ fn apply_ai_compute_quote_to_ict_locked(
     let lifecycle_id = lifecycle_id.unwrap_or_else(|| generate_id("lifecycle"));
     tx.execute(
         "INSERT INTO project_lifecycle_states (
-            id, project_id, lifecycle_version, profile_json, parameters_json, background_json,
+            id, project_id, scheme_id, lifecycle_version, profile_json, parameters_json, background_json,
             input_payload_json, created_at, updated_at
-         ) VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8)
-         ON CONFLICT(project_id) DO UPDATE SET
+         ) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9)
+         ON CONFLICT(project_id, scheme_id) DO UPDATE SET
             lifecycle_version = lifecycle_version + 1,
             profile_json = excluded.profile_json,
             parameters_json = excluded.parameters_json,
@@ -1040,6 +1079,7 @@ fn apply_ai_compute_quote_to_ict_locked(
         params![
             lifecycle_id,
             project_id,
+            scheme_bucket,
             lifecycle_profile,
             lifecycle_parameters,
             lifecycle_background,
@@ -1052,8 +1092,8 @@ fn apply_ai_compute_quote_to_ict_locked(
 
     let cashflow_id: Option<String> = tx
         .query_row(
-            "SELECT id FROM project_cashflow_states WHERE project_id = ?1",
-            [&project_id],
+            "SELECT id FROM project_cashflow_states WHERE project_id = ?1 AND scheme_id = ?2",
+            params![&project_id, &scheme_bucket],
             |row| row.get(0),
         )
         .optional()
@@ -1061,10 +1101,10 @@ fn apply_ai_compute_quote_to_ict_locked(
     let cashflow_id = cashflow_id.unwrap_or_else(|| generate_id("cashflow"));
     tx.execute(
         "INSERT INTO project_cashflow_states (
-            id, project_id, cashflow_version, cashflow_model, payment_model_json, yearly_cashflow_json,
+            id, project_id, scheme_id, cashflow_version, cashflow_model, payment_model_json, yearly_cashflow_json,
             sector_cashflow_json, assumptions_json, metrics_json, created_at, updated_at
-         ) VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-         ON CONFLICT(project_id) DO UPDATE SET
+         ) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+         ON CONFLICT(project_id, scheme_id) DO UPDATE SET
             cashflow_version = cashflow_version + 1,
             cashflow_model = excluded.cashflow_model,
             payment_model_json = excluded.payment_model_json,
@@ -1076,6 +1116,7 @@ fn apply_ai_compute_quote_to_ict_locked(
         params![
             cashflow_id,
             project_id,
+            scheme_bucket,
             cashflow_state.cashflow_model,
             cashflow_payment,
             cashflow_yearly,
@@ -1157,9 +1198,9 @@ fn apply_ai_compute_quote_to_ict_locked(
     }
     tx.commit().map_err(|e| e.to_string())?;
 
-    let lifecycle_state = get_lifecycle_state_locked(conn, project_id)?
+    let lifecycle_state = get_lifecycle_state_locked(conn, project_id, &scheme_bucket)?
         .ok_or_else(|| "LifecycleStateSaveFailed".to_string())?;
-    let cashflow_state = get_cashflow_state_locked(conn, project_id)?
+    let cashflow_state = get_cashflow_state_locked(conn, project_id, &scheme_bucket)?
         .ok_or_else(|| "CashflowStateSaveFailed".to_string())?;
     Ok(AiComputeIctImportResult {
         lifecycle_state,
@@ -1289,6 +1330,7 @@ pub async fn save_benefit_analysis(
     input_params: IctInput,
     output_metrics: IctResult,
     is_save_as_new: bool,
+    stage: Option<String>,
 ) -> Result<Project, String> {
     runtime.require_workspace()?;
     let db = runtime.require_db()?;
@@ -1298,9 +1340,10 @@ pub async fn save_benefit_analysis(
     let mut project = get_project_locked(&tx, &project_id)?
         .ok_or_else(|| format!("ProjectNotFoundInCurrentWorkspace::{}", project_id))?;
     let timestamp = now_iso();
+    let stage = normalize_scheme_stage(stage);
 
     let mut stmt = tx
-        .prepare("SELECT id, project_id, name, created_at, updated_at FROM benefit_schemes WHERE project_id = ?1")
+        .prepare("SELECT id, project_id, name, stage, created_at, updated_at FROM benefit_schemes WHERE project_id = ?1")
         .map_err(|e| e.to_string())?;
     let scheme_iter = stmt
         .query_map([&project_id], |row| {
@@ -1308,8 +1351,9 @@ pub async fn save_benefit_analysis(
                 id: row.get(0)?,
                 project_id: row.get(1)?,
                 name: row.get(2)?,
-                created_at: row.get(3)?,
-                updated_at: row.get(4)?,
+                stage: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1331,14 +1375,15 @@ pub async fn save_benefit_analysis(
 
     if is_new_scheme || !existing_schemes.iter().any(|s| s.id == scheme_id) {
         tx.execute(
-            "INSERT INTO benefit_schemes (id, project_id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![scheme_id, project_id, scheme_name, timestamp, timestamp],
+            "INSERT INTO benefit_schemes (id, project_id, name, stage, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![scheme_id, project_id, scheme_name, stage, timestamp, timestamp],
         )
         .map_err(|e| e.to_string())?;
     } else {
+        // stage 为 None 时保留原有阶段标签（普通保存不清空），Some 时覆盖。
         tx.execute(
-            "UPDATE benefit_schemes SET name = ?1, updated_at = ?2 WHERE id = ?3 AND project_id = ?4",
-            params![scheme_name, timestamp, scheme_id, project_id],
+            "UPDATE benefit_schemes SET name = ?1, stage = COALESCE(?2, stage), updated_at = ?3 WHERE id = ?4 AND project_id = ?5",
+            params![scheme_name, stage, timestamp, scheme_id, project_id],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -1464,7 +1509,7 @@ pub async fn get_benefit_schemes(
     let conn = db.lock().map_err(|e| e.to_string())?;
     ensure_project_exists(&conn, &project_id)?;
     let mut stmt = conn
-        .prepare("SELECT id, project_id, name, created_at, updated_at FROM benefit_schemes WHERE project_id = ?1 ORDER BY updated_at DESC")
+        .prepare("SELECT id, project_id, name, stage, created_at, updated_at FROM benefit_schemes WHERE project_id = ?1 ORDER BY updated_at DESC")
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([project_id], |row| {
@@ -1472,8 +1517,9 @@ pub async fn get_benefit_schemes(
                 id: row.get(0)?,
                 project_id: row.get(1)?,
                 name: row.get(2)?,
-                created_at: row.get(3)?,
-                updated_at: row.get(4)?,
+                stage: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1482,6 +1528,56 @@ pub async fn get_benefit_schemes(
         list.push(row.map_err(|e| e.to_string())?);
     }
     Ok(list)
+}
+
+/// 归一化甄选阶段标签：仅接受 "pre_selection" / "post_selection"，空字符串或未知值一律视为未标注（None）。
+pub(crate) fn normalize_scheme_stage(stage: Option<String>) -> Option<String> {
+    match stage.as_deref().map(str::trim) {
+        Some("pre_selection") => Some("pre_selection".to_string()),
+        Some("post_selection") => Some("post_selection".to_string()),
+        _ => None,
+    }
+}
+
+/// 独立更新某个测算方案的甄选阶段标签，不产生新的效益快照。
+/// 传入空/无效 stage 时清空标签（未标注）。
+#[tauri::command]
+pub async fn update_scheme_stage(
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
+    project_id: String,
+    scheme_id: String,
+    stage: Option<String>,
+) -> Result<BenefitAnalysisScheme, String> {
+    runtime.require_workspace()?;
+    let db = runtime.require_db()?;
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    ensure_project_exists(&conn, &project_id)?;
+    let stage = normalize_scheme_stage(stage);
+    let timestamp = now_iso();
+    let affected = conn
+        .execute(
+            "UPDATE benefit_schemes SET stage = ?1, updated_at = ?2 WHERE id = ?3 AND project_id = ?4",
+            params![stage, timestamp, scheme_id, project_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if affected == 0 {
+        return Err(format!("SchemeNotFound::{}", scheme_id));
+    }
+    conn.query_row(
+        "SELECT id, project_id, name, stage, created_at, updated_at FROM benefit_schemes WHERE id = ?1 AND project_id = ?2",
+        params![scheme_id, project_id],
+        |row| {
+            Ok(BenefitAnalysisScheme {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                name: row.get(2)?,
+                stage: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        },
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1494,12 +1590,15 @@ pub async fn get_project_full_state(
     let conn = db.lock().map_err(|e| e.to_string())?;
     let project = get_project_locked(&conn, &project_id)?
         .ok_or_else(|| format!("ProjectNotFoundInCurrentWorkspace::{}", project_id))?;
-    let lifecycle_state = get_lifecycle_state_locked(&conn, &project_id)?;
-    let cashflow_state = get_cashflow_state_locked(&conn, &project_id)?;
+    // full_state 返回项目默认方案桶的工作副本（智算视图/文档导出等按项目取的消费方沿用此语义）；
+    // ICT 生命周期页面会另按选中方案 id 精确加载各方案的独立草稿。
+    let default_scheme_bucket = project.default_scheme_id.clone().unwrap_or_default();
+    let lifecycle_state = get_lifecycle_state_locked(&conn, &project_id, &default_scheme_bucket)?;
+    let cashflow_state = get_cashflow_state_locked(&conn, &project_id, &default_scheme_bucket)?;
     let latest_snapshot = latest_snapshot_locked(&conn, &project_id)?;
     let schemes = {
         let mut stmt = conn
-            .prepare("SELECT id, project_id, name, created_at, updated_at FROM benefit_schemes WHERE project_id = ?1 ORDER BY updated_at DESC")
+            .prepare("SELECT id, project_id, name, stage, created_at, updated_at FROM benefit_schemes WHERE project_id = ?1 ORDER BY updated_at DESC")
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([&project_id], |row| {
@@ -1507,8 +1606,9 @@ pub async fn get_project_full_state(
                     id: row.get(0)?,
                     project_id: row.get(1)?,
                     name: row.get(2)?,
-                    created_at: row.get(3)?,
-                    updated_at: row.get(4)?,
+                    stage: row.get(3)?,
+                    created_at: row.get(4)?,
+                    updated_at: row.get(5)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -1548,6 +1648,7 @@ mod tests {
                 id TEXT PRIMARY KEY,
                 project_type TEXT NOT NULL DEFAULT 'ict',
                 benefit_status TEXT NOT NULL,
+                default_scheme_id TEXT,
                 total_revenue_incl REAL NOT NULL,
                 total_cost_incl REAL NOT NULL,
                 project_years INTEGER NOT NULL,
@@ -1557,18 +1658,21 @@ mod tests {
             );
             CREATE TABLE project_lifecycle_states (
                 id TEXT PRIMARY KEY,
-                project_id TEXT NOT NULL UNIQUE,
+                project_id TEXT NOT NULL,
+                scheme_id TEXT NOT NULL DEFAULT '',
                 lifecycle_version INTEGER NOT NULL,
                 profile_json TEXT NOT NULL,
                 parameters_json TEXT NOT NULL,
                 background_json TEXT NOT NULL,
                 input_payload_json TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                UNIQUE(project_id, scheme_id)
             );
             CREATE TABLE project_cashflow_states (
                 id TEXT PRIMARY KEY,
-                project_id TEXT NOT NULL UNIQUE,
+                project_id TEXT NOT NULL,
+                scheme_id TEXT NOT NULL DEFAULT '',
                 cashflow_version INTEGER NOT NULL,
                 cashflow_model TEXT,
                 payment_model_json TEXT NOT NULL,
@@ -1577,7 +1681,8 @@ mod tests {
                 assumptions_json TEXT NOT NULL,
                 metrics_json TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                UNIQUE(project_id, scheme_id)
             );
             CREATE TABLE project_settings (
                 project_id TEXT NOT NULL,

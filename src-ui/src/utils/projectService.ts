@@ -157,6 +157,8 @@ export interface BenefitAnalysisScheme {
   id: string;
   project_id: string;
   name: string;
+  /** 甄选阶段标签："pre_selection" / "post_selection" / null（未标注）。 */
+  stage?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -203,6 +205,18 @@ export const projectService = {
 
   async getSnapshots(schemeId: string): Promise<BenefitAnalysisSnapshot[]> {
     return invoke<BenefitAnalysisSnapshot[]>("get_snapshots", { schemeId });
+  },
+
+  async updateSchemeStage(
+    projectId: string,
+    schemeId: string,
+    stage: string | null
+  ): Promise<BenefitAnalysisScheme> {
+    return invoke<BenefitAnalysisScheme>("update_scheme_stage", {
+      projectId,
+      schemeId,
+      stage,
+    });
   },
 
   async saveBenefitScheme(

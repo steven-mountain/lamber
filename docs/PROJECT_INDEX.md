@@ -39,6 +39,7 @@ Lamber 是一个基于 **Tauri + React + Rust** 架构的销售支撑桌面工�
 * **前端外观与设置体系 (Appearance)**: [appearance.md](file:///Users/hermesjang/Documents/CMCC/tools/lamber/docs/modules/appearance.md)
 * **采购甄选费测算 (Selection Fee)**: [selection-fee.md](file:///Users/hermesjang/Documents/CMCC/tools/lamber/docs/modules/selection-fee.md)
 * **智算测算与金额来源 (Intelligent Compute)**: [ai-compute-quote.md](./modules/ai-compute-quote.md)
+* **测算方案甄选阶段 (Scheme Stage · 甄选前/甄选后切换)**: [scheme-stage.md](./modules/scheme-stage.md)
 
 ## AI 上下文读取规则
 在每轮开发任务开始前，AI 必须严格执行按需读取，以节省上下文空间：

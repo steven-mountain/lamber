@@ -127,11 +127,12 @@ pub fn run_migration(
     // 5. Insert schemes
     for scheme in &store.schemes {
         tx.execute(
-            "INSERT OR REPLACE INTO benefit_schemes (id, project_id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT OR REPLACE INTO benefit_schemes (id, project_id, name, stage, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             rusqlite::params![
                 scheme.id,
                 scheme.project_id,
                 scheme.name,
+                scheme.stage,
                 scheme.created_at,
                 scheme.updated_at,
             ],

@@ -264,6 +264,9 @@ pub struct BenefitAnalysisScheme {
     pub id: String,
     pub project_id: String,
     pub name: String,
+    /// 甄选阶段标签："pre_selection"（甄选前）/ "post_selection"（甄选后）/ None（未标注）。
+    #[serde(default)]
+    pub stage: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }

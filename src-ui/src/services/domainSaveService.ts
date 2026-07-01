@@ -107,20 +107,30 @@ export const domainSaveService = {
     return invoke<Project>("get_project_detail", { projectId });
   },
 
-  saveLifecycleState(projectId: string, lifecycleState: LifecycleStatePayload): Promise<any> {
-    return invoke("save_lifecycle_state", { projectId, lifecycleState });
+  // 工作副本（lifecycle/cashflow state）按 (projectId, schemeId) 存储，实现方案间数据隔离。
+  // schemeId 省略/为 null 时落入项目默认草稿桶（智算导入、legacy 兼容）。
+  saveLifecycleState(
+    projectId: string,
+    schemeId: string | null,
+    lifecycleState: LifecycleStatePayload,
+  ): Promise<any> {
+    return invoke("save_lifecycle_state", { projectId, schemeId, lifecycleState });
   },
 
-  loadLifecycleState(projectId: string): Promise<any | null> {
-    return invoke("get_lifecycle_state", { projectId });
+  loadLifecycleState(projectId: string, schemeId: string | null = null): Promise<any | null> {
+    return invoke("get_lifecycle_state", { projectId, schemeId });
   },
 
-  saveCashflowState(projectId: string, cashflowState: CashflowStatePayload): Promise<any> {
-    return invoke("save_cashflow_state", { projectId, cashflowState });
+  saveCashflowState(
+    projectId: string,
+    schemeId: string | null,
+    cashflowState: CashflowStatePayload,
+  ): Promise<any> {
+    return invoke("save_cashflow_state", { projectId, schemeId, cashflowState });
   },
 
-  loadCashflowState(projectId: string): Promise<any | null> {
-    return invoke("get_cashflow_state", { projectId });
+  loadCashflowState(projectId: string, schemeId: string | null = null): Promise<any | null> {
+    return invoke("get_cashflow_state", { projectId, schemeId });
   },
 
   syncIntelligentComputeToIct(
@@ -144,6 +154,7 @@ export const domainSaveService = {
     inputParams: IctInput | Record<string, unknown>,
     outputMetrics: IctResult | Record<string, unknown>,
     isSaveAsNew: boolean,
+    stage: string | null = null,
   ): Promise<Project> {
     return invoke<Project>("save_benefit_analysis", {
       projectId,
@@ -152,6 +163,7 @@ export const domainSaveService = {
       inputParams,
       outputMetrics,
       isSaveAsNew,
+      stage,
     });
   },
 
