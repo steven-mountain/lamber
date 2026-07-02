@@ -836,6 +836,51 @@ export default function IctLifecycle() {
     [sortedSchemes, preScheme, postScheme]
   );
 
+  // 甄选结果签批表取数：不切换当前方案，直接读甄选前方案工作副本里的 IT 投入科目。
+  // 甄选限价 = 甄选前方案 IT 投入；工作副本按 (project, scheme) 隔离，跨方案读取安全。
+  const fetchPreSelectionCostIt = useCallback(async (): Promise<Record<string, any> | null> => {
+    if (activeScheme?.stage === "pre_selection") return state.costIt;
+    if (!activeProject?.id || !preScheme?.id) return null;
+    try {
+      const stored = await domainSaveService.loadLifecycleState(activeProject.id, preScheme.id);
+      const params = stored?.inputPayloadJson;
+      if (!params) return null;
+      const restoreItem = (subjectCode: string, item: any) => {
+        const defaultTax = ICT_SUBJECT_DEFINITIONS.find(subject => subject.subjectCode === subjectCode)?.defaultTaxRate ?? 6;
+        const incl = restoreTaxItemNumber(item, "incl_tax", "incl", 0);
+        const tax = restoreTaxItemNumber(item, "tax_rate", "tax", defaultTax);
+        const explicitExcl = restoreTaxItemNumber(item, "excl_tax", "excl", Number.NaN);
+        const excl = Number.isFinite(explicitExcl)
+          ? explicitExcl
+          : incl === 0
+            ? 0
+            : Number((incl / (1 + tax / 100)).toFixed(2));
+        return {
+          incl,
+          tax,
+          excl,
+          customSubjectName: restoreCustomSubjectName(item),
+          billingSubjectName: restoreBillingSubjectName(item),
+        };
+      };
+      return {
+        device: restoreItem("cost_it_device", params.cost_it_device),
+        construction: restoreItem("cost_it_construction", params.cost_it_construction),
+        survey: restoreItem("cost_it_survey", params.cost_it_survey),
+        integration: restoreItem("cost_it_integration", params.cost_it_integration),
+        other: restoreItem("cost_it_other", params.cost_it_other),
+        maintenance: restoreItem("cost_it_maintenance", params.cost_it_maintenance),
+        running: restoreItem("cost_it_running", params.cost_it_running),
+        bidding: restoreItem("cost_it_bidding", params.cost_it_bidding),
+        design_eval: restoreItem("cost_it_design_eval", params.cost_it_design_eval),
+        audit: restoreItem("cost_it_audit", params.cost_it_audit),
+      };
+    } catch (e) {
+      console.error("加载甄选前方案 IT 投入失败:", e);
+      return null;
+    }
+  }, [activeScheme?.stage, activeProject?.id, preScheme?.id, state.costIt]);
+
   // 切换到指定方案：先走未保存变更确认，再复用与项目下拉一致的导航加载路径。
   const switchToScheme = async (schemeId: string) => {
     if (!activeProject || pendingNewSchemeName) return;
@@ -1822,7 +1867,7 @@ export default function IctLifecycle() {
       ? ictOrigin
       : null;
   const isTabbedDocumentTemplate = activeTab === "generate"
-    && (selectedTemplate.includes("会审") || selectedTemplate.includes("立项签批表") || selectedTemplate.includes("需求导入表"));
+    && (selectedTemplate.includes("会审") || selectedTemplate.includes("立项签批表") || selectedTemplate.includes("需求导入表") || selectedTemplate.includes("甄选结果签批表"));
   const showReverseCalculationTools = activeTab === 'revenue' || activeTab === 'cost';
 
   return (
@@ -1906,7 +1951,7 @@ export default function IctLifecycle() {
                     {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
                     <AppIcon name={t.endsWith('.xlsx') ? "spreadsheet" : "document"} size={18} className="mt-0.5" />
                     <span className="whitespace-normal break-words leading-relaxed flex-1">
-                      {t.replace('.docx', '').replace('.xlsx', '')}
+                      {t.replace('.docx', '').replace('.xlsx', '').replace('.pptx', '')}
                     </span>
                   </button>
                 );
@@ -2160,6 +2205,8 @@ export default function IctLifecycle() {
               outputDir={activeProject?.folder_path || undefined}
               projectId={activeProject?.id || undefined}
               currentSchemeLabel={pendingNewSchemeName || activeScheme?.name || "默认方案"}
+              fetchPreSelectionCostIt={fetchPreSelectionCostIt}
+              preSchemeName={preScheme?.name}
             />
           </div>
 

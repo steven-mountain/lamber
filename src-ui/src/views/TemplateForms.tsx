@@ -46,6 +46,9 @@ interface Props {
   projectId?: string;
   onGenerated?: () => void;
   currentSchemeLabel?: string;
+  /** 甄选结果签批表：异步读取甄选前方案的 IT 投入科目（costIt 同形结构），无甄选前方案返回 null */
+  fetchPreSelectionCostIt?: () => Promise<Record<string, any> | null>;
+  preSchemeName?: string;
 }
 
 type ProjectScale = "large" | "small"
@@ -53,6 +56,7 @@ type SelfThreeRequirement = "integration" | "maintenance"
 type MeetingReviewTabId = "basic" | "content" | "business" | "risk" | "confirm"
 type ApprovalTemplateTabId = "content" | "confirm"
 type DemandTemplateTabId = "content" | "confirm"
+type SelectionResultTabId = "content" | "confirm"
 
 const MEETING_REVIEW_TABS: Array<{ id: MeetingReviewTabId; label: string }> = [
   { id: "basic", label: "会审基础信息" },
@@ -71,6 +75,24 @@ const DEMAND_TEMPLATE_TABS: Array<{ id: DemandTemplateTabId; label: string }> = 
   { id: "content", label: "需求信息" },
   { id: "confirm", label: "生成确认" },
 ]
+
+const SELECTION_RESULT_TABS: Array<{ id: SelectionResultTabId; label: string }> = [
+  { id: "content", label: "甄选信息" },
+  { id: "confirm", label: "生成确认" },
+]
+
+// 甄选相关子表只覆盖 IT 投入科目（甄选内容 = IT 部分）
+const IT_COST_SUBJECTS = ICT_SUBJECT_DEFINITIONS.filter(s => s.side === "cost" && s.groupId === "costIt")
+const sumItCostSource = (source: Record<string, any> | null | undefined) => {
+  let excl = 0
+  let incl = 0
+  IT_COST_SUBJECTS.forEach(subject => {
+    const item = source?.[subject.key]
+    excl += Number(item?.excl || 0)
+    incl += Number(item?.incl || 0)
+  })
+  return { excl, incl }
+}
 
 const SELF_THREE_OPTIONS: Array<{
   value: string;
@@ -164,7 +186,9 @@ export default function TemplateForms({
   outputDir,
   projectId,
   onGenerated,
-  currentSchemeLabel
+  currentSchemeLabel,
+  fetchPreSelectionCostIt,
+  preSchemeName
 }: Props) {
   const formRef = useRef<HTMLFormElement>(null)
   const markDirty = useSaveStore(state => state.markDirty)
@@ -188,6 +212,22 @@ export default function TemplateForms({
   const fileInput1Ref = useRef<HTMLInputElement>(null)
   const fileInput2Ref = useRef<HTMLInputElement>(null)
 
+  // 甄选前方案 IT 投入（甄选结果签批表限价来源）；缓存 promise 供生成时兜底 await
+  const [preSelectionCostIt, setPreSelectionCostIt] = useState<Record<string, any> | null>(null)
+  const preSelectionCostItPromiseRef = useRef<Promise<Record<string, any> | null> | null>(null)
+  useEffect(() => {
+    if (!selectedTemplate.includes('甄选结果签批表') || !fetchPreSelectionCostIt) {
+      setPreSelectionCostIt(null)
+      preSelectionCostItPromiseRef.current = null
+      return
+    }
+    const promise = fetchPreSelectionCostIt().catch(() => null)
+    preSelectionCostItPromiseRef.current = promise
+    promise.then(result => {
+      if (preSelectionCostItPromiseRef.current === promise) setPreSelectionCostIt(result)
+    })
+  }, [selectedTemplate, fetchPreSelectionCostIt])
+
   const todayStr = (() => {
     const d = new Date();
     const year = d.getFullYear();
@@ -210,6 +250,7 @@ export default function TemplateForms({
   const [meetingReviewTab, setMeetingReviewTab] = useState<MeetingReviewTabId>("basic")
   const [approvalTemplateTab, setApprovalTemplateTab] = useState<ApprovalTemplateTabId>("content")
   const [demandTemplateTab, setDemandTemplateTab] = useState<DemandTemplateTabId>("content")
+  const [selectionResultTab, setSelectionResultTab] = useState<SelectionResultTabId>("content")
 
   const [isMidThreeModalOpen, setIsMidThreeModalOpen] = useState(false)
   const [midThreeSearch, setMidThreeSearch] = useState("")
@@ -1138,6 +1179,128 @@ export default function TemplateForms({
 
     const leaderLine = totalRevIncl >= 3000000 ? "分管领导（签字）：________________" : "";
 
+    // ===== 甄选结果签批表 专属变量（单项目；子项目合并留至二期）=====
+    const isSelectionResultTemplate = selectedTemplate.includes('甄选结果签批表')
+    const zxProjName = projectData.basic?.proj_name || ""
+    const fmtTaxRate = (t: any) => { const n = Number(t); return isFinite(n) && n > 0 ? `${n}%` : "" }
+    const costIntegItem = projectData.cost?.it?.integration || null
+    const zxIntegTax = fmtTaxRate(costIntegItem?.tax) || "6%"
+
+    // 甄选限价来源：手填优先；为空则取甄选前方案 IT 投入（跨方案读取，可能仍在加载中，兜底 await）
+    const zxPreCostIt = isSelectionResultTemplate
+      ? (preSelectionCostIt ?? (preSelectionCostItPromiseRef.current ? await preSelectionCostItPromiseRef.current : null))
+      : null
+
+    // 甄选子表行构建：IT 投入科目逐行展开（不合并），首行带项目名，其余留空承接
+    const buildZxItCostRows = (source: Record<string, any> | null | undefined, prefix: "A" | "B") => {
+      const rows: Record<string, string>[] = []
+      let seq = 1
+      let named = false
+      IT_COST_SUBJECTS.forEach(subject => {
+        const item = source?.[subject.key]
+        const excl = Number(item?.excl || 0)
+        if (isZero(excl)) return
+        if (prefix === "A") {
+          rows.push({
+            A_SEQ: String(seq++),
+            A_NAME: named ? "" : zxProjName,
+            A_FEE_TYPE: subjectDetailName(subject, item),
+            A_TAX_RATE: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+            A_LIMIT: fmtYuan(excl),
+          })
+        } else {
+          rows.push({
+            B_SEQ: String(seq++),
+            B_NAME: named ? "" : zxProjName,
+            B_TYPE: subjectDetailName(subject, item),
+            B_EXCL: fmtYuan(excl),
+            B_TAX_RATE: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+            B_INCL: fmtYuan(Number(item?.incl || 0)),
+          })
+        }
+        named = true
+      })
+      return rows
+    }
+
+    // 子表 A：甄选限价明细。手填限价 → 单行；否则按甄选前方案 IT 科目逐行
+    const zxManualLimit = Number(selectionFeeData.limit ?? projectData.selection_fee_limit ?? 0)
+    let zxTableA: Record<string, string>[]
+    let zxLimitExcl: number
+    if (zxManualLimit > 0) {
+      zxLimitExcl = zxManualLimit
+      zxTableA = [{ A_SEQ: "1", A_NAME: zxProjName, A_FEE_TYPE: "集成费", A_TAX_RATE: zxIntegTax, A_LIMIT: fmtYuan(zxManualLimit) }]
+    } else if (zxPreCostIt) {
+      zxTableA = buildZxItCostRows(zxPreCostIt, "A")
+      zxLimitExcl = sumItCostSource(zxPreCostIt).excl
+    } else {
+      zxTableA = []
+      zxLimitExcl = 0
+    }
+    // 子表 B：中选候选人报价明细，按甄选后（当前）方案 IT 投入科目逐行；合计即中选金额
+    const zxTableB = buildZxItCostRows(projectData.cost?.it, "B")
+    const zxItTotals = sumItCostSource(projectData.cost?.it)
+    const zxWinnerExcl = zxItTotals.excl
+    const zxWinnerIncl = zxItTotals.incl
+    // 子表 C/D：投入、收入明细（按非零科目逐条展开，首行带子项目名，其余留空承接）
+    const buildZxDetailRows = (side: IctSubjectSide, prefix: "C" | "D") => {
+      const rows: Record<string, string>[] = []
+      let seq = 1
+      let named = false
+      ICT_SUBJECT_DEFINITIONS.filter(s => s.side === side).forEach(subject => {
+        const item = getProjectDataSubjectItem(projectData, subject)
+        const excl = Number(item?.excl || 0)
+        if (isZero(excl)) return
+        rows.push({
+          [`${prefix}_SEQ`]: String(seq++),
+          [`${prefix}_NAME`]: named ? "" : zxProjName,
+          [`${prefix}_TYPE`]: subjectDetailName(subject, item),
+          [`${prefix}_EXCL`]: fmtYuan(excl),
+          [`${prefix}_TAX_RATE`]: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+          [`${prefix}_INCL`]: fmtYuan(Number(item?.incl || 0)),
+        })
+        named = true
+      })
+      return rows
+    }
+    const zxSideTotals = (side: IctSubjectSide) => {
+      let excl = 0, incl = 0
+      ICT_SUBJECT_DEFINITIONS.filter(s => s.side === side).forEach(subject => {
+        const item = getProjectDataSubjectItem(projectData, subject)
+        excl += Number(item?.excl || 0)
+        incl += Number(item?.incl || 0)
+      })
+      return { excl, incl }
+    }
+    const zxTableC = buildZxDetailRows("cost", "C")
+    const zxTableD = buildZxDetailRows("revenue", "D")
+    const zxCostTot = zxSideTotals("cost")
+    const zxRevTot = zxSideTotals("revenue")
+    // 子表 E：净现值率、毛利率、IT 净现值率（1 行）
+    const zxTableE = [{
+      E_SEQ: "1",
+      E_NAME: zxProjName,
+      E_NPV_RATE: fmtPct(metrics?.npv_rate),
+      E_MARGIN: fmtPct(metrics?.margin_rate),
+      E_IT_NPV: fmtPct(metrics?.it_npv_rate),
+    }]
+
+    // 甄选叙述字段（表单可覆盖，留空取默认）
+    const zxScope = get('gen_zx_scope') || "三级库"
+    const zxIndustry = get('gen_zx_industry') || "/"
+    const zxMethod = get('gen_zx_method') || "竞争性甄选"
+    const zxRule = get('gen_zx_rule') || "标准方案"
+    const zxStdPlan = get('gen_zx_std_plan') || "竞价法"
+    const zxContentDesc = get('gen_zx_content_desc') || `标包1合作伙伴提供${zxProjName || "相关"}服务`
+    const zxIsSme = get('gen_zx_is_sme') || "否"
+    const zxWinnerName = get('gen_zx_winner_name') || ""
+    const zxWinnerDesc = zxWinnerName
+      ? `标包1：${zxWinnerName}，不含税总金额${fmtYuan(zxWinnerExcl)}元，含税总金额为${fmtYuan(zxWinnerIncl)}元，中选份额100%。其中税率${zxIntegTax}，不含税金额${fmtYuan(zxWinnerExcl)}元，含税总金额为${fmtYuan(zxWinnerIncl)}元。`
+      : ""
+    // 甄选后投入叙述：去掉立项版“参考三家询价”后缀
+    const zxInvestmentSituation = `总投入${fmtYuan(totalCost)}元${investmentDetailGroups ? `；其中${investmentDetailGroups}` : ""}。`
+    const zxPayback = metrics?.dynamic_payback && metrics.dynamic_payback !== "--" ? `${metrics.dynamic_payback}年` : "--"
+
     const variables: any = {
       'PROJECT_NAME': projectData.basic?.proj_name || "",
       'CUSTOMER_NAME': projectData.basic?.customer_name || "",
@@ -1239,6 +1402,176 @@ export default function TemplateForms({
       'CONTRACT_DURATION': String(projectData.basic?.project_years || 1),
     }
 
+    // 甄选结果签批表：覆盖/补充叙述字段与 5 张子表（其余顶层字段复用立项签批表同名占位符）
+    if (isSelectionResultTemplate) {
+      Object.assign(variables, {
+        'PROJECT_INVESTMENT_SITUATION': zxInvestmentSituation,
+        'PROJECT_REVENUE_SITUATION': projectRevenueSituation,
+        'CONTRACT_DURATION': `${projectData.basic?.project_years || 1}年`,
+        'DYNAMIC_PAYBACK_PERIOD': zxPayback,
+        'IS_SME': zxIsSme,
+        'SELECTION_CONTENT_DESC': zxContentDesc,
+        'SELECTION_LIMIT_TOTAL': fmtYuan(zxLimitExcl),
+        'SELECTION_SCOPE': zxScope,
+        'SELECTION_INDUSTRY': zxIndustry,
+        'SELECTION_METHOD': zxMethod,
+        'SELECTION_RULE': zxRule,
+        'SELECTION_STANDARD_PLAN': zxStdPlan,
+        'WINNER_DESC': zxWinnerDesc,
+        'TABLE_A_LIMIT': JSON.stringify(zxTableA),
+        'TABLE_B_WINNER': JSON.stringify(zxTableB),
+        'TABLE_C_INVEST': JSON.stringify(zxTableC),
+        'TABLE_D_REVENUE': JSON.stringify(zxTableD),
+        'TABLE_E_NPV': JSON.stringify(zxTableE),
+        'A_TOTAL_LIMIT': fmtYuan(zxLimitExcl),
+        'B_TOTAL_EXCL': fmtYuan(zxWinnerExcl),
+        'B_TOTAL_INCL': fmtYuan(zxWinnerIncl),
+        'C_TOTAL_EXCL': fmtYuan(zxCostTot.excl),
+        'C_TOTAL_INCL': fmtYuan(zxCostTot.incl),
+        'D_TOTAL_EXCL': fmtYuan(zxRevTot.excl),
+        'D_TOTAL_INCL': fmtYuan(zxRevTot.incl),
+      })
+    }
+
+    // ===== 立项决策汇报 PPT 专属变量（封面 + 投资收益页）=====
+    if (selectedTemplate.includes('立项决策汇报')) {
+      const pptYears = Number(projectData.basic?.project_years || 1)
+      const pptPeriod = `${pptYears * 12}月`
+      const pptNow = new Date()
+      const pptDate = get('gen_ppt_report_date') || `${pptNow.getFullYear()}年${pptNow.getMonth() + 1}月`
+
+      // IT 收入行：非零科目逐行；通服/非通服分类，类别相同的后续行留空承接
+      const PPT_IT_REV_LABELS: Record<string, { cls: string; type: string; detail: string }> = {
+        integration: { cls: "通服收入", type: "集成", detail: "集成费" },
+        maintenance: { cls: "通服收入", type: "维保", detail: "维保费" },
+        cloud: { cls: "通服收入", type: "移动云", detail: "移动云-定制化" },
+        other: { cls: "通服收入", type: "其他", detail: "其他收入" },
+        device_sales: { cls: "非通服收入", type: "设备销售", detail: "设备销售" },
+        device_lease: { cls: "非通服收入", type: "设备租赁", detail: "设备租赁" },
+      }
+      const pptRevItRows: Record<string, string>[] = []
+      let pptLastRevCls = ""
+      ICT_SUBJECT_DEFINITIONS.filter(s => s.groupId === "revIt").forEach(subject => {
+        const item = getProjectDataSubjectItem(projectData, subject)
+        const excl = Number(item?.excl || 0)
+        if (isZero(excl)) return
+        const lab = PPT_IT_REV_LABELS[subject.key] || { cls: "通服收入", type: "其他", detail: "其他收入" }
+        const resolved = resolveBillingSubjectPresentation(subject, item)
+        const typeName = resolved.billingSubjectName || resolved.productOrBusinessName || lab.type
+        pptRevItRows.push({
+          PR_IT_CLASS: lab.cls === pptLastRevCls ? "" : lab.cls,
+          PR_IT_TYPE: `ICT-${typeName}`,
+          PR_IT_PERIOD: pptPeriod,
+          PR_IT_DETAIL: lab.detail,
+          PR_IT_EXCL: fmtYuan(excl),
+          PR_IT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+          PR_IT_INCL: fmtYuan(Number(item?.incl || 0)),
+          PR_IT_NOTE: "",
+        })
+        pptLastRevCls = lab.cls
+      })
+
+      // CT 收入行：非零科目逐行；无 CT 收入时保留一条 0 值行（与样例一致）
+      const pptRevCtRows: Record<string, string>[] = []
+      ICT_SUBJECT_DEFINITIONS.filter(s => s.groupId === "revCt").forEach(subject => {
+        const item = getProjectDataSubjectItem(projectData, subject)
+        const excl = Number(item?.excl || 0)
+        if (isZero(excl)) return
+        pptRevCtRows.push({
+          PR_CT_CLASS: subjectDetailName(subject, item),
+          PR_CT_TYPE: "",
+          PR_CT_PERIOD: "",
+          PR_CT_DETAIL: "",
+          PR_CT_EXCL: fmtYuan(excl),
+          PR_CT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+          PR_CT_INCL: fmtYuan(Number(item?.incl || 0)),
+          PR_CT_NOTE: "",
+        })
+      })
+      if (pptRevCtRows.length === 0) {
+        pptRevCtRows.push({
+          PR_CT_CLASS: "CT-专线", PR_CT_TYPE: "", PR_CT_PERIOD: "", PR_CT_DETAIL: "",
+          PR_CT_EXCL: "0.00", PR_CT_TAX: "6%", PR_CT_INCL: "0.00", PR_CT_NOTE: "",
+        })
+      }
+
+      // IT 投入行：非零科目逐行，维护类科目归“IT-维护”，其余归“IT-建设”
+      const pptCostItRows: Record<string, string>[] = []
+      let pptLastCostCls = ""
+      IT_COST_SUBJECTS.forEach(subject => {
+        const item = projectData.cost?.it?.[subject.key]
+        const excl = Number(item?.excl || 0)
+        if (isZero(excl)) return
+        const cls = subject.key === "maintenance" || subject.key === "running" ? "IT-维护" : "IT-建设"
+        const resolved = resolveBillingSubjectPresentation(subject, item)
+        pptCostItRows.push({
+          PC_IT_CLASS: cls === pptLastCostCls ? "" : cls,
+          PC_IT_DETAIL: resolved.billingSubjectName || resolved.productOrBusinessName || subject.standardSubjectName,
+          PC_IT_EXCL: fmtYuan(excl),
+          PC_IT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+          PC_IT_INCL: fmtYuan(Number(item?.incl || 0)),
+          PC_IT_NOTE: "",
+        })
+        pptLastCostCls = cls
+      })
+
+      // CT 投入行：非零科目逐行；无 CT 投入时保留一条 0 值行（与样例一致）
+      const pptCostCtRows: Record<string, string>[] = []
+      ICT_SUBJECT_DEFINITIONS.filter(s => s.groupId === "costCt").forEach(subject => {
+        const item = projectData.cost?.ct?.[subject.key]
+        const excl = Number(item?.excl || 0)
+        if (isZero(excl)) return
+        pptCostCtRows.push({
+          PC_CT_CLASS: subjectDetailName(subject, item),
+          PC_CT_DETAIL: "",
+          PC_CT_EXCL: fmtYuan(excl),
+          PC_CT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+          PC_CT_INCL: fmtYuan(Number(item?.incl || 0)),
+          PC_CT_NOTE: "",
+        })
+      })
+      if (pptCostCtRows.length === 0) {
+        pptCostCtRows.push({
+          PC_CT_CLASS: "CT-专线", PC_CT_DETAIL: "",
+          PC_CT_EXCL: "0.00", PC_CT_TAX: "6%", PC_CT_INCL: "0.00", PC_CT_NOTE: "",
+        })
+      }
+
+      // 含税合计（不含税合计复用上方 totalCost / totalRevExcl 等）
+      const sumIncl = (obj: any) => Object.values(obj || {}).reduce((acc: number, curr: any) => acc + Number(curr?.incl || 0), 0)
+      const itCostIncl = sumIncl(projectData.cost?.it)
+      const ctCostIncl = sumIncl(projectData.cost?.ct)
+      const totalCostIncl = itCostIncl + ctCostIncl + sumIncl(projectData.cost?.mix)
+
+      Object.assign(variables, {
+        'PPT_REPORT_UNIT': get('gen_ppt_report_unit') || "沙坪坝分公司AI云数中心",
+        'PPT_REPORT_DATE': pptDate,
+        'PPT_REV_TOTAL_EXCL': fmtYuan(totalRevExcl),
+        'PPT_REV_TOTAL_INCL': fmtYuan(totalRevIncl),
+        'PPT_REV_IT_EXCL': fmtYuan(totalRevItExcl),
+        'PPT_REV_IT_INCL': fmtYuan(totalRevIt),
+        'PPT_REV_CT_EXCL': fmtYuan(totalRevCtExcl),
+        'PPT_REV_CT_INCL': fmtYuan(totalRevCt),
+        'PPT_COST_TOTAL_EXCL': fmtYuan(totalCost),
+        'PPT_COST_TOTAL_INCL': fmtYuan(totalCostIncl),
+        'PPT_COST_IT_EXCL': fmtYuan(itCost),
+        'PPT_COST_IT_INCL': fmtYuan(itCostIncl),
+        'PPT_COST_CT_EXCL': fmtYuan(ctCost),
+        'PPT_COST_CT_INCL': fmtYuan(ctCostIncl),
+        'PPT_CONTRACT_DESC': get('gen_ppt_contract_desc') || `${pptYears}年`,
+        'PPT_PAYBACK': zxPayback,
+        'PPT_NPV_RATE': fmtPct(metrics?.npv_rate),
+        'PPT_MARGIN_RATE': fmtPct(metrics?.margin_rate),
+        'PPT_IT_NPV_RATE': fmtPct(metrics?.it_npv_rate),
+        'PPT_NPV_VALUE': metrics?.npv != null && metrics.npv !== "" ? fmtYuan(Number(metrics.npv)) : "--",
+        'PPT_CT_REV': fmtYuan(totalRevCtExcl),
+        'TABLE_PPT_REV_IT': JSON.stringify(pptRevItRows),
+        'TABLE_PPT_REV_CT': JSON.stringify(pptRevCtRows),
+        'TABLE_PPT_COST_IT': JSON.stringify(pptCostItRows),
+        'TABLE_PPT_COST_CT': JSON.stringify(pptCostCtRows),
+      })
+    }
+
     const runGenerate = (overwriteExisting = false) => invoke<string>('generate_lifecycle_docs', {
           moduleId: "ict_lifecycle",
           variables: variables,
@@ -1283,7 +1616,8 @@ export default function TemplateForms({
   const isMeetingReviewTemplate = Boolean(selectedTemplate && selectedTemplate.includes('会审'))
   const isApprovalTemplate = selectedTemplate.includes('立项签批表')
   const isDemandTemplate = selectedTemplate.includes('需求导入表')
-  const usesTabbedDocumentLayout = isMeetingReviewTemplate || isApprovalTemplate || isDemandTemplate
+  const isSelectionResultDocTemplate = selectedTemplate.includes('甄选结果签批表')
+  const usesTabbedDocumentLayout = isMeetingReviewTemplate || isApprovalTemplate || isDemandTemplate || isSelectionResultDocTemplate
   const getFormValue = (name: string, defaultValue = "") => formData[name] ?? defaultValue
   const hasText = (value: unknown) => String(value ?? "").trim().length > 0
   const hasAnyInquiryVendor = inqVendors.some(v => hasText(v.vendorName) || Number(v.amount || 0) > 0)
@@ -1345,9 +1679,20 @@ export default function TemplateForms({
     { label: "附件1客户确认材料", filled: attach1Images.length > 0 },
     { label: "附件2招标材料", filled: !hasPublicUrl || attach2Images.length > 0 },
   ]
+  const selectionResultCompletionItems: TemplateCompletionItem[] = [
+    { label: "项目背景", filled: hasText(projectBackground) },
+    { label: "中选合作伙伴", filled: hasText(getFormValue("gen_zx_winner_name")) },
+    { label: "甄选范围", filled: hasText(getFormValue("gen_zx_scope", "三级库")) },
+    { label: "甄选方式", filled: hasText(getFormValue("gen_zx_method", "竞争性甄选")) },
+    { label: "甄选规则", filled: hasText(getFormValue("gen_zx_rule", "标准方案")) },
+    { label: "供应商是否中小企业", filled: true },
+    { label: "收入侧收款方式", filled: hasText(revCollection) },
+    { label: "支出侧付款方式", filled: hasText(expPayment) },
+  ]
   const meetingCompletion = getTemplateCompletion(meetingCompletionItems)
   const approvalCompletion = getTemplateCompletion(approvalCompletionItems)
   const demandCompletion = getTemplateCompletion(demandCompletionItems)
+  const selectionResultCompletion = getTemplateCompletion(selectionResultCompletionItems)
 
   return (
     <div className="flex flex-col gap-6">
@@ -1385,6 +1730,32 @@ export default function TemplateForms({
                 <li><strong className="text-foreground">Sheet 3-直接经济效益评估表：</strong> 自动回填 9 项不含税/含税收入指标，以及 20 项不含税/含税支出指标（包括设备、施工、运行、营销、渠道等）。</li>
                 <li><strong className="text-foreground">Sheet 2-ICT项目评估结果：</strong> 自动同步回填项目名称、客户名称、项目周期、续签标志、业务模式、IT 资金来源。</li>
               </ul>
+            </div>
+          </div>
+        )}
+
+        {/* 立项决策汇报 PPT 专属配置 */}
+        {selectedTemplate.includes('立项决策汇报') && selectedTemplate.endsWith('.pptx') && (
+          <div className="bg-card border border-border rounded-xl p-6 shadow-sm flex flex-col gap-4">
+            <h4 className="font-bold text-primary flex items-center gap-2">
+              <AppIcon name="document" size={18} /> 《ICT项目立项决策汇报》PPT 模版配置
+            </h4>
+            <p className="text-sm text-secondary-foreground leading-relaxed">
+              自动生成封面与「项目投资收益」页：收入/投入明细表按测算科目逐行展开，总收入、总投入、净现值率、毛利率、IT净现值率、动态回收期等指标自动取自当前方案测算结果。
+            </p>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-semibold">汇报单位</label>
+                <input type="text" name="gen_ppt_report_unit" {...getBind("gen_ppt_report_unit", "沙坪坝分公司AI云数中心")} className="bg-card border border-input px-3 py-2 rounded-md" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-semibold">汇报日期（封面）</label>
+                <input type="text" name="gen_ppt_report_date" {...getBind("gen_ppt_report_date", `${new Date().getFullYear()}年${new Date().getMonth() + 1}月`)} className="bg-card border border-input px-3 py-2 rounded-md" />
+              </div>
+              <div className="flex flex-col gap-1 xl:col-span-2">
+                <label className="text-sm font-semibold">合同年限说明</label>
+                <textarea name="gen_ppt_contract_desc" {...getBind("gen_ppt_contract_desc", `${projectData.basic?.project_years || 1}年`)} rows={2} placeholder="例如：白走路1套、白彭路2套及走温路1套共4套8车道，服务期限为合同签订之日至2028年5月22日" className="bg-card border border-input px-3 py-2 rounded-md" />
+              </div>
             </div>
           </div>
         )}
@@ -2041,6 +2412,138 @@ export default function TemplateForms({
                 templateName={selectedTemplate}
                 currentSchemeLabel={currentSchemeLabel}
                 completion={approvalCompletion}
+                onGenerate={handleGenerate}
+                {...projectInfoForConfirmation}
+              />
+            )}
+          </TemplateDocumentLayout>
+        )}
+
+        {/* 甄选结果签批表专属配置 */}
+        {isSelectionResultDocTemplate && (
+          <TemplateDocumentLayout
+            templateName={selectedTemplate}
+            title="《ICT项目甄选结果签批表》专属配置"
+            tabs={SELECTION_RESULT_TABS}
+            activeTab={selectionResultTab}
+            onTabChange={setSelectionResultTab}
+            completion={selectionResultCompletion}
+            metrics={metrics}
+            onGenerate={handleGenerate}
+          >
+            {selectionResultTab === "content" && (
+              <TemplateTabSection>
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <div className="xl:col-span-2 rounded-lg bg-primary-soft/60 px-4 py-3 text-xs font-semibold text-secondary-foreground">
+                    {Number(selectionFeeData.limit ?? 0) > 0
+                      ? `甄选限价：使用测算表手填值 ${Number(selectionFeeData.limit).toFixed(2)} 元（不含税）。`
+                      : preSelectionCostIt
+                        ? `甄选限价：自动取自甄选前方案${preSchemeName ? `「${preSchemeName}」` : ""}的 IT 投入合计 ${sumItCostSource(preSelectionCostIt).excl.toFixed(2)} 元（不含税）；如需覆盖，可在测算表“甄选费用”处手填甄选限价。`
+                        : "未找到甄选前方案：甄选限价将取测算表手填值（未填则为 0）。"}
+                  </div>
+                  <TemplateSubmoduleCard className="xl:col-span-2">
+                    <div className="flex flex-col gap-1">
+                      <div className="text-sm font-semibold text-foreground">项目背景</div>
+                      <textarea
+                        name="gen_proj_bg"
+                        rows={4}
+                        value={projectBackground}
+                        onChange={e => setProjectBackground(e.target.value)}
+                        className="bg-card border border-input px-3 py-2 rounded-md"
+                        placeholder="请输入项目背景..."
+                      />
+                    </div>
+                  </TemplateSubmoduleCard>
+
+                  <TemplateSubmoduleCard>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2 text-sm font-semibold">
+                        <span>中选合作伙伴</span>
+                        <span className="text-xs text-secondary-foreground font-normal">用于生成中选候选人说明</span>
+                      </div>
+                      <input
+                        type="text"
+                        name="gen_zx_winner_name"
+                        {...getBind("gen_zx_winner_name")}
+                        className="bg-card border border-input px-3 py-2 rounded-md"
+                        placeholder="如：重庆市永联网络科技有限公司"
+                      />
+                    </div>
+                  </TemplateSubmoduleCard>
+
+                  <TemplateSubmoduleCard>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2 text-sm font-semibold">
+                        <span>甄选内容说明</span>
+                        <span className="text-xs text-secondary-foreground font-normal">为空则用系统默认</span>
+                      </div>
+                      <input
+                        type="text"
+                        name="gen_zx_content_desc"
+                        {...getBind("gen_zx_content_desc")}
+                        className="bg-card border border-input px-3 py-2 rounded-md"
+                        placeholder="标包1合作伙伴提供……服务"
+                      />
+                    </div>
+                  </TemplateSubmoduleCard>
+
+                  <TemplateSubmoduleCard>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="flex flex-col gap-1">
+                        <div className="text-sm font-semibold">甄选范围</div>
+                        <input type="text" name="gen_zx_scope" {...getBind("gen_zx_scope", "三级库")} className="bg-card border border-input px-3 py-2 rounded-md" placeholder="三级库" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <div className="text-sm font-semibold">甄选行业/场景</div>
+                        <input type="text" name="gen_zx_industry" {...getBind("gen_zx_industry", "/")} className="bg-card border border-input px-3 py-2 rounded-md" placeholder="/" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <div className="text-sm font-semibold">甄选方式</div>
+                        <input type="text" name="gen_zx_method" {...getBind("gen_zx_method", "竞争性甄选")} className="bg-card border border-input px-3 py-2 rounded-md" placeholder="竞争性甄选" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <div className="text-sm font-semibold">甄选规则</div>
+                        <input type="text" name="gen_zx_rule" {...getBind("gen_zx_rule", "标准方案")} className="bg-card border border-input px-3 py-2 rounded-md" placeholder="标准方案" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <div className="text-sm font-semibold">标准方案说明</div>
+                        <input type="text" name="gen_zx_std_plan" {...getBind("gen_zx_std_plan", "竞价法")} className="bg-card border border-input px-3 py-2 rounded-md" placeholder="竞价法" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <div className="text-sm font-semibold">供应商是否为中小企业</div>
+                        <select name="gen_zx_is_sme" {...getBind("gen_zx_is_sme", "否")} className="bg-card border border-input px-3 py-2 rounded-md">
+                          <option value="否">否</option>
+                          <option value="是">是</option>
+                        </select>
+                      </div>
+                    </div>
+                  </TemplateSubmoduleCard>
+
+                  <TemplateSubmoduleCard>
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="flex flex-col gap-1">
+                        <div className="text-sm font-semibold">收入侧收款方式（客户支付）</div>
+                        <input type="text" name="gen_rev_collection" value={revCollection} onChange={e => setRevCollection(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" placeholder="请输入客户支付方式..." />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <div className="text-sm font-semibold">支出侧付款方式（合作伙伴支付）</div>
+                        <input type="text" name="gen_exp_payment" value={expPayment} onChange={e => setExpPayment(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" placeholder="请输入合作伙伴支付方式..." />
+                      </div>
+                      <label className="text-sm font-semibold flex items-center gap-2">
+                        <input type="checkbox" name="gen_is_advance" {...getBindCheckbox("gen_is_advance")} className="w-4 h-4" />
+                        是否涉及垫资
+                      </label>
+                    </div>
+                  </TemplateSubmoduleCard>
+                </div>
+              </TemplateTabSection>
+            )}
+
+            {selectionResultTab === "confirm" && (
+              <TemplateConfirmationPanel
+                templateName={selectedTemplate}
+                currentSchemeLabel={currentSchemeLabel}
+                completion={selectionResultCompletion}
                 onGenerate={handleGenerate}
                 {...projectInfoForConfirmation}
               />

@@ -410,6 +410,131 @@ fn internal_generate_docx(
     Ok(())
 }
 
+/// 填充 PPTX 模板：遍历 ppt/slides/*.xml，做 {VAR} 替换与 TABLE_* 模板行（<a:tr>）克隆。
+/// 机制与 docx 版一致，仅命名空间不同（DrawingML）；不支持图片占位符。
+fn internal_generate_pptx(
+    template_path: &str,
+    output_path: &str,
+    variables: &HashMap<String, String>,
+) -> Result<(), String> {
+    let file = File::open(template_path).map_err(|e| format!("Failed to open template: {}", e))?;
+    let mut archive =
+        ZipArchive::new(file).map_err(|e| format!("Failed to read template zip: {}", e))?;
+
+    let out_file =
+        File::create(output_path).map_err(|e| format!("Failed to create output: {}", e))?;
+    let mut zip_writer = ZipWriter::new(out_file);
+    let options: SimpleFileOptions = SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored)
+        .unix_permissions(0o755);
+
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    for i in 0..archive.len() {
+        let mut f = archive.by_index(i).unwrap();
+        let name = f.name().to_string();
+        let mut content = Vec::new();
+        f.read_to_end(&mut content)
+            .map_err(|e| format!("Read error: {}", e))?;
+        files.push((name, content));
+    }
+
+    for (name, content) in files.iter_mut() {
+        if !(name.starts_with("ppt/slides/") && name.ends_with(".xml") && !name.contains("_rels"))
+        {
+            continue;
+        }
+        let mut xml_str = String::from_utf8(content.clone()).map_err(|e| e.to_string())?;
+        xml_str = clean_xml_placeholders(&xml_str);
+
+        // TABLE_*：定位含首键占位符的 <a:tr>，按行数据逐份克隆
+        for (k, v) in variables {
+            if !k.starts_with("TABLE_") {
+                continue;
+            }
+            let rows_data = match serde_json::from_str::<
+                Vec<std::collections::HashMap<String, String>>,
+            >(v)
+            {
+                Ok(rows) => rows,
+                Err(_) => continue,
+            };
+            let first_key = match rows_data.first().and_then(|row| row.keys().next().cloned()) {
+                Some(key) => key,
+                None => continue,
+            };
+            let pattern = format!("{{{}}}", first_key);
+            let idx = match xml_str.find(&pattern) {
+                Some(idx) => idx,
+                None => continue,
+            };
+            let tr_start = match xml_str[..idx]
+                .rfind("<a:tr ")
+                .or_else(|| xml_str[..idx].rfind("<a:tr>"))
+            {
+                Some(pos) => pos,
+                None => continue,
+            };
+            let tr_end = match xml_str[idx..].find("</a:tr>") {
+                Some(rel) => idx + rel + "</a:tr>".len(),
+                None => continue,
+            };
+
+            let row_xml = xml_str[tr_start..tr_end].to_string();
+            let mut new_rows = String::new();
+            for row_data in &rows_data {
+                let mut new_row = row_xml.clone();
+                for (rk, rv) in row_data {
+                    let r_pattern = format!("{{{}}}", rk);
+                    let escaped_rv = rv
+                        .replace("&", "&amp;")
+                        .replace("<", "&lt;")
+                        .replace(">", "&gt;")
+                        .replace("\n", "</a:t></a:r><a:br/><a:r><a:t>");
+                    new_row = new_row.replace(&r_pattern, &escaped_rv);
+                }
+                let re = regex::Regex::new(r"\{[A-Z_0-9]+\}").unwrap();
+                new_row = re.replace_all(&new_row, "").to_string();
+                new_rows.push_str(&new_row);
+            }
+            xml_str = format!("{}{}{}", &xml_str[..tr_start], new_rows, &xml_str[tr_end..]);
+        }
+
+        // 普通 {VAR} 替换
+        for (k, v) in variables {
+            if k.starts_with("TABLE_") {
+                continue;
+            }
+            let pattern = format!("{{{}}}", k);
+            if !xml_str.contains(&pattern) {
+                continue;
+            }
+            let escaped_v = v
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\n", "</a:t></a:r><a:br/><a:r><a:t>");
+            xml_str = xml_str.replace(&pattern, &escaped_v);
+        }
+
+        // 清理未解析的占位符
+        let unresolved_re = Regex::new(r"\{[a-zA-Z0-9_一-龥（）]+\}").unwrap();
+        xml_str = unresolved_re.replace_all(&xml_str, "").to_string();
+
+        *content = xml_str.into_bytes();
+    }
+
+    for (name, content) in &files {
+        zip_writer
+            .start_file(name, options)
+            .map_err(|e| e.to_string())?;
+        zip_writer.write_all(content).map_err(|e| e.to_string())?;
+    }
+    zip_writer
+        .finish()
+        .map_err(|e| format!("Finish zip error: {}", e))?;
+    Ok(())
+}
+
 /// Robustly joins fragmented placeholders in Word XML.
 /// e.g. {<w:t>VAR</w:t>} -> {VAR}
 fn clean_xml_placeholders(xml: &str) -> String {
@@ -466,7 +591,7 @@ pub fn get_available_templates(
                 if let Some(ext) = path.extension() {
                     let ext_str = ext.to_string_lossy().to_lowercase();
                     let file_name = path.file_name().unwrap().to_string_lossy().to_string();
-                    if (ext_str == "docx" || ext_str == "xlsx")
+                    if (ext_str == "docx" || ext_str == "xlsx" || ext_str == "pptx")
                         && !file_name.starts_with("~$")
                         && !file_name.starts_with(".~")
                     {
@@ -593,7 +718,7 @@ pub fn generate_lifecycle_docs(
                 let file_name = path.file_name().unwrap().to_string_lossy().to_string();
 
                 // Ignore temporary files created by MS Word/Excel (starting with ~$)
-                if (ext_str == "docx" || ext_str == "xlsx")
+                if (ext_str == "docx" || ext_str == "xlsx" || ext_str == "pptx")
                     && !file_name.starts_with("~$")
                     && !file_name.starts_with(".~")
                 {
@@ -665,6 +790,18 @@ pub fn generate_lifecycle_docs(
                             );
                             continue;
                         }
+                    } else if ext_str == "pptx" {
+                        if let Err(e) = internal_generate_pptx(
+                            path.to_str().unwrap(),
+                            out_path.to_str().unwrap(),
+                            &variables,
+                        ) {
+                            println!(
+                                "Warning: failed to process pptx template {}: {}",
+                                file_name, e
+                            );
+                            continue;
+                        }
                     }
 
                     generated_count += 1;
@@ -674,7 +811,7 @@ pub fn generate_lifecycle_docs(
     }
 
     if generated_count == 0 {
-        return Err("模板目录中未找到任何可生成的 .docx 或 .xlsx 模板文件。".into());
+        return Err("模板目录中未找到任何可生成的 .docx / .xlsx / .pptx 模板文件。".into());
     }
 
     Ok(output_dir.to_string_lossy().to_string())
@@ -820,12 +957,147 @@ fn internal_generate_xlsx(
 
 #[cfg(test)]
 mod tests {
-    use super::internal_generate_xlsx;
+    use super::{internal_generate_pptx, internal_generate_xlsx};
     use calamine::{open_workbook, Reader, Xlsx};
     use std::collections::HashMap;
     use std::fs;
+    use std::io::Read;
     use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn lifecycle_pptx_fills_vars_and_clones_table_rows() {
+        let template_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../项目全生命周期文件模版/【2025版】ICT项目立项决策汇报模板.pptx");
+        assert!(
+            template_path.exists(),
+            "missing test template: {}",
+            template_path.display()
+        );
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let output_path = std::env::temp_dir().join(format!("lamber-pptx-{}.pptx", suffix));
+
+        // 数据取自真实样例《关于超限运输动态监控检测系统维护项目立项的决策汇报.pptx》
+        let mut variables: HashMap<String, String> = HashMap::new();
+        variables.insert(
+            "PROJECT_NAME".into(),
+            "超限运输动态监控检测系统维护项目".into(),
+        );
+        variables.insert("PPT_REPORT_UNIT".into(), "沙坪坝分公司AI云数中心".into());
+        variables.insert("PPT_REPORT_DATE".into(), "2026年6月".into());
+        variables.insert("PPT_REV_TOTAL_EXCL".into(), "175766.04".into());
+        variables.insert("PPT_REV_TOTAL_INCL".into(), "186312.00".into());
+        variables.insert("PPT_REV_IT_EXCL".into(), "161049.06".into());
+        variables.insert("PPT_REV_IT_INCL".into(), "170712.00".into());
+        variables.insert("PPT_REV_CT_EXCL".into(), "14716.98".into());
+        variables.insert("PPT_REV_CT_INCL".into(), "15600.00".into());
+        variables.insert("PPT_COST_TOTAL_EXCL".into(), "158189.00".into());
+        variables.insert("PPT_COST_TOTAL_INCL".into(), "167680.34".into());
+        variables.insert("PPT_COST_IT_EXCL".into(), "158189.00".into());
+        variables.insert("PPT_COST_IT_INCL".into(), "167680.34".into());
+        variables.insert("PPT_COST_CT_EXCL".into(), "0.00".into());
+        variables.insert("PPT_COST_CT_INCL".into(), "0.00".into());
+        variables.insert(
+            "PPT_CONTRACT_DESC".into(),
+            "白走路1套、白彭路2套及走温路1套共4套8车道 & 特殊<说明>".into(),
+        );
+        variables.insert("PPT_PAYBACK".into(), "1年".into());
+        variables.insert("PPT_NPV_RATE".into(), "11.14%".into());
+        variables.insert("PPT_MARGIN_RATE".into(), "10.00%".into());
+        variables.insert("PPT_IT_NPV_RATE".into(), "1.81%".into());
+        variables.insert("PPT_NPV_VALUE".into(), "16161.42".into());
+        variables.insert("PPT_CT_REV".into(), "14716.98".into());
+        variables.insert(
+            "TABLE_PPT_REV_IT".into(),
+            serde_json::json!([
+                {"PR_IT_CLASS": "通服收入", "PR_IT_TYPE": "ICT-集成", "PR_IT_PERIOD": "12月",
+                 "PR_IT_DETAIL": "集成费", "PR_IT_EXCL": "161049.06", "PR_IT_TAX": "6%",
+                 "PR_IT_INCL": "170712.00", "PR_IT_NOTE": ""},
+                {"PR_IT_CLASS": "", "PR_IT_TYPE": "ICT-维保", "PR_IT_PERIOD": "12月",
+                 "PR_IT_DETAIL": "维保费", "PR_IT_EXCL": "5.66", "PR_IT_TAX": "6%",
+                 "PR_IT_INCL": "6.00", "PR_IT_NOTE": ""}
+            ])
+            .to_string(),
+        );
+        variables.insert(
+            "TABLE_PPT_REV_CT".into(),
+            serde_json::json!([
+                {"PR_CT_CLASS": "CT-大数据", "PR_CT_TYPE": "", "PR_CT_PERIOD": "", "PR_CT_DETAIL": "",
+                 "PR_CT_EXCL": "14716.98", "PR_CT_TAX": "6%", "PR_CT_INCL": "15600.00", "PR_CT_NOTE": ""}
+            ])
+            .to_string(),
+        );
+        variables.insert(
+            "TABLE_PPT_COST_IT".into(),
+            serde_json::json!([
+                {"PC_IT_CLASS": "IT-建设", "PC_IT_DETAIL": "集成服务", "PC_IT_EXCL": "158189.00",
+                 "PC_IT_TAX": "6%", "PC_IT_INCL": "167680.34", "PC_IT_NOTE": ""}
+            ])
+            .to_string(),
+        );
+        variables.insert(
+            "TABLE_PPT_COST_CT".into(),
+            serde_json::json!([
+                {"PC_CT_CLASS": "CT-大数据", "PC_CT_DETAIL": "", "PC_CT_EXCL": "0.00",
+                 "PC_CT_TAX": "6%", "PC_CT_INCL": "0.00", "PC_CT_NOTE": ""}
+            ])
+            .to_string(),
+        );
+
+        internal_generate_pptx(
+            template_path.to_str().unwrap(),
+            output_path.to_str().unwrap(),
+            &variables,
+        )
+        .expect("generate pptx");
+
+        let file = fs::File::open(&output_path).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let mut combined = String::new();
+        for i in 0..archive.len() {
+            let mut f = archive.by_index(i).unwrap();
+            if f.name().starts_with("ppt/slides/") && f.name().ends_with(".xml") {
+                let mut s = String::new();
+                f.read_to_string(&mut s).unwrap();
+                combined.push_str(&s);
+            }
+        }
+
+        // 标题跨 run（关于 | {PROJECT_NAME} | 立项的决策汇报），断言项目名已填充
+        assert!(combined.contains("超限运输动态监控检测系统维护项目"));
+        assert!(combined.contains("沙坪坝分公司AI云数中心"));
+        assert!(combined.contains("2026年6月"));
+        // 表格行克隆：两行 IT 收入都在，CT/投入行也在
+        assert!(combined.contains("ICT-集成"));
+        assert!(combined.contains("ICT-维保"));
+        assert!(combined.contains("161049.06"));
+        assert!(combined.contains("5.66"));
+        assert!(combined.contains("CT-大数据"));
+        assert!(combined.contains("IT-建设"));
+        // 汇总与指标
+        assert!(combined.contains("175766.04"));
+        assert!(combined.contains("186312.00"));
+        assert!(combined.contains("11.14%"));
+        assert!(combined.contains("16161.42"));
+        // XML 转义
+        assert!(combined.contains("&amp; 特殊&lt;说明&gt;"));
+        // 未提供的占位符被清空，且不残留任何 {VAR}
+        let re = regex::Regex::new(r"\{[A-Z_0-9]+\}").unwrap();
+        assert!(
+            !re.is_match(&combined),
+            "unresolved placeholders remain in slides xml"
+        );
+
+        if std::env::var("KEEP_PPTX_OUTPUT").is_ok() {
+            println!("kept pptx output: {}", output_path.display());
+        } else {
+            fs::remove_file(&output_path).ok();
+        }
+    }
 
     fn cell_string(range: &calamine::Range<calamine::Data>, row: u32, col: u32) -> String {
         range
