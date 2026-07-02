@@ -46,6 +46,9 @@ interface Props {
   projectId?: string;
   onGenerated?: () => void;
   currentSchemeLabel?: string;
+  /** 甄选结果签批表：异步读取甄选前方案的 IT 投入科目（costIt 同形结构），无甄选前方案返回 null */
+  fetchPreSelectionCostIt?: () => Promise<Record<string, any> | null>;
+  preSchemeName?: string;
 }
 
 type ProjectScale = "large" | "small"
@@ -77,6 +80,19 @@ const SELECTION_RESULT_TABS: Array<{ id: SelectionResultTabId; label: string }> 
   { id: "content", label: "甄选信息" },
   { id: "confirm", label: "生成确认" },
 ]
+
+// 甄选相关子表只覆盖 IT 投入科目（甄选内容 = IT 部分）
+const IT_COST_SUBJECTS = ICT_SUBJECT_DEFINITIONS.filter(s => s.side === "cost" && s.groupId === "costIt")
+const sumItCostSource = (source: Record<string, any> | null | undefined) => {
+  let excl = 0
+  let incl = 0
+  IT_COST_SUBJECTS.forEach(subject => {
+    const item = source?.[subject.key]
+    excl += Number(item?.excl || 0)
+    incl += Number(item?.incl || 0)
+  })
+  return { excl, incl }
+}
 
 const SELF_THREE_OPTIONS: Array<{
   value: string;
@@ -170,7 +186,9 @@ export default function TemplateForms({
   outputDir,
   projectId,
   onGenerated,
-  currentSchemeLabel
+  currentSchemeLabel,
+  fetchPreSelectionCostIt,
+  preSchemeName
 }: Props) {
   const formRef = useRef<HTMLFormElement>(null)
   const markDirty = useSaveStore(state => state.markDirty)
@@ -193,6 +211,22 @@ export default function TemplateForms({
 
   const fileInput1Ref = useRef<HTMLInputElement>(null)
   const fileInput2Ref = useRef<HTMLInputElement>(null)
+
+  // 甄选前方案 IT 投入（甄选结果签批表限价来源）；缓存 promise 供生成时兜底 await
+  const [preSelectionCostIt, setPreSelectionCostIt] = useState<Record<string, any> | null>(null)
+  const preSelectionCostItPromiseRef = useRef<Promise<Record<string, any> | null> | null>(null)
+  useEffect(() => {
+    if (!selectedTemplate.includes('甄选结果签批表') || !fetchPreSelectionCostIt) {
+      setPreSelectionCostIt(null)
+      preSelectionCostItPromiseRef.current = null
+      return
+    }
+    const promise = fetchPreSelectionCostIt().catch(() => null)
+    preSelectionCostItPromiseRef.current = promise
+    promise.then(result => {
+      if (preSelectionCostItPromiseRef.current === promise) setPreSelectionCostIt(result)
+    })
+  }, [selectedTemplate, fetchPreSelectionCostIt])
 
   const todayStr = (() => {
     const d = new Date();
@@ -1150,19 +1184,64 @@ export default function TemplateForms({
     const zxProjName = projectData.basic?.proj_name || ""
     const fmtTaxRate = (t: any) => { const n = Number(t); return isFinite(n) && n > 0 ? `${n}%` : "" }
     const costIntegItem = projectData.cost?.it?.integration || null
-    const zxLimitExcl = Number(selectionFeeData.limit ?? projectData.selection_fee_limit ?? 0)
-    const zxWinnerExcl = Number(costIntegItem?.excl || 0)
-    const zxWinnerIncl = Number(costIntegItem?.incl || 0)
     const zxIntegTax = fmtTaxRate(costIntegItem?.tax) || "6%"
 
-    // 子表 A：甄选限价明细（1 行 + 合计）
-    const zxTableA = zxLimitExcl > 0
-      ? [{ A_SEQ: "1", A_NAME: zxProjName, A_FEE_TYPE: "集成费", A_TAX_RATE: zxIntegTax, A_LIMIT: fmtYuan(zxLimitExcl) }]
-      : []
-    // 子表 B：中选候选人报价明细（IT 集成中选额，1 行 + 合计）
-    const zxTableB = zxWinnerExcl > 0
-      ? [{ B_SEQ: "1", B_NAME: zxProjName, B_TYPE: "集成费", B_EXCL: fmtYuan(zxWinnerExcl), B_TAX_RATE: zxIntegTax, B_INCL: fmtYuan(zxWinnerIncl) }]
-      : []
+    // 甄选限价来源：手填优先；为空则取甄选前方案 IT 投入（跨方案读取，可能仍在加载中，兜底 await）
+    const zxPreCostIt = isSelectionResultTemplate
+      ? (preSelectionCostIt ?? (preSelectionCostItPromiseRef.current ? await preSelectionCostItPromiseRef.current : null))
+      : null
+
+    // 甄选子表行构建：IT 投入科目逐行展开（不合并），首行带项目名，其余留空承接
+    const buildZxItCostRows = (source: Record<string, any> | null | undefined, prefix: "A" | "B") => {
+      const rows: Record<string, string>[] = []
+      let seq = 1
+      let named = false
+      IT_COST_SUBJECTS.forEach(subject => {
+        const item = source?.[subject.key]
+        const excl = Number(item?.excl || 0)
+        if (isZero(excl)) return
+        if (prefix === "A") {
+          rows.push({
+            A_SEQ: String(seq++),
+            A_NAME: named ? "" : zxProjName,
+            A_FEE_TYPE: subjectDetailName(subject, item),
+            A_TAX_RATE: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+            A_LIMIT: fmtYuan(excl),
+          })
+        } else {
+          rows.push({
+            B_SEQ: String(seq++),
+            B_NAME: named ? "" : zxProjName,
+            B_TYPE: subjectDetailName(subject, item),
+            B_EXCL: fmtYuan(excl),
+            B_TAX_RATE: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+            B_INCL: fmtYuan(Number(item?.incl || 0)),
+          })
+        }
+        named = true
+      })
+      return rows
+    }
+
+    // 子表 A：甄选限价明细。手填限价 → 单行；否则按甄选前方案 IT 科目逐行
+    const zxManualLimit = Number(selectionFeeData.limit ?? projectData.selection_fee_limit ?? 0)
+    let zxTableA: Record<string, string>[]
+    let zxLimitExcl: number
+    if (zxManualLimit > 0) {
+      zxLimitExcl = zxManualLimit
+      zxTableA = [{ A_SEQ: "1", A_NAME: zxProjName, A_FEE_TYPE: "集成费", A_TAX_RATE: zxIntegTax, A_LIMIT: fmtYuan(zxManualLimit) }]
+    } else if (zxPreCostIt) {
+      zxTableA = buildZxItCostRows(zxPreCostIt, "A")
+      zxLimitExcl = sumItCostSource(zxPreCostIt).excl
+    } else {
+      zxTableA = []
+      zxLimitExcl = 0
+    }
+    // 子表 B：中选候选人报价明细，按甄选后（当前）方案 IT 投入科目逐行；合计即中选金额
+    const zxTableB = buildZxItCostRows(projectData.cost?.it, "B")
+    const zxItTotals = sumItCostSource(projectData.cost?.it)
+    const zxWinnerExcl = zxItTotals.excl
+    const zxWinnerIncl = zxItTotals.incl
     // 子表 C/D：投入、收入明细（按非零科目逐条展开，首行带子项目名，其余留空承接）
     const buildZxDetailRows = (side: IctSubjectSide, prefix: "C" | "D") => {
       const rows: Record<string, string>[] = []
@@ -1398,7 +1477,8 @@ export default function TemplateForms({
   const isMeetingReviewTemplate = Boolean(selectedTemplate && selectedTemplate.includes('会审'))
   const isApprovalTemplate = selectedTemplate.includes('立项签批表')
   const isDemandTemplate = selectedTemplate.includes('需求导入表')
-  const usesTabbedDocumentLayout = isMeetingReviewTemplate || isApprovalTemplate || isDemandTemplate
+  const isSelectionResultDocTemplate = selectedTemplate.includes('甄选结果签批表')
+  const usesTabbedDocumentLayout = isMeetingReviewTemplate || isApprovalTemplate || isDemandTemplate || isSelectionResultDocTemplate
   const getFormValue = (name: string, defaultValue = "") => formData[name] ?? defaultValue
   const hasText = (value: unknown) => String(value ?? "").trim().length > 0
   const hasAnyInquiryVendor = inqVendors.some(v => hasText(v.vendorName) || Number(v.amount || 0) > 0)
@@ -2175,7 +2255,7 @@ export default function TemplateForms({
         )}
 
         {/* 甄选结果签批表专属配置 */}
-        {selectedTemplate.includes('甄选结果签批表') && (
+        {isSelectionResultDocTemplate && (
           <TemplateDocumentLayout
             templateName={selectedTemplate}
             title="《ICT项目甄选结果签批表》专属配置"
@@ -2189,6 +2269,13 @@ export default function TemplateForms({
             {selectionResultTab === "content" && (
               <TemplateTabSection>
                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <div className="xl:col-span-2 rounded-lg bg-primary-soft/60 px-4 py-3 text-xs font-semibold text-secondary-foreground">
+                    {Number(selectionFeeData.limit ?? 0) > 0
+                      ? `甄选限价：使用测算表手填值 ${Number(selectionFeeData.limit).toFixed(2)} 元（不含税）。`
+                      : preSelectionCostIt
+                        ? `甄选限价：自动取自甄选前方案${preSchemeName ? `「${preSchemeName}」` : ""}的 IT 投入合计 ${sumItCostSource(preSelectionCostIt).excl.toFixed(2)} 元（不含税）；如需覆盖，可在测算表“甄选费用”处手填甄选限价。`
+                        : "未找到甄选前方案：甄选限价将取测算表手填值（未填则为 0）。"}
+                  </div>
                   <TemplateSubmoduleCard className="xl:col-span-2">
                     <div className="flex flex-col gap-1">
                       <div className="text-sm font-semibold text-foreground">项目背景</div>
