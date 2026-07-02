@@ -1951,7 +1951,7 @@ export default function IctLifecycle() {
                     {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
                     <AppIcon name={t.endsWith('.xlsx') ? "spreadsheet" : "document"} size={18} className="mt-0.5" />
                     <span className="whitespace-normal break-words leading-relaxed flex-1">
-                      {t.replace('.docx', '').replace('.xlsx', '')}
+                      {t.replace('.docx', '').replace('.xlsx', '').replace('.pptx', '')}
                     </span>
                   </button>
                 );

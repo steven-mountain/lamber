@@ -1433,6 +1433,145 @@ export default function TemplateForms({
       })
     }
 
+    // ===== 立项决策汇报 PPT 专属变量（封面 + 投资收益页）=====
+    if (selectedTemplate.includes('立项决策汇报')) {
+      const pptYears = Number(projectData.basic?.project_years || 1)
+      const pptPeriod = `${pptYears * 12}月`
+      const pptNow = new Date()
+      const pptDate = get('gen_ppt_report_date') || `${pptNow.getFullYear()}年${pptNow.getMonth() + 1}月`
+
+      // IT 收入行：非零科目逐行；通服/非通服分类，类别相同的后续行留空承接
+      const PPT_IT_REV_LABELS: Record<string, { cls: string; type: string; detail: string }> = {
+        integration: { cls: "通服收入", type: "集成", detail: "集成费" },
+        maintenance: { cls: "通服收入", type: "维保", detail: "维保费" },
+        cloud: { cls: "通服收入", type: "移动云", detail: "移动云-定制化" },
+        other: { cls: "通服收入", type: "其他", detail: "其他收入" },
+        device_sales: { cls: "非通服收入", type: "设备销售", detail: "设备销售" },
+        device_lease: { cls: "非通服收入", type: "设备租赁", detail: "设备租赁" },
+      }
+      const pptRevItRows: Record<string, string>[] = []
+      let pptLastRevCls = ""
+      ICT_SUBJECT_DEFINITIONS.filter(s => s.groupId === "revIt").forEach(subject => {
+        const item = getProjectDataSubjectItem(projectData, subject)
+        const excl = Number(item?.excl || 0)
+        if (isZero(excl)) return
+        const lab = PPT_IT_REV_LABELS[subject.key] || { cls: "通服收入", type: "其他", detail: "其他收入" }
+        const resolved = resolveBillingSubjectPresentation(subject, item)
+        const typeName = resolved.billingSubjectName || resolved.productOrBusinessName || lab.type
+        pptRevItRows.push({
+          PR_IT_CLASS: lab.cls === pptLastRevCls ? "" : lab.cls,
+          PR_IT_TYPE: `ICT-${typeName}`,
+          PR_IT_PERIOD: pptPeriod,
+          PR_IT_DETAIL: lab.detail,
+          PR_IT_EXCL: fmtYuan(excl),
+          PR_IT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+          PR_IT_INCL: fmtYuan(Number(item?.incl || 0)),
+          PR_IT_NOTE: "",
+        })
+        pptLastRevCls = lab.cls
+      })
+
+      // CT 收入行：非零科目逐行；无 CT 收入时保留一条 0 值行（与样例一致）
+      const pptRevCtRows: Record<string, string>[] = []
+      ICT_SUBJECT_DEFINITIONS.filter(s => s.groupId === "revCt").forEach(subject => {
+        const item = getProjectDataSubjectItem(projectData, subject)
+        const excl = Number(item?.excl || 0)
+        if (isZero(excl)) return
+        pptRevCtRows.push({
+          PR_CT_CLASS: subjectDetailName(subject, item),
+          PR_CT_TYPE: "",
+          PR_CT_PERIOD: "",
+          PR_CT_DETAIL: "",
+          PR_CT_EXCL: fmtYuan(excl),
+          PR_CT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+          PR_CT_INCL: fmtYuan(Number(item?.incl || 0)),
+          PR_CT_NOTE: "",
+        })
+      })
+      if (pptRevCtRows.length === 0) {
+        pptRevCtRows.push({
+          PR_CT_CLASS: "CT-专线", PR_CT_TYPE: "", PR_CT_PERIOD: "", PR_CT_DETAIL: "",
+          PR_CT_EXCL: "0.00", PR_CT_TAX: "6%", PR_CT_INCL: "0.00", PR_CT_NOTE: "",
+        })
+      }
+
+      // IT 投入行：非零科目逐行，维护类科目归“IT-维护”，其余归“IT-建设”
+      const pptCostItRows: Record<string, string>[] = []
+      let pptLastCostCls = ""
+      IT_COST_SUBJECTS.forEach(subject => {
+        const item = projectData.cost?.it?.[subject.key]
+        const excl = Number(item?.excl || 0)
+        if (isZero(excl)) return
+        const cls = subject.key === "maintenance" || subject.key === "running" ? "IT-维护" : "IT-建设"
+        const resolved = resolveBillingSubjectPresentation(subject, item)
+        pptCostItRows.push({
+          PC_IT_CLASS: cls === pptLastCostCls ? "" : cls,
+          PC_IT_DETAIL: resolved.billingSubjectName || resolved.productOrBusinessName || subject.standardSubjectName,
+          PC_IT_EXCL: fmtYuan(excl),
+          PC_IT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+          PC_IT_INCL: fmtYuan(Number(item?.incl || 0)),
+          PC_IT_NOTE: "",
+        })
+        pptLastCostCls = cls
+      })
+
+      // CT 投入行：非零科目逐行；无 CT 投入时保留一条 0 值行（与样例一致）
+      const pptCostCtRows: Record<string, string>[] = []
+      ICT_SUBJECT_DEFINITIONS.filter(s => s.groupId === "costCt").forEach(subject => {
+        const item = projectData.cost?.ct?.[subject.key]
+        const excl = Number(item?.excl || 0)
+        if (isZero(excl)) return
+        pptCostCtRows.push({
+          PC_CT_CLASS: subjectDetailName(subject, item),
+          PC_CT_DETAIL: "",
+          PC_CT_EXCL: fmtYuan(excl),
+          PC_CT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+          PC_CT_INCL: fmtYuan(Number(item?.incl || 0)),
+          PC_CT_NOTE: "",
+        })
+      })
+      if (pptCostCtRows.length === 0) {
+        pptCostCtRows.push({
+          PC_CT_CLASS: "CT-专线", PC_CT_DETAIL: "",
+          PC_CT_EXCL: "0.00", PC_CT_TAX: "6%", PC_CT_INCL: "0.00", PC_CT_NOTE: "",
+        })
+      }
+
+      // 含税合计（不含税合计复用上方 totalCost / totalRevExcl 等）
+      const sumIncl = (obj: any) => Object.values(obj || {}).reduce((acc: number, curr: any) => acc + Number(curr?.incl || 0), 0)
+      const itCostIncl = sumIncl(projectData.cost?.it)
+      const ctCostIncl = sumIncl(projectData.cost?.ct)
+      const totalCostIncl = itCostIncl + ctCostIncl + sumIncl(projectData.cost?.mix)
+
+      Object.assign(variables, {
+        'PPT_REPORT_UNIT': get('gen_ppt_report_unit') || "沙坪坝分公司AI云数中心",
+        'PPT_REPORT_DATE': pptDate,
+        'PPT_REV_TOTAL_EXCL': fmtYuan(totalRevExcl),
+        'PPT_REV_TOTAL_INCL': fmtYuan(totalRevIncl),
+        'PPT_REV_IT_EXCL': fmtYuan(totalRevItExcl),
+        'PPT_REV_IT_INCL': fmtYuan(totalRevIt),
+        'PPT_REV_CT_EXCL': fmtYuan(totalRevCtExcl),
+        'PPT_REV_CT_INCL': fmtYuan(totalRevCt),
+        'PPT_COST_TOTAL_EXCL': fmtYuan(totalCost),
+        'PPT_COST_TOTAL_INCL': fmtYuan(totalCostIncl),
+        'PPT_COST_IT_EXCL': fmtYuan(itCost),
+        'PPT_COST_IT_INCL': fmtYuan(itCostIncl),
+        'PPT_COST_CT_EXCL': fmtYuan(ctCost),
+        'PPT_COST_CT_INCL': fmtYuan(ctCostIncl),
+        'PPT_CONTRACT_DESC': get('gen_ppt_contract_desc') || `${pptYears}年`,
+        'PPT_PAYBACK': zxPayback,
+        'PPT_NPV_RATE': fmtPct(metrics?.npv_rate),
+        'PPT_MARGIN_RATE': fmtPct(metrics?.margin_rate),
+        'PPT_IT_NPV_RATE': fmtPct(metrics?.it_npv_rate),
+        'PPT_NPV_VALUE': metrics?.npv != null && metrics.npv !== "" ? fmtYuan(Number(metrics.npv)) : "--",
+        'PPT_CT_REV': fmtYuan(totalRevCtExcl),
+        'TABLE_PPT_REV_IT': JSON.stringify(pptRevItRows),
+        'TABLE_PPT_REV_CT': JSON.stringify(pptRevCtRows),
+        'TABLE_PPT_COST_IT': JSON.stringify(pptCostItRows),
+        'TABLE_PPT_COST_CT': JSON.stringify(pptCostCtRows),
+      })
+    }
+
     const runGenerate = (overwriteExisting = false) => invoke<string>('generate_lifecycle_docs', {
           moduleId: "ict_lifecycle",
           variables: variables,
@@ -1591,6 +1730,32 @@ export default function TemplateForms({
                 <li><strong className="text-foreground">Sheet 3-直接经济效益评估表：</strong> 自动回填 9 项不含税/含税收入指标，以及 20 项不含税/含税支出指标（包括设备、施工、运行、营销、渠道等）。</li>
                 <li><strong className="text-foreground">Sheet 2-ICT项目评估结果：</strong> 自动同步回填项目名称、客户名称、项目周期、续签标志、业务模式、IT 资金来源。</li>
               </ul>
+            </div>
+          </div>
+        )}
+
+        {/* 立项决策汇报 PPT 专属配置 */}
+        {selectedTemplate.includes('立项决策汇报') && selectedTemplate.endsWith('.pptx') && (
+          <div className="bg-card border border-border rounded-xl p-6 shadow-sm flex flex-col gap-4">
+            <h4 className="font-bold text-primary flex items-center gap-2">
+              <AppIcon name="document" size={18} /> 《ICT项目立项决策汇报》PPT 模版配置
+            </h4>
+            <p className="text-sm text-secondary-foreground leading-relaxed">
+              自动生成封面与「项目投资收益」页：收入/投入明细表按测算科目逐行展开，总收入、总投入、净现值率、毛利率、IT净现值率、动态回收期等指标自动取自当前方案测算结果。
+            </p>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-semibold">汇报单位</label>
+                <input type="text" name="gen_ppt_report_unit" {...getBind("gen_ppt_report_unit", "沙坪坝分公司AI云数中心")} className="bg-card border border-input px-3 py-2 rounded-md" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-semibold">汇报日期（封面）</label>
+                <input type="text" name="gen_ppt_report_date" {...getBind("gen_ppt_report_date", `${new Date().getFullYear()}年${new Date().getMonth() + 1}月`)} className="bg-card border border-input px-3 py-2 rounded-md" />
+              </div>
+              <div className="flex flex-col gap-1 xl:col-span-2">
+                <label className="text-sm font-semibold">合同年限说明</label>
+                <textarea name="gen_ppt_contract_desc" {...getBind("gen_ppt_contract_desc", `${projectData.basic?.project_years || 1}年`)} rows={2} placeholder="例如：白走路1套、白彭路2套及走温路1套共4套8车道，服务期限为合同签订之日至2028年5月22日" className="bg-card border border-input px-3 py-2 rounded-md" />
+              </div>
             </div>
           </div>
         )}
