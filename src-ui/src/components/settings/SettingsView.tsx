@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAppearanceStore } from "../../store/useAppearanceStore";
+import { useCalcPreferencesStore } from "../../store/useCalcPreferencesStore";
 import { 
   ColorMode, 
   ThemePreset, 
@@ -32,6 +33,8 @@ export default function SettingsView({ onBack }: SettingsViewProps) {
     setAiLauncherVisible,
     resetAppearance 
   } = useAppearanceStore();
+
+  const { taxInclAutoFix, setTaxInclAutoFix } = useCalcPreferencesStore();
 
   const [customColorInput, setCustomColorInput] = useState(
     settings.customAccent.value || "#2563eb"
@@ -493,6 +496,46 @@ export default function SettingsView({ onBack }: SettingsViewProps) {
                     <span
                       className={`h-5 w-5 rounded-full bg-card shadow-sm transition-transform ${
                         settings.aiLauncherVisible ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Section 8: 测算行为 */}
+            <Card className="border border-border/40 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-section-title">测算行为</CardTitle>
+                <CardDescription className="text-caption">财务口径相关的自动处理开关</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between gap-4 rounded-xl bg-muted/40 p-4">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <AppIcon name="quickAction" size={16} className="text-primary" />
+                      财务口径自动修正含税金额
+                    </div>
+                    <p className="text-caption text-secondary-foreground">
+                      业务系统以不含税为准反推含税。录入的含税价不可精确表示时（如 6% 税率下 1038 元对应系统口径 1038.01 元），
+                      {taxInclAutoFix
+                        ? "当前会在输入完成后自动改为财务口径反推值。"
+                        : "当前仅提示不改数；智能反算、甄选限价回填遇到此类金额将被拒绝写入。"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={taxInclAutoFix}
+                    onClick={() => setTaxInclAutoFix(!taxInclAutoFix)}
+                    className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${
+                      taxInclAutoFix ? "bg-primary" : "bg-muted"
+                    }`}
+                  >
+                    <span className="sr-only">财务口径自动修正含税金额</span>
+                    <span
+                      className={`h-5 w-5 rounded-full bg-card shadow-sm transition-transform ${
+                        taxInclAutoFix ? "translate-x-5" : "translate-x-0"
                       }`}
                     />
                   </button>

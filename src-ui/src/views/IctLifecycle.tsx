@@ -66,6 +66,8 @@ import {
   SUBJECT_FUNDING_PLAN_MIGRATION_VERSION,
   type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
+import { exclFromIncl, normalizeTaxPairFromIncl } from "../lib/taxAmount";
+import { useCalcPreferencesStore } from "../store/useCalcPreferencesStore";
 
 const restoreCustomSubjectName = (item: any) => normalizeCustomSubjectName(item?.customSubjectName ?? item?.custom_subject_name ?? "");
 const restoreBillingSubjectName = (item: any) => normalizeCustomSubjectName(item?.billingSubjectName ?? item?.billing_subject_name ?? "");
@@ -160,6 +162,7 @@ export default function IctLifecycle() {
   const workspaceId = useWorkspaceStore(state => state.workspaceId);
   const state = useIctState();
   const calculations = useIctCalculations(state);
+  const taxInclAutoFix = useCalcPreferencesStore(s => s.taxInclAutoFix);
   const restoreSelectionFeeState = calculations.restoreSelectionFeeState;
   const markDirty = useSaveStore(saveState => saveState.markDirty);
   const clearDirty = useSaveStore(saveState => saveState.clearDirty);
@@ -286,9 +289,7 @@ export default function IctLifecycle() {
       const explicitExcl = restoreTaxItemNumber(item, "excl_tax", "excl", Number.NaN);
       const excl = Number.isFinite(explicitExcl)
         ? explicitExcl
-        : incl === 0
-          ? 0
-          : Number((incl / (1 + tax / 100)).toFixed(2));
+        : exclFromIncl(incl, tax);
       return {
         incl,
         tax,
@@ -852,9 +853,7 @@ export default function IctLifecycle() {
         const explicitExcl = restoreTaxItemNumber(item, "excl_tax", "excl", Number.NaN);
         const excl = Number.isFinite(explicitExcl)
           ? explicitExcl
-          : incl === 0
-            ? 0
-            : Number((incl / (1 + tax / 100)).toFixed(2));
+          : exclFromIncl(incl, tax);
         return {
           incl,
           tax,
@@ -968,6 +967,7 @@ export default function IctLifecycle() {
     setIgnoredTailValue,
     loadTemplates,
     updateTaxItem,
+    commitTaxItemIncl,
     clearFinancialSubjects,
     updateTaxItemCustomSubjectName,
     updateTaxItemBillingSubjectName,
@@ -1631,6 +1631,11 @@ export default function IctLifecycle() {
           const itemErr = reconciliationErrors.find(e => e.key === `${groupId}.${item.key}`);
           const currentItem = groupState[item.key];
           const autoBalanced = isSubjectAutoBalanced(item);
+          // 财务口径检查：含税录入值若不可精确表示（round(excl×(1+r)) ≠ 录入值），提示并在失焦后归一。
+          const inclPair = Number(currentItem?.incl) > 0
+            ? normalizeTaxPairFromIncl(currentItem.incl, currentItem.tax)
+            : null;
+          const inclAdjust = inclPair?.adjusted ? inclPair : null;
           const customSubjectName = getSubjectCustomName(currentItem);
           const billingSubjectName = getSubjectBillingName(currentItem);
           const displayName = getSubjectExcelDisplayName(item, currentItem);
@@ -1696,8 +1701,10 @@ export default function IctLifecycle() {
                 />
               </div>
               <div className="flex gap-2">
-                <input type="number" placeholder="含税" readOnly={autoBalanced} title={autoBalanced ? "该金额由总金额自动计算" : undefined} className={`w-full px-3 py-2 rounded-md outline-none text-sm ${autoBalanced ? "bg-muted text-secondary-foreground cursor-not-allowed" : "bg-card border border-input"}`} value={autoBalanced ? currentItem.incl : currentItem.incl === 0 ? "" : currentItem.incl} onChange={e => {
+                <input type="number" placeholder="含税" readOnly={autoBalanced} title={autoBalanced ? "该金额由总金额自动计算" : undefined} className={`w-full px-3 py-2 rounded-md outline-none text-sm ${autoBalanced ? "bg-muted text-secondary-foreground cursor-not-allowed" : `bg-card border ${inclAdjust ? "border-amber-500 ring-1 ring-amber-400" : "border-input"}`}`} value={autoBalanced ? currentItem.incl : currentItem.incl === 0 ? "" : currentItem.incl} onChange={e => {
                   if (!autoBalanced) updateTaxItem(groupId, item.key, 'incl', Number(e.target.value));
+                }} onBlur={() => {
+                  if (!autoBalanced) commitTaxItemIncl(groupId, item.key);
                 }} />
                 <input type="number" placeholder="税率" className="w-20 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={currentItem.tax} onChange={e => updateTaxItem(groupId, item.key, 'tax', Number(e.target.value))} />
                 <input type="number" placeholder="不含税" readOnly={autoBalanced} title={autoBalanced ? "该金额由总金额自动计算" : undefined} className={`w-full px-3 py-2 rounded-md outline-none text-sm ${autoBalanced ? "bg-muted text-secondary-foreground cursor-not-allowed" : `bg-card border focus:border-ring ${itemErr ? 'border-red-500 ring-1 ring-red-500' : 'border-input'}`}`} value={autoBalanced ? currentItem.excl : currentItem.excl === 0 ? "" : currentItem.excl} onChange={e => {
@@ -1705,7 +1712,17 @@ export default function IctLifecycle() {
                 }} />
               </div>
               {autoBalanced && <span className="text-[10px] font-bold text-primary">该科目金额由总金额自动计算，税率可继续编辑。</span>}
-              {itemErr && <span className="text-[10px] text-red-500 font-bold">校验失败：偏离 {itemErr.difference} 元，要求：{itemErr.expectedExcl} 元</span>}
+              {inclAdjust && (
+                <span className="text-[10px] text-amber-600 font-bold">
+                  财务口径提示：含税 {inclAdjust.enteredIncl.toFixed(2)} 元在 {currentItem.tax}% 税率下不可精确表示（业务系统按不含税 {inclAdjust.excl.toFixed(2)} 元反推为 {inclAdjust.incl.toFixed(2)} 元）。
+                  {autoBalanced
+                    ? "该科目由总金额自动计算，可调整总金额分配，或在「设置 → 测算行为」开启财务口径自动修正。"
+                    : taxInclAutoFix
+                    ? `离开输入框后将自动按 ${inclAdjust.incl.toFixed(2)} 元入账。`
+                    : `如需与业务系统一致，请改为 ${inclAdjust.incl.toFixed(2)} 元，或在「设置 → 测算行为」开启财务口径自动修正。`}
+                </span>
+              )}
+              {itemErr && <span className="text-[10px] text-red-500 font-bold">校验失败：{itemErr.field === 'incl' ? '含税与财务口径' : '不含税'}偏离 {itemErr.difference} 元，要求：{itemErr.expectedExcl} 元</span>}
               <IctSubjectFundingPlanEditor
                 subject={item}
                 item={currentItem}
@@ -2242,11 +2259,11 @@ export default function IctLifecycle() {
                   </div>
                   <div className="grid grid-cols-3 gap-4 mt-2 text-sm">
                     <div className="flex flex-col gap-1">
-                      <span className="text-secondary-foreground text-xs">录入不含税</span>
+                      <span className="text-secondary-foreground text-xs">{err.field === 'incl' ? '录入含税' : '录入不含税'}</span>
                       <span className="font-bold">{err.actualExcl} 元</span>
                     </div>
                     <div className="flex flex-col gap-1">
-                      <span className="text-secondary-foreground text-xs">预期绝对值</span>
+                      <span className="text-secondary-foreground text-xs">{err.field === 'incl' ? '财务口径含税（不含税×(1+税率)）' : '预期不含税'}</span>
                       <span className="font-bold text-primary">{err.expectedExcl} 元</span>
                     </div>
                     <div className="flex flex-col gap-1">

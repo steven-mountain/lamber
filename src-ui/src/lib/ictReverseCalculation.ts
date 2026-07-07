@@ -9,6 +9,7 @@ import {
   isBalanceSubjectMatch,
   type BalanceRuleEvaluation,
 } from "./ictBalanceAllocation";
+import { normalizeTaxPairFromIncl } from "./taxAmount";
 
 export type ReverseSubjectRef = {
   side: IctSubjectSide;
@@ -150,12 +151,14 @@ const findSubjectItemByRef = (groups: ReverseSubjectState, ref: ReverseSubjectRe
 
 const taxItemFromIncl = (current: IctTaxItemLike | null | undefined, incl: number): IctTaxItemLike => {
   const tax = Number(current?.tax ?? 0);
-  const safeIncl = Number.isFinite(incl) ? incl : 0;
+  // 反算候选仅用于内部评估，不落库：含税保留候选值，不含税按财务口径精确还原。
+  // 最终写入时由 useIctCalculations 检查可表示性（拒绝或按设置自动修正）。
+  const pair = normalizeTaxPairFromIncl(Number.isFinite(incl) ? incl : 0, tax);
   return {
     ...(current || {}),
-    incl: Number(safeIncl.toFixed(2)),
+    incl: pair.enteredIncl,
     tax,
-    excl: safeIncl === 0 ? 0 : Number((safeIncl / (1 + tax / 100)).toFixed(2)),
+    excl: pair.excl,
   };
 };
 

@@ -13,6 +13,12 @@ export interface ValidationReport {
   expectedExcl: string;
   actualExcl: string;
   difference: string;
+  /**
+   * 出错的字段方向：
+   * - 'excl'（默认）：录入不含税 ≠ round(含税 ÷ (1+税率))
+   * - 'incl'：录入含税 ≠ round(不含税 × (1+税率))，即与财务系统展示口径不一致
+   */
+  field?: 'excl' | 'incl';
 }
 
 /**
@@ -68,7 +74,7 @@ export function validateFinancialData(
 
         // Expected Pre-tax (预期税前) = 录入的含税金额 / (1 + 税率), rounded to 2 decimal places
         const expectedExcl = incl.div(taxDivisor).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-        
+
         // Tail Difference (分项尾差) = 录入的不含税金额 - 预期税前金额
         const difference = excl.minus(expectedExcl);
 
@@ -85,7 +91,25 @@ export function validateFinancialData(
             key,
             expectedExcl: expectedExcl.toFixed(2),
             actualExcl: excl.toFixed(2),
-            difference: difference.toFixed(2)
+            difference: difference.toFixed(2),
+            field: 'excl'
+          });
+        }
+
+        // B2: 财务口径核验 —— 业务系统以不含税为准，含税展示值 = round(不含税 × (1+税率))。
+        // 录入含税若与该反推值不一致（如 6% 下 1038 vs 1038.01），生成的材料会与业务系统差分。
+        const expectedIncl = excl.mul(taxDivisor).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+        const inclDifference = incl.minus(expectedIncl);
+        if (!excl.isZero() && !inclDifference.isZero()) {
+          totalDifference = totalDifference.plus(inclDifference);
+          errors.push({
+            side,
+            taxRate: rate,
+            key,
+            expectedExcl: expectedIncl.toFixed(2),
+            actualExcl: incl.toFixed(2),
+            difference: inclDifference.toFixed(2),
+            field: 'incl'
           });
         }
       }

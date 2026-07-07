@@ -179,10 +179,12 @@ fn item_from_cells(
     let custom_subject_name =
         extract_custom_subject_name(&display_name, standard_subject_name, template_subject_name);
 
+    // 派生方向的金额四舍五入到分，与财务口径（两位小数）保持一致。
+    let round2 = |v: f64| (v * 100.0).round() / 100.0;
     let (incl_tax, excl_tax) = if incl.abs() > f64::EPSILON {
-        (incl, incl / (1.0 + tax / 100.0))
+        (incl, round2(incl / (1.0 + tax / 100.0)))
     } else if excl.abs() > f64::EPSILON {
-        (excl * (1.0 + tax / 100.0), excl)
+        (round2(excl * (1.0 + tax / 100.0)), excl)
     } else {
         (0.0, 0.0)
     };

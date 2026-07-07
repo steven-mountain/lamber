@@ -8,7 +8,10 @@ fn get_excl(item: &IctItem) -> Decimal {
     if incl.is_zero() {
         return Decimal::ZERO;
     }
-    (incl / (Decimal::ONE + rate)).round_dp(2)
+    // 财务口径：四舍五入（half-up），与前端 decimal.js ROUND_HALF_UP 一致。
+    // round_dp 默认银行家舍入（midpoint 取偶），在 .005 边界会与业务系统差 1 分。
+    (incl / (Decimal::ONE + rate))
+        .round_dp_with_strategy(2, rust_decimal::RoundingStrategy::MidpointAwayFromZero)
 }
 
 fn normalize_distribution(input: &[f64]) -> Vec<Decimal> {

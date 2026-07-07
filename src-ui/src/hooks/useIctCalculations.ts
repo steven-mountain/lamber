@@ -38,6 +38,8 @@ import {
   type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
 import { buildIctFundingCashflowFields } from "../lib/ictCalculationInput";
+import { normalizeTaxPairFromIncl } from "../lib/taxAmount";
+import { isTaxInclAutoFixEnabled } from "../store/useCalcPreferencesStore";
 import {
   buildCostReverseFeasibilityProbeAmounts,
   selectHighestMetricProbe,
@@ -451,11 +453,29 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   };
 
   const applySelectionLimit = () => {
-    if (selLimit) {
-      state.updateTaxItem('costIt', 'integration', 'incl', Number(selLimit));
-      if (selFee) {
-        state.updateTaxItem('costIt', 'bidding', 'incl', Number(selFee));
+    if (!selLimit) return;
+
+    // 财务口径检查：未开启自动修正时，不可精确表示的含税金额明确拒绝写入。
+    if (!isTaxInclAutoFixEnabled()) {
+      const checks = [
+        { label: "甄选限价", amount: Number(selLimit), tax: Number(state.costIt.integration?.tax ?? 0) },
+        ...(selFee ? [{ label: "甄选服务费", amount: Number(selFee), tax: Number(state.costIt.bidding?.tax ?? 0) }] : []),
+      ];
+      for (const check of checks) {
+        const pair = normalizeTaxPairFromIncl(check.amount, check.tax);
+        if (pair.adjusted) {
+          return alert(
+            `${check.label}含税 ${pair.enteredIncl.toFixed(2)} 元在 ${check.tax}% 税率下不可精确表示：` +
+            `业务系统按不含税 ${pair.excl.toFixed(2)} 元反推为 ${pair.incl.toFixed(2)} 元。已停止写入。\n` +
+            `请调整金额后重试，或在「设置 → 测算行为」中开启财务口径自动修正。`
+          );
+        }
       }
+    }
+
+    state.updateTaxItem('costIt', 'integration', 'incl', Number(selLimit), undefined, { normalizeIncl: true });
+    if (selFee) {
+      state.updateTaxItem('costIt', 'bidding', 'incl', Number(selFee), undefined, { normalizeIncl: true });
     }
   };
 
@@ -1143,6 +1163,18 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       }
 
       const finalAmount = Number((revMode === "revenue" ? high : low).toFixed(2));
+
+      // 财务口径检查：反算结果的含税金额不可精确表示且未开启自动修正时，明确拒绝写入。
+      const subjectTax = Number(selectedSubject.item?.tax ?? selectedSubject.subject.defaultTaxRate ?? 0);
+      const finalPair = normalizeTaxPairFromIncl(finalAmount, subjectTax);
+      if (finalPair.adjusted && !isTaxInclAutoFixEnabled()) {
+        return alert(
+          `反算结果含税 ${finalPair.enteredIncl.toFixed(2)} 元在 ${subjectTax}% 税率下不可精确表示：` +
+          `业务系统按不含税 ${finalPair.excl.toFixed(2)} 元反推为 ${finalPair.incl.toFixed(2)} 元。已停止写入。\n` +
+          `可在「设置 → 测算行为」中开启财务口径自动修正后重试，或手动填入 ${finalPair.incl.toFixed(2)} 元。`
+        );
+      }
+
       const beforeAmount = readSubjectInclAmount(getCurrentReverseSubjectState(), selectedSubject.ref);
       const finalCandidate = buildCandidate(finalAmount);
       const refreshed: any = await invoke('calculate_ict_benefit', { input: finalCandidate.payload });
@@ -1155,7 +1187,8 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
         selectedSubject.subject.key,
         "incl",
         finalAmount,
-        "reverse_calculation_sync"
+        "reverse_calculation_sync",
+        { normalizeIncl: true }
       );
 
       if (revMode === "revenue") {

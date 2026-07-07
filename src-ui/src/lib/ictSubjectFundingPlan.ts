@@ -1,4 +1,7 @@
 import type { IctSubjectGroupId, IctSubjectSide } from "./ictSubjectCatalog";
+// 带 .ts 扩展名：根目录 test_ui_logic.cjs 用 Node 原生 TS 加载直连本文件，
+// Node 的类型剥离模式要求相对导入写明扩展名（tsconfig 已开 allowImportingTsExtensions）。
+import { exclCentsFromInclCents } from "./taxAmount.ts";
 
 export type SubjectFundingPlanMode = "upfront" | "equal" | "proportional" | "custom";
 export type SubjectFundingPlanSource = "manual" | "template" | "migration" | "ai_compute_quote" | "intelligent_compute";
@@ -618,18 +621,20 @@ const addAnnualValue = (target: number[], index: number, value: number) => {
  * and avoiding the 1-cent drift caused by de-taxing each year independently.
  *
  * @param inclCentsByYear per-year inclusive amounts, in integer cents
- * @param divisor 1 + taxRate (e.g. 1.13 for a 13% line)
+ * @param taxRatePercent tax rate as a percentage (e.g. 13 for a 13% line)
  * @returns per-year exclusive amounts, in integer cents
  */
 const distributeExclCentsByInclWeights = (
   inclCentsByYear: number[],
-  divisor: number,
+  taxRatePercent: number,
 ): number[] => {
   const result = Array(PLAN_YEARS).fill(0);
   const totalInclCents = inclCentsByYear.reduce((sum, cents) => sum + cents, 0);
-  if (totalInclCents <= 0 || !(divisor > 0)) return result;
+  if (totalInclCents <= 0) return result;
 
-  const totalExclCents = Math.round(totalInclCents / divisor);
+  // 十进制精确还原（decimal.js 半进位），避免浮点除法在 .5 边界上的舍入误差。
+  // 税率非法时按 0 处理（exclCentsFromInclCents 内部兜底）。
+  const totalExclCents = exclCentsFromInclCents(totalInclCents, taxRatePercent);
   let allocatedCents = 0;
   let lastFundedIndex = -1;
   for (let index = 0; index < PLAN_YEARS; index += 1) {
@@ -676,8 +681,8 @@ export const buildAnnualCashflowFromSubjectFundingPlans = (
     if (subjectCents <= 0) return;
 
     const plan = plans[createSubjectFundingPlanId(subject.subjectRef)];
-    const taxRate = Number(subject.taxRate);
-    const divisor = 1 + (Number.isFinite(taxRate) ? taxRate : 0) / 100;
+    const rawTaxRate = Number(subject.taxRate);
+    const taxRate = Number.isFinite(rawTaxRate) ? rawTaxRate : 0;
 
     let annualValues: number[];
     if (plan?.enabled) {
@@ -692,7 +697,7 @@ export const buildAnnualCashflowFromSubjectFundingPlans = (
     // 先把整笔含税额还原成不含税（取整一次），再按各年含税占比分摊，
     // 与立项材料科目表口径一致，避免逐年还原产生的尾差。
     const inclCentsByYear = annualValues.map(annualIncl => toMoneyCents(annualIncl));
-    const exclCentsByYear = distributeExclCentsByInclWeights(inclCentsByYear, divisor);
+    const exclCentsByYear = distributeExclCentsByInclWeights(inclCentsByYear, taxRate);
 
     inclCentsByYear.forEach((inclCents, index) => {
       const inclValue = inclCents / 100;
@@ -965,9 +970,8 @@ export const buildAnnualCashflowSubjectContributions = (
     const annualValues = normalizeAnnualInclValues(plan.annualInclValues);
     // 与 buildAnnualCashflowFromSubjectFundingPlans 同源：先还原整笔、再按年分摊，
     // 保证下钻每年不含税之和等于科目还原后的不含税总额。
-    const divisor = 1 + subject.taxRate / 100;
     const inclCentsByYear = annualValues.map(annualIncl => toMoneyCents(annualIncl));
-    const exclCentsByYear = distributeExclCentsByInclWeights(inclCentsByYear, divisor);
+    const exclCentsByYear = distributeExclCentsByInclWeights(inclCentsByYear, subject.taxRate);
     for (let yearIndex = 0; yearIndex < PLAN_YEARS; yearIndex++) {
       const incl = annualValues[yearIndex];
       if (incl === 0) continue;

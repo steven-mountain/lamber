@@ -20,6 +20,7 @@ import {
 import { projectFileService, type ProjectFile } from "../../services/projectFileService";
 import { projectService, type Project } from "../../utils/projectService";
 import { invoke } from "@tauri-apps/api/core";
+import { inclFromExcl } from "../../lib/taxAmount";
 
 interface ProjectFilesTabProps {
   projectId: string;
@@ -126,7 +127,8 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
 
           const parsedExcl = Number(item.excl_tax);
           if (Number.isFinite(parsedExcl) && Math.abs(parsedExcl) > 0) {
-            return makeItem(parsedExcl * (1 + tax / 100), tax, item.custom_subject_name, item.billing_subject_name);
+            // 财务口径：由不含税反推含税（十进制半进位），与业务系统展示一致。
+            return makeItem(inclFromExcl(parsedExcl, tax), tax, item.custom_subject_name, item.billing_subject_name);
           }
 
           return makeItem(0, tax, item.custom_subject_name, item.billing_subject_name);
