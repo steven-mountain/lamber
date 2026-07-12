@@ -1,6 +1,6 @@
 {
   "productName": "云数中心工具集",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "identifier": "com.cmcc.benefitcalc",
   "build": {
     "frontendDist": "../src-ui/dist",

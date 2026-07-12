@@ -1,6 +1,6 @@
 [package]
 name = "benefit-calculator"
-version = "1.0.1"
+version = "1.0.2"
 description = "A Tauri App for Project Benefit Calculation"
 authors = ["you"]
 edition = "2021"
