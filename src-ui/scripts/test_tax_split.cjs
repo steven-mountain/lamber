@@ -1,0 +1,165 @@
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+const ts = require("typescript");
+
+const moduleCache = new Map();
+function loadTsFile(sourcePath) {
+  const normalizedPath = path.normalize(sourcePath);
+  if (moduleCache.has(normalizedPath)) return moduleCache.get(normalizedPath).exports;
+  const source = fs.readFileSync(normalizedPath, "utf8");
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      esModuleInterop: true,
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+    },
+  });
+  const moduleRef = { exports: {} };
+  moduleCache.set(normalizedPath, moduleRef);
+  const localRequire = request => {
+    if (request.startsWith(".")) {
+      const resolved = path.resolve(path.dirname(normalizedPath), request);
+      return loadTsFile(path.extname(resolved) ? resolved : `${resolved}.ts`);
+    }
+    return require(request);
+  };
+  vm.runInNewContext(transpiled.outputText, {
+    module: moduleRef,
+    exports: moduleRef.exports,
+    require: localRequire,
+  }, { filename: normalizedPath });
+  return moduleRef.exports;
+}
+
+function loadTs(relativePath) {
+  return loadTsFile(path.join(__dirname, "../src/lib", relativePath));
+}
+
+const { splitInclAmount, isInclRepresentable, restoreTaxSplitParts } = loadTs("taxAmount.ts");
+const { validateFinancialData } = loadTs("financeValidator.ts");
+
+// 独立的整数分口径对照实现（不经 decimal.js），作为拆分正确性的 oracle。
+const rdiv = (n, d) => Math.floor((2 * n + d) / (2 * d)); // round(n/d) 半进位，n,d>0
+const centsSelfConsistent = (cents, rate) => {
+  const excl = rdiv(cents * 100, 100 + rate);
+  return rdiv(excl * (100 + rate), 100) === cents;
+};
+const toCents = value => Math.round(value * 100);
+
+const RATES = [1, 3, 5, 6, 9, 13];
+
+// --- 1. 典型案例：240 元 @6% 拆成 120 + 120，各笔不含税 113.21 ---
+{
+  const parts = splitInclAmount(240, 6);
+  assert.ok(parts, "240@6% 应可拆分");
+  assert.equal(parts.length, 2);
+  assert.equal(JSON.stringify(parts.map(p => p.incl)), JSON.stringify([120, 120]));
+  assert.equal(JSON.stringify(parts.map(p => p.excl)), JSON.stringify([113.21, 113.21]));
+}
+
+// --- 2. 自洽金额与边界值不拆分 ---
+assert.equal(splitInclAmount(100, 6), null, "100@6% 自洽，无需拆分");
+assert.equal(splitInclAmount(0, 6), null);
+assert.equal(splitInclAmount(0.01, 6), null);
+assert.equal(isInclRepresentable(100, 6), true);
+assert.equal(isInclRepresentable(240, 6), false);
+
+// --- 3. 穷举 + 抽样验证：拆分结果每笔自洽、和等于总额、两笔差不超过 1 分 ---
+for (const rate of RATES) {
+  const check = totalCents => {
+    const total = totalCents / 100;
+    const parts = splitInclAmount(total, rate);
+    if (centsSelfConsistent(totalCents, rate)) {
+      assert.equal(parts, null, `自洽金额 ${total}@${rate}% 不应拆分`);
+      return;
+    }
+    assert.ok(parts, `不自洽金额 ${total}@${rate}% 必须拆分成功`);
+    const centsParts = parts.map(p => toCents(p.incl));
+    assert.equal(centsParts.reduce((a, b) => a + b, 0), totalCents, `${total}@${rate}% 拆分之和必须等于总额`);
+    assert.ok(Math.abs(centsParts[0] - centsParts[1]) <= 1, `${total}@${rate}% 两笔应最接近对半`);
+    for (const part of parts) {
+      assert.ok(centsSelfConsistent(toCents(part.incl), rate), `${total}@${rate}% 子笔 ${part.incl} 必须自洽`);
+      assert.equal(part.excl, rdiv(toCents(part.incl) * 100, 100 + rate) / 100, `${total}@${rate}% 子笔不含税口径`);
+    }
+  };
+  // 穷举 0.02 ～ 2000 元
+  for (let cents = 2; cents <= 200000; cents++) check(cents);
+  // 抽样 2000 ～ 100 万元
+  for (let i = 0; i < 20000; i++) {
+    check(200000 + Math.floor(Math.random() * (100000000 - 200000)));
+  }
+}
+console.log("splitInclAmount: 穷举与抽样验证通过");
+
+// --- 4. restoreTaxSplitParts：合法明细还原，非法明细整体丢弃 ---
+{
+  const restored = restoreTaxSplitParts(
+    [{ incl_tax: "120", excl_tax: "113.21" }, { incl_tax: "120", excl_tax: "113.21" }],
+    240,
+    6,
+  );
+  assert.ok(restored);
+  assert.equal(JSON.stringify(restored.map(p => p.incl)), JSON.stringify([120, 120]));
+  assert.equal(JSON.stringify(restored.map(p => p.excl)), JSON.stringify([113.21, 113.21]));
+
+  // 合计不等于科目含税 → 丢弃
+  assert.equal(restoreTaxSplitParts([{ incl_tax: "120" }, { incl_tax: "119.99" }], 240, 6), null);
+  // 子笔不自洽（240 本身）→ 丢弃
+  assert.equal(restoreTaxSplitParts([{ incl_tax: "240" }, { incl_tax: "240" }], 480, 6), null);
+  // 非数组 / 单笔 → 丢弃
+  assert.equal(restoreTaxSplitParts(undefined, 240, 6), null);
+  assert.equal(restoreTaxSplitParts([{ incl_tax: "240" }], 240, 6), null);
+}
+console.log("restoreTaxSplitParts: 通过");
+
+// --- 5. financeValidator：拆分科目免于合计反推核验，未拆分时保持原报错 ---
+{
+  const splitItem = {
+    incl: 240,
+    excl: 226.42,
+    tax: 6,
+    splitParts: [
+      { incl: 120, excl: 113.21 },
+      { incl: 120, excl: 113.21 },
+    ],
+  };
+  const { errors } = validateFinancialData({ ct: { product: splitItem } }, {});
+  assert.equal(errors.length, 0, `拆分科目不应报错，实际：${JSON.stringify(errors)}`);
+
+  // 同数据不带拆分：B2（含税 ≠ 不含税反推）必须照常报错，防止回归
+  const plainItem = { incl: 240, excl: 226.42, tax: 6 };
+  const plain = validateFinancialData({ ct: { product: plainItem } }, {});
+  assert.equal(plain.errors.length, 1);
+  assert.equal(plain.errors[0].field, "incl");
+
+  // 拆分组跳过 C1（round-of-sum 与逐行锚点差 1 分的场景）：0.09@6% → 0.04 + 0.05
+  const tinySplit = {
+    incl: 0.09,
+    excl: 0.09,
+    tax: 6,
+    splitParts: [
+      { incl: 0.04, excl: 0.04 },
+      { incl: 0.05, excl: 0.05 },
+    ],
+  };
+  const tiny = validateFinancialData({ ct: { product: tinySplit } }, {});
+  assert.equal(tiny.errors.length, 0, `拆分组应跳过 C1，实际：${JSON.stringify(tiny.errors)}`);
+
+  // 拆分明细与合计不符（状态被破坏）时仍能被 C2 拦截
+  const brokenSplit = {
+    incl: 240,
+    excl: 226.43,
+    tax: 6,
+    splitParts: [
+      { incl: 120, excl: 113.21 },
+      { incl: 120, excl: 113.22 },
+    ],
+  };
+  const broken = validateFinancialData({ ct: { product: brokenSplit } }, {});
+  assert.ok(broken.errors.length > 0, "被破坏的拆分明细应报错");
+}
+console.log("financeValidator: 通过");
+
+console.log("\n全部测试通过 ✅");

@@ -76,6 +76,84 @@ export const normalizeTaxPairFromIncl = (
   };
 };
 
+/** 含税价在该税率下是否可精确表示（round(excl×(1+r)) 反推回原值）。 */
+export const isInclRepresentable = (incl: unknown, taxRatePercent: unknown): boolean =>
+  !normalizeTaxPairFromIncl(incl, taxRatePercent).adjusted;
+
+export type TaxSplitPart = {
+  /** 子笔含税金额（各子笔之和 = 原始含税总额）。 */
+  incl: number;
+  /** 子笔不含税金额 = round(incl ÷ (1+r))，反推必闭合。 */
+  excl: number;
+};
+
+/**
+ * 把不可精确表示的含税总额拆成两笔各自闭合的子金额，和严格等于总额。
+ * 对税率 1/3/5/6/9/13%、0.02～100 万元穷举验证过：对半拆分（floor(T/2)
+ * 与 T-floor(T/2)）全部自洽，零例外；中点向外的搜索仅是防御性兜底。
+ * 总额本身自洽、≤0.01 元或拆分无解时返回 null（无需/无法拆分）。
+ */
+export const splitInclAmount = (
+  incl: unknown,
+  taxRatePercent: unknown,
+): TaxSplitPart[] | null => {
+  const totalCents = new Decimal(toSafeNumber(incl))
+    .mul(100)
+    .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
+    .toNumber();
+  if (totalCents <= 1) return null;
+  const rate = toSafeNumber(taxRatePercent);
+  const centsRepresentable = (cents: number): boolean =>
+    isInclRepresentable(new Decimal(cents).div(100).toNumber(), rate);
+  if (centsRepresentable(totalCents)) return null;
+
+  const half = Math.floor(totalCents / 2);
+  const buildParts = (aCents: number): TaxSplitPart[] => {
+    const bCents = totalCents - aCents;
+    return [aCents, bCents].map(cents => {
+      const partIncl = new Decimal(cents).div(100).toNumber();
+      return { incl: partIncl, excl: exclFromIncl(partIncl, rate) };
+    });
+  };
+  for (let offset = 0; offset <= 100; offset++) {
+    for (const aCents of offset === 0 ? [half] : [half - offset, half + offset]) {
+      const bCents = totalCents - aCents;
+      if (aCents < 1 || bCents < 1) continue;
+      if (centsRepresentable(aCents) && centsRepresentable(bCents)) {
+        return buildParts(aCents);
+      }
+    }
+  }
+  return null;
+};
+
+/**
+ * 从存档还原拆分明细：每笔含税必须为正且自洽、合计严格等于科目含税，
+ * 否则整体丢弃（回到普通单笔口径）。不含税一律按当前税率重新派生。
+ */
+export const restoreTaxSplitParts = (
+  raw: unknown,
+  totalIncl: unknown,
+  taxRatePercent: unknown,
+): TaxSplitPart[] | null => {
+  if (!Array.isArray(raw) || raw.length < 2) return null;
+  const rate = toSafeNumber(taxRatePercent);
+  const parts: TaxSplitPart[] = [];
+  let sumCents = 0;
+  for (const entry of raw) {
+    const source = entry as { incl_tax?: unknown; incl?: unknown } | null;
+    const incl = roundMoneyHalfUp(source?.incl_tax ?? source?.incl);
+    if (incl <= 0 || !isInclRepresentable(incl, rate)) return null;
+    sumCents += Math.round(incl * 100);
+    parts.push({ incl, excl: exclFromIncl(incl, rate) });
+  }
+  const totalCents = new Decimal(toSafeNumber(totalIncl))
+    .mul(100)
+    .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
+    .toNumber();
+  return sumCents === totalCents ? parts : null;
+};
+
 /** 整数分口径的不含税还原：round(含税分 × 100 ÷ (100 + 税率))。 */
 export const exclCentsFromInclCents = (
   inclCents: number,

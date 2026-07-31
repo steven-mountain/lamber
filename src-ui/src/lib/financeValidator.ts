@@ -4,6 +4,8 @@ export interface TaxItem {
   incl: string | number;
   excl: string | number;
   tax: string | number; // Note: using "tax" key to match IctLifecycle.tsx state
+  /** 拆分明细：存在时科目按两笔子金额逐笔校验（各自闭合），不再用合计跑反推核验。 */
+  splitParts?: { incl: string | number; excl: string | number }[];
 }
 
 export interface ValidationReport {
@@ -39,16 +41,16 @@ export function validateFinancialData(
     side: 'income' | 'expense'
   ) => {
     // Group all items by tax rate
-    const taxGroups = new Map<number, { key: string, item: TaxItem }[]>();
+    const taxGroups = new Map<number, { key: string, item: TaxItem, fromSplit?: boolean }[]>();
 
     for (const [category, items] of Object.entries(data)) {
       if (!items) continue;
       for (const [itemKey, item] of Object.entries(items)) {
         if (!item || item.incl === undefined || item.excl === undefined) continue;
-        
+
         const incl = new Decimal(item.incl || 0);
         const excl = new Decimal(item.excl || 0);
-        
+
         // Skip empty or completely 0 items
         if (incl.isZero() && excl.isZero()) continue;
 
@@ -56,7 +58,22 @@ export function validateFinancialData(
         if (!taxGroups.has(rate)) {
           taxGroups.set(rate, []);
         }
-        taxGroups.get(rate)!.push({ key: `${category}.${itemKey}`, item });
+        // 拆分科目：按两笔子金额逐笔参与校验（各自闭合），合计不跑
+        // B/B2（合计含税 vs 不含税反推在拆分场景天然差 1 分，非错误）。
+        const splitParts = Array.isArray(item.splitParts) && item.splitParts.length >= 2
+          ? item.splitParts
+          : null;
+        if (splitParts) {
+          for (const part of splitParts) {
+            taxGroups.get(rate)!.push({
+              key: `${category}.${itemKey}`,
+              item: { incl: part.incl, excl: part.excl, tax: rate },
+              fromSplit: true,
+            });
+          }
+        } else {
+          taxGroups.get(rate)!.push({ key: `${category}.${itemKey}`, item });
+        }
       }
     }
 
@@ -122,19 +139,23 @@ export function validateFinancialData(
       // C2: 累加核验 = sum(expectedExcl) === sum(excl)
       const groupDifferenceC2 = sumExpectedExcl.minus(sumExcl);
 
-      if (!groupDifferenceC1.isZero() || !groupDifferenceC2.isZero()) {
+      // 含拆分子笔的税率组以逐行累加口径为准（C2）：round-of-sum 的 C1
+      // 与逐行锚点在拆分场景可差 1 分，不作为错误。
+      const hasSplit = items.some(entry => entry.fromSplit);
+      if ((!hasSplit && !groupDifferenceC1.isZero()) || !groupDifferenceC2.isZero()) {
         const hasItemErrors = errors.some(e => e.side === side && e.taxRate === rate);
         if (!hasItemErrors) {
           // If no specific item error was caught, but the sum is wrong, it means there is a rounding mismatch at the group level
           // Force user to adjust.
-          totalDifference = totalDifference.plus(groupDifferenceC1);
+          const groupDifference = hasSplit ? groupDifferenceC2 : groupDifferenceC1;
+          totalDifference = totalDifference.plus(groupDifference);
           errors.push({
             side,
             taxRate: rate,
-            key: `[汇总误差-公式C1]`,
-            expectedExcl: groupExpectedExclBySum.toFixed(2),
+            key: hasSplit ? `[汇总误差-公式C2]` : `[汇总误差-公式C1]`,
+            expectedExcl: (hasSplit ? sumExpectedExcl : groupExpectedExclBySum).toFixed(2),
             actualExcl: sumExcl.toFixed(2),
-            difference: groupDifferenceC1.toFixed(2)
+            difference: groupDifference.toFixed(2)
           });
         }
       }

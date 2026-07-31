@@ -110,6 +110,14 @@ const serializeTaxItemForPayload = (item: TaxItem) => {
     tax_rate: String(item.tax),
     ...(customSubjectName ? { custom_subject_name: customSubjectName } : {}),
     ...(billingSubjectName ? { billing_subject_name: billingSubjectName } : {}),
+    ...(item.splitParts?.length
+      ? {
+          split_parts: item.splitParts.map(part => ({
+            incl_tax: String(part.incl),
+            excl_tax: String(part.excl),
+          })),
+        }
+      : {}),
   };
 };
 

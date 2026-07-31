@@ -66,7 +66,7 @@ import {
   SUBJECT_FUNDING_PLAN_MIGRATION_VERSION,
   type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
-import { exclFromIncl, normalizeTaxPairFromIncl } from "../lib/taxAmount";
+import { exclFromIncl, normalizeTaxPairFromIncl, restoreTaxSplitParts, roundMoneyHalfUp, splitInclAmount, type TaxSplitPart } from "../lib/taxAmount";
 import { useCalcPreferencesStore } from "../store/useCalcPreferencesStore";
 
 const restoreCustomSubjectName = (item: any) => normalizeCustomSubjectName(item?.customSubjectName ?? item?.custom_subject_name ?? "");
@@ -290,12 +290,17 @@ export default function IctLifecycle() {
       const excl = Number.isFinite(explicitExcl)
         ? explicitExcl
         : exclFromIncl(incl, tax);
+      // 拆分明细随存档还原；不含税以两笔之和为准（逐行闭合口径）。
+      const splitParts = restoreTaxSplitParts(item?.split_parts, incl, tax);
       return {
         incl,
         tax,
-        excl,
+        excl: splitParts
+          ? roundMoneyHalfUp(splitParts.reduce((sum, part) => sum + part.excl, 0))
+          : excl,
         customSubjectName: restoreCustomSubjectName(item),
 	        billingSubjectName: restoreBillingSubjectName(item),
+	        ...(splitParts ? { splitParts } : {}),
 	      };
 	    };
 	    const restoreSubjectItem = (subjectCode: string, item: any) =>
@@ -968,6 +973,8 @@ export default function IctLifecycle() {
     loadTemplates,
     updateTaxItem,
     commitTaxItemIncl,
+    splitTaxItemIncl,
+    cancelTaxItemSplit,
     clearFinancialSubjects,
     updateTaxItemCustomSubjectName,
     updateTaxItemBillingSubjectName,
@@ -1631,11 +1638,16 @@ export default function IctLifecycle() {
           const itemErr = reconciliationErrors.find(e => e.key === `${groupId}.${item.key}`);
           const currentItem = groupState[item.key];
           const autoBalanced = isSubjectAutoBalanced(item);
+          // 已拆分科目按两笔子金额与业务系统逐笔闭合，不再对合计做尾差检查。
+          const splitParts: TaxSplitPart[] | null = currentItem?.splitParts?.length ? currentItem.splitParts : null;
           // 财务口径检查：含税录入值若不可精确表示（round(excl×(1+r)) ≠ 录入值），提示并在失焦后归一。
-          const inclPair = Number(currentItem?.incl) > 0
+          const inclPair = !splitParts && Number(currentItem?.incl) > 0
             ? normalizeTaxPairFromIncl(currentItem.incl, currentItem.tax)
             : null;
           const inclAdjust = inclPair?.adjusted ? inclPair : null;
+          const splitPreview = inclAdjust && !autoBalanced
+            ? splitInclAmount(currentItem.incl, currentItem.tax)
+            : null;
           const customSubjectName = getSubjectCustomName(currentItem);
           const billingSubjectName = getSubjectBillingName(currentItem);
           const displayName = getSubjectExcelDisplayName(item, currentItem);
@@ -1701,26 +1713,81 @@ export default function IctLifecycle() {
                 />
               </div>
               <div className="flex gap-2">
-                <input type="number" placeholder="含税" readOnly={autoBalanced} title={autoBalanced ? "该金额由总金额自动计算" : undefined} className={`w-full px-3 py-2 rounded-md outline-none text-sm ${autoBalanced ? "bg-muted text-secondary-foreground cursor-not-allowed" : `bg-card border ${inclAdjust ? "border-amber-500 ring-1 ring-amber-400" : "border-input"}`}`} value={autoBalanced ? currentItem.incl : currentItem.incl === 0 ? "" : currentItem.incl} onChange={e => {
-                  if (!autoBalanced) updateTaxItem(groupId, item.key, 'incl', Number(e.target.value));
+                <input type="number" placeholder="含税" readOnly={autoBalanced || !!splitParts} title={autoBalanced ? "该金额由总金额自动计算" : splitParts ? "已拆分为两笔，如需修改请先取消拆分" : undefined} className={`w-full px-3 py-2 rounded-md outline-none text-sm ${autoBalanced || splitParts ? "bg-muted text-secondary-foreground cursor-not-allowed" : `bg-card border ${inclAdjust ? "border-amber-500 ring-1 ring-amber-400" : "border-input"}`}`} value={autoBalanced ? currentItem.incl : currentItem.incl === 0 ? "" : currentItem.incl} onChange={e => {
+                  if (!autoBalanced && !splitParts) updateTaxItem(groupId, item.key, 'incl', Number(e.target.value));
                 }} onBlur={() => {
-                  if (!autoBalanced) commitTaxItemIncl(groupId, item.key);
+                  if (!autoBalanced && !splitParts) commitTaxItemIncl(groupId, item.key);
                 }} />
                 <input type="number" placeholder="税率" className="w-20 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={currentItem.tax} onChange={e => updateTaxItem(groupId, item.key, 'tax', Number(e.target.value))} />
-                <input type="number" placeholder="不含税" readOnly={autoBalanced} title={autoBalanced ? "该金额由总金额自动计算" : undefined} className={`w-full px-3 py-2 rounded-md outline-none text-sm ${autoBalanced ? "bg-muted text-secondary-foreground cursor-not-allowed" : `bg-card border focus:border-ring ${itemErr ? 'border-red-500 ring-1 ring-red-500' : 'border-input'}`}`} value={autoBalanced ? currentItem.excl : currentItem.excl === 0 ? "" : currentItem.excl} onChange={e => {
-                  if (!autoBalanced) updateTaxItem(groupId, item.key, 'excl', Number(e.target.value));
+                <input type="number" placeholder="不含税" readOnly={autoBalanced || !!splitParts} title={autoBalanced ? "该金额由总金额自动计算" : splitParts ? "已拆分为两笔，不含税为两笔之和" : undefined} className={`w-full px-3 py-2 rounded-md outline-none text-sm ${autoBalanced || splitParts ? "bg-muted text-secondary-foreground cursor-not-allowed" : `bg-card border focus:border-ring ${itemErr ? 'border-red-500 ring-1 ring-red-500' : 'border-input'}`}`} value={autoBalanced ? currentItem.excl : currentItem.excl === 0 ? "" : currentItem.excl} onChange={e => {
+                  if (!autoBalanced && !splitParts) updateTaxItem(groupId, item.key, 'excl', Number(e.target.value));
                 }} />
               </div>
               {autoBalanced && <span className="text-[10px] font-bold text-primary">该科目金额由总金额自动计算，税率可继续编辑。</span>}
               {inclAdjust && (
-                <span className="text-[10px] text-amber-600 font-bold">
-                  财务口径提示：含税 {inclAdjust.enteredIncl.toFixed(2)} 元在 {currentItem.tax}% 税率下不可精确表示（业务系统按不含税 {inclAdjust.excl.toFixed(2)} 元反推为 {inclAdjust.incl.toFixed(2)} 元）。
-                  {autoBalanced
-                    ? "该科目由总金额自动计算，可调整总金额分配，或在「设置 → 测算行为」开启财务口径自动修正。"
-                    : taxInclAutoFix
-                    ? `离开输入框后将自动按 ${inclAdjust.incl.toFixed(2)} 元入账。`
-                    : `如需与业务系统一致，请改为 ${inclAdjust.incl.toFixed(2)} 元，或在「设置 → 测算行为」开启财务口径自动修正。`}
-                </span>
+                <div className="rounded-md border border-amber-300 bg-amber-50/60 px-2.5 py-1.5 flex flex-col gap-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500 text-white text-[10px] font-bold tabular-nums shrink-0">
+                      尾差 {inclAdjust.incl > inclAdjust.enteredIncl ? "+" : ""}{roundMoneyHalfUp(inclAdjust.incl - inclAdjust.enteredIncl).toFixed(2)} 元
+                    </span>
+                    <span className="text-[10px] text-amber-700 font-semibold tabular-nums">
+                      录入 {inclAdjust.enteredIncl.toFixed(2)} → 业务系统 {inclAdjust.incl.toFixed(2)}（按不含税 {inclAdjust.excl.toFixed(2)} 反推）
+                    </span>
+                  </div>
+                  {autoBalanced ? (
+                    <span className="text-[10px] text-secondary-foreground">该科目由总金额自动计算，可调整总金额分配，或在「设置 → 测算行为」开启自动修正。</span>
+                  ) : (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        className="text-[10px] font-bold px-2 py-0.5 rounded border border-amber-400 text-amber-700 hover:bg-amber-100 tabular-nums"
+                        onClick={() => updateTaxItem(groupId, item.key, 'incl', inclAdjust.incl)}
+                      >
+                        改为 {inclAdjust.incl.toFixed(2)}
+                      </button>
+                      {splitPreview && (
+                        <button
+                          type="button"
+                          className="text-[10px] font-bold px-2 py-0.5 rounded border border-amber-400 text-amber-700 hover:bg-amber-100 tabular-nums"
+                          onClick={() => splitTaxItemIncl(groupId, item.key)}
+                        >
+                          拆分两笔 {splitPreview.map(part => part.incl.toFixed(2)).join(" + ")}
+                        </button>
+                      )}
+                      <span className="text-[10px] text-secondary-foreground">
+                        {taxInclAutoFix ? "失焦后将自动修正" : "「设置 → 测算行为」可自动修正"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {splitParts && (
+                <div className="rounded-md border border-emerald-200 bg-emerald-50/60 px-2.5 py-1.5 flex flex-col gap-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold text-emerald-700">已拆两笔 · 每笔与业务系统口径闭合</span>
+                    <button
+                      type="button"
+                      className="text-[10px] underline text-primary shrink-0"
+                      onClick={() => cancelTaxItemSplit(groupId, item.key)}
+                    >
+                      取消拆分
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-[auto_1fr_1fr] gap-x-3 gap-y-0.5 items-baseline max-w-xs">
+                    <span />
+                    {splitParts.map((_, index) => (
+                      <span key={index} className="text-[10px] text-secondary-foreground text-right">第 {index + 1} 笔</span>
+                    ))}
+                    <span className="text-[10px] text-secondary-foreground">含税</span>
+                    {splitParts.map((part, index) => (
+                      <span key={index} className="text-sm font-bold text-emerald-700 tabular-nums text-right">{part.incl.toFixed(2)}</span>
+                    ))}
+                    <span className="text-[10px] text-secondary-foreground">不含税</span>
+                    {splitParts.map((part, index) => (
+                      <span key={index} className="text-sm font-bold text-emerald-700 tabular-nums text-right">{part.excl.toFixed(2)}</span>
+                    ))}
+                  </div>
+                </div>
               )}
               {itemErr && <span className="text-[10px] text-red-500 font-bold">校验失败：{itemErr.field === 'incl' ? '含税与财务口径' : '不含税'}偏离 {itemErr.difference} 元，要求：{itemErr.expectedExcl} 元</span>}
               <IctSubjectFundingPlanEditor

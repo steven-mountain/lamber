@@ -27,12 +27,12 @@ import {
   type SubjectFundingPlans,
   type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
-import { exclFromIncl, inclFromExcl, normalizeTaxPairFromIncl } from "../lib/taxAmount";
+import { exclFromIncl, inclFromExcl, normalizeTaxPairFromIncl, roundMoneyHalfUp, splitInclAmount, type TaxSplitPart } from "../lib/taxAmount";
 import { isTaxInclAutoFixEnabled } from "../store/useCalcPreferencesStore";
 
 export { normalizeProjectYears };
 
-export interface TaxItem { incl: number; tax: number; excl: number; customSubjectName?: string; billingSubjectName?: string; }
+export interface TaxItem { incl: number; tax: number; excl: number; customSubjectName?: string; billingSubjectName?: string; splitParts?: TaxSplitPart[]; }
 
 export type TaxItemInclUpdate = { groupId: string; key: string; incl: number; reason?: SubjectFundingPlanLastChangeReason };
 export const defaultTaxItem = (tax = 6): TaxItem => ({ incl: 0, tax, excl: 0 });
@@ -576,6 +576,7 @@ export function useIctState() {
         incl: isTaxInclAutoFixEnabled() ? pair.incl : pair.enteredIncl,
         tax,
         excl: pair.excl,
+        splitParts: undefined,
       };
     };
 
@@ -688,7 +689,8 @@ export function useIctState() {
     const shouldNormalizeIncl = (explicit?: boolean) =>
       (explicit || false) && isTaxInclAutoFixEnabled();
     const processItem = (groupState: any, setGroupState: any, targetKey: string): number => {
-      const item = { ...groupState[targetKey], [field]: isNaN(val) ? 0 : val };
+      // 金额/税率一经编辑，既有拆分明细即失效，回到普通单笔口径。
+      const item = { ...groupState[targetKey], [field]: isNaN(val) ? 0 : val, splitParts: undefined };
       if (field === 'incl' || field === 'tax') {
         item.excl = exclFromIncl(item.incl, item.tax);
         if (shouldNormalizeIncl(field === 'tax' || options?.normalizeIncl)) {
@@ -731,7 +733,7 @@ export function useIctState() {
         trackSync('costCt', 'bandwidth', effectiveIncl, "ct_linkage_sync");
       }
     } else if (groupId === 'revNonItCt') {
-      const item = { ...revNonItCt, [field]: isNaN(val) ? 0 : val };
+      const item = { ...revNonItCt, [field]: isNaN(val) ? 0 : val, splitParts: undefined };
       if (field === 'incl' || field === 'tax') {
         item.excl = exclFromIncl(item.incl, item.tax);
         if (shouldNormalizeIncl(field === 'tax' || options?.normalizeIncl)) {
@@ -771,10 +773,62 @@ export function useIctState() {
       ? revNonItCt
       : (groupState as Record<string, TaxItem> | null)?.[key];
     if (!item) return null;
+    // 已拆分科目按两笔子金额与业务系统对齐，含税合计不做归一改写。
+    if (item.splitParts?.length) return null;
     const pair = normalizeTaxPairFromIncl(item.incl, item.tax);
     if (!pair.adjusted || !isTaxInclAutoFixEnabled()) return { ...pair };
     updateTaxItem(groupId, key, "incl", pair.enteredIncl, "manual_amount_sync", { normalizeIncl: true });
     return { ...pair };
+  };
+
+  // 拆分/取消拆分共用的单科目原地更新：科目含税合计不变，不触发资金计划同步。
+  const patchTaxItemForSplit = (
+    groupId: string,
+    key: string,
+    patch: (item: TaxItem) => TaxItem | null,
+  ): boolean => {
+    const applyPatch = (next: TaxItem | null, commit: (value: TaxItem) => void): boolean => {
+      if (!next) return false;
+      if (ignoredDataHash !== null) {
+        setIgnoredDataHash(null);
+        setIgnoredTailValue(null);
+      }
+      commit(next);
+      return true;
+    };
+    if (groupId === "revNonItCt") return applyPatch(patch(revNonItCt), setRevNonItCt);
+    const applyGroup = (groupState: Record<string, TaxItem>, setGroupState: (value: any) => void): boolean => {
+      const current = groupState[key];
+      if (!current) return false;
+      return applyPatch(patch(current), next => setGroupState({ ...groupState, [key]: next }));
+    };
+    if (groupId === "revIt") return applyGroup(revIt, setRevIt);
+    if (groupId === "revCt") return applyGroup(revCt, setRevCt);
+    if (groupId === "costIt") return applyGroup(costIt, setCostIt);
+    if (groupId === "costCt") return applyGroup(costCt, setCostCt);
+    if (groupId === "costMix") return applyGroup(costMix, setCostMix);
+    return false;
+  };
+
+  // 把不可精确表示的含税价拆成两笔各自闭合的子金额；不含税取两笔之和。
+  const splitTaxItemIncl = (groupId: string, key: string): boolean =>
+    patchTaxItemForSplit(groupId, key, item => {
+      const parts = splitInclAmount(item.incl, item.tax);
+      if (!parts) return null;
+      return {
+        ...item,
+        excl: roundMoneyHalfUp(parts.reduce((sum, part) => sum + part.excl, 0)),
+        splitParts: parts,
+      };
+    });
+
+  // 取消拆分：回到普通单笔口径，不含税按含税重新派生（尾差提示随之恢复）。
+  const cancelTaxItemSplit = (groupId: string, key: string) => {
+    patchTaxItemForSplit(groupId, key, item => ({
+      ...item,
+      excl: exclFromIncl(item.incl, item.tax),
+      splitParts: undefined,
+    }));
   };
 
   const updateTaxItemTextField = (
@@ -885,6 +939,8 @@ export function useIctState() {
     removeCashflowSegment,
     updateTaxItem,
     commitTaxItemIncl,
+    splitTaxItemIncl,
+    cancelTaxItemSplit,
     updateTaxItemsInclBatch,
     updateTaxItemCustomSubjectName,
     updateTaxItemBillingSubjectName,
