@@ -2387,7 +2387,10 @@ export default function IctLifecycle() {
               projectId={activeProject?.id || undefined}
               currentSchemeLabel={pendingNewSchemeName || activeScheme?.name || "默认方案"}
               fetchPreSelectionCostIt={fetchPreSelectionCostIt}
+              preSchemeId={preScheme?.id}
               preSchemeName={preScheme?.name}
+              currentSchemeId={activeScheme?.id}
+              currentSchemeStage={activeScheme?.stage}
             />
           </div>
 

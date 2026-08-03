@@ -34,6 +34,14 @@ export const PRESET_FIELD_KEYS = {
 
   serviceDescription: "service.description",
   riskDescription: "risk.description",
+
+  selectionResultWinnerName: "selection_result.winner_name",
+  selectionResultContentDescription: "selection_result.content_description",
+  selectionResultScope: "selection_result.scope",
+  selectionResultIndustryScenario: "selection_result.industry_scenario",
+  selectionResultMethod: "selection_result.method",
+  selectionResultRule: "selection_result.rule",
+  selectionResultStandardPlan: "selection_result.standard_plan",
 } as const;
 
 export const PRESET_FIELD_DEFINITIONS: PresetFieldDefinition[] = [
@@ -155,6 +163,48 @@ export const PRESET_FIELD_DEFINITIONS: PresetFieldDefinition[] = [
     fieldKey: PRESET_FIELD_KEYS.riskDescription,
     label: "风险说明",
     category: "风险说明",
+    kind: "text_snippet",
+  },
+  {
+    fieldKey: PRESET_FIELD_KEYS.selectionResultWinnerName,
+    label: "中选合作伙伴",
+    category: "合作伙伴",
+    kind: "short_value",
+  },
+  {
+    fieldKey: PRESET_FIELD_KEYS.selectionResultContentDescription,
+    label: "甄选内容说明",
+    category: "甄选内容",
+    kind: "text_snippet",
+  },
+  {
+    fieldKey: PRESET_FIELD_KEYS.selectionResultScope,
+    label: "甄选范围",
+    category: "甄选范围",
+    kind: "short_value",
+  },
+  {
+    fieldKey: PRESET_FIELD_KEYS.selectionResultIndustryScenario,
+    label: "甄选行业/场景",
+    category: "甄选行业/场景",
+    kind: "short_value",
+  },
+  {
+    fieldKey: PRESET_FIELD_KEYS.selectionResultMethod,
+    label: "甄选方式",
+    category: "甄选方式",
+    kind: "short_value",
+  },
+  {
+    fieldKey: PRESET_FIELD_KEYS.selectionResultRule,
+    label: "甄选规则",
+    category: "甄选规则",
+    kind: "short_value",
+  },
+  {
+    fieldKey: PRESET_FIELD_KEYS.selectionResultStandardPlan,
+    label: "标准方案说明",
+    category: "标准方案说明",
     kind: "text_snippet",
   },
 ];

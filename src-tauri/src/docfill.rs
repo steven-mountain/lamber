@@ -439,8 +439,7 @@ fn internal_generate_pptx(
     }
 
     for (name, content) in files.iter_mut() {
-        if !(name.starts_with("ppt/slides/") && name.ends_with(".xml") && !name.contains("_rels"))
-        {
+        if !(name.starts_with("ppt/slides/") && name.ends_with(".xml") && !name.contains("_rels")) {
             continue;
         }
         let mut xml_str = String::from_utf8(content.clone()).map_err(|e| e.to_string())?;
@@ -451,13 +450,11 @@ fn internal_generate_pptx(
             if !k.starts_with("TABLE_") {
                 continue;
             }
-            let rows_data = match serde_json::from_str::<
-                Vec<std::collections::HashMap<String, String>>,
-            >(v)
-            {
-                Ok(rows) => rows,
-                Err(_) => continue,
-            };
+            let rows_data =
+                match serde_json::from_str::<Vec<std::collections::HashMap<String, String>>>(v) {
+                    Ok(rows) => rows,
+                    Err(_) => continue,
+                };
             let first_key = match rows_data.first().and_then(|row| row.keys().next().cloned()) {
                 Some(key) => key,
                 None => continue,
@@ -957,13 +954,152 @@ fn internal_generate_xlsx(
 
 #[cfg(test)]
 mod tests {
-    use super::{internal_generate_pptx, internal_generate_xlsx};
+    use super::{internal_generate_docx, internal_generate_pptx, internal_generate_xlsx};
     use calamine::{open_workbook, Reader, Xlsx};
     use std::collections::HashMap;
     use std::fs;
     use std::io::Read;
     use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn selection_result_docx_fills_batch_rows_and_approval_amount() {
+        let template_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../项目全生命周期文件模版/【2025版】ICT项目甄选结果签批表（仅适用50万以下项目）模板.docx",
+        );
+        assert!(
+            template_path.exists(),
+            "missing test template: {}",
+            template_path.display()
+        );
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let keep_output = std::env::var("LAMBER_SELECTION_DOCX_QA_OUT").ok();
+        let output_path = keep_output
+            .as_ref()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::env::temp_dir().join(format!("lamber-selection-result-{}.docx", suffix))
+            });
+
+        let mut variables: HashMap<String, String> = HashMap::new();
+        for (key, value) in [
+            ("PROJECT_NAME", "消防检测等2个ICT项目"),
+            ("PROJECT_BACKGROUND", "两个已完成甄选的ICT项目合并报批"),
+            ("IT_CONTENT", "消防检测项目、视频监控项目"),
+            ("CT_CONTENT", "视频监控项目（含专线）"),
+            ("SELECTION_CONTENT_DESC", "详见各子项目甄选明细"),
+            ("SELECTION_LIMIT_TOTAL", "370.00"),
+            ("SELECTION_SCOPE", "二级库"),
+            ("SELECTION_INDUSTRY", "DICT"),
+            ("SELECTION_METHOD", "公开甄选"),
+            ("SELECTION_RULE", "综合评分法"),
+            ("SELECTION_STANDARD_PLAN", "否"),
+            ("WINNER_DESC", "供应商A，中选金额300.00元（不含税）"),
+            ("REV_COLLECTION", "详见各子项目"),
+            ("EXP_PAYMENT", "详见各子项目"),
+            ("PROJECT_INVESTMENT_SITUATION", "共2个项目，投入450.00元"),
+            ("PROJECT_REVENUE_SITUATION", "共2个项目，收入480.00元"),
+            ("CONTRACT_DURATION", "详见各子项目"),
+            ("DYNAMIC_PAYBACK_PERIOD", "详见各子项目"),
+            ("IT_INVESTMENT", "400.00"),
+            ("IS_ADVANCE_PAYMENT", "否"),
+            ("IS_SME", "是"),
+            ("IT_BUSINESS_MODE", "一次性"),
+            ("IT_FUNDING_SOURCE", "客户资金"),
+            ("CURR_DATE", "2026年8月3日"),
+            ("A_TOTAL_LIMIT", "370.00"),
+            ("B_TOTAL_EXCL", "300.00"),
+            ("B_TOTAL_INCL", "318.00"),
+            ("C_TOTAL_EXCL", "450.00"),
+            ("C_TOTAL_INCL", "477.00"),
+            ("D_TOTAL_EXCL", "480.00"),
+            ("D_TOTAL_INCL", "508.80"),
+        ] {
+            variables.insert(key.into(), value.into());
+        }
+
+        variables.insert(
+            "TABLE_A".into(),
+            serde_json::json!([
+                {"A_SEQ":"1", "A_NAME":"消防检测项目", "A_FEE_TYPE":"检测服务", "A_TAX_RATE":"6%", "A_LIMIT":"140.00"},
+                {"A_SEQ":"2", "A_NAME":"视频监控项目", "A_FEE_TYPE":"集成服务", "A_TAX_RATE":"6%", "A_LIMIT":"230.00"}
+            ])
+            .to_string(),
+        );
+        variables.insert(
+            "TABLE_B".into(),
+            serde_json::json!([
+                {"B_SEQ":"1", "B_NAME":"消防检测项目", "B_TYPE":"检测服务", "B_EXCL":"120.00", "B_TAX_RATE":"6%", "B_INCL":"127.20"},
+                {"B_SEQ":"2", "B_NAME":"视频监控项目", "B_TYPE":"集成服务", "B_EXCL":"180.00", "B_TAX_RATE":"6%", "B_INCL":"190.80"}
+            ])
+            .to_string(),
+        );
+        variables.insert(
+            "TABLE_C".into(),
+            serde_json::json!([
+                {"C_SEQ":"1", "C_NAME":"消防检测项目", "C_TYPE":"IT成本", "C_EXCL":"150.00", "C_TAX_RATE":"6%", "C_INCL":"159.00"},
+                {"C_SEQ":"2", "C_NAME":"视频监控项目", "C_TYPE":"IT及CT成本", "C_EXCL":"300.00", "C_TAX_RATE":"6%", "C_INCL":"318.00"}
+            ])
+            .to_string(),
+        );
+        variables.insert(
+            "TABLE_D".into(),
+            serde_json::json!([
+                {"D_SEQ":"1", "D_NAME":"消防检测项目", "D_TYPE":"IT收入", "D_EXCL":"180.00", "D_TAX_RATE":"6%", "D_INCL":"190.80"},
+                {"D_SEQ":"2", "D_NAME":"视频监控项目", "D_TYPE":"IT及CT收入", "D_EXCL":"300.00", "D_TAX_RATE":"6%", "D_INCL":"318.00"}
+            ])
+            .to_string(),
+        );
+        variables.insert(
+            "TABLE_E".into(),
+            serde_json::json!([
+                {"E_SEQ":"1", "E_NAME":"消防检测项目", "E_IT_NPV":"8.00%", "E_NPV_RATE":"10.00%", "E_MARGIN":"12.00%"},
+                {"E_SEQ":"2", "E_NAME":"视频监控项目", "E_IT_NPV":"9.00%", "E_NPV_RATE":"11.00%", "E_MARGIN":"13.00%"}
+            ])
+            .to_string(),
+        );
+
+        internal_generate_docx(
+            None,
+            None,
+            None,
+            template_path.to_str().unwrap(),
+            output_path.to_str().unwrap(),
+            &variables,
+        )
+        .expect("generate selection result docx");
+
+        let file = fs::File::open(&output_path).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let mut document_xml = String::new();
+        archive
+            .by_name("word/document.xml")
+            .unwrap()
+            .read_to_string(&mut document_xml)
+            .unwrap();
+
+        assert!(document_xml.contains("消防检测等2个ICT项目"));
+        assert!(document_xml.contains("消防检测项目"));
+        assert!(document_xml.contains("视频监控项目"));
+        assert!(document_xml.contains("400.00"));
+        assert!(document_xml.contains("480.00"));
+        assert!(document_xml.contains("13.00%"));
+        let unresolved = regex::Regex::new(r"\{[A-Z_0-9]+\}").unwrap();
+        assert!(
+            !unresolved.is_match(&document_xml),
+            "unresolved placeholders remain in document.xml"
+        );
+
+        if let Some(path) = keep_output {
+            println!("kept selection-result docx output: {}", path);
+        } else {
+            fs::remove_file(&output_path).ok();
+        }
+    }
 
     #[test]
     fn lifecycle_pptx_fills_vars_and_clones_table_rows() {

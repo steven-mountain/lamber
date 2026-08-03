@@ -4,7 +4,7 @@
 > **历史兼容性说明**：本文件作为系统架构与模块数据流的详细技术地图，不再作为 AI 每次任务的默认必读文件。
 > 后续开发请默认阅读入口文件 [PROJECT_INDEX.md](./PROJECT_INDEX.md) 和 [CURRENT_TASK.md](./CURRENT_TASK.md)，并仅在需要深入分析架构、启动流程或底层细节时阅读本文件。
 
-Last updated: 2026-06-04 (Common Materials & Project Presets Phase 1)
+Last updated: 2026-08-03 (Selection Result Batch)
 
 ## 1. Repository overview
 
@@ -266,6 +266,15 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 4. Generated Word/Excel files are written to the resolved project directory, then the frontend scans the project folder to refresh the file list.
 5. Meeting-review investment detail text is assembled in `TemplateForms.tsx` from the same resolved IT/CT cost subjects used by the sign-off form variables (`SUBJECT_IT_COST`, `SUBJECT_CT_COST`), while amount totals continue to come from the existing tax-exclusive lifecycle cost buckets.
 6. The sign-off form's project situation section uses full generated text variables (`PROJECT_INVESTMENT_SITUATION`, `PROJECT_REVENUE_SITUATION`) so all non-zero IT, CT, non-IT/CT, and comprehensive subjects can be listed from the measurement table. Manual sign-off billing-subject override inputs are not part of this path.
+
+### 4.6.1 Multi-project selection-result document flow
+
+1. `TemplateForms.tsx` switches the selection-result form into batch mode and stores the ordered project IDs, editable batch name, conflict acknowledgement, and renewal classifications in the current template state.
+2. `selectionResultBatchService.ts` lists ICT projects and selects the latest saved `pre_selection` and `post_selection` scheme for each project. It reads scheme-scoped lifecycle/cashflow state first and falls back to that scheme's latest snapshot.
+3. `selectionResultBatch.ts` restores the saved tax items, runs the existing zero-tolerance validator, checks required post-selection metrics, detects shared-field conflicts, and constructs ordered A-E table rows with Decimal totals.
+4. The approval amount is recalculated independently as post-selection IT cost plus dedicated-line CT construction, maintenance, and bandwidth cost; the mixed renewal subject is included only after explicit user classification.
+5. Generation is blocked when a project is invalid, a blocking field conflicts, renewal classification is incomplete, or the batch approval amount is at least CNY 500,000 excluding tax.
+6. The existing `generate_lifecycle_docs` / `docfill.rs` path receives one variable map and five `TABLE_*` JSON arrays. The generic DOCX row cloner creates one approval document; source documents are never concatenated and other projects are never written.
 
 ### 4.7 Template image document embedding flow
 

@@ -97,3 +97,4 @@ Preset actions in forms should be attached through `CommonPresetFieldHeader`, wh
 - Demand import form: project demand unit, service content, customer confirmation, and deployment environment requirement.
 - Meeting review form: onsite support staff, IT construction content, CT construction content, revenue collection method, expenditure payment method, and time requirement.
 - Sign-off form: IT service content, CT service content, revenue collection method, and expenditure payment method.
+- Selection result sign-off form: project background, selected partner, selection content, scope, industry/scenario, method, rule, standard-plan description, revenue collection method, and expenditure payment method.

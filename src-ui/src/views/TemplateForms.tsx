@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { invoke, convertFileSrc } from "@tauri-apps/api/core"
 import AppIcon from "../components/icons/AppIcon"
 import { MID_THREE_CAPABILITIES } from "../lib/midThreeConstants"
@@ -31,6 +31,25 @@ import {
   type IctSubjectGroupId,
   type IctSubjectSide,
 } from "../lib/ictSubjectCatalog"
+import {
+  buildLiveSelectionResultProject,
+  buildSelectionResultBatchModel,
+  calculateSelectionApprovalAmount,
+  defaultSelectionBatchName,
+  detectSelectionSharedConflicts,
+  formatSelectionMoney,
+  getSelectionRenewalAmount,
+  selectionBatchCtContent,
+  selectionBatchItContent,
+  type SelectionRenewalDecision,
+  type SelectionResultBatchProject,
+  type SelectionResultCandidate,
+  type SelectionSharedFields,
+} from "../lib/selectionResultBatch"
+import {
+  loadSelectionResultBatchProject,
+  loadSelectionResultCandidates,
+} from "../services/selectionResultBatchService"
 
 interface Props {
   selectedTemplate: string;
@@ -48,7 +67,10 @@ interface Props {
   currentSchemeLabel?: string;
   /** 甄选结果签批表：异步读取甄选前方案的 IT 投入科目（costIt 同形结构），无甄选前方案返回 null */
   fetchPreSelectionCostIt?: () => Promise<Record<string, any> | null>;
+  preSchemeId?: string;
   preSchemeName?: string;
+  currentSchemeId?: string;
+  currentSchemeStage?: string | null;
 }
 
 type ProjectScale = "large" | "small"
@@ -188,7 +210,10 @@ export default function TemplateForms({
   onGenerated,
   currentSchemeLabel,
   fetchPreSelectionCostIt,
-  preSchemeName
+  preSchemeId,
+  preSchemeName,
+  currentSchemeId,
+  currentSchemeStage,
 }: Props) {
   const formRef = useRef<HTMLFormElement>(null)
   const markDirty = useSaveStore(state => state.markDirty)
@@ -251,6 +276,17 @@ export default function TemplateForms({
   const [approvalTemplateTab, setApprovalTemplateTab] = useState<ApprovalTemplateTabId>("content")
   const [demandTemplateTab, setDemandTemplateTab] = useState<DemandTemplateTabId>("content")
   const [selectionResultTab, setSelectionResultTab] = useState<SelectionResultTabId>("content")
+  const [selectionResultMode, setSelectionResultMode] = useState<"single" | "batch">("single")
+  const [selectionBatchProjectIds, setSelectionBatchProjectIds] = useState<string[]>([])
+  const [selectionBatchName, setSelectionBatchName] = useState("")
+  const selectionBatchNameCustomizedRef = useRef(false)
+  const [selectionRenewalDecisions, setSelectionRenewalDecisions] = useState<Record<string, SelectionRenewalDecision>>({})
+  const [selectionConflictAcknowledged, setSelectionConflictAcknowledged] = useState(false)
+  const [selectionCandidates, setSelectionCandidates] = useState<SelectionResultCandidate[]>([])
+  const [selectionCandidatesLoading, setSelectionCandidatesLoading] = useState(false)
+  const [selectionBatchProjects, setSelectionBatchProjects] = useState<SelectionResultBatchProject[]>([])
+  const [selectionBatchLoading, setSelectionBatchLoading] = useState(false)
+  const [selectionBatchLoadError, setSelectionBatchLoadError] = useState("")
 
   const [isMidThreeModalOpen, setIsMidThreeModalOpen] = useState(false)
   const [midThreeSearch, setMidThreeSearch] = useState("")
@@ -344,6 +380,119 @@ export default function TemplateForms({
     };
   };
 
+  useEffect(() => {
+    if (!selectedTemplate.includes("甄选结果签批表") || !workspaceId) {
+      setSelectionCandidates([])
+      setSelectionCandidatesLoading(false)
+      return
+    }
+    let cancelled = false
+    setSelectionCandidatesLoading(true)
+    loadSelectionResultCandidates()
+      .then(candidates => {
+        if (!cancelled) setSelectionCandidates(candidates)
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setSelectionCandidates([])
+          setSelectionBatchLoadError(`读取可合并项目失败：${String(error)}`)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSelectionCandidatesLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedTemplate, workspaceId])
+
+  useEffect(() => {
+    if (selectionResultMode !== "batch" || selectionBatchProjectIds.length === 0) {
+      setSelectionBatchProjects([])
+      setSelectionBatchLoading(false)
+      setSelectionBatchLoadError("")
+      return
+    }
+    const selectedCandidates = selectionBatchProjectIds
+      .map(id => selectionCandidates.find(candidate => candidate.project.id === id))
+      .filter((candidate): candidate is SelectionResultCandidate => Boolean(candidate))
+    if (selectedCandidates.length !== selectionBatchProjectIds.length) return
+
+    let cancelled = false
+    setSelectionBatchLoading(true)
+    setSelectionBatchLoadError("")
+    Promise.all(selectedCandidates.map(candidate => loadSelectionResultBatchProject(candidate, selectedTemplate)))
+      .then(projects => {
+        if (cancelled) return
+        setSelectionBatchProjects(projects)
+        if (!selectionBatchNameCustomizedRef.current) {
+          setSelectionBatchName(defaultSelectionBatchName(projects))
+        }
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setSelectionBatchProjects([])
+          setSelectionBatchLoadError(String(error))
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSelectionBatchLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectionResultMode, selectionBatchProjectIds, selectionCandidates, selectedTemplate])
+
+  const selectionSharedConflicts = useMemo(
+    () => detectSelectionSharedConflicts(selectionBatchProjects),
+    [selectionBatchProjects],
+  )
+  const selectionBlockingConflicts = selectionSharedConflicts.filter(conflict => conflict.blocking)
+  const selectionOverrideConflicts = selectionSharedConflicts.filter(conflict => !conflict.blocking)
+  const selectionBatchModelPreview = useMemo(
+    () => selectionBatchProjects.length > 0
+      ? buildSelectionResultBatchModel(selectionBatchProjects, selectionRenewalDecisions)
+      : null,
+    [selectionBatchProjects, selectionRenewalDecisions],
+  )
+  const singleRenewalAmount = getSelectionRenewalAmount(projectData)
+  const singleApprovalAmount = calculateSelectionApprovalAmount(
+    projectData,
+    projectId ? selectionRenewalDecisions[projectId] : undefined,
+  )
+
+  const setSelectionMode = (mode: "single" | "batch") => {
+    setSelectionResultMode(mode)
+    setSelectionConflictAcknowledged(false)
+    if (mode === "batch" && selectionBatchProjectIds.length === 0 && projectId) {
+      const currentCandidate = selectionCandidates.find(candidate => candidate.project.id === projectId && candidate.eligible)
+      if (currentCandidate) setSelectionBatchProjectIds([projectId])
+    }
+  }
+
+  const toggleSelectionBatchProject = (candidate: SelectionResultCandidate) => {
+    if (!candidate.eligible) return
+    setSelectionConflictAcknowledged(false)
+    setSelectionBatchProjectIds(current => current.includes(candidate.project.id)
+      ? current.filter(id => id !== candidate.project.id)
+      : [...current, candidate.project.id])
+  }
+
+  const moveSelectionBatchProject = (targetProjectId: string, direction: -1 | 1) => {
+    setSelectionBatchProjectIds(current => {
+      const index = current.indexOf(targetProjectId)
+      const nextIndex = index + direction
+      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current
+      const next = [...current]
+      ;[next[index], next[nextIndex]] = [next[nextIndex], next[index]]
+      return next
+    })
+  }
+
+  const setSelectionRenewalDecision = (targetProjectId: string, decision: SelectionRenewalDecision) => {
+    setSelectionRenewalDecisions(current => ({ ...current, [targetProjectId]: decision }))
+  }
+
   const handleFormChange = (e: any) => {
     const target = e.target;
     if (target && target.name && target.name.startsWith('gen_')) {
@@ -416,6 +565,14 @@ export default function TemplateForms({
     setInqVendors([]);
     setAttach1Images([]);
     setAttach2Images([]);
+    setSelectionResultMode("single");
+    setSelectionBatchProjectIds([]);
+    setSelectionBatchName("");
+    selectionBatchNameCustomizedRef.current = false;
+    setSelectionRenewalDecisions({});
+    setSelectionConflictAcknowledged(false);
+    setSelectionBatchProjects([]);
+    setSelectionBatchLoadError("");
     formDataRef.current = {};
     setFormData({});
     if (formRef.current) {
@@ -457,6 +614,20 @@ export default function TemplateForms({
         if (parsed.hasPublicUrl !== undefined) setHasPublicUrl(parsed.hasPublicUrl);
         if (parsed.hasSecurity !== undefined) setHasSecurity(parsed.hasSecurity);
         if (parsed.techItems !== undefined) setTechItems(parsed.techItems);
+        if (parsed.selectionResultMode === "batch" || parsed.selectionResultMode === "single") {
+          setSelectionResultMode(parsed.selectionResultMode);
+        } else {
+          setSelectionResultMode("single");
+        }
+        setSelectionBatchProjectIds(Array.isArray(parsed.selectionBatchProjectIds) ? parsed.selectionBatchProjectIds : []);
+        setSelectionBatchName(typeof parsed.selectionBatchName === "string" ? parsed.selectionBatchName : "");
+        selectionBatchNameCustomizedRef.current = parsed.selectionBatchNameCustomized === true;
+        setSelectionRenewalDecisions(
+          parsed.selectionRenewalDecisions && typeof parsed.selectionRenewalDecisions === "object"
+            ? parsed.selectionRenewalDecisions
+            : {},
+        );
+        setSelectionConflictAcknowledged(parsed.selectionConflictAcknowledged === true);
         
         if (parsed.formData) {
           formDataRef.current = { ...parsed.formData };
@@ -514,6 +685,7 @@ export default function TemplateForms({
     setMeetingReviewTab("basic");
     setApprovalTemplateTab("content");
     setDemandTemplateTab("content");
+    setSelectionResultTab("content");
   }, [selectedTemplate]);
 
   // --- Auto-save and image migration ---
@@ -612,6 +784,12 @@ export default function TemplateForms({
       procurementMethod,
       hasPublicUrl,
       hasSecurity,
+      selectionResultMode,
+      selectionBatchProjectIds,
+      selectionBatchName,
+      selectionBatchNameCustomized: selectionBatchNameCustomizedRef.current,
+      selectionRenewalDecisions,
+      selectionConflictAcknowledged,
       techItems,
       inqVendors: migratedVendors.map(v => ({
         ...v,
@@ -687,6 +865,11 @@ export default function TemplateForms({
     procurementMethod,
     hasPublicUrl,
     hasSecurity,
+    selectionResultMode,
+    selectionBatchProjectIds,
+    selectionBatchName,
+    selectionRenewalDecisions,
+    selectionConflictAcknowledged,
     techItems,
     inqVendors,
     attach1Images,
@@ -724,6 +907,11 @@ export default function TemplateForms({
     procurementMethod,
     hasPublicUrl,
     hasSecurity,
+    selectionResultMode,
+    selectionBatchProjectIds,
+    selectionBatchName,
+    selectionRenewalDecisions,
+    selectionConflictAcknowledged,
     techItems,
     inqVendors,
     attach1Images,
@@ -978,6 +1166,130 @@ export default function TemplateForms({
     if (!formRef.current) return
     const fd = new FormData(formRef.current)
     const get = (name: string) => fd.get(name)?.toString() || ""
+    const isSelectionResultTemplate = selectedTemplate.includes("甄选结果签批表")
+    let resolvedSelectionProjects: SelectionResultBatchProject[] = []
+    let resolvedSelectionModel: ReturnType<typeof buildSelectionResultBatchModel> | null = null
+
+    if (isSelectionResultTemplate) {
+      const liveSharedFields: SelectionSharedFields = {
+        winnerName: get("gen_zx_winner_name"),
+        scope: get("gen_zx_scope") || "三级库",
+        industry: get("gen_zx_industry") || "/",
+        method: get("gen_zx_method") || "竞争性甄选",
+        rule: get("gen_zx_rule") || "标准方案",
+        standardPlan: get("gen_zx_std_plan") || "竞价法",
+        revenueCollection: revCollection,
+        expenditurePayment: expPayment,
+      }
+
+      if (selectionResultMode === "batch") {
+        if (selectionBatchProjectIds.length < 2) {
+          alert("多项目合并至少需要选择 2 个项目。")
+          return
+        }
+        if (selectionBatchLoading) {
+          alert("正在读取所选项目的甄选方案，请稍后再生成。")
+          return
+        }
+        if (selectionBatchLoadError) {
+          alert(`所选项目读取失败：${selectionBatchLoadError}`)
+          return
+        }
+        if (selectionBatchProjects.length !== selectionBatchProjectIds.length) {
+          alert("所选项目数据尚未完整加载，请返回甄选信息页检查。")
+          return
+        }
+        if (!selectionBatchName.trim()) {
+          alert("请填写合并项目名称。")
+          return
+        }
+        resolvedSelectionProjects = selectionBatchProjects.map(project => project.projectId === projectId
+          ? { ...project, sharedFields: liveSharedFields, projectBackground }
+          : project)
+      } else {
+        if (currentSchemeStage !== "post_selection") {
+          alert("甄选结果签批表必须基于“甄选后”方案生成，请先切换或标注甄选后方案。")
+          return
+        }
+        const zxPreCostIt = preSelectionCostIt
+          ?? (preSelectionCostItPromiseRef.current ? await preSelectionCostItPromiseRef.current : null)
+        const manualLimit = Number(selectionFeeData.limit ?? projectData.selection_fee_limit ?? 0)
+        if (!zxPreCostIt && manualLimit <= 0) {
+          alert("未找到甄选前方案且未手填甄选限价，不能生成甄选结果签批表。")
+          return
+        }
+        resolvedSelectionProjects = [buildLiveSelectionResultProject({
+          projectId: projectId || "current-project",
+          projectData,
+          metrics,
+          projectBackground,
+          preSelectionCostIt: zxPreCostIt || {},
+          preSchemeId: preSchemeId || "",
+          preSchemeName: preSchemeName || "",
+          postSchemeId: currentSchemeId || "",
+          postSchemeName: currentSchemeLabel || "",
+          sharedFields: liveSharedFields,
+        })]
+      }
+
+      const invalidProjects = resolvedSelectionProjects.filter(
+        project => project.validationErrors.length > 0 || project.missingMetrics.length > 0,
+      )
+      if (invalidProjects.length > 0) {
+        const detail = invalidProjects.map(project => {
+          const issues = [
+            ...(project.validationErrors.length ? [`财务 0 容差错误 ${project.validationErrors.length} 项`] : []),
+            ...(project.missingMetrics.length ? [`缺少${project.missingMetrics.join("、")}`] : []),
+          ]
+          return `${project.projectName}：${issues.join("；")}`
+        }).join("\n")
+        alert(`以下项目未通过正式材料校验，不能生成：\n${detail}`)
+        return
+      }
+
+      const conflicts = detectSelectionSharedConflicts(resolvedSelectionProjects)
+      const blockingConflicts = conflicts.filter(conflict => conflict.blocking)
+      if (blockingConflicts.length > 0) {
+        alert(`以下公共字段不一致，请拆分签批表或统一各项目已保存资料：\n${blockingConflicts.map(conflict => `- ${conflict.label}`).join("\n")}`)
+        return
+      }
+      const overrideConflicts = conflicts.filter(conflict => !conflict.blocking)
+      if (overrideConflicts.length > 0 && !selectionConflictAcknowledged) {
+        alert(`以下字段存在差异，请在甄选信息页确认统一使用本页批次内容：\n${overrideConflicts.map(conflict => `- ${conflict.label}`).join("\n")}`)
+        return
+      }
+
+      const undecidedRenewals = resolvedSelectionProjects.filter(project =>
+        getSelectionRenewalAmount(project.projectData).gt(0)
+        && !selectionRenewalDecisions[project.projectId],
+      )
+      if (undecidedRenewals.length > 0) {
+        alert(`以下项目存在“专线/其他产品续签成本”，请先确认是否属于专线并计入立项金额：\n${undecidedRenewals.map(project => `- ${project.projectName}`).join("\n")}`)
+        return
+      }
+
+      resolvedSelectionModel = buildSelectionResultBatchModel(
+        resolvedSelectionProjects,
+        selectionRenewalDecisions,
+      )
+      const incompleteTables = [
+        ["甄选限价", resolvedSelectionModel.tableA, "A_SEQ"],
+        ["中选报价", resolvedSelectionModel.tableB, "B_SEQ"],
+        ["项目投入", resolvedSelectionModel.tableC, "C_SEQ"],
+        ["项目收入", resolvedSelectionModel.tableD, "D_SEQ"],
+        ["效益指标", resolvedSelectionModel.tableE, "E_SEQ"],
+      ].filter(([, rows, sequenceKey]) => (
+        rows as Record<string, string>[]
+      ).filter(row => row[sequenceKey as string]).length !== resolvedSelectionProjects.length)
+      if (incompleteTables.length > 0) {
+        alert(`以下明细表缺少一个或多个项目的有效数据，不能生成：${incompleteTables.map(([label]) => label).join("、")}`)
+        return
+      }
+      if (resolvedSelectionModel.approvalAmountExcl.gte(500000)) {
+        alert(`本批次立项金额为 ${resolvedSelectionModel.approvalAmountExcl.toFixed(2)} 元（不含税），已达到或超过 50 万元，不能使用“50万以下”模板。`)
+        return
+      }
+    }
 
     if (selectedTemplate.includes('会审')) {
       const activeQuotes = inqVendors
@@ -1105,6 +1417,10 @@ export default function TemplateForms({
     const isZero = (n: number) => Math.abs(n) < 0.005;
     const fmtYuan = (n: number) => n.toFixed(2);
     const fmtPct = (x: any) => isFinite(x) && x !== null && x !== "" && !isNaN(Number(x)) ? (Number(x) * 100).toFixed(2) + '%' : '--';
+    const fmtTaxRate = (value: any) => {
+      const numeric = Number(value)
+      return Number.isFinite(numeric) && numeric > 0 ? `${numeric}%` : ""
+    }
     const subjectDetailName = (subject: (typeof ICT_SUBJECT_DEFINITIONS)[number], item: any) => {
       const resolved = resolveBillingSubjectPresentation(subject, item);
       const baseName = resolved.billingSubjectName || resolved.standardName;
@@ -1179,113 +1495,13 @@ export default function TemplateForms({
 
     const leaderLine = totalRevIncl >= 3000000 ? "分管领导（签字）：________________" : "";
 
-    // ===== 甄选结果签批表 专属变量（单项目；子项目合并留至二期）=====
-    const isSelectionResultTemplate = selectedTemplate.includes('甄选结果签批表')
-    const zxProjName = projectData.basic?.proj_name || ""
-    const fmtTaxRate = (t: any) => { const n = Number(t); return isFinite(n) && n > 0 ? `${n}%` : "" }
-    const costIntegItem = projectData.cost?.it?.integration || null
-    const zxIntegTax = fmtTaxRate(costIntegItem?.tax) || "6%"
-
-    // 甄选限价来源：手填优先；为空则取甄选前方案 IT 投入（跨方案读取，可能仍在加载中，兜底 await）
-    const zxPreCostIt = isSelectionResultTemplate
-      ? (preSelectionCostIt ?? (preSelectionCostItPromiseRef.current ? await preSelectionCostItPromiseRef.current : null))
-      : null
-
-    // 甄选子表行构建：IT 投入科目逐行展开（不合并），首行带项目名，其余留空承接
-    const buildZxItCostRows = (source: Record<string, any> | null | undefined, prefix: "A" | "B") => {
-      const rows: Record<string, string>[] = []
-      let seq = 1
-      let named = false
-      IT_COST_SUBJECTS.forEach(subject => {
-        const item = source?.[subject.key]
-        const excl = Number(item?.excl || 0)
-        if (isZero(excl)) return
-        if (prefix === "A") {
-          rows.push({
-            A_SEQ: String(seq++),
-            A_NAME: named ? "" : zxProjName,
-            A_FEE_TYPE: subjectDetailName(subject, item),
-            A_TAX_RATE: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
-            A_LIMIT: fmtYuan(excl),
-          })
-        } else {
-          rows.push({
-            B_SEQ: String(seq++),
-            B_NAME: named ? "" : zxProjName,
-            B_TYPE: subjectDetailName(subject, item),
-            B_EXCL: fmtYuan(excl),
-            B_TAX_RATE: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
-            B_INCL: fmtYuan(Number(item?.incl || 0)),
-          })
-        }
-        named = true
-      })
-      return rows
-    }
-
-    // 子表 A：甄选限价明细。手填限价 → 单行；否则按甄选前方案 IT 科目逐行
-    const zxManualLimit = Number(selectionFeeData.limit ?? projectData.selection_fee_limit ?? 0)
-    let zxTableA: Record<string, string>[]
-    let zxLimitExcl: number
-    if (zxManualLimit > 0) {
-      zxLimitExcl = zxManualLimit
-      zxTableA = [{ A_SEQ: "1", A_NAME: zxProjName, A_FEE_TYPE: "集成费", A_TAX_RATE: zxIntegTax, A_LIMIT: fmtYuan(zxManualLimit) }]
-    } else if (zxPreCostIt) {
-      zxTableA = buildZxItCostRows(zxPreCostIt, "A")
-      zxLimitExcl = sumItCostSource(zxPreCostIt).excl
-    } else {
-      zxTableA = []
-      zxLimitExcl = 0
-    }
-    // 子表 B：中选候选人报价明细，按甄选后（当前）方案 IT 投入科目逐行；合计即中选金额
-    const zxTableB = buildZxItCostRows(projectData.cost?.it, "B")
-    const zxItTotals = sumItCostSource(projectData.cost?.it)
-    const zxWinnerExcl = zxItTotals.excl
-    const zxWinnerIncl = zxItTotals.incl
-    // 子表 C/D：投入、收入明细（按非零科目逐条展开，首行带子项目名，其余留空承接）
-    const buildZxDetailRows = (side: IctSubjectSide, prefix: "C" | "D") => {
-      const rows: Record<string, string>[] = []
-      let seq = 1
-      let named = false
-      ICT_SUBJECT_DEFINITIONS.filter(s => s.side === side).forEach(subject => {
-        const item = getProjectDataSubjectItem(projectData, subject)
-        const excl = Number(item?.excl || 0)
-        if (isZero(excl)) return
-        rows.push({
-          [`${prefix}_SEQ`]: String(seq++),
-          [`${prefix}_NAME`]: named ? "" : zxProjName,
-          [`${prefix}_TYPE`]: subjectDetailName(subject, item),
-          [`${prefix}_EXCL`]: fmtYuan(excl),
-          [`${prefix}_TAX_RATE`]: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
-          [`${prefix}_INCL`]: fmtYuan(Number(item?.incl || 0)),
-        })
-        named = true
-      })
-      return rows
-    }
-    const zxSideTotals = (side: IctSubjectSide) => {
-      let excl = 0, incl = 0
-      ICT_SUBJECT_DEFINITIONS.filter(s => s.side === side).forEach(subject => {
-        const item = getProjectDataSubjectItem(projectData, subject)
-        excl += Number(item?.excl || 0)
-        incl += Number(item?.incl || 0)
-      })
-      return { excl, incl }
-    }
-    const zxTableC = buildZxDetailRows("cost", "C")
-    const zxTableD = buildZxDetailRows("revenue", "D")
-    const zxCostTot = zxSideTotals("cost")
-    const zxRevTot = zxSideTotals("revenue")
-    // 子表 E：净现值率、毛利率、IT 净现值率（1 行）
-    const zxTableE = [{
-      E_SEQ: "1",
-      E_NAME: zxProjName,
-      E_NPV_RATE: fmtPct(metrics?.npv_rate),
-      E_MARGIN: fmtPct(metrics?.margin_rate),
-      E_IT_NPV: fmtPct(metrics?.it_npv_rate),
-    }]
-
-    // 甄选叙述字段（表单可覆盖，留空取默认）
+    // ===== 甄选结果签批表专属变量：单项目与多项目共用同一批次模型 =====
+    const zxModel = resolvedSelectionModel
+    const zxProjName = isSelectionResultTemplate
+      ? selectionResultMode === "batch"
+        ? selectionBatchName.trim()
+        : resolvedSelectionProjects[0]?.projectName || projectData.basic?.proj_name || ""
+      : projectData.basic?.proj_name || ""
     const zxScope = get('gen_zx_scope') || "三级库"
     const zxIndustry = get('gen_zx_industry') || "/"
     const zxMethod = get('gen_zx_method') || "竞争性甄选"
@@ -1294,15 +1510,22 @@ export default function TemplateForms({
     const zxContentDesc = get('gen_zx_content_desc') || `标包1合作伙伴提供${zxProjName || "相关"}服务`
     const zxIsSme = get('gen_zx_is_sme') || "否"
     const zxWinnerName = get('gen_zx_winner_name') || ""
+    const zxWinnerTaxRates = new Set((zxModel?.tableB || []).map(row => row.B_TAX_RATE).filter(Boolean))
+    const zxWinnerTaxDesc = zxWinnerTaxRates.size === 1
+      ? `税率${[...zxWinnerTaxRates][0]}`
+      : "各项目税率详见中选报价明细表"
     const zxWinnerDesc = zxWinnerName
-      ? `标包1：${zxWinnerName}，不含税总金额${fmtYuan(zxWinnerExcl)}元，含税总金额为${fmtYuan(zxWinnerIncl)}元，中选份额100%。其中税率${zxIntegTax}，不含税金额${fmtYuan(zxWinnerExcl)}元，含税总金额为${fmtYuan(zxWinnerIncl)}元。`
+      ? `标包1：${zxWinnerName}，不含税总金额${zxModel?.totalWinnerExcl.toFixed(2) || "0.00"}元，含税总金额为${zxModel?.totalWinnerIncl.toFixed(2) || "0.00"}元，中选份额100%。${zxWinnerTaxDesc}。`
       : ""
-    // 甄选后投入叙述：去掉立项版“参考三家询价”后缀
-    const zxInvestmentSituation = `总投入${fmtYuan(totalCost)}元${investmentDetailGroups ? `；其中${investmentDetailGroups}` : ""}。`
-    const zxPayback = metrics?.dynamic_payback && metrics.dynamic_payback !== "--" ? `${metrics.dynamic_payback}年` : "--"
+    const zxProjectYears = [...new Set(resolvedSelectionProjects.map(project => Number(project.projectData.basic?.project_years || 1)))]
+    const zxContractDuration = zxProjectYears.length === 1 ? `${zxProjectYears[0]}年` : "详见各子项目"
+    const zxPaybackValues = [...new Set(resolvedSelectionProjects.map(project => String(project.metrics?.dynamic_payback || "--")))]
+    const zxPayback = zxPaybackValues.length === 1 && zxPaybackValues[0] !== "--" ? `${zxPaybackValues[0]}年` : "详见各子项目"
+    const zxItContent = isSelectionResultTemplate ? selectionBatchItContent(resolvedSelectionProjects) : itContentStr
+    const zxCtContent = isSelectionResultTemplate ? selectionBatchCtContent(resolvedSelectionProjects) : ctContentStr
 
     const variables: any = {
-      'PROJECT_NAME': projectData.basic?.proj_name || "",
+      'PROJECT_NAME': zxProjName,
       'CUSTOMER_NAME': projectData.basic?.customer_name || "",
       'PROJECT_YEARS': String(projectData.basic?.project_years || 1),
 
@@ -1313,8 +1536,8 @@ export default function TemplateForms({
       'ONSITE_SUPPORT': get('gen_onsite_support'),
       'PROJECT_BACKGROUND': projectBackground,
       'PROJECT_BUSINESS_COMPOSITION': projectBusinessComposition,
-      'IT_CONTENT': itContentStr,
-      'CT_CONTENT': ctContentStr,
+      'IT_CONTENT': zxItContent,
+      'CT_CONTENT': zxCtContent,
       'OTHER_PRODUCT_CONTENT': otherProductContent,
       'TECH_SOLUTION': get('gen_tech_solution'),
       'SELF_THREE_Q': get('gen_self_three'),
@@ -1403,33 +1626,36 @@ export default function TemplateForms({
     }
 
     // 甄选结果签批表：覆盖/补充叙述字段与 5 张子表（其余顶层字段复用立项签批表同名占位符）
-    if (isSelectionResultTemplate) {
+    if (isSelectionResultTemplate && zxModel) {
       Object.assign(variables, {
-        'PROJECT_INVESTMENT_SITUATION': zxInvestmentSituation,
-        'PROJECT_REVENUE_SITUATION': projectRevenueSituation,
-        'CONTRACT_DURATION': `${projectData.basic?.project_years || 1}年`,
+        'PROJECT_INVESTMENT_SITUATION': zxModel.investmentSituation,
+        'PROJECT_REVENUE_SITUATION': zxModel.revenueSituation,
+        'CONTRACT_DURATION': zxContractDuration,
         'DYNAMIC_PAYBACK_PERIOD': zxPayback,
         'IS_SME': zxIsSme,
         'SELECTION_CONTENT_DESC': zxContentDesc,
-        'SELECTION_LIMIT_TOTAL': fmtYuan(zxLimitExcl),
+        'SELECTION_LIMIT_TOTAL': zxModel.totalLimitExcl.toFixed(2),
         'SELECTION_SCOPE': zxScope,
         'SELECTION_INDUSTRY': zxIndustry,
         'SELECTION_METHOD': zxMethod,
         'SELECTION_RULE': zxRule,
         'SELECTION_STANDARD_PLAN': zxStdPlan,
         'WINNER_DESC': zxWinnerDesc,
-        'TABLE_A_LIMIT': JSON.stringify(zxTableA),
-        'TABLE_B_WINNER': JSON.stringify(zxTableB),
-        'TABLE_C_INVEST': JSON.stringify(zxTableC),
-        'TABLE_D_REVENUE': JSON.stringify(zxTableD),
-        'TABLE_E_NPV': JSON.stringify(zxTableE),
-        'A_TOTAL_LIMIT': fmtYuan(zxLimitExcl),
-        'B_TOTAL_EXCL': fmtYuan(zxWinnerExcl),
-        'B_TOTAL_INCL': fmtYuan(zxWinnerIncl),
-        'C_TOTAL_EXCL': fmtYuan(zxCostTot.excl),
-        'C_TOTAL_INCL': fmtYuan(zxCostTot.incl),
-        'D_TOTAL_EXCL': fmtYuan(zxRevTot.excl),
-        'D_TOTAL_INCL': fmtYuan(zxRevTot.incl),
+        'TABLE_A_LIMIT': JSON.stringify(zxModel.tableA),
+        'TABLE_B_WINNER': JSON.stringify(zxModel.tableB),
+        'TABLE_C_INVEST': JSON.stringify(zxModel.tableC),
+        'TABLE_D_REVENUE': JSON.stringify(zxModel.tableD),
+        'TABLE_E_NPV': JSON.stringify(zxModel.tableE),
+        'A_TOTAL_LIMIT': zxModel.totalLimitExcl.toFixed(2),
+        'B_TOTAL_EXCL': zxModel.totalWinnerExcl.toFixed(2),
+        'B_TOTAL_INCL': zxModel.totalWinnerIncl.toFixed(2),
+        'C_TOTAL_EXCL': zxModel.totalCostExcl.toFixed(2),
+        'C_TOTAL_INCL': zxModel.totalCostIncl.toFixed(2),
+        'D_TOTAL_EXCL': zxModel.totalRevenueExcl.toFixed(2),
+        'D_TOTAL_INCL': zxModel.totalRevenueIncl.toFixed(2),
+        // 模板“立项金额”占位符沿用 IT_INVESTMENT；甄选结果表按业务规则覆盖为
+        // 全部 IT 投入 + CT 专线建设/维护/带宽 + 经确认属于专线的续签成本。
+        'IT_INVESTMENT': zxModel.approvalAmountExcl.toFixed(2),
       })
     }
 
@@ -1622,10 +1848,23 @@ export default function TemplateForms({
   const hasText = (value: unknown) => String(value ?? "").trim().length > 0
   const hasAnyInquiryVendor = inqVendors.some(v => hasText(v.vendorName) || Number(v.amount || 0) > 0)
   const projectInfoForConfirmation = {
-    projectName: projectData.basic?.proj_name || "",
+    projectName: isSelectionResultDocTemplate && selectionResultMode === "batch"
+      ? selectionBatchName
+      : projectData.basic?.proj_name || "",
     customerName: projectData.basic?.customer_name || "",
     projectYears: projectData.basic?.project_years || 1,
   }
+  const selectionRenewalProjectsPreview = selectionResultMode === "batch"
+    ? selectionBatchModelPreview?.renewalProjects || []
+    : singleRenewalAmount.gt(0) && projectId
+      ? [{ projectId, projectName: projectData.basic?.proj_name || "当前项目", amountExcl: singleRenewalAmount }]
+      : []
+  const selectionRenewalDecisionsComplete = selectionRenewalProjectsPreview.every(
+    project => Boolean(selectionRenewalDecisions[project.projectId]),
+  )
+  const selectionApprovalAmountPreview = selectionResultMode === "batch"
+    ? selectionBatchModelPreview?.approvalAmountExcl || null
+    : singleApprovalAmount
   const meetingCompletionItems: TemplateCompletionItem[] = [
     { label: "会议开始日期", filled: hasText(getFormValue("gen_meet_start", todayStr)) },
     { label: "会议结束日期", filled: hasText(getFormValue("gen_meet_end", todayStr)) },
@@ -1680,6 +1919,13 @@ export default function TemplateForms({
     { label: "附件2招标材料", filled: !hasPublicUrl || attach2Images.length > 0 },
   ]
   const selectionResultCompletionItems: TemplateCompletionItem[] = [
+    {
+      label: "甄选后方案",
+      filled: selectionResultMode === "batch"
+        ? selectionBatchProjectIds.length >= 2 && selectionBatchProjects.length === selectionBatchProjectIds.length
+        : currentSchemeStage === "post_selection",
+    },
+    { label: "合并项目名称", filled: selectionResultMode === "single" || hasText(selectionBatchName) },
     { label: "项目背景", filled: hasText(projectBackground) },
     { label: "中选合作伙伴", filled: hasText(getFormValue("gen_zx_winner_name")) },
     { label: "甄选范围", filled: hasText(getFormValue("gen_zx_scope", "三级库")) },
@@ -1688,6 +1934,10 @@ export default function TemplateForms({
     { label: "供应商是否中小企业", filled: true },
     { label: "收入侧收款方式", filled: hasText(revCollection) },
     { label: "支出侧付款方式", filled: hasText(expPayment) },
+    { label: "公共字段一致", filled: selectionResultMode === "single" || selectionBlockingConflicts.length === 0 },
+    { label: "批次字段差异已确认", filled: selectionResultMode === "single" || selectionOverrideConflicts.length === 0 || selectionConflictAcknowledged },
+    { label: "续签成本归类已确认", filled: selectionRenewalDecisionsComplete },
+    { label: "立项金额低于50万元", filled: Boolean(selectionApprovalAmountPreview && selectionApprovalAmountPreview.lt(500000)) },
   ]
   const meetingCompletion = getTemplateCompletion(meetingCompletionItems)
   const approvalCompletion = getTemplateCompletion(approvalCompletionItems)
@@ -2428,14 +2678,205 @@ export default function TemplateForms({
             activeTab={selectionResultTab}
             onTabChange={setSelectionResultTab}
             completion={selectionResultCompletion}
-            metrics={metrics}
+            metrics={selectionResultMode === "batch" ? undefined : metrics}
             onGenerate={handleGenerate}
           >
             {selectionResultTab === "content" && (
               <TemplateTabSection>
                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <TemplateSubmoduleCard className="xl:col-span-2">
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-foreground">生成范围</div>
+                          <p className="mt-0.5 text-xs text-secondary-foreground">
+                            多项目模式只读取各项目已保存的甄选前/甄选后方案，不修改项目数据。
+                          </p>
+                        </div>
+                        <div className="flex rounded-lg bg-muted p-1">
+                          {(["single", "batch"] as const).map(mode => (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => setSelectionMode(mode)}
+                              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${selectionResultMode === mode ? "bg-card text-primary shadow-sm" : "text-secondary-foreground hover:text-foreground"}`}
+                            >
+                              {mode === "single" ? "当前项目" : "多项目合并"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {selectionResultMode === "batch" && (
+                        <>
+                          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)]">
+                            <div className="rounded-lg bg-muted/60 p-3">
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <span className="text-xs font-semibold text-foreground">选择项目</span>
+                                <span className="text-[11px] text-secondary-foreground numeric-value">
+                                  已选 {selectionBatchProjectIds.length} 个
+                                </span>
+                              </div>
+                              <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+                                {selectionCandidatesLoading ? (
+                                  <div className="rounded-md bg-card/70 px-3 py-3 text-xs text-secondary-foreground">正在读取项目方案…</div>
+                                ) : selectionCandidates.length === 0 ? (
+                                  <div className="rounded-md bg-card/70 px-3 py-3 text-xs text-secondary-foreground">当前工作区没有可供合并的 ICT 项目。</div>
+                                ) : selectionCandidates.map(candidate => {
+                                  const checked = selectionBatchProjectIds.includes(candidate.project.id)
+                                  return (
+                                    <label
+                                      key={candidate.project.id}
+                                      className={`flex items-start gap-2 rounded-md px-3 py-2.5 ${candidate.eligible ? "bg-card/80 cursor-pointer hover:bg-card" : "bg-muted/80 opacity-60 cursor-not-allowed"}`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        disabled={!candidate.eligible}
+                                        onChange={() => toggleSelectionBatchProject(candidate)}
+                                        className="mt-0.5 h-4 w-4"
+                                      />
+                                      <span className="min-w-0 flex-1">
+                                        <span className="block truncate text-xs font-semibold text-foreground">{candidate.project.name}</span>
+                                        <span className="mt-0.5 block text-[10px] text-secondary-foreground">
+                                          {candidate.eligible
+                                            ? `甄选前：${candidate.preScheme?.name} · 甄选后：${candidate.postScheme?.name}`
+                                            : candidate.reason}
+                                        </span>
+                                      </span>
+                                    </label>
+                                  )
+                                })}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col gap-3 rounded-lg bg-primary-soft/45 p-3">
+                              <label className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold text-foreground">合并项目名称</span>
+                                <input
+                                  type="text"
+                                  value={selectionBatchName}
+                                  onChange={event => {
+                                    selectionBatchNameCustomizedRef.current = true
+                                    setSelectionBatchName(event.target.value)
+                                  }}
+                                  className="rounded-md border border-input bg-card px-3 py-2 text-sm"
+                                  placeholder="如：高楼消防检测等7个ICT项目"
+                                />
+                              </label>
+                              <div>
+                                <div className="mb-1.5 text-xs font-semibold text-foreground">文档排列顺序</div>
+                                <div className="space-y-1">
+                                  {selectionBatchProjectIds.map((selectedId, index) => {
+                                    const candidate = selectionCandidates.find(item => item.project.id === selectedId)
+                                    if (!candidate) return null
+                                    return (
+                                      <div key={selectedId} className="flex items-center gap-2 rounded-md bg-card/80 px-2.5 py-2 text-xs">
+                                        <span className="numeric-value text-secondary-foreground">{index + 1}</span>
+                                        <span className="min-w-0 flex-1 truncate font-semibold">{candidate.project.name}</span>
+                                        <button type="button" disabled={index === 0} onClick={() => moveSelectionBatchProject(selectedId, -1)} className="rounded-sm bg-muted px-1.5 py-0.5 disabled:opacity-30" aria-label="上移项目">↑</button>
+                                        <button type="button" disabled={index === selectionBatchProjectIds.length - 1} onClick={() => moveSelectionBatchProject(selectedId, 1)} className="rounded-sm bg-muted px-1.5 py-0.5 disabled:opacity-30" aria-label="下移项目">↓</button>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {selectionBatchLoading && (
+                            <div className="rounded-lg bg-primary-soft/50 px-3 py-2 text-xs text-primary">正在汇总所选项目的五张明细表…</div>
+                          )}
+                          {selectionBatchLoadError && (
+                            <div className="rounded-lg bg-destructive-soft px-3 py-2 text-xs text-destructive">{selectionBatchLoadError}</div>
+                          )}
+                          {selectionBatchModelPreview && (
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                              <div className="rounded-md bg-muted/70 px-3 py-2">
+                                <div className="text-[10px] text-secondary-foreground">甄选限价</div>
+                                <div className="mt-0.5 text-sm font-semibold numeric-value">{selectionBatchModelPreview.totalLimitExcl.toFixed(2)}</div>
+                              </div>
+                              <div className="rounded-md bg-muted/70 px-3 py-2">
+                                <div className="text-[10px] text-secondary-foreground">中选 IT 金额</div>
+                                <div className="mt-0.5 text-sm font-semibold numeric-value">{selectionBatchModelPreview.totalWinnerExcl.toFixed(2)}</div>
+                              </div>
+                              <div className="rounded-md bg-muted/70 px-3 py-2">
+                                <div className="text-[10px] text-secondary-foreground">立项金额</div>
+                                <div className="mt-0.5 text-sm font-semibold text-primary numeric-value">{selectionBatchModelPreview.approvalAmountExcl.toFixed(2)}</div>
+                              </div>
+                              <div className="rounded-md bg-muted/70 px-3 py-2">
+                                <div className="text-[10px] text-secondary-foreground">50万元门槛</div>
+                                <div className={`mt-0.5 text-sm font-semibold numeric-value ${selectionBatchModelPreview.approvalAmountExcl.lt(500000) ? "text-success" : "text-destructive"}`}>
+                                  {selectionBatchModelPreview.approvalAmountExcl.lt(500000) ? "通过" : "不通过"}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {selectionBlockingConflicts.length > 0 && (
+                            <div className="rounded-lg bg-destructive-soft p-3 text-xs text-destructive">
+                              <div className="font-semibold">以下公共字段不一致，需拆分签批表或先统一项目资料：</div>
+                              <div className="mt-1">{selectionBlockingConflicts.map(conflict => conflict.label).join("、")}</div>
+                            </div>
+                          )}
+                          {selectionOverrideConflicts.length > 0 && selectionBlockingConflicts.length === 0 && (
+                            <label className="flex items-start gap-2 rounded-lg bg-warning-soft p-3 text-xs text-foreground">
+                              <input
+                                type="checkbox"
+                                checked={selectionConflictAcknowledged}
+                                onChange={event => setSelectionConflictAcknowledged(event.target.checked)}
+                                className="mt-0.5 h-4 w-4"
+                              />
+                              <span>
+                                <span className="block font-semibold">{selectionOverrideConflicts.map(conflict => conflict.label).join("、")}存在差异</span>
+                                <span className="mt-0.5 block text-secondary-foreground">确认后，整批统一使用本页填写的批次字段。</span>
+                              </span>
+                            </label>
+                          )}
+                        </>
+                      )}
+
+                      <div className="rounded-lg bg-muted/60 p-3">
+                        <div className="text-xs font-semibold text-foreground">立项金额口径</div>
+                        <p className="mt-1 text-[11px] leading-relaxed text-secondary-foreground">
+                          不含税 IT 投入 + CT 专线建设、专线维护、专线带宽成本；CT 其他产品及非 IT/CT 成本不计入。
+                        </p>
+                        {selectionRenewalProjectsPreview.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            {selectionRenewalProjectsPreview.map(project => (
+                              <div key={project.projectId} className="rounded-md bg-card/80 px-3 py-2.5">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="text-xs font-semibold">{project.projectName}</span>
+                                  <span className="text-xs numeric-value text-secondary-foreground">续签成本 {formatSelectionMoney(project.amountExcl)} 元</span>
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                                  <label className="flex items-center gap-1.5 rounded-md bg-muted px-2 py-1.5">
+                                    <input type="radio" name={`renewal-${project.projectId}`} checked={selectionRenewalDecisions[project.projectId] === "include"} onChange={() => setSelectionRenewalDecision(project.projectId, "include")} />
+                                    属于专线，计入
+                                  </label>
+                                  <label className="flex items-center gap-1.5 rounded-md bg-muted px-2 py-1.5">
+                                    <input type="radio" name={`renewal-${project.projectId}`} checked={selectionRenewalDecisions[project.projectId] === "exclude"} onChange={() => setSelectionRenewalDecision(project.projectId, "exclude")} />
+                                    属于其他产品，不计入
+                                  </label>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-3 flex items-center justify-between rounded-md bg-primary-soft/55 px-3 py-2">
+                          <span className="text-xs font-semibold">当前立项金额（不含税）</span>
+                          <span className="text-sm font-bold text-primary numeric-value">
+                            {selectionApprovalAmountPreview ? `${selectionApprovalAmountPreview.toFixed(2)} 元` : "待汇总"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </TemplateSubmoduleCard>
+
                   <div className="xl:col-span-2 rounded-lg bg-primary-soft/60 px-4 py-3 text-xs font-semibold text-secondary-foreground">
-                    {Number(selectionFeeData.limit ?? 0) > 0
+                    {selectionResultMode === "batch"
+                      ? `合并甄选限价：按所选项目逐项读取手填限价；未手填的项目自动取其甄选前方案 IT 投入，当前合计 ${selectionBatchModelPreview?.totalLimitExcl.toFixed(2) || "待汇总"} 元（不含税）。`
+                      : Number(selectionFeeData.limit ?? 0) > 0
                       ? `甄选限价：使用测算表手填值 ${Number(selectionFeeData.limit).toFixed(2)} 元（不含税）。`
                       : preSelectionCostIt
                         ? `甄选限价：自动取自甄选前方案${preSchemeName ? `「${preSchemeName}」` : ""}的 IT 投入合计 ${sumItCostSource(preSelectionCostIt).excl.toFixed(2)} 元（不含税）；如需覆盖，可在测算表“甄选费用”处手填甄选限价。`
@@ -2443,7 +2884,14 @@ export default function TemplateForms({
                   </div>
                   <TemplateSubmoduleCard className="xl:col-span-2">
                     <div className="flex flex-col gap-1">
-                      <div className="text-sm font-semibold text-foreground">项目背景</div>
+                      <CommonPresetFieldHeader
+                        fieldKey={PRESET_FIELD_KEYS.projectBackground}
+                        kind="text_snippet"
+                        value={projectBackground}
+                        onApply={setProjectBackground}
+                      >
+                        项目背景
+                      </CommonPresetFieldHeader>
                       <textarea
                         name="gen_proj_bg"
                         rows={4}
@@ -2457,10 +2905,16 @@ export default function TemplateForms({
 
                   <TemplateSubmoduleCard>
                     <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2 text-sm font-semibold">
+                      <CommonPresetFieldHeader
+                        fieldKey={PRESET_FIELD_KEYS.selectionResultWinnerName}
+                        kind="short_value"
+                        value={getFormValue("gen_zx_winner_name")}
+                        onApply={(nextValue) => handleFieldChange("gen_zx_winner_name", nextValue)}
+                        labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
+                      >
                         <span>中选合作伙伴</span>
                         <span className="text-xs text-secondary-foreground font-normal">用于生成中选候选人说明</span>
-                      </div>
+                      </CommonPresetFieldHeader>
                       <input
                         type="text"
                         name="gen_zx_winner_name"
@@ -2473,10 +2927,16 @@ export default function TemplateForms({
 
                   <TemplateSubmoduleCard>
                     <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2 text-sm font-semibold">
+                      <CommonPresetFieldHeader
+                        fieldKey={PRESET_FIELD_KEYS.selectionResultContentDescription}
+                        kind="text_snippet"
+                        value={getFormValue("gen_zx_content_desc")}
+                        onApply={(nextValue) => handleFieldChange("gen_zx_content_desc", nextValue)}
+                        labelClassName="flex min-w-0 items-center gap-2 text-sm font-semibold"
+                      >
                         <span>甄选内容说明</span>
                         <span className="text-xs text-secondary-foreground font-normal">为空则用系统默认</span>
-                      </div>
+                      </CommonPresetFieldHeader>
                       <input
                         type="text"
                         name="gen_zx_content_desc"
@@ -2490,23 +2950,58 @@ export default function TemplateForms({
                   <TemplateSubmoduleCard>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div className="flex flex-col gap-1">
-                        <div className="text-sm font-semibold">甄选范围</div>
+                        <CommonPresetFieldHeader
+                          fieldKey={PRESET_FIELD_KEYS.selectionResultScope}
+                          kind="short_value"
+                          value={getFormValue("gen_zx_scope", "三级库")}
+                          onApply={(nextValue) => handleFieldChange("gen_zx_scope", nextValue)}
+                        >
+                          甄选范围
+                        </CommonPresetFieldHeader>
                         <input type="text" name="gen_zx_scope" {...getBind("gen_zx_scope", "三级库")} className="bg-card border border-input px-3 py-2 rounded-md" placeholder="三级库" />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <div className="text-sm font-semibold">甄选行业/场景</div>
+                        <CommonPresetFieldHeader
+                          fieldKey={PRESET_FIELD_KEYS.selectionResultIndustryScenario}
+                          kind="short_value"
+                          value={getFormValue("gen_zx_industry", "/")}
+                          onApply={(nextValue) => handleFieldChange("gen_zx_industry", nextValue)}
+                        >
+                          甄选行业/场景
+                        </CommonPresetFieldHeader>
                         <input type="text" name="gen_zx_industry" {...getBind("gen_zx_industry", "/")} className="bg-card border border-input px-3 py-2 rounded-md" placeholder="/" />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <div className="text-sm font-semibold">甄选方式</div>
+                        <CommonPresetFieldHeader
+                          fieldKey={PRESET_FIELD_KEYS.selectionResultMethod}
+                          kind="short_value"
+                          value={getFormValue("gen_zx_method", "竞争性甄选")}
+                          onApply={(nextValue) => handleFieldChange("gen_zx_method", nextValue)}
+                        >
+                          甄选方式
+                        </CommonPresetFieldHeader>
                         <input type="text" name="gen_zx_method" {...getBind("gen_zx_method", "竞争性甄选")} className="bg-card border border-input px-3 py-2 rounded-md" placeholder="竞争性甄选" />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <div className="text-sm font-semibold">甄选规则</div>
+                        <CommonPresetFieldHeader
+                          fieldKey={PRESET_FIELD_KEYS.selectionResultRule}
+                          kind="short_value"
+                          value={getFormValue("gen_zx_rule", "标准方案")}
+                          onApply={(nextValue) => handleFieldChange("gen_zx_rule", nextValue)}
+                        >
+                          甄选规则
+                        </CommonPresetFieldHeader>
                         <input type="text" name="gen_zx_rule" {...getBind("gen_zx_rule", "标准方案")} className="bg-card border border-input px-3 py-2 rounded-md" placeholder="标准方案" />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <div className="text-sm font-semibold">标准方案说明</div>
+                        <CommonPresetFieldHeader
+                          fieldKey={PRESET_FIELD_KEYS.selectionResultStandardPlan}
+                          kind="text_snippet"
+                          value={getFormValue("gen_zx_std_plan", "竞价法")}
+                          onApply={(nextValue) => handleFieldChange("gen_zx_std_plan", nextValue)}
+                        >
+                          标准方案说明
+                        </CommonPresetFieldHeader>
                         <input type="text" name="gen_zx_std_plan" {...getBind("gen_zx_std_plan", "竞价法")} className="bg-card border border-input px-3 py-2 rounded-md" placeholder="竞价法" />
                       </div>
                       <div className="flex flex-col gap-1">
@@ -2522,11 +3017,25 @@ export default function TemplateForms({
                   <TemplateSubmoduleCard>
                     <div className="grid grid-cols-1 gap-4">
                       <div className="flex flex-col gap-1">
-                        <div className="text-sm font-semibold">收入侧收款方式（客户支付）</div>
+                        <CommonPresetFieldHeader
+                          fieldKey={PRESET_FIELD_KEYS.paymentRevenueCollectionMethod}
+                          kind="text_snippet"
+                          value={revCollection}
+                          onApply={setRevCollection}
+                        >
+                          收入侧收款方式（客户支付）
+                        </CommonPresetFieldHeader>
                         <input type="text" name="gen_rev_collection" value={revCollection} onChange={e => setRevCollection(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" placeholder="请输入客户支付方式..." />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <div className="text-sm font-semibold">支出侧付款方式（合作伙伴支付）</div>
+                        <CommonPresetFieldHeader
+                          fieldKey={PRESET_FIELD_KEYS.paymentExpenditurePaymentMethod}
+                          kind="text_snippet"
+                          value={expPayment}
+                          onApply={setExpPayment}
+                        >
+                          支出侧付款方式（合作伙伴支付）
+                        </CommonPresetFieldHeader>
                         <input type="text" name="gen_exp_payment" value={expPayment} onChange={e => setExpPayment(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md" placeholder="请输入合作伙伴支付方式..." />
                       </div>
                       <label className="text-sm font-semibold flex items-center gap-2">
@@ -2542,7 +3051,7 @@ export default function TemplateForms({
             {selectionResultTab === "confirm" && (
               <TemplateConfirmationPanel
                 templateName={selectedTemplate}
-                currentSchemeLabel={currentSchemeLabel}
+                currentSchemeLabel={selectionResultMode === "batch" ? `已选择 ${selectionBatchProjectIds.length} 个甄选后方案` : currentSchemeLabel}
                 completion={selectionResultCompletion}
                 onGenerate={handleGenerate}
                 {...projectInfoForConfirmation}
