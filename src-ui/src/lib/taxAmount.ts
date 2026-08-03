@@ -87,6 +87,36 @@ export type TaxSplitPart = {
   excl: number;
 };
 
+export type SerializedTaxSplitPart = {
+  incl_tax: string;
+  excl_tax: string;
+};
+
+/** 保存/快照统一使用 snake_case 金额字符串，避免不同状态层各自拼装而丢字段。 */
+export const serializeTaxSplitParts = (parts: TaxSplitPart[]): SerializedTaxSplitPart[] =>
+  parts.map(part => ({
+    incl_tax: roundMoneyHalfUp(part.incl).toFixed(2),
+    excl_tax: roundMoneyHalfUp(part.excl).toFixed(2),
+  }));
+
+const moneyToCents = (value: unknown): number =>
+  new Decimal(toSafeNumber(value))
+    .mul(100)
+    .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
+    .toNumber();
+
+const buildTaxSplitParts = (
+  totalCents: number,
+  firstPartCents: number,
+  taxRatePercent: unknown,
+): TaxSplitPart[] => {
+  const secondPartCents = totalCents - firstPartCents;
+  return [firstPartCents, secondPartCents].map(cents => {
+    const partIncl = new Decimal(cents).div(100).toNumber();
+    return { incl: partIncl, excl: exclFromIncl(partIncl, taxRatePercent) };
+  });
+};
+
 /**
  * 把不可精确表示的含税总额拆成两笔各自闭合的子金额，和严格等于总额。
  * 对税率 1/3/5/6/9/13%、0.02～100 万元穷举验证过：对半拆分（floor(T/2)
@@ -97,10 +127,7 @@ export const splitInclAmount = (
   incl: unknown,
   taxRatePercent: unknown,
 ): TaxSplitPart[] | null => {
-  const totalCents = new Decimal(toSafeNumber(incl))
-    .mul(100)
-    .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
-    .toNumber();
+  const totalCents = moneyToCents(incl);
   if (totalCents <= 1) return null;
   const rate = toSafeNumber(taxRatePercent);
   const centsRepresentable = (cents: number): boolean =>
@@ -108,22 +135,59 @@ export const splitInclAmount = (
   if (centsRepresentable(totalCents)) return null;
 
   const half = Math.floor(totalCents / 2);
-  const buildParts = (aCents: number): TaxSplitPart[] => {
-    const bCents = totalCents - aCents;
-    return [aCents, bCents].map(cents => {
-      const partIncl = new Decimal(cents).div(100).toNumber();
-      return { incl: partIncl, excl: exclFromIncl(partIncl, rate) };
-    });
-  };
   for (let offset = 0; offset <= 100; offset++) {
     for (const aCents of offset === 0 ? [half] : [half - offset, half + offset]) {
       const bCents = totalCents - aCents;
       if (aCents < 1 || bCents < 1) continue;
       if (centsRepresentable(aCents) && centsRepresentable(bCents)) {
-        return buildParts(aCents);
+        return buildTaxSplitParts(totalCents, aCents, rate);
       }
     }
   }
+  return null;
+};
+
+/**
+ * 为税率组整体尾差寻找一个“只给建议”的单科目拆分方案。
+ *
+ * 与 splitInclAmount 不同，本函数允许原科目本身已经闭合；它只接受能够让
+ * 科目不含税合计精确变化 targetExclDelta（通常为 ±0.01 元）的两笔方案。
+ * 两笔含税之和保持不变，且每笔都必须能按不含税锚点双向闭合。
+ *
+ * 搜索以对半拆分为中心向外扩展 10 元。常用整数税率的舍入状态按很短周期
+ * 重复，该范围足以覆盖常见 1/3/5/6/9/13% 税率；找不到时返回 null，
+ * 上层只是不展示建议，绝不放宽 0 容差校验。
+ */
+export const splitInclAmountForExclDelta = (
+  incl: unknown,
+  taxRatePercent: unknown,
+  currentExcl: unknown,
+  targetExclDelta: unknown,
+): TaxSplitPart[] | null => {
+  const totalCents = moneyToCents(incl);
+  const targetExclCents = moneyToCents(currentExcl) + moneyToCents(targetExclDelta);
+  if (totalCents <= 1 || moneyToCents(targetExclDelta) === 0) return null;
+
+  const rate = toSafeNumber(taxRatePercent);
+  const half = Math.floor(totalCents / 2);
+  const maxOffset = Math.min(1000, Math.max(0, half - 1));
+
+  for (let offset = 0; offset <= maxOffset; offset++) {
+    const candidates = offset === 0 ? [half] : [half - offset, half + offset];
+    for (const firstPartCents of candidates) {
+      const secondPartCents = totalCents - firstPartCents;
+      if (firstPartCents < 1 || secondPartCents < 1) continue;
+
+      const firstIncl = new Decimal(firstPartCents).div(100).toNumber();
+      const secondIncl = new Decimal(secondPartCents).div(100).toNumber();
+      if (!isInclRepresentable(firstIncl, rate) || !isInclRepresentable(secondIncl, rate)) continue;
+
+      const parts = buildTaxSplitParts(totalCents, firstPartCents, rate);
+      const splitExclCents = parts.reduce((sum, part) => sum + moneyToCents(part.excl), 0);
+      if (splitExclCents === targetExclCents) return parts;
+    }
+  }
+
   return null;
 };
 
@@ -152,6 +216,21 @@ export const restoreTaxSplitParts = (
     .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
     .toNumber();
   return sumCents === totalCents ? parts : null;
+};
+
+/**
+ * Hydration 合并时优先读取当前状态层的拆分，缺失时回退到 lifecycle/snapshot。
+ * 返回统一 snake_case 结构，避免 cashflow assumptions 覆盖并擦除有效拆分。
+ */
+export const resolveSerializedTaxSplitParts = (
+  primaryRaw: unknown,
+  fallbackRaw: unknown,
+  totalIncl: unknown,
+  taxRatePercent: unknown,
+): SerializedTaxSplitPart[] | null => {
+  const parts = restoreTaxSplitParts(primaryRaw, totalIncl, taxRatePercent)
+    || restoreTaxSplitParts(fallbackRaw, totalIncl, taxRatePercent);
+  return parts ? serializeTaxSplitParts(parts) : null;
 };
 
 /** 整数分口径的不含税还原：round(含税分 × 100 ÷ (100 + 税率))。 */

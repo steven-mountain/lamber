@@ -8,10 +8,38 @@ fn get_excl(item: &IctItem) -> Decimal {
     if incl.is_zero() {
         return Decimal::ZERO;
     }
+    let divisor = Decimal::ONE + rate;
+    let round_money = |value: Decimal| {
+        value.round_dp_with_strategy(2, rust_decimal::RoundingStrategy::MidpointAwayFromZero)
+    };
+
+    // 已确认的科目拆分以逐笔不含税之和参与效益测算。后端再次验证两笔
+    // 含税合计、除税和反推闭合；任何损坏数据都回退到原单笔口径。
+    if let Some(parts) = item.split_parts.as_ref().filter(|parts| parts.len() >= 2) {
+        let mut split_incl = Decimal::ZERO;
+        let mut split_excl = Decimal::ZERO;
+        let mut valid = true;
+        for part in parts {
+            let part_incl = Decimal::from_str(&part.incl_tax).unwrap_or(Decimal::ZERO);
+            let part_excl = Decimal::from_str(&part.excl_tax).unwrap_or(Decimal::ZERO);
+            if part_incl <= Decimal::ZERO
+                || part_excl <= Decimal::ZERO
+                || round_money(part_incl / divisor) != part_excl
+                || round_money(part_excl * divisor) != part_incl
+            {
+                valid = false;
+                break;
+            }
+            split_incl += part_incl;
+            split_excl += part_excl;
+        }
+        if valid && round_money(split_incl) == round_money(incl) {
+            return round_money(split_excl);
+        }
+    }
     // 财务口径：四舍五入（half-up），与前端 decimal.js ROUND_HALF_UP 一致。
     // round_dp 默认银行家舍入（midpoint 取偶），在 .005 边界会与业务系统差 1 分。
-    (incl / (Decimal::ONE + rate))
-        .round_dp_with_strategy(2, rust_decimal::RoundingStrategy::MidpointAwayFromZero)
+    round_money(incl / divisor)
 }
 
 fn normalize_distribution(input: &[f64]) -> Vec<Decimal> {
@@ -435,6 +463,7 @@ mod tests {
             tax_rate: "0".to_string(),
             custom_subject_name: None,
             billing_subject_name: None,
+            split_parts: None,
         }
     }
 
@@ -444,6 +473,7 @@ mod tests {
             tax_rate: tax_rate.to_string(),
             custom_subject_name: None,
             billing_subject_name: None,
+            split_parts: None,
         }
     }
 
@@ -457,6 +487,25 @@ mod tests {
 
     fn decimal(value: &str) -> Decimal {
         Decimal::from_str(value).unwrap()
+    }
+
+    #[test]
+    fn split_item_uses_valid_parts_and_rejects_damaged_parts() {
+        let mut split_item = item_with_tax("826.00", "6");
+        split_item.split_parts = Some(vec![
+            crate::benefit::models::IctTaxSplitPart {
+                incl_tax: "413.00".to_string(),
+                excl_tax: "389.62".to_string(),
+            },
+            crate::benefit::models::IctTaxSplitPart {
+                incl_tax: "413.00".to_string(),
+                excl_tax: "389.62".to_string(),
+            },
+        ]);
+        assert_eq!(get_excl(&split_item), Decimal::from_str("779.24").unwrap());
+
+        split_item.split_parts.as_mut().unwrap()[1].incl_tax = "412.99".to_string();
+        assert_eq!(get_excl(&split_item), Decimal::from_str("779.25").unwrap());
     }
 
     fn input_with(

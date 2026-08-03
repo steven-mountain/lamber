@@ -37,7 +37,14 @@ function loadTs(relativePath) {
   return loadTsFile(path.join(__dirname, "../src/lib", relativePath));
 }
 
-const { splitInclAmount, isInclRepresentable, restoreTaxSplitParts } = loadTs("taxAmount.ts");
+const {
+  splitInclAmount,
+  splitInclAmountForExclDelta,
+  isInclRepresentable,
+  restoreTaxSplitParts,
+  resolveSerializedTaxSplitParts,
+  serializeTaxSplitParts,
+} = loadTs("taxAmount.ts");
 const { validateFinancialData } = loadTs("financeValidator.ts");
 
 // 独立的整数分口径对照实现（不经 decimal.js），作为拆分正确性的 oracle。
@@ -66,7 +73,24 @@ assert.equal(splitInclAmount(0.01, 6), null);
 assert.equal(isInclRepresentable(100, 6), true);
 assert.equal(isInclRepresentable(240, 6), false);
 
-// --- 3. 穷举 + 抽样验证：拆分结果每笔自洽、和等于总额、两笔差不超过 1 分 ---
+// --- 3. 税率组尾差定向拆分：原科目已闭合，也可搜索恰好 ±0.01 的拆分建议 ---
+{
+  const parts = splitInclAmountForExclDelta(0.10, 6, 0.09, 0.01);
+  assert.ok(parts, "0.10@6% 应存在不含税增加 0.01 的两笔拆分建议");
+  assert.equal(parts.reduce((sum, part) => sum + toCents(part.incl), 0), 10);
+  assert.equal(parts.reduce((sum, part) => sum + toCents(part.excl), 0), 10);
+  for (const part of parts) {
+    assert.ok(centsSelfConsistent(toCents(part.incl), 6), "建议中的每笔金额必须双向闭合");
+  }
+  assert.equal(splitInclAmountForExclDelta(0.10, 6, 0.09, -0.01), null);
+
+  const negativeParts = splitInclAmountForExclDelta(0.20, 6, 0.19, -0.01);
+  assert.ok(negativeParts, "0.20@6% 应存在不含税减少 0.01 的两笔拆分建议");
+  assert.equal(negativeParts.reduce((sum, part) => sum + toCents(part.incl), 0), 20);
+  assert.equal(negativeParts.reduce((sum, part) => sum + toCents(part.excl), 0), 18);
+}
+
+// --- 4. 穷举 + 抽样验证：拆分结果每笔自洽、和等于总额、两笔差不超过 1 分 ---
 for (const rate of RATES) {
   const check = totalCents => {
     const total = totalCents / 100;
@@ -93,7 +117,7 @@ for (const rate of RATES) {
 }
 console.log("splitInclAmount: 穷举与抽样验证通过");
 
-// --- 4. restoreTaxSplitParts：合法明细还原，非法明细整体丢弃 ---
+// --- 5. restoreTaxSplitParts：合法明细还原，非法明细整体丢弃 ---
 {
   const restored = restoreTaxSplitParts(
     [{ incl_tax: "120", excl_tax: "113.21" }, { incl_tax: "120", excl_tax: "113.21" }],
@@ -103,6 +127,27 @@ console.log("splitInclAmount: 穷举与抽样验证通过");
   assert.ok(restored);
   assert.equal(JSON.stringify(restored.map(p => p.incl)), JSON.stringify([120, 120]));
   assert.equal(JSON.stringify(restored.map(p => p.excl)), JSON.stringify([113.21, 113.21]));
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(serializeTaxSplitParts(restored))),
+    [
+      { incl_tax: "120.00", excl_tax: "113.21" },
+      { incl_tax: "120.00", excl_tax: "113.21" },
+    ],
+  );
+
+  // cashflow assumptions 没有拆分时，必须保留 lifecycle/snapshot 中的有效拆分。
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(resolveSerializedTaxSplitParts(
+      undefined,
+      [{ incl_tax: "120.00" }, { incl_tax: "120.00" }],
+      240,
+      6,
+    ))),
+    [
+      { incl_tax: "120.00", excl_tax: "113.21" },
+      { incl_tax: "120.00", excl_tax: "113.21" },
+    ],
+  );
 
   // 合计不等于科目含税 → 丢弃
   assert.equal(restoreTaxSplitParts([{ incl_tax: "120" }, { incl_tax: "119.99" }], 240, 6), null);
@@ -114,7 +159,7 @@ console.log("splitInclAmount: 穷举与抽样验证通过");
 }
 console.log("restoreTaxSplitParts: 通过");
 
-// --- 5. financeValidator：拆分科目免于合计反推核验，未拆分时保持原报错 ---
+// --- 6. financeValidator：拆分科目免于合计反推核验，未拆分时保持原报错 ---
 {
   const splitItem = {
     incl: 240,
@@ -161,5 +206,45 @@ console.log("restoreTaxSplitParts: 通过");
   assert.ok(broken.errors.length > 0, "被破坏的拆分明细应报错");
 }
 console.log("financeValidator: 通过");
+
+// --- 7. 税率组汇总尾差：只提供精确归零建议，不自动修改原科目 ---
+{
+  const revenue = {
+    it: {
+      integration: { incl: 0.10, excl: 0.09, tax: 6 },
+      maintenance: { incl: 0.10, excl: 0.09, tax: 6 },
+    },
+  };
+  const result = validateFinancialData(revenue, {});
+  assert.equal(result.errors.length, 1);
+  assert.equal(result.errors[0].key, "[汇总误差-公式C1]");
+  assert.equal(result.errors[0].difference, "-0.01");
+  assert.ok(result.errors[0].splitSuggestions?.length, "汇总尾差应附带拆分建议");
+
+  const suggestion = result.errors[0].splitSuggestions[0];
+  assert.equal(suggestion.differenceBefore, "-0.01");
+  assert.equal(suggestion.differenceAfter, "0.00");
+  assert.equal(suggestion.exclAdjustment, "0.01");
+  assert.equal(suggestion.parts.reduce((sum, part) => sum + toCents(part.incl), 0), 10);
+  assert.equal(suggestion.parts.reduce((sum, part) => sum + toCents(part.excl), 0), 10);
+
+  // 校验器只返回建议，输入对象保持原值。
+  assert.equal(revenue.it.integration.incl, 0.10);
+  assert.equal(revenue.it.integration.excl, 0.09);
+  assert.equal(revenue.it.maintenance.incl, 0.10);
+  assert.equal(revenue.it.maintenance.excl, 0.09);
+
+  // 用户点击“应用”后的正式状态必须通过同一个 0 容差校验，警示不会再次出现。
+  const appliedRevenue = JSON.parse(JSON.stringify(revenue));
+  const targetKey = suggestion.subjectKey.split(".")[1];
+  appliedRevenue.it[targetKey] = {
+    ...appliedRevenue.it[targetKey],
+    excl: suggestion.parts.reduce((sum, part) => sum + part.excl, 0),
+    splitParts: suggestion.parts,
+  };
+  const appliedResult = validateFinancialData(appliedRevenue, {});
+  assert.equal(appliedResult.errors.length, 0, JSON.stringify(appliedResult.errors));
+}
+console.log("tax-group split suggestion: 通过");
 
 console.log("\n全部测试通过 ✅");

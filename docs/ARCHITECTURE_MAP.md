@@ -310,6 +310,14 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 6. `CashflowSegment` amount-mode synchronization from earlier phases is retired as a formal calculation path. Stored segment fields are preserved only for old data compatibility.
 7. CT product revenue and CT line revenue retain their paired cost-subject behavior: product revenue mirrors to CT other-product cost, and line revenue mirrors to CT bandwidth cost. The paired changes also synchronize subject funding plans through the shared amount-update path.
 
+### 4.8.4 ICT tax-split reconciliation and persistence flow
+
+1. `financeValidator.ts` produces split candidates only for isolated C1 tax-group errors. Each candidate preserves subject inclusive total and tax rate, validates both child lines bidirectionally, and must make the group difference exactly zero.
+2. The reconciliation modal never applies a candidate implicitly. A user click calls the shared `useIctState.applyTaxItemSplitParts` entry, which revalidates the proposed parts against the live subject before updating `excl` and `splitParts`.
+3. Subject changes mark lifecycle, cashflow, and benefit-analysis dirty together. Lifecycle payloads and cashflow assumptions serialize the same `split_parts`; hydration accepts snake_case or camelCase and preserves a valid lifecycle/snapshot split when older assumptions have none.
+4. Rust `IctItem` persists `split_parts` in benefit snapshots. `calculator.rs` independently checks positive child amounts, inclusive total equality, and both tax conversion directions before using the sum of child tax-exclusive amounts; invalid parts fall back to the original single-line calculation.
+5. If the applied candidate was the only reconciliation error, the UI continues to the originally requested cashflow or document page. With other errors, the modal remains open and only the resolved error is removed.
+
 ### 4.9 Inquiry vendor screenshot state flow
 
 1. `TemplateForms.tsx` stores inquiry quote screenshots on each vendor row as `images`.

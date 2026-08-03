@@ -27,7 +27,7 @@ import {
   type SubjectFundingPlans,
   type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
-import { exclFromIncl, inclFromExcl, normalizeTaxPairFromIncl, roundMoneyHalfUp, splitInclAmount, type TaxSplitPart } from "../lib/taxAmount";
+import { exclFromIncl, inclFromExcl, normalizeTaxPairFromIncl, restoreTaxSplitParts, roundMoneyHalfUp, splitInclAmount, type TaxSplitPart } from "../lib/taxAmount";
 import { isTaxInclAutoFixEnabled } from "../store/useCalcPreferencesStore";
 
 export { normalizeProjectYears };
@@ -822,6 +822,23 @@ export function useIctState() {
       };
     });
 
+  // 应用经过汇总尾差校验器验证的明确两笔方案。仍在状态入口处重新校验，
+  // 防止陈旧弹窗或损坏 payload 绕过“含税合计不变、每笔独立闭合”的约束。
+  const applyTaxItemSplitParts = (
+    groupId: string,
+    key: string,
+    proposedParts: TaxSplitPart[],
+  ): boolean =>
+    patchTaxItemForSplit(groupId, key, item => {
+      const parts = restoreTaxSplitParts(proposedParts, item.incl, item.tax);
+      if (!parts) return null;
+      return {
+        ...item,
+        excl: roundMoneyHalfUp(parts.reduce((sum, part) => sum + part.excl, 0)),
+        splitParts: parts,
+      };
+    });
+
   // 取消拆分：回到普通单笔口径，不含税按含税重新派生（尾差提示随之恢复）。
   const cancelTaxItemSplit = (groupId: string, key: string) => {
     patchTaxItemForSplit(groupId, key, item => ({
@@ -940,6 +957,7 @@ export function useIctState() {
     updateTaxItem,
     commitTaxItemIncl,
     splitTaxItemIncl,
+    applyTaxItemSplitParts,
     cancelTaxItemSplit,
     updateTaxItemsInclBatch,
     updateTaxItemCustomSubjectName,

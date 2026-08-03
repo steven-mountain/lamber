@@ -4,7 +4,7 @@ import { useRef } from "react";
 import AppIcon from "../components/icons/AppIcon";
 import TemplateForms from "./TemplateForms";
 import { useNavigationStore } from "../store/useNavigationStore";
-import { validateFinancialData, type ValidationReport } from "../lib/financeValidator";
+import { validateFinancialData, type TaxGroupSplitSuggestion, type ValidationReport } from "../lib/financeValidator";
 import { SCHEME_STAGE_OPTIONS, getSchemeStageLabel, type SchemeStage } from "../lib/schemeStage";
 import { useAiContextStore } from "../store/useAiContextStore";
 import { AI_CONTEXT_KEY, buildAiContextKey } from "../utils/aiContextKeys";
@@ -66,7 +66,7 @@ import {
   SUBJECT_FUNDING_PLAN_MIGRATION_VERSION,
   type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
-import { exclFromIncl, normalizeTaxPairFromIncl, restoreTaxSplitParts, roundMoneyHalfUp, splitInclAmount, type TaxSplitPart } from "../lib/taxAmount";
+import { exclFromIncl, normalizeTaxPairFromIncl, resolveSerializedTaxSplitParts, restoreTaxSplitParts, roundMoneyHalfUp, splitInclAmount, type TaxSplitPart } from "../lib/taxAmount";
 import { useCalcPreferencesStore } from "../store/useCalcPreferencesStore";
 
 const restoreCustomSubjectName = (item: any) => normalizeCustomSubjectName(item?.customSubjectName ?? item?.custom_subject_name ?? "");
@@ -118,6 +118,35 @@ const buildFinancialStateHash = (data: any) => JSON.stringify({
   costCt: Object.fromEntries(Object.entries(data.costCt || {}).map(([key, item]) => [key, taxItemFinancialPart(item)])),
   costMix: Object.fromEntries(Object.entries(data.costMix || {}).map(([key, item]) => [key, taxItemFinancialPart(item)])),
 });
+
+const resolveValidationSubjectDefinition = (
+  side: ValidationReport["side"],
+  subjectKey: string,
+): IctSubjectDefinition | null => {
+  const separatorIndex = subjectKey.indexOf(".");
+  if (separatorIndex < 0) return null;
+  const category = subjectKey.slice(0, separatorIndex);
+  const itemKey = subjectKey.slice(separatorIndex + 1);
+  const groupId = side === "income"
+    ? category === "it"
+      ? "revIt"
+      : category === "ct"
+        ? "revCt"
+        : category === "non_it_ct"
+          ? "revNonItCt"
+          : null
+    : category === "it"
+      ? "costIt"
+      : category === "ct"
+        ? "costCt"
+        : category === "mix"
+          ? "costMix"
+          : null;
+  if (!groupId) return null;
+  return ICT_SUBJECT_DEFINITIONS.find(
+    subject => subject.groupId === groupId && subject.key === itemKey,
+  ) || null;
+};
 
 const formatReverseCurrency = (value: number) =>
   new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY" }).format(value);
@@ -227,13 +256,22 @@ export default function IctLifecycle() {
 
     const applyTaxItem = (key: string, item: any) => {
       if (!item) return;
+      const incl = restoreTaxItemNumber(item, "incl_tax", "incl", 0);
+      const tax = restoreTaxItemNumber(item, "tax_rate", "tax", 0);
       const customSubjectName = restoreCustomSubjectName(item);
       const billingSubjectName = restoreBillingSubjectName(item);
+      const splitParts = resolveSerializedTaxSplitParts(
+        item?.split_parts ?? item?.splitParts,
+        merged[key]?.split_parts ?? merged[key]?.splitParts,
+        incl,
+        tax,
+      );
       merged[key] = {
-        incl_tax: String(item.incl ?? item.incl_tax ?? 0),
-        tax_rate: String(item.tax ?? item.tax_rate ?? 0),
+        incl_tax: String(incl),
+        tax_rate: String(tax),
         ...(customSubjectName ? { custom_subject_name: customSubjectName } : {}),
         ...(billingSubjectName ? { billing_subject_name: billingSubjectName } : {}),
+        ...(splitParts ? { split_parts: splitParts } : {}),
       };
     };
 
@@ -291,7 +329,7 @@ export default function IctLifecycle() {
         ? explicitExcl
         : exclFromIncl(incl, tax);
       // 拆分明细随存档还原；不含税以两笔之和为准（逐行闭合口径）。
-      const splitParts = restoreTaxSplitParts(item?.split_parts, incl, tax);
+      const splitParts = restoreTaxSplitParts(item?.split_parts ?? item?.splitParts, incl, tax);
       return {
         incl,
         tax,
@@ -974,6 +1012,7 @@ export default function IctLifecycle() {
     updateTaxItem,
     commitTaxItemIncl,
     splitTaxItemIncl,
+    applyTaxItemSplitParts,
     cancelTaxItemSplit,
     clearFinancialSubjects,
     updateTaxItemCustomSubjectName,
@@ -1275,6 +1314,23 @@ export default function IctLifecycle() {
     state.subjectFundingPlans,
   ]);
 
+  // 科目金额及拆分明细同时属于 lifecycle 输入、cashflow assumptions 和正式效益方案。
+  // 三个作用域必须共同变脏，避免只保存 cashflow 后快照仍丢失 split_parts。
+  useEffect(() => {
+    if (isHydratingRef.current || !activeProject?.id) return;
+    markDirty("lifecycle");
+    markDirty("benefit-analysis");
+  }, [
+    activeProject?.id,
+    markDirty,
+    state.revIt,
+    state.revCt,
+    state.revNonItCt,
+    state.costIt,
+    state.costCt,
+    state.costMix,
+  ]);
+
   useEffect(() => {
     if (isHydratingRef.current || !activeProject?.id) return;
     markDirty("benefit-analysis");
@@ -1288,6 +1344,17 @@ export default function IctLifecycle() {
     selLimit,
     selectionFeeAnchor,
   ]);
+
+  const completeTabSwitch = (tab: string, templateName?: string) => {
+    setActiveTab(tab as any);
+    if (templateName) {
+      setSelectedTemplate(templateName);
+      setActiveModule(buildAiContextKey('ict', 'template', templateName));
+    } else {
+      setActiveModule(AI_CONTEXT_KEY.ICT_CORE);
+    }
+    setPendingTab(null);
+  };
 
   const handleTabSwitch = async (tab: string, templateName?: string, forceIgnore = false) => {
     if (templateName && templateName !== selectedTemplate && dirtyScopes.includes("template-forms")) {
@@ -1346,12 +1413,42 @@ export default function IctLifecycle() {
       setIgnoredDataHash(currentHash);
     }
 
-    setActiveTab(tab as any);
-    if (templateName) {
-      setSelectedTemplate(templateName);
-      setActiveModule(buildAiContextKey('ict', 'template', templateName));
-    } else {
-      setActiveModule(AI_CONTEXT_KEY.ICT_CORE);
+    completeTabSwitch(tab, templateName);
+  };
+
+  const handleApplyReconciliationSplit = (
+    errorIndex: number,
+    error: ValidationReport,
+    suggestion: TaxGroupSplitSuggestion,
+  ) => {
+    const subject = resolveValidationSubjectDefinition(error.side, suggestion.subjectKey);
+    if (!subject) {
+      alert("无法定位拆分建议对应的科目，请返回手工平账。");
+      return;
+    }
+
+    const applied = applyTaxItemSplitParts(subject.groupId, subject.key, suggestion.parts);
+    if (!applied) {
+      alert("当前科目金额或税率已经变化，原拆分建议已失效，请重新进入校验。");
+      setShowReconciliationModal(false);
+      return;
+    }
+
+    const remainingErrors = reconciliationErrors.filter((_, index) => index !== errorIndex);
+    setReconciliationErrors(remainingErrors);
+    setCurrentTotalDifference(
+      remainingErrors
+        .reduce((sum, item) => sum + Number(item.difference || 0), 0)
+        .toFixed(2),
+    );
+    setShowConfirmIgnore(false);
+
+    if (remainingErrors.length > 0) return;
+
+    setShowReconciliationModal(false);
+    const continuation = pendingTab;
+    if (continuation) {
+      completeTabSwitch(continuation.tab, continuation.template);
     }
   };
 
@@ -2338,6 +2435,67 @@ export default function IctLifecycle() {
                       <span className="font-bold text-red-500">{err.difference} 元</span>
                     </div>
                   </div>
+                  {err.splitSuggestions?.length ? (
+                    <div className="mt-2 rounded-lg bg-primary-soft/70 p-3 flex flex-col gap-2">
+                      <div>
+                        <div className="text-sm font-bold text-primary">可行的科目拆分建议</div>
+                        <p className="text-[11px] text-secondary-foreground mt-0.5">
+                          以下方案均保持科目含税总额和税率不变，并已验证拆分后本税率组尾差为 0.00 元。
+                        </p>
+                      </div>
+                      {err.splitSuggestions.map((suggestion, suggestionIndex) => {
+                        const subject = resolveValidationSubjectDefinition(err.side, suggestion.subjectKey);
+                        const adjustmentPrefix = Number(suggestion.exclAdjustment) > 0 ? "+" : "";
+                        return (
+                          <div
+                            key={`${suggestion.subjectKey}-${suggestionIndex}`}
+                            className="rounded-md bg-card/80 px-3 py-2.5 shadow-sm"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-xs font-bold text-foreground">
+                                {suggestionIndex === 0 ? "优先建议" : `备选 ${suggestionIndex}`} · {subject?.standardSubjectName || suggestion.subjectKey}
+                              </span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[10px] text-secondary-foreground numeric-value">
+                                  不含税调整 {adjustmentPrefix}{suggestion.exclAdjustment} 元
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApplyReconciliationSplit(i, err, suggestion)}
+                                  className="rounded-md bg-primary px-2.5 py-1.5 text-[10px] font-bold text-primary-foreground shadow-sm hover:bg-primary/90"
+                                >
+                                  {reconciliationErrors.length === 1 ? "应用并继续" : "应用此拆分"}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                              <span className="text-secondary-foreground">原科目</span>
+                              <span className="font-semibold numeric-value">含税 {suggestion.originalIncl} 元</span>
+                              <span className="text-secondary-foreground">建议拆为</span>
+                              <span className="font-semibold text-primary numeric-value">
+                                含税 {suggestion.parts.map(part => part.incl.toFixed(2)).join(" + ")} 元
+                              </span>
+                              <span className="text-secondary-foreground">对应不含税</span>
+                              <span className="font-semibold numeric-value">
+                                {suggestion.parts.map(part => part.excl.toFixed(2)).join(" + ")} 元
+                              </span>
+                              <span className="text-secondary-foreground">税率组尾差</span>
+                              <span className="font-semibold numeric-value">
+                                {suggestion.differenceBefore} → {suggestion.differenceAfter} 元
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <p className="text-[10px] text-secondary-foreground leading-relaxed">
+                        仅在该科目确有两笔业务、开票或入账明细时采用。点击应用属于用户确认操作；系统会保存拆分明细，不会改变该科目含税总额和税率。
+                      </p>
+                    </div>
+                  ) : err.key === "[汇总误差-公式C1]" ? (
+                    <div className="mt-2 rounded-lg bg-muted/70 px-3 py-2 text-[11px] text-secondary-foreground leading-relaxed">
+                      未找到能在保持科目含税总额、税率不变且每笔独立闭合的前提下，将本组尾差精确归零的单科目两笔拆分方案。系统不会为了放行而生成近似建议。
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

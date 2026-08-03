@@ -774,6 +774,7 @@ pub fn auto_import_excel_calculation(
             billing_subject_name: billing_subject_name
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
+            split_parts: None,
         }
     };
 

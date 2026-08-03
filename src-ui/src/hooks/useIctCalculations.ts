@@ -38,7 +38,7 @@ import {
   type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
 import { buildIctFundingCashflowFields } from "../lib/ictCalculationInput";
-import { normalizeTaxPairFromIncl } from "../lib/taxAmount";
+import { normalizeTaxPairFromIncl, serializeTaxSplitParts } from "../lib/taxAmount";
 import { isTaxInclAutoFixEnabled } from "../store/useCalcPreferencesStore";
 import {
   buildCostReverseFeasibilityProbeAmounts,
@@ -112,10 +112,7 @@ const serializeTaxItemForPayload = (item: TaxItem) => {
     ...(billingSubjectName ? { billing_subject_name: billingSubjectName } : {}),
     ...(item.splitParts?.length
       ? {
-          split_parts: item.splitParts.map(part => ({
-            incl_tax: String(part.incl),
-            excl_tax: String(part.excl),
-          })),
+          split_parts: serializeTaxSplitParts(item.splitParts),
         }
       : {}),
   };

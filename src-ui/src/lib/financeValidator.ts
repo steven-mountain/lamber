@@ -1,4 +1,5 @@
 import Decimal from 'decimal.js';
+import { splitInclAmountForExclDelta, type TaxSplitPart } from './taxAmount';
 
 export interface TaxItem {
   incl: string | number;
@@ -21,6 +22,18 @@ export interface ValidationReport {
    * - 'incl'：录入含税 ≠ round(不含税 × (1+税率))，即与财务系统展示口径不一致
    */
   field?: 'excl' | 'incl';
+  /** 税率组汇总尾差可通过真实业务明细拆分归零时，提供只读候选，不自动改数。 */
+  splitSuggestions?: TaxGroupSplitSuggestion[];
+}
+
+export interface TaxGroupSplitSuggestion {
+  subjectKey: string;
+  originalIncl: string;
+  originalExcl: string;
+  parts: TaxSplitPart[];
+  exclAdjustment: string;
+  differenceBefore: string;
+  differenceAfter: string;
 }
 
 /**
@@ -148,6 +161,46 @@ export function validateFinancialData(
           // If no specific item error was caught, but the sum is wrong, it means there is a rounding mismatch at the group level
           // Force user to adjust.
           const groupDifference = hasSplit ? groupDifferenceC2 : groupDifferenceC1;
+          const requiredExclAdjustment = groupDifference.negated();
+          const splitSuggestions = hasSplit
+            ? []
+            : items
+                .flatMap(({ key, item, fromSplit }) => {
+                  if (fromSplit) return [];
+                  const parts = splitInclAmountForExclDelta(
+                    item.incl,
+                    rate,
+                    item.excl,
+                    requiredExclAdjustment.toFixed(2),
+                  );
+                  if (!parts) return [];
+
+                  const splitExcl = parts.reduce(
+                    (sum, part) => sum.plus(new Decimal(part.excl)),
+                    new Decimal(0),
+                  );
+                  const differenceAfter = sumExcl
+                    .minus(new Decimal(item.excl || 0))
+                    .plus(splitExcl)
+                    .minus(groupExpectedExclBySum);
+                  if (!differenceAfter.isZero()) return [];
+
+                  return [{
+                    subjectKey: key,
+                    originalIncl: new Decimal(item.incl || 0).toFixed(2),
+                    originalExcl: new Decimal(item.excl || 0).toFixed(2),
+                    parts,
+                    exclAdjustment: splitExcl.minus(new Decimal(item.excl || 0)).toFixed(2),
+                    differenceBefore: groupDifference.toFixed(2),
+                    differenceAfter: differenceAfter.toFixed(2),
+                  }];
+                })
+                .sort((left, right) => {
+                  const leftSmallPart = Math.min(...left.parts.map(part => part.incl));
+                  const rightSmallPart = Math.min(...right.parts.map(part => part.incl));
+                  return rightSmallPart - leftSmallPart || left.subjectKey.localeCompare(right.subjectKey);
+                })
+                .slice(0, 3);
           totalDifference = totalDifference.plus(groupDifference);
           errors.push({
             side,
@@ -155,7 +208,8 @@ export function validateFinancialData(
             key: hasSplit ? `[汇总误差-公式C2]` : `[汇总误差-公式C1]`,
             expectedExcl: (hasSplit ? sumExpectedExcl : groupExpectedExclBySum).toFixed(2),
             actualExcl: sumExcl.toFixed(2),
-            difference: groupDifference.toFixed(2)
+            difference: groupDifference.toFixed(2),
+            ...(splitSuggestions.length ? { splitSuggestions } : {}),
           });
         }
       }
