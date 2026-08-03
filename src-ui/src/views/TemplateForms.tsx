@@ -50,6 +50,12 @@ import {
   loadSelectionResultBatchProject,
   loadSelectionResultCandidates,
 } from "../services/selectionResultBatchService"
+import {
+  buildPptTaxAmountRows,
+  formatPptSplitNote,
+  getPptTaxSplitSummary,
+  type PptTaxRowMode,
+} from "../lib/pptTaxRows"
 
 interface Props {
   selectedTemplate: string;
@@ -347,6 +353,8 @@ export default function TemplateForms({
 
   const formDataRef = useRef<Record<string, string>>({});
   const [formData, setFormData] = useState<Record<string, string>>({});
+  const pptTaxSplitSummary = useMemo(() => getPptTaxSplitSummary(projectData), [projectData]);
+  const pptTaxRowMode: PptTaxRowMode = formData.gen_ppt_tax_row_mode === "split" ? "split" : "merged";
 
   const handleFieldChange = (name: string, value: string) => {
     formDataRef.current[name] = value;
@@ -1665,6 +1673,7 @@ export default function TemplateForms({
       const pptPeriod = `${pptYears * 12}月`
       const pptNow = new Date()
       const pptDate = get('gen_ppt_report_date') || `${pptNow.getFullYear()}年${pptNow.getMonth() + 1}月`
+      const selectedPptTaxRowMode: PptTaxRowMode = get('gen_ppt_tax_row_mode') === 'split' ? 'split' : 'merged'
 
       // IT 收入行：非零科目逐行；通服/非通服分类，类别相同的后续行留空承接
       const PPT_IT_REV_LABELS: Record<string, { cls: string; type: string; detail: string }> = {
@@ -1679,39 +1688,43 @@ export default function TemplateForms({
       let pptLastRevCls = ""
       ICT_SUBJECT_DEFINITIONS.filter(s => s.groupId === "revIt").forEach(subject => {
         const item = getProjectDataSubjectItem(projectData, subject)
-        const excl = Number(item?.excl || 0)
-        if (isZero(excl)) return
+        const amountRows = buildPptTaxAmountRows(item, selectedPptTaxRowMode)
+        if (amountRows.every(row => isZero(row.excl))) return
         const lab = PPT_IT_REV_LABELS[subject.key] || { cls: "通服收入", type: "其他", detail: "其他收入" }
         const resolved = resolveBillingSubjectPresentation(subject, item)
         const typeName = resolved.billingSubjectName || resolved.productOrBusinessName || lab.type
-        pptRevItRows.push({
-          PR_IT_CLASS: lab.cls === pptLastRevCls ? "" : lab.cls,
-          PR_IT_TYPE: `ICT-${typeName}`,
-          PR_IT_PERIOD: pptPeriod,
-          PR_IT_DETAIL: lab.detail,
-          PR_IT_EXCL: fmtYuan(excl),
-          PR_IT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
-          PR_IT_INCL: fmtYuan(Number(item?.incl || 0)),
-          PR_IT_NOTE: "",
+        amountRows.forEach(amountRow => {
+          pptRevItRows.push({
+            PR_IT_CLASS: lab.cls === pptLastRevCls ? "" : lab.cls,
+            PR_IT_TYPE: `ICT-${typeName}`,
+            PR_IT_PERIOD: pptPeriod,
+            PR_IT_DETAIL: lab.detail,
+            PR_IT_EXCL: fmtYuan(amountRow.excl),
+            PR_IT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+            PR_IT_INCL: fmtYuan(amountRow.incl),
+            PR_IT_NOTE: formatPptSplitNote(amountRow),
+          })
+          pptLastRevCls = lab.cls
         })
-        pptLastRevCls = lab.cls
       })
 
       // CT 收入行：非零科目逐行；无 CT 收入时保留一条 0 值行（与样例一致）
       const pptRevCtRows: Record<string, string>[] = []
       ICT_SUBJECT_DEFINITIONS.filter(s => s.groupId === "revCt").forEach(subject => {
         const item = getProjectDataSubjectItem(projectData, subject)
-        const excl = Number(item?.excl || 0)
-        if (isZero(excl)) return
-        pptRevCtRows.push({
-          PR_CT_CLASS: subjectDetailName(subject, item),
-          PR_CT_TYPE: "",
-          PR_CT_PERIOD: "",
-          PR_CT_DETAIL: "",
-          PR_CT_EXCL: fmtYuan(excl),
-          PR_CT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
-          PR_CT_INCL: fmtYuan(Number(item?.incl || 0)),
-          PR_CT_NOTE: "",
+        const amountRows = buildPptTaxAmountRows(item, selectedPptTaxRowMode)
+        if (amountRows.every(row => isZero(row.excl))) return
+        amountRows.forEach(amountRow => {
+          pptRevCtRows.push({
+            PR_CT_CLASS: subjectDetailName(subject, item),
+            PR_CT_TYPE: "",
+            PR_CT_PERIOD: "",
+            PR_CT_DETAIL: "",
+            PR_CT_EXCL: fmtYuan(amountRow.excl),
+            PR_CT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+            PR_CT_INCL: fmtYuan(amountRow.incl),
+            PR_CT_NOTE: formatPptSplitNote(amountRow),
+          })
         })
       })
       if (pptRevCtRows.length === 0) {
@@ -1726,34 +1739,38 @@ export default function TemplateForms({
       let pptLastCostCls = ""
       IT_COST_SUBJECTS.forEach(subject => {
         const item = projectData.cost?.it?.[subject.key]
-        const excl = Number(item?.excl || 0)
-        if (isZero(excl)) return
+        const amountRows = buildPptTaxAmountRows(item, selectedPptTaxRowMode)
+        if (amountRows.every(row => isZero(row.excl))) return
         const cls = subject.key === "maintenance" || subject.key === "running" ? "IT-维护" : "IT-建设"
         const resolved = resolveBillingSubjectPresentation(subject, item)
-        pptCostItRows.push({
-          PC_IT_CLASS: cls === pptLastCostCls ? "" : cls,
-          PC_IT_DETAIL: resolved.billingSubjectName || resolved.productOrBusinessName || subject.standardSubjectName,
-          PC_IT_EXCL: fmtYuan(excl),
-          PC_IT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
-          PC_IT_INCL: fmtYuan(Number(item?.incl || 0)),
-          PC_IT_NOTE: "",
+        amountRows.forEach(amountRow => {
+          pptCostItRows.push({
+            PC_IT_CLASS: cls === pptLastCostCls ? "" : cls,
+            PC_IT_DETAIL: resolved.billingSubjectName || resolved.productOrBusinessName || subject.standardSubjectName,
+            PC_IT_EXCL: fmtYuan(amountRow.excl),
+            PC_IT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+            PC_IT_INCL: fmtYuan(amountRow.incl),
+            PC_IT_NOTE: formatPptSplitNote(amountRow),
+          })
+          pptLastCostCls = cls
         })
-        pptLastCostCls = cls
       })
 
       // CT 投入行：非零科目逐行；无 CT 投入时保留一条 0 值行（与样例一致）
       const pptCostCtRows: Record<string, string>[] = []
       ICT_SUBJECT_DEFINITIONS.filter(s => s.groupId === "costCt").forEach(subject => {
         const item = projectData.cost?.ct?.[subject.key]
-        const excl = Number(item?.excl || 0)
-        if (isZero(excl)) return
-        pptCostCtRows.push({
-          PC_CT_CLASS: subjectDetailName(subject, item),
-          PC_CT_DETAIL: "",
-          PC_CT_EXCL: fmtYuan(excl),
-          PC_CT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
-          PC_CT_INCL: fmtYuan(Number(item?.incl || 0)),
-          PC_CT_NOTE: "",
+        const amountRows = buildPptTaxAmountRows(item, selectedPptTaxRowMode)
+        if (amountRows.every(row => isZero(row.excl))) return
+        amountRows.forEach(amountRow => {
+          pptCostCtRows.push({
+            PC_CT_CLASS: subjectDetailName(subject, item),
+            PC_CT_DETAIL: "",
+            PC_CT_EXCL: fmtYuan(amountRow.excl),
+            PC_CT_TAX: fmtTaxRate(item?.tax ?? subject.defaultTaxRate),
+            PC_CT_INCL: fmtYuan(amountRow.incl),
+            PC_CT_NOTE: formatPptSplitNote(amountRow),
+          })
         })
       })
       if (pptCostCtRows.length === 0) {
@@ -1993,6 +2010,42 @@ export default function TemplateForms({
             <p className="text-sm text-secondary-foreground leading-relaxed">
               自动生成封面与「项目投资收益」页：收入/投入明细表按测算科目逐行展开，总收入、总投入、净现值率、毛利率、IT净现值率、动态回收期等指标自动取自当前方案测算结果。
             </p>
+            {pptTaxSplitSummary.subjectCount > 0 && (
+              <div className="rounded-lg bg-muted p-4 flex flex-col gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-foreground">已检测到测算拆分科目</div>
+                  <p className="mt-1 text-xs leading-relaxed text-secondary-foreground">
+                    当前投资收益页涉及 {pptTaxSplitSummary.subjectCount} 个已拆分科目；按拆分明细展示将增加 {pptTaxSplitSummary.addedRows} 行，汇总、小计和效益指标保持不变。
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label="PPT 科目展示方式">
+                  <label className={`cursor-pointer rounded-md px-3 py-2.5 transition-colors ${pptTaxRowMode === "merged" ? "bg-primary-soft text-primary shadow-sm" : "bg-card text-foreground"}`}>
+                    <input
+                      type="radio"
+                      name="gen_ppt_tax_row_mode"
+                      value="merged"
+                      checked={pptTaxRowMode === "merged"}
+                      onChange={() => handleFieldChange("gen_ppt_tax_row_mode", "merged")}
+                      className="sr-only"
+                    />
+                    <span className="block text-sm font-semibold">合并展示（默认）</span>
+                    <span className="mt-0.5 block text-xs text-secondary-foreground">每个科目仍显示一行汇总金额</span>
+                  </label>
+                  <label className={`cursor-pointer rounded-md px-3 py-2.5 transition-colors ${pptTaxRowMode === "split" ? "bg-primary-soft text-primary shadow-sm" : "bg-card text-foreground"}`}>
+                    <input
+                      type="radio"
+                      name="gen_ppt_tax_row_mode"
+                      value="split"
+                      checked={pptTaxRowMode === "split"}
+                      onChange={() => handleFieldChange("gen_ppt_tax_row_mode", "split")}
+                      className="sr-only"
+                    />
+                    <span className="block text-sm font-semibold">按拆分明细展示</span>
+                    <span className="mt-0.5 block text-xs text-secondary-foreground">同一科目按子笔生成多行并标注笔次</span>
+                  </label>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">汇报单位</label>

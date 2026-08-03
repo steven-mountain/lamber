@@ -327,6 +327,14 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 4. Rust `IctItem` persists `split_parts` in benefit snapshots. `calculator.rs` independently checks positive child amounts, inclusive total equality, and both tax conversion directions before using the sum of child tax-exclusive amounts; invalid parts fall back to the original single-line calculation.
 5. If the applied candidate was the only reconciliation error, the UI continues to the originally requested cashflow or document page. With other errors, the modal remains open and only the resolved error is removed.
 
+### 4.8.5 PPT tax-split presentation flow
+
+1. `TemplateForms.tsx` derives a valid split summary only from the IT/CT revenue and cost subjects displayed on the investment-return slide. Projects without displayed split subjects keep the existing PPT configuration unchanged.
+2. The per-project, per-template `gen_ppt_tax_row_mode` setting defaults to `merged` and persists through the existing template-form state. It changes document presentation only and never writes lifecycle financial state.
+3. `pptTaxRows.ts` revalidates snake-case or camel-case split parts against the live subject. Merged mode emits one aggregate row; split mode emits one row per valid child with an audit note. Invalid parts fall back to one aggregate row.
+4. The four `TABLE_PPT_*` builders repeat the subject fields for child rows while leaving all headline totals, subtotals, cashflow, and benefit metrics on the original aggregate values.
+5. `docfill.rs` clones duplicate subject rows and divides the original placeholder row height across the generated rows. When cost details expand, it preserves the template font size and moves only the evaluation heading plus contract/payback notes down by a bounded offset; bottom benefit metrics remain fixed.
+
 ### 4.9 Inquiry vendor screenshot state flow
 
 1. `TemplateForms.tsx` stores inquiry quote screenshots on each vendor row as `images`.

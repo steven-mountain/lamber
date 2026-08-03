@@ -28,10 +28,21 @@
 - 建议按拆分均衡程度排序，最多展示三个可行科目。没有精确候选时明确提示“无安全建议”，不得提供近似方案或放宽校验。
 - 建议只在科目确有两笔业务、开票或入账明细时采用；系统不自动应用。用户确认应用后重新走同一 0 容差校验，唯一错误已消除时直接继续原目标页面。
 
-## 4. 实现入口
+## 4. 立项决策汇报 PPT 展示
+
+- PPT 模板配置只在当前投资收益页涉及有效拆分科目时显示“合并展示 / 按拆分明细展示”。
+- 默认“合并展示”，继续按一个科目一行输出；用户选择“按拆分明细展示”后，同一科目的每笔子金额各生成一行并标注笔次。
+- 展开前必须重新调用统一拆分校验；损坏、过期或合计不一致的拆分安全回退为科目汇总行。
+- 展开只影响 `TABLE_PPT_REV_IT`、`TABLE_PPT_REV_CT`、`TABLE_PPT_COST_IT`、`TABLE_PPT_COST_CT` 的行数据，不改变科目、汇总、小计、现金流或效益指标。
+- PPT 明细动态行在模板原占位行高度内等分；成本明细新增行时保持模板字号，并将“项目整体投资收益评分”标题及合同期限/动态回收期说明整体下移，底部效益指标坐标不变。
+
+## 5. 实现入口
 
 - 十进制换算与拆分搜索：`src-ui/src/lib/taxAmount.ts`
 - 0 容差校验与建议生成：`src-ui/src/lib/financeValidator.ts`
 - 拦截弹窗展示：`src-ui/src/views/IctLifecycle.tsx`
+- PPT 拆分行规则：`src-ui/src/lib/pptTaxRows.ts`
+- PPT 配置与变量组装：`src-ui/src/views/TemplateForms.tsx`
+- PPT 模板行克隆与高度适配：`src-tauri/src/docfill.rs`
 - 方案快照模型与效益测算：`src-tauri/src/benefit/models.rs`、`src-tauri/src/benefit/calculator.rs`
 - 专项回归：`src-ui/scripts/test_tax_split.cjs`

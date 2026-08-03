@@ -46,6 +46,11 @@ const {
   serializeTaxSplitParts,
 } = loadTs("taxAmount.ts");
 const { validateFinancialData } = loadTs("financeValidator.ts");
+const {
+  buildPptTaxAmountRows,
+  formatPptSplitNote,
+  getPptTaxSplitSummary,
+} = loadTs("pptTaxRows.ts");
 
 // 独立的整数分口径对照实现（不经 decimal.js），作为拆分正确性的 oracle。
 const rdiv = (n, d) => Math.floor((2 * n + d) / (2 * d)); // round(n/d) 半进位，n,d>0
@@ -246,5 +251,47 @@ console.log("financeValidator: 通过");
   assert.equal(appliedResult.errors.length, 0, JSON.stringify(appliedResult.errors));
 }
 console.log("tax-group split suggestion: 通过");
+
+// --- 8. PPT 明细展示：默认合并，用户选择后才展开拆分子笔 ---
+{
+  const splitItem = {
+    incl: 1038,
+    excl: 979.24,
+    tax: 6,
+    splitParts: [
+      { incl: 519, excl: 489.62 },
+      { incl: 519, excl: 489.62 },
+    ],
+  };
+
+  const mergedRows = buildPptTaxAmountRows(splitItem, "merged");
+  assert.equal(mergedRows.length, 1);
+  assert.equal(mergedRows[0].incl, 1038);
+  assert.equal(mergedRows[0].excl, 979.24);
+  assert.equal(formatPptSplitNote(mergedRows[0]), "");
+
+  const splitRows = buildPptTaxAmountRows(splitItem, "split");
+  assert.equal(splitRows.length, 2);
+  assert.equal(splitRows.reduce((sum, row) => sum + toCents(row.incl), 0), 103800);
+  assert.equal(splitRows.reduce((sum, row) => sum + toCents(row.excl), 0), 97924);
+  assert.equal(formatPptSplitNote(splitRows[0]), "拆分第1笔/共2笔");
+  assert.equal(formatPptSplitNote(splitRows[1]), "拆分第2笔/共2笔");
+
+  const summary = getPptTaxSplitSummary({
+    revenue: { it: { integration: splitItem } },
+    // costMix 当前不在 PPT 的四张明细表中，不应让选项误报数量。
+    cost: { mix: { marketing: splitItem } },
+  });
+  assert.equal(summary.subjectCount, 1);
+  assert.equal(summary.addedRows, 1);
+
+  const damagedRows = buildPptTaxAmountRows({
+    ...splitItem,
+    splitParts: [{ incl: 519 }, { incl: 518.99 }],
+  }, "split");
+  assert.equal(damagedRows.length, 1, "损坏拆分必须安全回退为科目汇总行");
+  assert.equal(damagedRows[0].excl, 979.24);
+}
+console.log("PPT tax split rows: 通过");
 
 console.log("\n全部测试通过 ✅");
