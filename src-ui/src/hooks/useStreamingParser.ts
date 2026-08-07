@@ -62,7 +62,7 @@ export function useStreamingParser() {
     }
 
     // 2. Accumulate in Raw Buffer
-    let current = internalRawBufferRef.current + chunk;
+    const current = internalRawBufferRef.current + chunk;
     
     // 3. Process tags incrementally into semantic buffers
     if (!stateRef.current.isInsideThink) {

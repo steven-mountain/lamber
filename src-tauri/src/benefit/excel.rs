@@ -858,6 +858,7 @@ pub fn auto_import_excel_calculation(
         selection_fee_amount: None,
         selection_fee_limit: None,
         selection_fee_anchor: selection_fee_quote.map(|_| "quote".to_string()),
+        selection_fee_target_subject_code: None,
         subject_funding_plans: None,
         subject_funding_plan_migration_version: Some(1),
 

@@ -24,6 +24,7 @@ import { useWorkspaceStore } from "../store/useWorkspaceStore";
 import { useProjectStore } from "../store/useProjectStore";
 import { useSaveStore } from "../store/useSaveStore";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
+import { useLatestCallback } from "../hooks/useLatestCallback";
 import { domainSaveService } from "../services/domainSaveService";
 import type { LifecycleStatePayload, CashflowStatePayload } from "../services/domainSaveService";
 import {
@@ -55,8 +56,8 @@ import {
 import {
   SubjectRoleActions,
   SelectedSubjectRoleSummary,
-  scrollToSubject,
 } from "../components/IctSubjectRoleComponents";
+import { scrollToSubject } from "../lib/ictSubjectNavigation";
 import IctSubjectFundingPlanEditor from "../components/IctSubjectFundingPlanEditor";
 import {
   createSubjectFundingPlanId,
@@ -68,9 +69,18 @@ import {
 } from "../lib/ictSubjectFundingPlan";
 import { exclFromIncl, normalizeTaxPairFromIncl, resolveSerializedTaxSplitParts, restoreTaxSplitParts, roundMoneyHalfUp, splitInclAmount, type TaxSplitPart } from "../lib/taxAmount";
 import { useCalcPreferencesStore } from "../store/useCalcPreferencesStore";
+import {
+  DEFAULT_SELECTION_FEE_TARGET_SUBJECT_CODE,
+  SELECTION_FEE_TARGET_SUBJECTS,
+} from "../lib/selectionFee";
 
 const restoreCustomSubjectName = (item: any) => normalizeCustomSubjectName(item?.customSubjectName ?? item?.custom_subject_name ?? "");
 const restoreBillingSubjectName = (item: any) => normalizeCustomSubjectName(item?.billingSubjectName ?? item?.billing_subject_name ?? "");
+const SELECTION_FEE_TARGET_GROUPS = [
+  { groupId: "costIt", label: "IT/移动云投入" },
+  { groupId: "costCt", label: "CT投入" },
+  { groupId: "costMix", label: "非IT/CT投入与综合类成本" },
+] as const;
 
 const syncRestoredSubjectNamePair = (
   leftItem: any,
@@ -450,7 +460,7 @@ export default function IctLifecycle() {
     restoreSelectionFeeState(params);
   }, [state, restoreSelectionFeeState]);
 
-  const loadProjectContext = useCallback(async (pId: string | null, sId?: string | null) => {
+  const loadProjectContext = useLatestCallback(async (pId: string | null, sId?: string | null) => {
     const requestId = ++projectLoadRequestRef.current;
     const targetProjectId = pId || null;
     const targetSchemeId = sId || null;
@@ -645,11 +655,11 @@ export default function IctLifecycle() {
       }
       console.error("Failed to load project context:", err);
     }
-  }, [state, restoreSelectionFeeState, fillCalculatorState, buildHydrationInput, isWorkspaceReady]);
+  });
 
   useEffect(() => {
-    loadProjectContext(activeProjectId, activeSchemeId);
-  }, [activeProjectId, activeSchemeId]);
+    void loadProjectContext(activeProjectId, activeSchemeId);
+  }, [activeProjectId, activeSchemeId, loadProjectContext]);
 
   const getSubjectFundingBlockingMessage = useCallback((actionLabel: string) => {
     if (calculations.subjectFundingCoverage.valid) {
@@ -1027,6 +1037,7 @@ export default function IctLifecycle() {
     selFee,
     selLimit,
     selectionFeeAnchor, setSelectionFeeAnchor,
+    selectionFeeTargetSubjectCode, setSelectionFeeTargetSubjectCode,
     revMode, setRevMode,
     revTargetType, setRevTargetType,
     revTargetValue, setRevTargetValue,
@@ -1069,6 +1080,15 @@ export default function IctLifecycle() {
   const investmentBalanceSubjects = useMemo(
     () => balanceSubjectItems.filter(row => row.subject.side === "cost"),
     [balanceSubjectItems],
+  );
+
+  const selectedSelectionFeeTarget = useMemo(
+    () => investmentBalanceSubjects.find(
+      row => row.subject.subjectCode === selectionFeeTargetSubjectCode,
+    ) ?? investmentBalanceSubjects.find(
+      row => row.subject.subjectCode === DEFAULT_SELECTION_FEE_TARGET_SUBJECT_CODE,
+    ) ?? null,
+    [investmentBalanceSubjects, selectionFeeTargetSubjectCode],
   );
 
   const revenueBalanceEvaluation = useMemo(
@@ -1333,6 +1353,7 @@ export default function IctLifecycle() {
 
   useEffect(() => {
     if (isHydratingRef.current || !activeProject?.id) return;
+    markDirty("lifecycle");
     markDirty("benefit-analysis");
   }, [
     activeProject?.id,
@@ -1343,6 +1364,7 @@ export default function IctLifecycle() {
     selFee,
     selLimit,
     selectionFeeAnchor,
+    selectionFeeTargetSubjectCode,
   ]);
 
   const completeTabSwitch = (tab: string, templateName?: string) => {
@@ -2021,12 +2043,38 @@ export default function IctLifecycle() {
            </div>
            <input type="number" aria-label="甄选最高限价" value={selLimit} onChange={e => handleSelFeeChange('limit', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none text-foreground font-bold" />
         </div>
+        <div className="flex flex-col gap-1.5 rounded-lg bg-muted/35 p-2.5">
+          <label className="text-xs font-semibold text-secondary-foreground" htmlFor="selection-fee-target-subject">
+            写入投入科目
+          </label>
+          <select
+            id="selection-fee-target-subject"
+            aria-label="甄选限价写入投入科目"
+            value={selectionFeeTargetSubjectCode}
+            onChange={event => setSelectionFeeTargetSubjectCode(event.target.value)}
+            className="bg-card border border-input px-3 py-2 rounded-md text-xs font-semibold text-foreground outline-none"
+          >
+            {SELECTION_FEE_TARGET_GROUPS.map(group => (
+              <optgroup key={group.groupId} label={group.label}>
+                {SELECTION_FEE_TARGET_SUBJECTS.filter(subject => subject.groupId === group.groupId).map(subject => {
+                  const row = investmentBalanceSubjects.find(item => item.subject.subjectCode === subject.subjectCode);
+                  return <option key={subject.subjectCode} value={subject.subjectCode}>{getSubjectExcelDisplayName(subject, row?.item)}</option>;
+                })}
+              </optgroup>
+            ))}
+          </select>
+          <span className="text-[11px] leading-relaxed text-secondary-foreground">
+            目标科目写入“最高限价－甄选服务费”，甄选服务费由供应商承担并单独写入“中标服务费”。
+          </span>
+        </div>
         <button
           onClick={applySelectionLimit}
           disabled={!selLimit}
           className="mt-2 bg-primary hover:bg-primary/95 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed font-bold py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all active:scale-[0.98] w-full text-xs flex items-center justify-center gap-1.5"
         >
-          <AppIcon name="download" size={14} /> 填入集成服务
+          <AppIcon name="download" size={14} /> 填入{selectedSelectionFeeTarget
+            ? getSubjectExcelDisplayName(selectedSelectionFeeTarget.subject, selectedSelectionFeeTarget.item)
+            : "投入科目"}
         </button>
       </div>
     </>
@@ -2374,6 +2422,7 @@ export default function IctLifecycle() {
                   amount: selFee,
                   limit: selLimit,
                   anchor: selectionFeeAnchor,
+                  targetSubjectCode: selectionFeeTargetSubjectCode,
                 },
               }}
               metrics={metrics}

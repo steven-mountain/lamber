@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   FileText,
   FileSpreadsheet,
@@ -40,7 +40,7 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
   const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
   const [notInRootFolder, setNotInRootFolder] = useState<{ folderPath: string; renameProject: boolean } | null>(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -61,11 +61,11 @@ export default function ProjectFilesTab({ projectId, onRefreshProject }: Project
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
 
   useEffect(() => {
-    loadData();
-  }, [projectId]);
+    void loadData();
+  }, [loadData]);
 
   const showTemporaryMessage = (msg: string, isError = false) => {
     if (isError) {

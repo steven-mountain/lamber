@@ -9,15 +9,15 @@ import { projectService } from "../utils/projectService"
 import { domainSaveService } from "../services/domainSaveService"
 import { useSaveStore } from "../store/useSaveStore"
 import { useWorkspaceStore } from "../store/useWorkspaceStore"
+import { useLatestCallback } from "../hooks/useLatestCallback"
 import { CommonPresetFieldHeader, CommonPresetLabelHeader } from "../components/common-presets/CommonPresetQuickFill"
 import {
-  getTemplateCompletion,
   TemplateConfirmationPanel,
   TemplateDocumentLayout,
   TemplateSubmoduleCard,
   TemplateTabSection,
-  type TemplateCompletionItem,
 } from "../components/templates/TemplateDocumentLayout"
+import { getTemplateCompletion, type TemplateCompletionItem } from "../lib/templateCompletion"
 import { PRESET_FIELD_KEYS } from "../lib/presetFieldKeys"
 import { createTemplateAssetSelection, publishTemplateAssetSelection } from "../ai/templateAssetSelection"
 import {
@@ -593,7 +593,7 @@ export default function TemplateForms({
     setItContent(name)
   };
 
-  const loadFormSettings = async () => {
+  const loadFormSettings = useLatestCallback(async () => {
     if (!projectId || !selectedTemplate) {
       resetFormToDefaults();
       return;
@@ -683,11 +683,11 @@ export default function TemplateForms({
         isLoadingRef.current = false;
       }, 100);
     }
-  };
+  });
 
   useEffect(() => {
-    loadFormSettings();
-  }, [projectId, selectedTemplate]);
+    void loadFormSettings();
+  }, [projectId, selectedTemplate, loadFormSettings]);
 
   useEffect(() => {
     setMeetingReviewTab("basic");
@@ -725,7 +725,7 @@ export default function TemplateForms({
     }));
   };
 
-  const autoSaveFormSettings = async (options: { throwOnError?: boolean } = {}) => {
+  const autoSaveFormSettings = useLatestCallback(async (options: { throwOnError?: boolean } = {}) => {
     if (!projectId || !selectedTemplate || isLoadingRef.current) {
       if (options.throwOnError) throw new Error("模板表单尚未准备好，无法保存");
       return false;
@@ -827,7 +827,7 @@ export default function TemplateForms({
       }
       return false;
     }
-  };
+  });
 
   useEffect(() => {
     if (!projectId || !selectedTemplate) return;
@@ -891,7 +891,7 @@ export default function TemplateForms({
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
 
     autoSaveTimerRef.current = setTimeout(() => {
-      autoSaveFormSettings();
+      void autoSaveFormSettings();
     }, 1000);
 
     return () => {
@@ -924,7 +924,8 @@ export default function TemplateForms({
     inqVendors,
     attach1Images,
     attach2Images,
-    syncTrigger
+    syncTrigger,
+    autoSaveFormSettings,
   ]);
 
   // --- AI Context Sync for Templates ---
@@ -958,11 +959,11 @@ export default function TemplateForms({
     };
   }
 
-  const syncTemplateContextNow = (overrides: Record<string, string> = {}) => {
+  const syncTemplateContextNow = useLatestCallback((overrides: Record<string, string> = {}) => {
     const templateId = buildAiContextKey('ict', 'template', selectedTemplate);
     const payload = buildTemplateContextPayload(overrides);
     updateData(templateId, payload);
-  }
+  });
 
   const handleProjectScaleChange = (value: ProjectScale) => {
     setProjectScale(value);
@@ -988,7 +989,7 @@ export default function TemplateForms({
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [selectedTemplate, itContent, ctContent, midThreeName, midThreeCode, techItems, inqVendors, syncTrigger, itBusMode, itFundSrc, revCollection, expPayment, projectScale, selfThreeValue, hasItIntegrationFee, hasItMaintenanceFee]);
+  }, [selectedTemplate, itContent, ctContent, midThreeName, midThreeCode, techItems, inqVendors, syncTrigger, itBusMode, itFundSrc, revCollection, expPayment, projectScale, selfThreeValue, hasItIntegrationFee, hasItMaintenanceFee, syncTemplateContextNow]);
 
   // -- Linkage Logic --
   useEffect(() => {
@@ -1008,7 +1009,8 @@ export default function TemplateForms({
       setSubjectCtCost(`CT-${baseName}`)
       setSubjectCtRev(`CT-${baseName}`)
     } else {
-      if (ctContent === midThreeName.replace(/能力/g, "")) setCtContent("")
+      const linkedName = midThreeName.replace(/能力/g, "")
+      setCtContent(current => current === linkedName ? "" : current)
       setSubjectCtCost("CT-专线")
       setSubjectCtRev("CT-专线")
     }

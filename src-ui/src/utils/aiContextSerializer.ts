@@ -22,7 +22,7 @@ export function serializeAiContext(module: string, data: any): string {
 
 
 function serializeTemplateData(data: any): string {
-  let lines: string[] = [];
+  const lines: string[] = [];
   
   // Templates often have project_name at the top level
   if (data.basic?.proj_name) lines.push(`- **当前填报项目**: ${data.basic.proj_name}`);
@@ -70,7 +70,7 @@ function serializeTemplateData(data: any): string {
 }
 
 function serializeIctModule(data: any): string {
-  let lines: string[] = [];
+  const lines: string[] = [];
 
   // Project Overview
   if (data.project_name) lines.push(`- **项目名称**: ${data.project_name}`);

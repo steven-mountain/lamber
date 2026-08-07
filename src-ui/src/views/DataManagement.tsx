@@ -1,4 +1,4 @@
-import { useState, useEffect, type KeyboardEvent } from "react"
+import { useCallback, useState, useEffect, type KeyboardEvent } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { Clock3, Database } from "lucide-react"
 import AppIcon from "../components/icons/AppIcon"
@@ -87,20 +87,10 @@ export default function DataManagement({ onBack }: { onBack: () => void }) {
   const [workspaceBusy, setWorkspaceBusy] = useState(false)
   const [selectedManagedWorkspacePath, setSelectedManagedWorkspacePath] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchRoots()
-  }, [])
-
-  useEffect(() => {
-    if (activeTab === "workspace") {
-      refreshWorkspaceMaintenance()
-    }
-  }, [activeTab])
-
-  const showNotification = (message: string, type: "success" | "error" = "success") => {
+  const showNotification = useCallback((message: string, type: "success" | "error" = "success") => {
     setNotification({ message, type })
     setTimeout(() => setNotification(null), 4000)
-  }
+  }, [])
 
   const getParentDirectory = (filePath: string) => {
     const trimmed = filePath.replace(/[\\/]+$/, "")
@@ -138,7 +128,7 @@ export default function DataManagement({ onBack }: { onBack: () => void }) {
     }
   }
 
-  const refreshWorkspaceMaintenance = async () => {
+  const refreshWorkspaceMaintenance = useCallback(async () => {
     if (!useWorkspaceStore.getState().currentWorkspace) {
       setWorkspaceBackups([])
       setExternalPaths([])
@@ -155,7 +145,7 @@ export default function DataManagement({ onBack }: { onBack: () => void }) {
     } catch (err: any) {
       showNotification(`加载工作区维护信息失败: ${err?.message || err}`, "error")
     }
-  }
+  }, [showNotification])
 
   const handleCreateWorkspaceBackup = async () => {
     if (!(await ensureSavedForWorkspaceOperation("手动备份"))) return
@@ -413,17 +403,25 @@ export default function DataManagement({ onBack }: { onBack: () => void }) {
     }
   }
 
-  const fetchRoots = async () => {
+  const fetchRoots = useCallback(async () => {
     try {
       const data = await invoke<ProjectRoot[]>("get_project_roots")
       setRoots(data)
-      if (data.length > 0 && !relocateRootId) {
-        setRelocateRootId(data[0].id)
-      }
+      if (data.length > 0) setRelocateRootId(current => current || data[0].id)
     } catch (err: any) {
       showNotification("加载根目录失败: " + err, "error")
     }
-  }
+  }, [showNotification])
+
+  useEffect(() => {
+    void fetchRoots()
+  }, [fetchRoots])
+
+  useEffect(() => {
+    if (activeTab === "workspace") {
+      void refreshWorkspaceMaintenance()
+    }
+  }, [activeTab, refreshWorkspaceMaintenance])
 
   const handleSelectFolder = async (isNew: boolean) => {
     try {

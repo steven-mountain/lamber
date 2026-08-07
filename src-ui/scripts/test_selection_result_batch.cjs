@@ -34,13 +34,14 @@ function loadTsFile(sourcePath) {
 }
 
 const batch = loadTsFile(path.join(__dirname, "../src/lib/selectionResultBatch.ts"))
+const selectionFee = loadTsFile(path.join(__dirname, "../src/lib/selectionFee.ts"))
 
 const item = (excl, tax) => ({ excl, tax, incl: Number((excl * (1 + tax / 100)).toFixed(2)) })
-const emptyProjectData = (name, limit = "") => ({
+const emptyProjectData = (name, limit = "", targetSubjectCode = "") => ({
   basic: { proj_name: name, customer_name: "客户", project_years: 1 },
   cost: { it: {}, ct: {}, mix: {} },
   revenue: { it: {}, ct: {}, non_it_ct: item(0, 9) },
-  selectionFee: { limit },
+  selectionFee: { limit, targetSubjectCode },
 })
 const shared = overrides => ({
   winnerName: "供应商A",
@@ -78,8 +79,9 @@ p1Data.cost.ct.renewal = item(10, 9)
 p1Data.revenue.it.integration = item(150, 6)
 p1Data.revenue.ct.line = item(30, 9)
 
-const p2Data = emptyProjectData("项目二", "250")
+const p2Data = emptyProjectData("项目二", "250", "cost_it_construction")
 p2Data.cost.it.integration = item(200, 6)
+p2Data.cost.it.construction = item(0, 9)
 p2Data.cost.ct.bandwidth = item(40, 9)
 p2Data.cost.ct.other = item(30, 6)
 p2Data.revenue.it.integration = item(260, 6)
@@ -98,6 +100,16 @@ assert.equal(model.totalRevenueExcl.toFixed(2), "480.00", "收入表必须汇总
 assert.equal(model.approvalAmountExcl.toFixed(2), "400.00", "立项金额=IT+CT专线+确认计入的续签")
 assert.equal(model.tableE.length, 2, "效益表每个项目一行")
 assert.equal(JSON.stringify(model.tableB.map(row => row.B_SEQ)), JSON.stringify(["1", "2"]), "跨表项目序号稳定")
+assert.equal(model.tableA[1].A_FEE_TYPE, "IT-施工", "手填限价应使用所选投入科目名称")
+assert.equal(model.tableA[1].A_TAX_RATE, "9%", "手填限价应使用所选投入科目税率")
+
+const writeAmounts = selectionFee.calculateSelectionFeeWriteAmounts("89000", "400")
+assert.equal(writeAmounts.valid, true)
+assert.equal(writeAmounts.targetIncl, 88600, "目标科目=最高限价-供应商承担的甄选服务费")
+assert.equal(writeAmounts.serviceFeeIncl, 400)
+assert.equal(writeAmounts.targetIncl + writeAmounts.serviceFeeIncl, writeAmounts.limitIncl, "两科目合计必须等于最高限价")
+assert.equal(selectionFee.normalizeSelectionFeeTargetSubjectCode("missing"), "cost_it_integration", "旧方案或无效科目回退集成服务")
+assert.equal(selectionFee.SELECTION_FEE_TARGET_SUBJECTS.some(subject => subject.subjectCode === "cost_it_bidding"), false, "中标服务费为系统写入科目，不可作为目标科目")
 
 const excludedRenewal = batch.buildSelectionResultBatchModel(projects, { p1: "exclude" })
 assert.equal(excludedRenewal.approvalAmountExcl.toFixed(2), "390.00", "其他产品续签不得计入立项金额")

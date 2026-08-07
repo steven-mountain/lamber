@@ -12,6 +12,7 @@ import {
   type IctSubjectSide,
 } from "./ictSubjectCatalog"
 import { exclFromIncl, restoreTaxSplitParts, roundMoneyHalfUp } from "./taxAmount"
+import { resolveSelectionFeeTargetSubject } from "./selectionFee"
 
 export type SelectionRenewalDecision = "include" | "exclude"
 
@@ -168,6 +169,9 @@ export const restoreSelectionProjectData = (
       amount: input?.selection_fee_amount ?? "",
       limit: input?.selection_fee_limit ?? "",
       anchor: input?.selection_fee_anchor ?? "limit",
+      targetSubjectCode: resolveSelectionFeeTargetSubject(
+        input?.selection_fee_target_subject_code,
+      ).subjectCode,
     },
   }
 
@@ -378,13 +382,16 @@ export function buildSelectionResultBatchModel(
   projects.forEach((project, projectIndex) => {
     const manualLimit = money(project.projectData.selectionFee?.limit)
     if (manualLimit.gt(0)) {
-      const integrationSubject = IT_COST_SUBJECTS.find(subject => subject.key === "integration") || IT_COST_SUBJECTS[0]
-      const integrationItem = project.projectData.cost?.it?.integration
+      const targetSubject = resolveSelectionFeeTargetSubject(
+        project.projectData.selectionFee?.targetSubjectCode
+          ?? project.projectData.selection_fee_target_subject_code,
+      )
+      const targetItem = getProjectDataSubjectItem(project.projectData, targetSubject)
       tableA.push({
         A_SEQ: String(projectIndex + 1),
         A_NAME: project.projectName,
-        A_FEE_TYPE: subjectLabel(integrationSubject, integrationItem),
-        A_TAX_RATE: `${Number(integrationItem?.tax ?? integrationSubject.defaultTaxRate)}%`,
+        A_FEE_TYPE: subjectLabel(targetSubject, targetItem),
+        A_TAX_RATE: `${Number(targetItem?.tax ?? targetSubject.defaultTaxRate)}%`,
         A_LIMIT: manualLimit.toFixed(2),
       })
       totalLimitExcl = totalLimitExcl.plus(manualLimit)

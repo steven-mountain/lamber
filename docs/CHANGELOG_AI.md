@@ -6,6 +6,36 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-08-07
+
+### 前端 lint 债务清理与副作用生命周期稳定化
+
+Modified:
+- 修复 AI 上下文 store 防抖函数的 `this` 捕获方式，并清理可直接确定的 `prefer-const` 问题。
+- 将指标构建、科目定位和模板完成度计算等非组件导出移到独立模块，保持 React Fast Refresh 文件只导出组件。
+- 新增稳定回调 Hook：项目/方案加载、模板设置加载、全局保存处理器、延迟自动保存及 ICT 计算可读取最新状态，同时保持原有业务键触发周期，避免为消除依赖告警而引入重复加载或保存循环。
+- 补齐项目文件、资料中心、Workspace 维护和项目看板的 Effect 依赖。
+
+Validation:
+- `npm run lint --prefix src-ui`：通过，0 错误、0 警告。
+- `npm run build --prefix src-ui`：通过。
+- `npm run test:ai-compute-quote --prefix src-ui`、`npm run test:tax-split --prefix src-ui`、`npm run test:selection-batch --prefix src-ui`：通过。
+- `cargo test`：36 项通过；Rust 编译仍输出 15 个既有 warning，本次未扩大到 Rust 清理范围。
+
+## 2026-08-06
+
+### 采购甄选费可选择投入科目
+
+Modified:
+- 采购甄选面板新增投入科目选择器，复用统一 ICT 科目目录并按投入分组展示；中标服务费保留为系统自动写入科目。
+- 新增方案级 `selection_fee_target_subject_code` 元数据，随 lifecycle 工作副本和效益快照保存恢复；历史方案与 Excel 导入默认回退集成服务。
+- 写入改为一次批量更新目标投入科目和中标服务费，统一同步科目付款计划，消除同一 React 分组连续写入可能互相覆盖的问题。
+- 智能反算和甄选结果签批表 A 表改为读取当前甄选目标科目，不再固定绑定集成服务。
+
+Decisions:
+- 甄选服务费由供应商承担并包含在最高限价中：目标投入科目写入“最高限价减甄选服务费”（等价于供应商报价加上浮），中标服务费写入甄选服务费，两者合计为最高限价。
+- Rust 阶梯费率、NPV、现金流、税额与 0 容差规则保持不变；目标科目仅决定用户确认写入后的科目归属及相关文档展示。
+
 ## 2026-08-03
 
 ### 多项目《ICT项目甄选结果签批表》合并生成

@@ -27,8 +27,8 @@ export function deriveAccentTokens(
   const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
   const minRatio = isHighContrast ? 7.0 : 4.5;
 
-  let finalH = hsl.h;
-  let finalS = hsl.s;
+  const finalH = hsl.h;
+  const finalS = hsl.s;
   let finalL = hsl.l;
 
   if (isDark) {
@@ -138,8 +138,8 @@ export function validateAccentColor(
   const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
   const minRatio = isHighContrast ? 7.0 : 4.5;
 
-  let finalH = hsl.h;
-  let finalS = hsl.s;
+  const finalH = hsl.h;
+  const finalS = hsl.s;
   let finalL = hsl.l;
 
   let ratio = 1;

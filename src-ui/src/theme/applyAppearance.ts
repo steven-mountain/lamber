@@ -20,7 +20,7 @@ export function applyAppearance(settings: AppearanceSettings, resolvedColorMode:
   }
 
   // 2. Load the colors based on preset and resolved mode
-  let colors = { ...(resolvedColorMode === "dark" 
+  const colors = { ...(resolvedColorMode === "dark"
     ? getDarkTheme(settings.themePreset)
     : LIGHT_THEMES[settings.themePreset]) };
 
@@ -126,4 +126,3 @@ export function applyAppearance(settings: AppearanceSettings, resolvedColorMode:
   const resolvedScale = FONT_SCALES[settings.fontScale] || 1.00;
   doc.style.setProperty("--font-scale", String(resolvedScale));
 }
-

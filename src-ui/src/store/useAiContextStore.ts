@@ -104,9 +104,8 @@ const initialSnapshot = readAiContextSnapshot();
 function debounce<T extends (...args: any[]) => void>(func: T, wait: number): T {
   let timeout: any;
   return function(this: any, ...args: any[]) {
-    const context = this;
     clearTimeout(timeout);
-    timeout = setTimeout(() => func.apply(context, args), wait);
+    timeout = setTimeout(() => func.apply(this, args), wait);
   } as any;
 }
 

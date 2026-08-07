@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AppIcon from "../components/icons/AppIcon";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -64,7 +64,7 @@ export default function PresetCenterView({ onBack }: PresetCenterViewProps) {
 
   const compatibleFields = PRESET_FIELD_DEFINITIONS.filter(field => field.kind === kind);
 
-  const loadItems = async () => {
+  const loadItems = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
@@ -81,11 +81,11 @@ export default function PresetCenterView({ onBack }: PresetCenterViewProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [category, kind, sortBy]);
 
   useEffect(() => {
     void loadItems();
-  }, [kind, category, sortBy]);
+  }, [loadItems]);
 
   const resetForm = (nextKind: CommonPresetKind = kind) => {
     const defaultCategory = getPresetFieldCategories(nextKind)[0] || "未分类";

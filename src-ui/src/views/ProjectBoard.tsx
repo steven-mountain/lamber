@@ -205,13 +205,9 @@ export default function ProjectBoard({ onBack, onOpenCalc }: ProjectBoardProps) 
     });
   }, [
     isWorkspaceReady,
-    currentWorkspace?.workspaceId,
-    currentWorkspace?.workspaceName,
+    currentWorkspace,
     projects,
-    selectedProject?.id,
-    selectedProject?.note,
-    selectedProject?.progress,
-    selectedProject?.deadline,
+    selectedProject,
     editingProjectName,
     editingCustomerName,
     editingProjectType,
