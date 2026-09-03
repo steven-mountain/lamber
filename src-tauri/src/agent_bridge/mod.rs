@@ -21,6 +21,8 @@
 //! because `approval/request` is an in-process Cordis event and is not
 //! forwarded over the SDK JSON-RPC protocol.
 
+pub mod approval;
+pub mod approval_log;
 pub mod bridge_server;
 pub mod calculation;
 pub mod dsh_session;
@@ -28,6 +30,7 @@ pub mod dsh_session;
 #[cfg(test)]
 mod tests;
 
+use approval::{ApprovalGate, ApprovalPrompt, ApprovalRequest, APPROVAL_EVENT, APPROVAL_ROUTE};
 use bridge_server::{BridgeHandler, BridgeReply, BridgeServer};
 use calculation::{CalculateRequest, CALCULATE_ROUTE};
 use dsh_session::{DshLaunchConfig, DshSession};
@@ -37,15 +40,25 @@ use tauri::{Emitter, Manager};
 /// Frontend event carrying every `session.event` / `session.status` notification.
 pub const SESSION_EVENT: &str = "ai://session-event";
 
+/// Called with each approval question before lamber parks waiting for an answer.
+///
+/// Kept as a parameter rather than reaching for the `AppHandle` directly so
+/// tests can drive the gate with a plain closure instead of a running app.
+pub type ApprovalAnnouncer = Arc<dyn Fn(&ApprovalPrompt) + Send + Sync>;
+
 /// Build the bridge route dispatcher for an open workspace.
 ///
 /// Kept separate from the Tauri layer so tests can host the same routes over a
 /// database they build themselves.
 ///
 /// @param runtime - the workspace runtime holding the open database.
+/// @param gate - registry of approval questions awaiting a human.
+/// @param announce - surfaces one question to the user.
 /// @returns a handler suitable for `BridgeServer::start`.
 pub fn workspace_handler(
     runtime: Arc<crate::workspace::WorkspaceRuntime>,
+    gate: Arc<ApprovalGate>,
+    announce: ApprovalAnnouncer,
 ) -> BridgeHandler {
     Arc::new(move |path, body| match path {
         CALCULATE_ROUTE => {
@@ -59,6 +72,19 @@ pub fn workspace_handler(
                     Err(e) => BridgeReply::error(500, &format!("结果序列化失败: {e}")),
                 },
                 Err(message) => BridgeReply::error(422, &message),
+            }
+        }
+        APPROVAL_ROUTE => {
+            let request: ApprovalRequest = match serde_json::from_str(body) {
+                Ok(request) => request,
+                Err(e) => return BridgeReply::error(400, &format!("审批请求解析失败: {e}")),
+            };
+            // Blocks this bridge worker thread until the user answers or the
+            // gate times out; the answerer is holding its HTTP request open.
+            let decision = approval::handle_request(&gate, request, |prompt| announce(prompt));
+            match serde_json::to_string(&decision) {
+                Ok(json) => BridgeReply::ok(json),
+                Err(e) => BridgeReply::error(500, &format!("审批结果序列化失败: {e}")),
             }
         }
         other => BridgeReply::error(404, &format!("未知的 AI 桥接路由: {other}")),
@@ -83,6 +109,9 @@ fn calculate_with_runtime(
 #[derive(Default)]
 pub struct AgentRuntime {
     inner: Mutex<Option<RunningAgent>>,
+    /// Shared with the bridge handler; outlives individual dsh launches so a
+    /// decision arriving during a restart cannot resolve into a dropped gate.
+    gate: Arc<ApprovalGate>,
 }
 
 struct RunningAgent {
@@ -112,7 +141,7 @@ impl AgentRuntime {
             .lock()
             .map_err(|_| "AI 运行时锁已中毒".to_string())?;
         if guard.is_none() {
-            *guard = Some(Self::launch(app, runtime)?);
+            *guard = Some(self.launch(app, runtime)?);
         }
         let agent = guard.as_ref().expect("just launched");
         let result = agent.session.prompt(session_id, text)?;
@@ -124,20 +153,54 @@ impl AgentRuntime {
     }
 
     /// Tear the runtime down; the next prompt relaunches it.
+    ///
+    /// Open approvals are denied first, so a parked bridge worker is released
+    /// immediately instead of holding the dsh answerer's HTTP request open for
+    /// the rest of the gate's timeout.
     pub fn stop(&self) -> Result<(), String> {
+        let denied = self.gate.shutdown();
+        if denied > 0 {
+            eprintln!("[agent_bridge] 关闭时拒绝了 {denied} 个未完成的审批请求");
+        }
         let mut guard = self
             .inner
             .lock()
             .map_err(|_| "AI 运行时锁已中毒".to_string())?;
         *guard = None;
+        // A later prompt relaunches the runtime, so the gate must accept again.
+        self.gate.reopen();
         Ok(())
     }
 
+    /// Deny open approvals without relaunching. Used on application exit.
+    ///
+    /// @returns how many open questions were denied.
+    pub fn shutdown_approvals(&self) -> usize {
+        self.gate.shutdown()
+    }
+
+    /// Deliver a user's decision to the parked bridge thread.
+    pub fn resolve_approval(&self, request_id: &str, approved: bool) -> Result<(), String> {
+        self.gate.resolve(request_id, approved)
+    }
+
     fn launch(
+        &self,
         app: &tauri::AppHandle,
         runtime: Arc<crate::workspace::WorkspaceRuntime>,
     ) -> Result<RunningAgent, String> {
-        let bridge = BridgeServer::start(workspace_handler(runtime))?;
+        let announcer_app = app.clone();
+        let announce: ApprovalAnnouncer = Arc::new(move |prompt: &ApprovalPrompt| {
+            let _ = announcer_app.emit(APPROVAL_EVENT, prompt);
+        });
+        // Persist every settled question for after-the-fact audit.
+        self.gate
+            .set_recorder(approval_log::workspace_recorder(Arc::clone(&runtime)));
+        let bridge = BridgeServer::start(workspace_handler(
+            runtime,
+            Arc::clone(&self.gate),
+            announce,
+        ))?;
 
         let mut config = DshLaunchConfig::from_repo_root(&repo_root()?);
         config.bridge_url = bridge.origin();
@@ -234,4 +297,36 @@ pub async fn ai_agent_status(app: tauri::AppHandle) -> Result<serde_json::Value,
 #[tauri::command]
 pub async fn ai_agent_stop(app: tauri::AppHandle) -> Result<(), String> {
     app.state::<Arc<AgentRuntime>>().inner().clone().stop()
+}
+
+/// Read the most recent approval audit entries, newest first.
+///
+/// @param limit - maximum rows; defaults to 50 and is capped at 500.
+#[tauri::command]
+pub async fn ai_list_approval_log(
+    app: tauri::AppHandle,
+    limit: Option<u32>,
+) -> Result<Vec<approval_log::ApprovalLogEntry>, String> {
+    let runtime = app
+        .state::<Arc<crate::workspace::WorkspaceRuntime>>()
+        .inner()
+        .clone();
+    let conn = runtime.require_db()?;
+    approval_log::recent(&conn, limit.unwrap_or(50).min(500))
+}
+
+/// Deliver the user's answer to a pending `ai://approval-request`.
+///
+/// @param request_id - the `requestId` from the emitted prompt.
+/// @param approved - `true` grants this one call; anything else denies it.
+#[tauri::command]
+pub async fn ai_resolve_approval(
+    app: tauri::AppHandle,
+    request_id: String,
+    approved: bool,
+) -> Result<(), String> {
+    app.state::<Arc<AgentRuntime>>()
+        .inner()
+        .clone()
+        .resolve_approval(&request_id, approved)
 }

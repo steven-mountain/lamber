@@ -26,7 +26,11 @@ use super::bridge_server::BRIDGE_TOKEN_HEADER;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Everything needed to launch one dsh runtime bound to this lamber instance.
-#[derive(Clone, Debug)]
+///
+/// `Debug` is hand-written to redact the API key and the bridge token: a config
+/// dump in a panic message, a log line, or a bug report must never carry a
+/// live credential.
+#[derive(Clone)]
 pub struct DshLaunchConfig {
     /// Path to the `dsh` executable (usually `agent-bridge/node_modules/.bin/dsh`).
     pub dsh_bin: PathBuf,
@@ -48,6 +52,31 @@ pub struct DshLaunchConfig {
     pub bridge_url: String,
     /// Per-launch bridge token the plugin must present.
     pub bridge_token: String,
+}
+
+impl std::fmt::Debug for DshLaunchConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DshLaunchConfig")
+            .field("dsh_bin", &self.dsh_bin)
+            .field("profile", &self.profile)
+            .field("patch_path", &self.patch_path)
+            .field("dsh_home", &self.dsh_home)
+            .field("cwd", &self.cwd)
+            .field("provider", &self.provider)
+            .field("model", &self.model)
+            .field("api_key", &redacted(self.api_key.as_deref()))
+            .field("bridge_url", &self.bridge_url)
+            .field("bridge_token", &redacted(Some(self.bridge_token.as_str())))
+            .finish()
+    }
+}
+
+/// Render a secret as its presence, never its value.
+fn redacted(secret: Option<&str>) -> &'static str {
+    match secret {
+        Some(value) if !value.is_empty() => "<redacted>",
+        _ => "<unset>",
+    }
 }
 
 impl DshLaunchConfig {

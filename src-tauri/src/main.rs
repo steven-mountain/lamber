@@ -88,12 +88,24 @@ fn main() {
             // The dsh child process starts lazily on the first AI prompt.
             app.manage(std::sync::Arc::new(agent_bridge::AgentRuntime::default()));
 
+            // Opt-in bench for exercising the agent and its approval dialog by
+            // hand (`AgentLabView`). The window has no address bar, so the route
+            // is unreachable otherwise; gated behind an env var so a normal
+            // launch is untouched.
+            if std::env::var("LAMBER_AGENT_LAB").is_ok_and(|v| v == "1") {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.eval("window.location.hash = '#/agent-lab';");
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             agent_bridge::ai_send_prompt,
             agent_bridge::ai_agent_status,
             agent_bridge::ai_agent_stop,
+            agent_bridge::ai_resolve_approval,
+            agent_bridge::ai_list_approval_log,
             benefit::calculate_ict_benefit,
             benefit::calculator::calculate_ict_benefit_batch,
             ai_context::commands::build_ai_project_context,
@@ -206,6 +218,19 @@ fn main() {
             workspace_maintenance::list_external_paths,
             workspace_maintenance::convert_internal_absolute_paths_to_relative,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Deny any approval still waiting on a human before the process goes
+            // away, so the parked bridge worker (and the dsh answerer holding its
+            // HTTP request) is released now rather than at the gate's timeout.
+            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+                if let Some(agent) = app.try_state::<std::sync::Arc<agent_bridge::AgentRuntime>>() {
+                    let denied = agent.shutdown_approvals();
+                    if denied > 0 {
+                        eprintln!("[agent_bridge] 退出前拒绝了 {denied} 个未完成的审批请求");
+                    }
+                }
+            }
+        });
 }

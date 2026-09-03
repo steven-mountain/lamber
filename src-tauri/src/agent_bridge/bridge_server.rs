@@ -13,10 +13,14 @@
 //!   an authorization boundary — any local process could otherwise read a
 //!   customer's project financials — so the token is generated per server and
 //!   handed to the child through its environment.
+//!
+//! Each request runs on its own worker thread. The approval route parks its
+//! request for as long as the user takes to answer, so a single-threaded accept
+//! loop would stall every other route behind one open dialog.
 
 use std::io::Read;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
@@ -25,6 +29,10 @@ pub const BRIDGE_TOKEN_HEADER: &str = "x-lamber-bridge-token";
 
 /// Largest request body the bridge accepts, guarding against a runaway client.
 const MAX_BODY_BYTES: usize = 1024 * 1024;
+
+/// Cap on concurrently served requests, so a misbehaving client cannot spawn
+/// threads without bound. Well above what one agent generates.
+const MAX_IN_FLIGHT: usize = 16;
 
 /// Outcome of one bridge route: an HTTP status plus a JSON body.
 pub struct BridgeReply {
@@ -121,6 +129,7 @@ fn serve_loop(
     token: String,
     handler: BridgeHandler,
 ) {
+    let in_flight = Arc::new(AtomicUsize::new(0));
     loop {
         let request = match server.recv() {
             Ok(request) => request,
@@ -130,18 +139,43 @@ fn serve_loop(
         if stopping.load(Ordering::SeqCst) {
             break;
         }
-        let reply = handle_request(request, &token, &handler);
-        if let Err(e) = reply {
-            eprintln!("[agent_bridge] 请求处理失败: {e}");
+
+        if in_flight.load(Ordering::SeqCst) >= MAX_IN_FLIGHT {
+            respond(request, BridgeReply::error(503, "AI 桥接服务并发请求过多"));
+            continue;
+        }
+
+        // One thread per request: the approval route blocks until the user
+        // answers, and must not hold up the calculation route behind it.
+        in_flight.fetch_add(1, Ordering::SeqCst);
+        let token = token.clone();
+        let handler = Arc::clone(&handler);
+        let worker_counter = Arc::clone(&in_flight);
+        let spawned = std::thread::Builder::new()
+            .name("lamber-agent-bridge-req".into())
+            .spawn(move || {
+                handle_request(request, &token, &handler);
+                worker_counter.fetch_sub(1, Ordering::SeqCst);
+            });
+        if spawned.is_err() {
+            in_flight.fetch_sub(1, Ordering::SeqCst);
+            eprintln!("[agent_bridge] 无法为请求创建线程");
         }
     }
 }
 
-fn handle_request(
-    mut request: tiny_http::Request,
-    token: &str,
-    handler: &BridgeHandler,
-) -> Result<(), String> {
+/// Send one reply, discarding a write failure on an already-closed connection.
+fn respond(request: tiny_http::Request, reply: BridgeReply) {
+    let response = tiny_http::Response::from_string(reply.body)
+        .with_status_code(reply.status)
+        .with_header(
+            tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                .expect("static header is valid"),
+        );
+    let _ = request.respond(response);
+}
+
+fn handle_request(mut request: tiny_http::Request, token: &str, handler: &BridgeHandler) {
     let reply = match validate(&request, token) {
         Err(reply) => reply,
         Ok(()) => {
@@ -153,13 +187,7 @@ fn handle_request(
         }
     };
 
-    let response = tiny_http::Response::from_string(reply.body)
-        .with_status_code(reply.status)
-        .with_header(
-            tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
-                .expect("static header is valid"),
-        );
-    request.respond(response).map_err(|e| e.to_string())
+    respond(request, reply);
 }
 
 /// Reject anything that is not an authenticated POST before touching the body.

@@ -152,6 +152,31 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
         [],
     )?;
 
+    // Agent 工具审批审计日志。Append-only：每条记录一次"谁在什么时候批准/拒绝了
+    // 哪个工具调用"，用于事后追溯 AI 代理的写操作授权。不引用 projects，因为审批
+    // 与具体项目无关，且必须在没有打开项目时也能落库。
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS agent_approval_log (
+            request_id TEXT PRIMARY KEY,
+            tool_name TEXT NOT NULL,
+            call_id TEXT,
+            reason TEXT,
+            args_json TEXT NOT NULL DEFAULT '{}',
+            approved INTEGER NOT NULL,
+            decided_by TEXT NOT NULL,
+            decision_reason TEXT NOT NULL DEFAULT '',
+            requested_at TEXT NOT NULL,
+            decided_at TEXT NOT NULL
+        );",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_approval_decided_at
+            ON agent_approval_log(decided_at);",
+        [],
+    )?;
+
     conn.execute(
         "CREATE TABLE IF NOT EXISTS project_template_assets (
             id TEXT PRIMARY KEY,
@@ -842,6 +867,30 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
         }
     }
 
+    // v9 -> v10: Agent 工具审批审计日志。纯新增表，无数据迁移；`CREATE TABLE IF
+    // NOT EXISTS` 已在上面的建表段执行过，这里只负责推进 schema_version，使既有
+    // 工作区也被标记为已具备该表。
+    {
+        let version = {
+            let mut stmt =
+                conn.prepare("SELECT value FROM app_settings WHERE key = 'schema_version'")?;
+            let mut rows = stmt.query([])?;
+            if let Some(row) = rows.next()? {
+                let val_str: String = row.get(0)?;
+                val_str.parse::<i32>().unwrap_or(1)
+            } else {
+                1
+            }
+        };
+        if version < 10 {
+            let now = chrono::Utc::now().to_rfc3339();
+            conn.execute(
+                "UPDATE app_settings SET value = '10', updated_at = ?1 WHERE key = 'schema_version'",
+                [now],
+            )?;
+        }
+    }
+
     Ok(conn)
 }
 
@@ -1142,9 +1191,25 @@ mod tests {
         .unwrap();
     }
 
+    /// v9 工作区升级到 v10 后必须具备审批审计表，且既有数据不受影响。
     #[test]
-    fn fresh_database_uses_schema_v9_and_defaults_projects_to_ict() {
-        let path = temp_db_path("fresh-v9");
+    fn v9_database_gains_agent_approval_log_and_preserves_rows() {
+        let path = temp_db_path("v9-to-v10");
+        {
+            let conn = init_db(&path).unwrap();
+            conn.execute(
+                "UPDATE app_settings SET value = '9', updated_at = '2026-01-01T00:00:00Z' WHERE key = 'schema_version'",
+                [],
+            )
+            .unwrap();
+            conn.execute("DROP TABLE agent_approval_log", []).unwrap();
+            conn.execute(
+                "INSERT INTO app_settings (key, value, updated_at) VALUES ('sentinel', 'keep-me', '2026-01-01T00:00:00Z')",
+                [],
+            )
+            .unwrap();
+        }
+
         let conn = init_db(&path).unwrap();
         let version: String = conn
             .query_row(
@@ -1153,7 +1218,43 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, "9");
+        assert_eq!(version, "10");
+
+        // 表存在且可写。
+        conn.execute(
+            "INSERT INTO agent_approval_log (request_id, tool_name, call_id, reason, args_json, approved, decided_by, decision_reason, requested_at, decided_at)
+             VALUES ('r1', 'write_test_marker', 'c1', '需要确认', '{}', 1, 'user', '用户已确认', '2026-01-01T00:00:00Z', '2026-01-01T00:00:05Z')",
+            [],
+        )
+        .unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM agent_approval_log", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // 既有数据未被迁移破坏。
+        let sentinel: String = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = 'sentinel'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(sentinel, "keep-me");
+    }
+
+    #[test]
+    fn fresh_database_uses_schema_v10_and_defaults_projects_to_ict() {
+        let path = temp_db_path("fresh-v10");
+        let conn = init_db(&path).unwrap();
+        let version: String = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = 'schema_version'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, "10");
         // v8 引入 benefit_schemes.stage（甄选阶段标签）
         let has_stage: bool = {
             let mut col_stmt = conn.prepare("PRAGMA table_info(benefit_schemes)").unwrap();
@@ -1305,7 +1406,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, "9");
+        assert_eq!(version, "10");
 
         // 迁移后可读写 stage，且既有行的 stage 默认为 NULL（未标注）。
         let (name, stage): (String, Option<String>) = conn
@@ -1429,7 +1530,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, "9");
+        assert_eq!(version, "10");
 
         // 既有行被归属到项目 default_scheme_id，且数据保留。
         let (scheme_id, payload): (String, String) = conn

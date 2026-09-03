@@ -6,6 +6,8 @@ import DataManagement from "./views/DataManagement";
 import PresetCenterView from "./views/PresetCenterView";
 import AiComputeQuoteView from "./features/ai-compute-quote/AiComputeQuoteView";
 import SettingsView from "./components/settings/SettingsView";
+import AgentApprovalDialog from "./components/ai/AgentApprovalDialog";
+import AgentLabView from "./components/ai/AgentLabView";
 import AiFloatingLauncher from "./components/ai/AiFloatingLauncher";
 import AiFloatingWindow from "./components/ai/AiFloatingWindow";
 import AppIcon, { type AppIconName } from "./components/icons/AppIcon";
@@ -24,6 +26,11 @@ function isTauriRuntime() {
   return typeof window !== "undefined" && Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
 }
 
+/** `#/agent-lab` opens the dsh agent bench; see `AgentLabView`. */
+function isAgentLabRoute() {
+  return window.location.hash.startsWith("#/agent-lab");
+}
+
 function getAiAssistantView() {
   const hash = window.location.hash;
   if (!hash.startsWith("#/ai-assistant")) return null;
@@ -39,16 +46,17 @@ export default function App() {
   const setActiveModule = useAiContextStore(state => state.setActiveModule);
   const { isWorkspaceReady, refreshWorkspaceState } = useWorkspaceStore();
   const aiAssistantView = getAiAssistantView();
+  const agentLab = isAgentLabRoute();
   useGlobalSaveShortcut();
   useUnsavedChangesGuard();
 
   useEffect(() => {
-    if (aiAssistantView) return;
+    if (aiAssistantView || agentLab) return;
     if (isTauriRuntime()) refreshWorkspaceState();
-  }, [aiAssistantView, refreshWorkspaceState]);
+  }, [agentLab, aiAssistantView, refreshWorkspaceState]);
 
   useEffect(() => {
-    if (aiAssistantView) return;
+    if (aiAssistantView || agentLab) return;
 
     localStorage.setItem(AI_CURRENT_VIEW_KEY, currentView);
     if (currentView === "hub") {
@@ -67,7 +75,18 @@ export default function App() {
       emitTo(AI_ASSISTANT_LABEL, "lamber-ai-view-changed", { view: currentView })
          .catch(error => console.warn("Failed to sync AI assistant view:", error));
     }
-  }, [aiAssistantView, currentView, setActiveModule]);
+  }, [agentLab, aiAssistantView, currentView, setActiveModule]);
+
+  // The bench needs the approval dialog alongside it: the backend parks a tool
+  // call waiting for that answer.
+  if (agentLab) {
+    return (
+      <>
+        <AgentLabView />
+        <AgentApprovalDialog />
+      </>
+    );
+  }
 
   if (aiAssistantView) {
     return <AiFloatingWindow currentView={aiAssistantView} />;
@@ -157,6 +176,9 @@ export default function App() {
       )}
 
       {aiLauncherVisible && <AiFloatingLauncher currentView={currentView} />}
+      {/* Mounted at the root: the backend parks a tool call awaiting this
+          answer, so the listener must outlive any individual panel. */}
+      <AgentApprovalDialog />
     </div>
   );
 }

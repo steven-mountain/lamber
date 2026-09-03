@@ -1,3 +1,91 @@
+# 闭环 B 收尾：前端接通 / 审批持久化 / 挂起槽位清理
+
+- **Status:** 2 项完成并自动验证；第 1 项已补齐代码与契约用例，**真实鼠标点击未由 AI 验证**（本机未授予 osascript 辅助功能与屏幕录制权限），需人工按 README 步骤确认。
+- **模块文档:** [agent-bridge/README.md](../agent-bridge/README.md)
+
+## 1. 前端弹窗接通
+
+- [x] **发现真实缺口**：上一轮虽有 `AgentApprovalDialog.tsx` 并已挂载，但前端**无任何地方调用 `ai_send_prompt`**（`AiChatPanel` 仍走旧 `AiRuntime`），真实应用里根本无法触发 Agent，弹窗永远不出现。
+- [x] 新增 `AgentLabView.tsx`（路由 `#/agent-lab`）作为触发入口：发指令、看会话事件、看审批审计日志。
+- [x] `LAMBER_AGENT_LAB=1` 启动后自动跳转该路由（窗口无地址栏，否则不可达）；正常启动不受影响。
+- [x] 弹窗在主界面与联调台两条渲染路径上都挂载。
+- [x] 契约用例 2 个：审批事件的 6 个 camelCase 字段与弹窗读取的名字一致；弹窗挂载点与 `ai_send_prompt`/`ai_list_approval_log` 调用存在。
+- [x] 应用能真实启动并停在联调台路由，进程稳定、stderr 无报错。
+- [ ] **真实鼠标点击确认/拒绝两条路径** —— 未完成，需人工执行（README「人工验证步骤」）。
+
+## 2. 审批决定持久化
+
+- [x] 工作区 SQLite 新增 `agent_approval_log` 表；schema v9 → v10（纯建表，无数据迁移）。
+- [x] `decided_by` 区分 `user` / `timeout` / `shutdown` / `internal`。
+- [x] `ApprovalGate` 只持 `ApprovalRecorder` 回调，不碰数据库；生产由 `workspace_recorder` 注入，连接在决定时才解析。
+- [x] 审计写失败只警告不改变决定。
+- [x] Tauri 命令 `ai_list_approval_log(limit)`。
+- [x] 用例：`approval_decisions_survive_a_process_restart`（丢弃全部内存持有者后重开磁盘库仍可查）、`audit_log_distinguishes_rejection_from_timeout`、`an_audit_write_failure_does_not_alter_the_decision`、`v9_database_gains_agent_approval_log_and_preserves_rows`。
+
+## 3. 挂起槽位清理
+
+- [x] `gate.shutdown()`：拒绝所有挂起审批并唤醒；`reopen()` 供下次启动复用。
+- [x] `ai_agent_stop` 与 `main.rs` 的 `RunEvent::Exit` 钩子都会排空。
+- [x] 关闭后新请求当场拒绝、不建槽位。
+- [x] 崩溃路径：套接字随进程消失 → answerer `fetch` 报错 → `rejected`；最坏有 180 秒兜底。**未做优雅通知**（崩溃时没有机会通知），靠断连与超时兜底，符合失败关闭原则。
+- [x] 用例：`shutdown_denies_parked_approvals_immediately`（网关超时设 300 秒，只有关闭能救）、`approvals_after_shutdown_are_denied_without_parking`、`answerer_fails_closed_when_the_bridge_dies_mid_request`。
+
+## Validation
+
+- `cargo test`：50 passed（新增 7 个默认用例 + 2 个迁移用例），无回归。
+- `cargo test agent_bridge -- --ignored`（带真实 key）：9 passed，含闭环 A 两个回归检查点与闭环 B 完整链路。
+- `npm run build --prefix src-ui` 通过；lint 新文件零告警。
+
+## Scope Boundary
+
+- 未改动已验证的审批核心机制：超时分层（90s / 180s）、失败关闭、令牌鉴权。
+- 未做精美 UI；联调台与弹窗都是能演示流程的最简实现。
+- 仍未加任何真实写操作工具。
+
+---
+
+# Agent 人工审批通道（deepseek-harness）· 闭环 B
+
+- **Status:** Done（审批链路全程已实测；仅「模型真正发出被拦工具的 tool_call」这一步待有 API key 时验证）
+- **Objective:** 打通 `dsh → answerer 插件 → Rust → React 弹窗 → 用户确认 → dsh`，让写操作类工具必须经用户确认才执行。
+- **模块文档:** [agent-bridge/README.md](../agent-bridge/README.md)
+
+## Progress（闭环 B，本次完成）
+
+1. [x] 读源码确认审批协议（`@deepseek-ai/dsh-user-approval@0.1.2-alpha.5`）：事件字段、`ApprovalOutcome` 四值、无 answerer 时的失败关闭行为、`tools/pre-execute` 瀑布终止默认值为 `allow`。
+2. [x] `write_test_marker(note?)` 无害测试工具：只写系统临时目录，不碰 lamber 任何数据。
+3. [x] 审批守卫 + 答复器（`approval.ts`）与参数关联表（`pendingCalls.ts`）。
+4. [x] Rust `approval.rs`：`POST /lamber-bridge/approval` + `ApprovalGate` 挂起/唤醒/超时/槽位回收，复用既有令牌鉴权，未开无鉴权端口。
+5. [x] Tauri 命令 `ai_resolve_approval`、前端事件 `ai://approval-request`。
+6. [x] `AgentApprovalDialog.tsx` 最简弹窗，挂 App 根节点。
+7. [x] `bridge_server.rs` 改每请求一线程（上限 16）——修复闭环 A 遗留的单线程 accept 循环缺陷。
+8. [x] 分层验证 6 个默认用例 + 8 个 `#[ignore]` 用例。
+
+## Validation
+
+- `cargo test`：42 passed，无回归。
+- `cargo test agent_bridge -- --ignored`：8 passed，含闭环 A 两个回归检查点。
+- `only_the_write_tool_is_gated_behind_approval`：`run_benefit_calculation=false` / `write_test_marker=true`，只读工具未被误伤。
+- `approval_times_out_as_an_explicit_rejection`：超时 1 秒内返回明确拒绝，不挂死，槽位已回收。
+- `a_parked_approval_does_not_block_the_calculation_route`：挂起的审批不阻塞其它路由。
+- `npm run build --prefix src-ui` 通过；lint 新文件零告警。
+- 完整闭环用例需 `DEEPSEEK_API_KEY`，本机未设置，按设计跳过。
+
+## Scope Boundary
+
+- 未加任何真实写操作工具（硬约束）；`write_test_marker` 只写 `os.tmpdir()`。
+- 未改动 `calculator.rs` / `docfill.rs` / 测算引擎 / `AiRuntime.ts` / `AiChatPanel.tsx`。
+- 未做 SEA 打包，未做精美 UI。
+
+## Next
+
+- 把真实写操作工具逐个加进 `GATED_TOOLS`，并补桥接路由与端到端用例。
+- 对话流里可视化工具调用过程（订阅 `ai://session-event`）。
+- 审批弹窗产品化（批量授权、历史记录、按 DESIGN.md 精修）。
+- API key 改由前端凭证传入；SEA 打包瘦身。
+
+---
+
 # Agent 工具执行能力接入（deepseek-harness）· 闭环 A
 
 - **Status:** Done（Rust → dsh → 工具 → calculator 全链路已实测；仅「模型真正发出 tool_call」这一步待有 API key 时验证）

@@ -6,6 +6,73 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-09-03（三）
+
+### 闭环 B 收尾：前端接通 / 审批持久化 / 挂起槽位清理
+
+Added:
+- `src-ui/src/components/ai/AgentLabView.tsx` + 路由 `#/agent-lab`：真实应用里驱动 Agent 与审批的入口（发指令 / 会话事件流 / 审批审计日志）。`LAMBER_AGENT_LAB=1` 启动自动跳转。
+- `src-tauri/src/agent_bridge/approval_log.rs`：审批审计的 SQLite 落库与查询；Tauri 命令 `ai_list_approval_log`。
+- `agent_approval_log` 表（schema v9 → v10，纯建表无数据迁移），`decided_by` 区分 user/timeout/shutdown/internal。
+- `ApprovalGate::shutdown()` / `reopen()` / `set_recorder()`；`main.rs` 增加 `RunEvent::Exit` 排空钩子。
+
+Fixed:
+- **真实缺口**：前端此前无任何地方调用 `ai_send_prompt`（`AiChatPanel` 仍走旧 `AiRuntime`），导致审批弹窗在真实应用里永远无法出现。补 `AgentLabView` 作为触发入口。
+
+Decisions:
+- **网关不碰数据库**，只持 `ApprovalRecorder` 回调；连接在决定时解析而非启动时捕获，使 Agent 起来后才打开的工作区也能记账。
+- **审计写失败只警告不改变决定**：让存储故障阻塞 Agent 是错的，失败放行更错。
+- **崩溃路径不做优雅通知**：lamber 崩溃时没有机会通知 dsh，靠套接字断开 + 180 秒兜底，与既有失败关闭原则一致。
+- **联调台路由靠环境变量开启**：窗口无地址栏，否则不可达；正常启动完全不受影响。
+
+Validation:
+- `cargo test`：50 passed，无回归。
+- `cargo test agent_bridge -- --ignored`（带真实 key）：9 passed。
+- 新增用例覆盖：跨进程重启后审批记录仍可查、拒绝与超时可区分、审计写失败不改变决定、关闭立即释放挂起审批、关闭后不建槽位、桥接中途断开时 answerer 失败关闭、前后端字段契约、弹窗挂载点。
+
+Known limitation:
+- **真实鼠标点击未由 AI 验证**：本机未授予 `osascript` 辅助功能权限与 `screencapture` 屏幕录制权限，无法发出真实点击也无法截图。已用两个契约用例覆盖"点击本来能发现的那类问题"（跨进程名字漂移），但弹窗视觉呈现与可点性仍需人工确认，步骤见 `agent-bridge/README.md`。
+- 审计表位于工作区数据库；审批发生时若未打开工作区，该条记录会丢（只留 stderr 警告）。
+
+## 2026-09-03（二）
+
+### Agent 人工审批通道（deepseek-harness / 闭环 B）
+
+Added:
+- `dsh-tool-lamber/src/writeTestMarker.ts`：无害测试工具 `write_test_marker(note?)`，只往 `os.tmpdir()` 下新建的临时目录写一个带时间戳的文本文件，**不碰 lamber 工作区/数据库/项目文件**。
+- `dsh-tool-lamber/src/approval.ts`：审批守卫（`tools/pre-execute` 对被拦工具返回 `{kind:'ask'}`）+ 答复器（`approval/request` 转发给 Rust，阻塞等待）。导出 `isGatedTool` 作为拦截策略的唯一真相源。
+- `dsh-tool-lamber/src/pendingCalls.ts`：按 `callId` 关联被拦调用的参数（有上限、自清理）。
+- `agent-bridge/scripts/check-approval.mjs` / `check-gating.mjs`：分别单跑「答复器→桥接→网关→回传」和「拦截策略」两跳的排错脚本。
+- `src-tauri/src/agent_bridge/approval.rs`：`POST /lamber-bridge/approval` 路由与 `ApprovalGate`（条件变量挂起/唤醒、超时、槽位回收）。
+- Tauri 命令 `ai_resolve_approval(requestId, approved)`；前端事件 `ai://approval-request`。
+- `src-ui/src/components/ai/AgentApprovalDialog.tsx`：最简审批弹窗，挂在 App 根节点。
+
+Changed:
+- `bridge_server.rs` 由单线程 accept 循环改为**每请求一个线程**（上限 16）。
+- `workspace_handler` 增加 `gate` 与 `announce` 两个入参；`AgentRuntime` 持有跨 dsh 启动周期的 `ApprovalGate`。
+
+Decisions:
+- **守卫与答复器和工具同包，不拆成 `dsh-answerer-lamber/`**（推翻上一轮 README 里的预留）。根因：`ApprovalRequestEvent` 不带工具参数，必须靠进程内 map 按 `callId` 关联；两个 npm 包在 pnpm link 下可能拿到两份模块实例、两张表。源码上仍分文件保持接缝清晰。
+- **全程失败关闭**：桥接报错、返回体异常、超时、锁中毒一律 `'rejected'`，不挂起也不默认放行。
+- **超时分层**：Rust 网关 90 秒（`LAMBER_APPROVAL_TIMEOUT_SECS` 可覆盖），答复器 180 秒。答复器故意更长，让正常路径是网关给出明确 `rejected`。
+- **网关超时时长做成 `ApprovalGate` 字段而非 wait 时读环境变量**：否则并行测试改同一个进程全局变量会互相干扰。
+- **审批弹窗挂在 App 根节点而非 AI 面板内**：后端挂着一个 dsh 工具调用等这个答复，监听器随面板关闭而消失会把每次审批都变成超时。
+- **仍不加任何真实写操作工具**，符合本轮硬约束与 AGENTS.md。
+
+Validation:
+- `cargo test`：42 passed（新增 6 个默认审批用例），既有用例无回归。
+- `cargo test agent_bridge -- --ignored`：8 passed。含闭环 A 的两个回归检查点（`dsh_advertises_the_lamber_tool_in_its_request_header`、`plugin_tool_body_reaches_the_calculator_over_the_bridge`）仍通过。
+- `only_the_write_tool_is_gated_behind_approval` 直接断言 `run_benefit_calculation=false` / `write_test_marker=true`，证明只读工具没被审批误伤。
+- `npm run build --prefix src-ui` 通过；`npm run lint` 新文件零告警（仅既有 `useAiContextStore.ts` 的 `no-this-alias` 报错）。
+- 带 `DEEPSEEK_API_KEY` 的完整闭环用例 `dsh_gated_tool_runs_only_after_the_user_confirms` 已写好（确认/拒绝两路都测），本机无 key，按设计跳过。
+
+读源码确认的协议事实（与任务书预设有出入的部分，详见 `agent-bridge/README.md`）：
+- `defineTool` **没有**"审批等级"字段，只能靠 `tools/pre-execute` 返回 `{kind:'ask'}`；瀑布终止默认值是 `allow`，所以未点名的工具原样放行。
+- `ApprovalRequestEvent` 只有 `{agent, toolName, callId?, reason?, signal?}`，**不含参数**。
+- `ApprovalOutcome` 四值：`allowed-once` / `rejected` / `cancelled` / `unavailable`，只有 `allowed-once` 放行且仅此一次。
+- 无 answerer 时两种默认都是失败关闭；会话策略 `never` 时根本不问人，直接 `rejected`。
+- `approval/asked` / `approval/decided` 是 session 事件，会流到 Rust 侧，适合做断言。
+
 ## 2026-09-03
 
 ### Agent 工具执行能力接入（deepseek-harness / 闭环 A）
