@@ -1,0 +1,8 @@
+# dsh profile patch: mount lamber's custom tool plugin into the `sdk` profile.
+#
+# `name` must be the package name as resolvable from
+# $DSH_HOME/profiles/<profile>/ — see scripts/provision-profile.mjs, which links
+# dsh-tool-lamber into that directory before dsh is launched.
+- insert:
+    - id: lamber-tools
+      name: dsh-tool-lamber

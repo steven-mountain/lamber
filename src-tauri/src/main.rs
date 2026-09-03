@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod agent_bridge;
 mod ai_context;
 mod benefit;
 mod common_presets;
@@ -84,9 +85,15 @@ fn main() {
             workspace::try_restore_last_workspace(app.handle(), &workspace_runtime, &config);
             app.manage(workspace_runtime);
 
+            // The dsh child process starts lazily on the first AI prompt.
+            app.manage(std::sync::Arc::new(agent_bridge::AgentRuntime::default()));
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            agent_bridge::ai_send_prompt,
+            agent_bridge::ai_agent_status,
+            agent_bridge::ai_agent_stop,
             benefit::calculate_ict_benefit,
             benefit::calculator::calculate_ict_benefit_batch,
             ai_context::commands::build_ai_project_context,

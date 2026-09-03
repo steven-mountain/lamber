@@ -1,0 +1,13 @@
+{
+  "name": "lamber-agent-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "deepseek-harness runtime host for lamber (CLI + profile provisioning)",
+  "scripts": {
+    "provision": "node scripts/provision-profile.mjs"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh": "0.1.2-alpha.5",
+    "pnpm": "^10.0.0"
+  }
+}

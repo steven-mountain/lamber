@@ -1,3 +1,46 @@
+# Agent 工具执行能力接入（deepseek-harness）· 闭环 A
+
+- **Status:** Done（Rust → dsh → 工具 → calculator 全链路已实测；仅「模型真正发出 tool_call」这一步待有 API key 时验证）
+- **Objective:** 让 lamber 的 AI 顾问具备真正的工具执行能力。由 dsh 承担 agent loop / 工具编排 / 审批，lamber 保留全部 Rust 业务逻辑，两者以本地回环 HTTP 桥接相连。
+- **模块文档:** [agent-bridge/README.md](../agent-bridge/README.md)
+
+## Progress（闭环 A，本次完成）
+
+1. [x] `agent-bridge/dsh-tool-lamber/`：dsh 自定义工具插件包，`defineTool` 注册 `run_benefit_calculation(projectId, scenario?)`，`npx tsc` 零报错。
+2. [x] `agent-bridge/patch.yml` + `scripts/provision-profile.mjs`：插件挂载进 `sdk` profile（必须先 `dsh plugin add` 链接进 `$DSH_HOME/profiles/sdk/`，只写 `--patch` 加载不到）。
+3. [x] `bridge_server.rs`：仅监听 `127.0.0.1`、临时端口的 tiny_http 桥接服务，带一次性令牌鉴权（定长比较）与请求体大小上限。
+4. [x] `calculation.rs`：`POST /lamber-bridge/calculate` → 项目 → 方案（`pre_selection` / `post_selection` / 方案 id / 方案名，缺省用 `default_scheme_id`）→ 最新快照 → `calculate_ict_benefit`。严格只读，未命中即报错不静默回退。
+5. [x] `dsh_session.rs`：dsh 子进程管理 + 手写 newline-delimited JSON-RPC 2.0 客户端（id 匹配请求/响应，无 id 即通知；读线程 + 条件变量唤醒，子进程退出时唤醒阻塞调用方）。
+6. [x] `mod.rs`：`AgentRuntime` 懒启动与生命周期，Tauri 命令 `ai_send_prompt` / `ai_agent_status` / `ai_agent_stop`，通知按 `{method, params}` 统一 emit 到 `ai://session-event`。
+7. [x] `main.rs` 注册模块、命令与 `AgentRuntime` 状态。
+8. [x] `Cargo.toml` 新增 `tiny_http 0.12`（`default-features = false`）。
+9. [x] 分层测试：6 个默认用例（无需 Node/网络）+ 3 个 `#[ignore]` 集成用例。
+10. [x] `.gitignore` 排除 `agent-bridge/.dsh-home/` 与插件构建产物。
+
+## Validation
+
+- `cargo test`：36 passed，既有 29 个用例无回归。
+- `cargo test agent_bridge -- --ignored`：
+  - `plugin_tool_body_reaches_the_calculator_over_the_bridge` 通过——插件 `execute()` 经桥接拿回引擎直算一致的 NPV / 利润率。
+  - `dsh_advertises_the_lamber_tool_in_its_request_header` 通过——真实 dsh 子进程启动、`initialize` 成功、`request/header` 中出现 `run_benefit_calculation`。
+  - `dsh_tool_call_reaches_the_calculator_and_returns_real_numbers` 需 `DEEPSEEK_API_KEY`，本机未设置，按设计跳过。
+- `npx tsc`（插件包）：零报错。
+
+## Scope Boundary
+
+- 未改动 `calculator.rs` / `docfill.rs` / 测算引擎 / NPV / 现金流 / 税额 / 甄选费 / 反算 / 0 容差校验。
+- 未改动 `AiRuntime.ts` / `AiChatPanel.tsx`——本轮验收标准是 Rust 侧能拿到通知，前端展示不在范围内。
+- 插件包内只有 `run_benefit_calculation` 一个工具，且为只读。
+
+## Next（闭环 B 及后续）
+
+- **审批通道**：dsh 的 `approval/request` 是进程内 Cordis 事件，**不会**经 SDK JSON-RPC 转发给外部客户端。需在 dsh 侧新写一个 answerer 插件（建议 `agent-bridge/dsh-answerer-lamber/`，`patch.yml` 再加一条 `insert`）把请求转给 Rust → React 弹窗 → 用户确认 → 回传 dsh。**在此之前不要往插件里加任何会写数据的工具。**
+- 前端 `AiChatPanel.tsx` 订阅 `ai://session-event` 展示工具调用过程。
+- API key 改由前端凭证传入（现从环境变量读；前端的 key 在 `localStorage.lamber_ai_api_key`）。
+- 单文件 SEA 打包 / 依赖瘦身（现依赖开发机上的 `agent-bridge/node_modules`）。
+
+---
+
 # 甄选后流程 · 第 2 阶段：ICT 测算表内"甄选前 / 甄选后"方案切换
 
 - **Status:** Done（已用全新项目验证：两套方案工作副本物理隔离、切换互不影响）

@@ -29,6 +29,10 @@ lerna-debug.log*
 /src-tauri/target/
 /src-tauri/gen/
 
+# Agent bridge (deepseek-harness runtime)
+/agent-bridge/.dsh-home/
+/agent-bridge/dsh-tool-lamber/lib/
+
 # Log files
 *.log
 

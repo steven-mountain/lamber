@@ -6,6 +6,40 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-09-03
+
+### Agent 工具执行能力接入（deepseek-harness / 闭环 A）
+
+Added:
+- `agent-bridge/dsh-tool-lamber/`：独立 npm 包形态的 dsh 自定义工具插件，用 `defineTool` 注册唯一工具 `run_benefit_calculation(projectId, scenario?)`。工具体只做一件事——把参数 POST 给 lamber 的回环桥接服务，不含任何业务数学。`npx tsc` 零报错。
+- `agent-bridge/patch.yml` + `scripts/provision-profile.mjs`：把插件挂进 dsh 的 `sdk` profile。dsh 解析插件包名是相对 `$DSH_HOME/profiles/<profile>/`，因此必须先 `dsh plugin add` 链接，只写 `--patch` 不生效。
+- `agent-bridge/scripts/check-bridge.mjs`：只跑「插件工具体 → 桥接 → calculator」一跳的排错脚本，不启 dsh、不消耗 LLM。
+- `src-tauri/src/agent_bridge/bridge_server.rs`：仅监听 `127.0.0.1`、临时端口的 HTTP 桥接服务（tiny_http，独立线程，阻塞式）。
+- `src-tauri/src/agent_bridge/calculation.rs`：`POST /lamber-bridge/calculate` 路由，项目 → 方案 → 最新快照 → `benefit::calculator::calculate_ict_benefit`。严格只读。
+- `src-tauri/src/agent_bridge/dsh_session.rs`：dsh 子进程管理与手写 JSON-RPC 2.0（newline-delimited over stdio）客户端。
+- `src-tauri/src/agent_bridge/mod.rs`：`AgentRuntime` 生命周期 + Tauri 命令 `ai_send_prompt` / `ai_agent_status` / `ai_agent_stop`，通知统一按 `{method, params}` emit 到前端事件 `ai://session-event`。
+- 新增直接依赖 `tiny_http 0.12`（`default-features = false`，4 个小传递依赖，无 TLS）。
+
+Decisions:
+- **业务逻辑边界**：dsh 只负责 agent loop / 工具编排 / 审批，`calculator.rs`、`docfill.rs` 等一律不动。桥接是唯一接缝，本轮只开一条只读路由。
+- **不引入官方 TS/Python SDK 客户端**：协议是一行一个 JSON 对象的 JSON-RPC 2.0，Rust 侧手写读写即可，避免为拼 JSON 而嵌入一个 Node SDK。
+- **选 tiny_http 而非 hyper/axum**：lamber 后端整体同步（`rusqlite` + `Arc<Mutex<Connection>>`，`calculate_ict_benefit` 是同步函数），在异步 handler 里同步加锁是反模式；桥接只有一个回环路由、并发极低。也不手写 HTTP 解析——那比引入一个小依赖债更大。
+- **桥接令牌鉴权**：只绑回环不等于鉴权，同机任意进程都能读到客户项目财务数据。每次启动随机生成令牌经环境变量交给子进程，请求头 `x-lamber-bridge-token` 定长比较校验，不落盘。
+- **遥测强制关闭**：`sdk` profile 默认把遥测发往外部主机，Rust 侧硬编码 `DSH_TELEMETRY_MODE=DISABLED`。
+- **`scenario` 未命中即报错，不静默回退**：报错好过让 agent 引用错方案的财务数字。选择器支持 `pre_selection` / `post_selection` / 方案 id / 方案名，缺省用项目 `default_scheme_id`。
+- **懒启动**：dsh 子进程在首次 prompt 时才拉起，不占用未使用 AI 面板用户的启动时间。
+- **本轮不加任何会写数据的工具**，等审批通道（闭环 B）就绪后再说，避免绕过 AGENTS.md 的用户确认要求。
+
+Validation:
+- `cargo test`：36 passed（新增 6 个默认用例：默认方案 / 按阶段 / 按方案名与 id 选择、未知 scenario 拒绝、令牌鉴权、桥接端到端返回引擎数字），既有 29 个用例无回归。
+- `cargo test agent_bridge -- --ignored`：`plugin_tool_body_reaches_the_calculator_over_the_bridge` 与 `dsh_advertises_the_lamber_tool_in_its_request_header` 均通过——已实测 dsh 真实子进程启动、`initialize` 握手成功、`request/header` 通知中出现 `run_benefit_calculation` schema。
+- 带 `DEEPSEEK_API_KEY` 的完整闭环用例已写好，本机无 key，运行时按设计跳过。
+
+与任务书预设的差异（详见 `agent-bridge/README.md`）：包版本为 `0.1.2-alpha.5`；provider 是 `deepseek-official` 而非 `deepseek`，模型 `deepseek-v4-flash`；`output.schema` 的对象属性除 `additionalProperties` 外还需逐个 `required: true`；`DEEPSEEK_API_KEY` 环境变量确实生效；`pnpm` 无需全局安装。
+
+Not done (下一轮):
+- 闭环 B 审批通道（需 dsh 侧 answerer 插件转发进程内 Cordis 事件）、前端 `AiChatPanel.tsx` 展示、API key 改由前端凭证传入、SEA 打包瘦身。
+
 ## 2026-07-01
 
 ### ICT 测算表内"甄选前 / 甄选后"方案切换（第 2 阶段）
