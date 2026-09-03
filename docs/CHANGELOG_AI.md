@@ -13,6 +13,7 @@ This changelog records structural modifications, business rules, and context cha
 Verified:
 - 真实鼠标点击跑通审批通道四条路径（弹窗渲染 / 确认 / 拒绝 / 超时），全部通过，未发现问题。记录见 `docs/verification/approval-channel-manual-check.md`。
 - 确认后工具在决定落库 14ms 后写出标记文件；拒绝与超时均未产生标记文件，即工具确实没执行。
+- **点击由人工完成，不是自动化验证。** 本机对 `osascript` 的辅助功能（Accessibility）授权始终未生效（-1719/-25211，疑似 TCC 决定在授权前已被宿主进程缓存），因此确认/拒绝两次点击由仓库所有者本人操作，AI 侧只做截图与数据核对。超时一路无需点击，是完全自动的。
 
 Added:
 - 审批缓冲 `agent-approval-spool.jsonl`（应用数据目录）+ 工作区打开时回填（`drain_spool_on_workspace_open`，挂在 `workspace::open_workspace_internal` 这一唯一切入点，含启动恢复路径）。

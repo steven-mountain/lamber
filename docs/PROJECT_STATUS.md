@@ -4,7 +4,20 @@
 > **历史兼容性说明**：本文件作为历史和综合状态的备份记录，不再作为 AI 每次任务的默认必读文件。
 > 后续开发请默认阅读入口文件 [PROJECT_INDEX.md](./PROJECT_INDEX.md) 和 [CURRENT_TASK.md](./CURRENT_TASK.md)，并根据任务涉及范围按需加载模块设计文档（如 [docs/modules/appearance.md](./modules/appearance.md)）。
 
-Last updated: 2026-06-04 (Common Materials & Project Presets Phase 1)
+Last updated: 2026-09-03 (agent-bridge: deepseek-harness integration, loops A + B)
+
+## 0. Agent Bridge — deepseek-harness Integration (Loops A + B Complete)
+
+Lamber's AI copilot previously had no real tool-execution capability: `AiRuntime.ts` was a bare OpenAI-compatible streaming client and `invokeToolIsolated()` was an empty shell. That gap is now closed by embedding [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) as an agent runtime, rather than rebuilding an agent loop in-house.
+
+- **Architectural Principle**: All Rust business logic (`calculator.rs`, `docfill.rs`, and the benefit engine) is untouched. `dsh` owns only the agent loop, tool orchestration, and approval policy. It calls back into lamber over a loopback HTTP bridge. The calculation engine, NPV, cashflow, tax separation, selection fee, reverse calculation, and the 0-tolerance reconciliation check are all unchanged.
+- **Process Topology**: React → Tauri command → Rust spawns a `dsh` child process, speaking newline-delimited JSON-RPC 2.0 over stdio. Custom tools registered in a `dsh` plugin `fetch` back to a `tiny_http` server bound to `127.0.0.1` only, guarded by a per-launch random token passed via environment variable and never written to disk.
+- **Loop A — Tool Execution (Verified)**: `run_benefit_calculation(projectId, scenario?)` is a read-only tool whose body contains no business math; it forwards to the bridge, which invokes the existing engine. Verified against a real DeepSeek model: the model emits a genuine `tool/call`, the bridge is hit exactly once with the correct `projectId`, and `tool/result` carries the engine's real NPV.
+- **Loop B — Human Approval Channel (Verified)**: `dsh` approval is an in-process Cordis waterfall event (`approval/request`) and is *not* forwarded over the SDK's JSON-RPC, so an answerer plugin bridges it out to Rust, which emits to the frontend and parks the request until the user answers. Ambiguity always fails closed: a timeout, a missing answerer, a shutdown, or a non-vocabulary return value all resolve to a denial, never to a silent grant.
+- **Approval Audit Trail**: Every settled decision is persisted to the workspace table `agent_approval_log` (schema v9 → v10, pure table addition), recording tool name, arguments, outcome, and a `decided_by` discriminator (`user` / `timeout` / `shutdown` / `internal`). With no workspace open, decisions spool to `agent-approval-spool.jsonl` in the app data directory and are backfilled in a single transaction when a workspace is next activated. Backfill is idempotent by `request_id`; the spool is deleted only after the transaction commits.
+- **Manual Verification**: All four approval paths (dialog rendering, confirm, reject, 90-second timeout) were exercised against the real application with a real API key and passed. The confirm and reject clicks were performed by a human — Accessibility permission for `osascript` never took effect on this machine — so those two paths are manually, not automatically, verified. See `docs/verification/approval-channel-manual-check.md`.
+- **Safety Boundary**: The plugin package contains no tool that writes lamber business data. The only write-capable tool is `write_test_marker`, which writes a timestamped marker file to the system temp directory and touches nothing lamber owns. This was deliberate: no real write tool ships until the approval channel is proven, per the AGENTS.md rule against AI writes without user confirmation.
+- **Not Implemented Yet**: The `create_project` tool (the first real business-data write), a multi-session/multi-project Agent panel wired into `AiChatPanel` (today there is only the `LAMBER_AGENT_LAB`-gated `#/agent-lab` debug console), and second-pass confirmation for model-extracted parameters (the approval dialog currently offers only approve/reject, with no parameter editing).
 
 ## 0. Common Materials & Project Presets (Phase 1)
 
