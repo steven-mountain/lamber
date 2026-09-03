@@ -91,7 +91,7 @@ pub struct ApprovalPrompt {
 }
 
 /// Who or what settled a question.
-#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum DecidedBy {
     /// A human answered through the approval dialog.
@@ -117,7 +117,10 @@ impl DecidedBy {
 }
 
 /// One settled question, handed to the recorder for persistence.
-#[derive(Serialize, Debug, Clone)]
+///
+/// `Deserialize` exists so a decision buffered while no workspace was open can
+/// be read back and backfilled; see `approval_log`.
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApprovalRecord {
     pub request_id: String,

@@ -126,7 +126,25 @@ npm run provision
 - **审计写失败绝不改变决定。** 工作区没打开或写库报错，只打一条 stderr 警告然后咽掉。让存储故障阻塞 Agent 是错的；让它**失败放行**更错。`an_audit_write_failure_does_not_alter_the_decision` 守这条。
 - **连接是决定时才解析的**，不是启动时捕获的。所以 Agent 起来之后才打开的工作区，审批照样能记上。
 
-**限制：** 审计表在**工作区**数据库里。如果审批发生时没有打开任何工作区，那条记录会丢（只留 stderr 警告）。这是有意的取舍——为审计日志单开一个全局数据库，会引入第二份存储位置和第二套迁移，代价大于收益。
+#### 没打开工作区时怎么办：缓冲 + 回填（已拍板，不再是开放取舍）
+
+审计表在**工作区**数据库里，而审批可能发生在没有打开任何工作区的时候。**不允许静默丢失。**
+
+考虑过两个方向：
+
+1. **阻塞审批直到有工作区可写** —— 否决。弹窗里没有"打开工作区"这个动作，用户站在弹窗前无法解除这个条件，Agent 的这一轮就会挂在一个他解不开的前提上，直接违反超时路径已经确立的"绝不挂起"原则。而且审批本来就不一定和项目有关（`write_test_marker` 就完全无关），拿工作区去卡一个与它无关的决定是错的耦合。
+2. **缓冲到本地文件，工作区打开后回填** —— 采用。
+
+实现：写不进工作区库的决定，追加到应用数据目录下的 `agent-approval-spool.jsonl`（一行一条 JSON）。`workspace::open_workspace_internal`（**唯一**一处数据库变为可用的地方，启动时恢复上次工作区也走它）在 `switch_workspace` 之后调用 `drain_spool_on_workspace_open`，把缓冲整体搬进 `agent_approval_log`。
+
+几个刻意的性质：
+
+- **回填在一个事务里完成，成功之后才删缓冲文件。** 中途失败就保留缓冲，下次工作区打开时重试——宁可重放，不可丢失。
+- **重放是幂等的。** 行以 `request_id` 为主键、用 `INSERT OR REPLACE` 写入，同一条决定回填多次也只有一行。`backfilling_the_same_decisions_twice_does_not_duplicate_rows` 守这条。
+- **崩溃写坏的半行不会挡住其它记录。** 追加是 `O_APPEND` 逐行写，最多损坏尾行；回填时跳过解析失败的行并告警，其余照常入库（`a_corrupt_spool_line_does_not_block_backfilling_the_others`）。
+- **缓冲写失败仍不改变决定。** 磁盘满或只读时退回到 stderr 告警。这是**唯一剩下的丢失路径**，而且它是响的。
+
+限制：缓冲文件按应用数据目录存放，是**跨工作区**的。若在无工作区时产生审批、随后打开的是另一个工作区，记录会回填进那个工作区。对单人桌面工具这是合理的（决定是这台机器上这个人做的），但它确实意味着审计行的归属是"回填时所在的工作区"，不是"决定发生时的工作区"——决定发生时本来就没有工作区。
 
 ### 挂起槽位的清理
 
@@ -153,11 +171,11 @@ npm run provision
 - `the_approval_prompt_contract_matches_the_frontend_dialog`：断言 `ApprovalPrompt` 序列化出的字段恰好是 `args` / `callId` / `reason` / `requestId` / `timeoutSeconds` / `toolName` 六个 camelCase 键，且弹窗源码订阅的事件名、读取的字段名、调用的命令名与传参形状全部对得上。
 - `the_approval_dialog_is_mounted_on_every_agent_reachable_route`：断言弹窗同时挂在主界面和联调台两条渲染路径上，且联调台确实调用了 `ai_send_prompt` 与 `ai_list_approval_log`。
 
-**未验证的部分（照实记录）：** 我**没有**用真实鼠标点击跑通确认/拒绝两条路径。本机对 `osascript` 未授予「辅助功能（Accessibility）」权限，`screencapture` 也未授予「屏幕录制」权限，两者都需要在系统设置里由用户本人授权。因此我既无法发出真实点击，也无法截图确认弹窗渲染结果。**这一项需要人工完成**，步骤见下。
+**已完成真实点击验证**：见 [`docs/verification/approval-channel-manual-check.md`](../docs/verification/approval-channel-manual-check.md)。四条路径（弹窗渲染 / 点确认 / 点拒绝 / 不操作等超时）全部通过，未发现弹窗未渲染、按钮点不动、被遮罩挡住或状态不同步的问题。
 
-上面那两个契约用例覆盖的正是"真实点击本来能发现的那类问题"——跨进程的名字漂移（事件改名、字段被 serde 改了拼写、命令参数对不上）。它们**不能**替代人工验证的是：弹窗的视觉呈现、按钮是否真的可点、遮罩层是否挡住交互。
+取证方式说明：只有"弹窗渲染"用截图（启动瞬间应用必然在最前，裁剪到窗口区域），其余三项一律以**持久化审计表 `agent_approval_log` 与文件系统产物**为证据。原因有二——全屏截图会连带拍到桌面上其它窗口的私有内容，不适合入库；而审计行 + 标记文件的时间戳比截图更难伪造，也更贴近"事后可追溯"这个验收目标本身。
 
-#### 人工验证步骤
+#### 人工复现步骤
 
 ```bash
 cd src-tauri && cargo build
@@ -167,9 +185,9 @@ cd src-tauri && cargo build
 DEEPSEEK_API_KEY=<你的key> LAMBER_REPO_ROOT=$PWD LAMBER_AGENT_LAB=1 ./src-tauri/target/debug/benefit-calculator
 ```
 
-应用会直接停在「Agent 联调台」。然后：
+应用会直接停在「Agent 联调台」。`LAMBER_AGENT_LAB=autorun` 则会额外自动发一次指令，弹窗无需点「发送」即可出现。然后：
 
-1. 点「发送」（输入框默认就是调用 `write_test_marker` 的指令）。
+1. 点「发送」（输入框默认就是调用 `write_test_marker` 的指令；`autorun` 模式可跳过）。
 2. 左栏应依次出现 `turn/start`、`request/header`、`tool/call` 等事件。
 3. 弹出「AI 请求执行操作」对话框，显示工具名 `write_test_marker` 和参数 JSON，带倒计时。
 4. **点「确认执行」** → 左栏出现 `tool/result`，内含临时目录里的标记文件路径；点「刷新审批日志」，右栏出现一条 `已批准 · user`。

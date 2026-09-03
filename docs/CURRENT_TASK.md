@@ -1,3 +1,42 @@
+# 闭环 B 最终收尾：真实点击验证 + 审批记录不再丢失
+
+- **Status:** Done。两项均完成并验证。
+- **验证记录:** [docs/verification/approval-channel-manual-check.md](./verification/approval-channel-manual-check.md)
+
+## 1. 真实点击验证 ✅（四条路径全通过）
+
+| 路径 | 结果 | 证据 |
+| --- | --- | --- |
+| 弹窗渲染 | ✅ 工具名 / 参数 JSON / 倒计时 / 双按钮 / 未被遮罩挡住 | 窗口截图 `approval-01-dialog.png` |
+| 点「确认执行」 | ✅ `approved=1, decided_by=user` | 审计表 + 标记文件（决定后 14ms 写出） |
+| 点「拒绝」 | ✅ `approved=0, decided_by=user` | 审计表；无新标记文件 |
+| 不操作等 90 秒 | ✅ `approved=0, decided_by=timeout` | 审计表；无新标记文件 |
+
+- 未发现弹窗未渲染、按钮点不动、被遮罩挡住或状态不同步。
+- 新增 `LAMBER_AGENT_LAB=autorun`：启动后自动发一次指令，使弹窗无需点「发送」即可出现。
+- 取证方式：只有"渲染"用截图（裁剪到窗口区域），其余以持久化审计表 + 文件系统产物为准——全屏截图会拍到桌面其它窗口的私有内容，不入库。
+
+## 2. 无工作区时的审批记录 ✅（已拍板：缓冲 + 回填）
+
+- **否决"阻塞审批直到有工作区"**：弹窗里没有"打开工作区"这个动作，用户解不开这个前提，Agent 会挂死，违反既有的"绝不挂起"原则；且审批不一定与项目有关（`write_test_marker` 就无关）。
+- **采用缓冲 + 回填**：写不进工作区库的决定追加到应用数据目录的 `agent-approval-spool.jsonl`；`workspace::open_workspace_internal`（唯一一处数据库变可用的地方，含启动恢复）在 `switch_workspace` 后调 `drain_spool_on_workspace_open` 整体搬入 `agent_approval_log`。
+- 回填在**单个事务**内完成、成功后才删缓冲文件；失败保留缓冲下次重试（宁可重放不可丢失）。
+- 重放**幂等**（`request_id` 主键 + `INSERT OR REPLACE`）；崩溃写坏的尾行被跳过、不挡其它记录。
+- 唯一剩余丢失路径：缓冲文件也写不进去（磁盘满/只读），退回 stderr 告警——且是响的。
+
+## Validation
+
+- `cargo test`：53 passed（新增 3 个缓冲回填用例 + 既有全部），无回归。
+- `cargo test agent_bridge -- --ignored`（带真实 key）：9 passed。
+- 关键用例 `an_approval_taken_with_no_workspace_is_backfilled_when_one_opens`：无工作区产生审批 → 决定不受影响 → 进缓冲 → 打开工作区回填 → 最终可查。
+
+## Scope Boundary
+
+- 未动超时分层、失败关闭、令牌鉴权、Debug 脱敏、槽位清理。
+- 未做精美 UI；未做 key 吊换（人工操作）。
+
+---
+
 # 闭环 B 收尾：前端接通 / 审批持久化 / 挂起槽位清理
 
 - **Status:** 2 项完成并自动验证；第 1 项已补齐代码与契约用例，**真实鼠标点击未由 AI 验证**（本机未授予 osascript 辅助功能与屏幕录制权限），需人工按 README 步骤确认。

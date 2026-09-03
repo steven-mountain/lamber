@@ -193,9 +193,14 @@ impl AgentRuntime {
         let announce: ApprovalAnnouncer = Arc::new(move |prompt: &ApprovalPrompt| {
             let _ = announcer_app.emit(APPROVAL_EVENT, prompt);
         });
-        // Persist every settled question for after-the-fact audit.
-        self.gate
-            .set_recorder(approval_log::workspace_recorder(Arc::clone(&runtime)));
+        // Persist every settled question for after-the-fact audit. With no
+        // workspace open the recorder spools to disk and the next workspace
+        // activation backfills it, so a decision is never silently lost.
+        let spool = approval_log::spool_path(app)?;
+        self.gate.set_recorder(approval_log::workspace_recorder(
+            Arc::clone(&runtime),
+            spool,
+        ));
         let bridge = BridgeServer::start(workspace_handler(
             runtime,
             Arc::clone(&self.gate),

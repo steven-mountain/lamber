@@ -73,6 +73,12 @@ export default function AgentLabView() {
     void refreshAudit();
   }, [refreshAudit]);
 
+  // `#/agent-lab?autorun=1` fires one prompt on mount. Lets the approval dialog
+  // be reached (and screenshotted) without a click, for verifying rendering and
+  // the timeout path; the confirm/reject paths still need a real click.
+  const autorun = window.location.hash.includes("autorun=1");
+  const autorunFired = useRef(false);
+
   const send = useCallback(async () => {
     if (sending || !text.trim()) return;
     setSending(true);
@@ -87,6 +93,13 @@ export default function AgentLabView() {
       setSending(false);
     }
   }, [append, sending, text]);
+
+  useEffect(() => {
+    if (!autorun || autorunFired.current) return;
+    autorunFired.current = true;
+    const timer = window.setTimeout(() => void send(), 400);
+    return () => window.clearTimeout(timer);
+  }, [autorun, send]);
 
   return (
     <div className="flex h-screen flex-col gap-3 bg-background p-5 text-foreground">

@@ -92,9 +92,16 @@ fn main() {
             // hand (`AgentLabView`). The window has no address bar, so the route
             // is unreachable otherwise; gated behind an env var so a normal
             // launch is untouched.
-            if std::env::var("LAMBER_AGENT_LAB").is_ok_and(|v| v == "1") {
+            if std::env::var("LAMBER_AGENT_LAB").is_ok_and(|v| v == "1" || v == "autorun") {
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.eval("window.location.hash = '#/agent-lab';");
+                    // `LAMBER_AGENT_LAB=autorun` also fires one prompt on load,
+                    // so the approval dialog can be reached without a click.
+                    let route = if std::env::var("LAMBER_AGENT_LAB").as_deref() == Ok("autorun") {
+                        "#/agent-lab?autorun=1"
+                    } else {
+                        "#/agent-lab"
+                    };
+                    let _ = window.eval(format!("window.location.hash = '{route}';"));
                 }
             }
 

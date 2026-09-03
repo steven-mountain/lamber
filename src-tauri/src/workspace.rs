@@ -473,6 +473,11 @@ pub(crate) fn open_workspace_internal(
         manifest,
     };
     runtime.switch_workspace(workspace.clone(), conn)?;
+    // A database just became available: move any approval decisions that were
+    // taken with no workspace open into this workspace's audit log.
+    if let Ok(db) = runtime.require_db() {
+        crate::agent_bridge::approval_log::drain_spool_on_workspace_open(app, &db);
+    }
     update_recent(app, &workspace, true)?;
     Ok(workspace)
 }

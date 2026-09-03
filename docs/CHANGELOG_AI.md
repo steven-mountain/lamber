@@ -6,6 +6,30 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-09-03（四）
+
+### 闭环 B 最终收尾：真实点击验证 + 审批记录不再静默丢失
+
+Verified:
+- 真实鼠标点击跑通审批通道四条路径（弹窗渲染 / 确认 / 拒绝 / 超时），全部通过，未发现问题。记录见 `docs/verification/approval-channel-manual-check.md`。
+- 确认后工具在决定落库 14ms 后写出标记文件；拒绝与超时均未产生标记文件，即工具确实没执行。
+
+Added:
+- 审批缓冲 `agent-approval-spool.jsonl`（应用数据目录）+ 工作区打开时回填（`drain_spool_on_workspace_open`，挂在 `workspace::open_workspace_internal` 这一唯一切入点，含启动恢复路径）。
+- `LAMBER_AGENT_LAB=autorun`：启动后自动发一次指令，便于让弹窗出现而无需点「发送」。
+
+Decisions:
+- **否决"无工作区时阻塞审批"**：弹窗里没有"打开工作区"这个动作，用户解不开该前提，Agent 会挂死，与既有"绝不挂起"原则冲突；且审批不一定与项目相关。改为缓冲+回填，不再"只打个 stderr 警告就算了"。
+- **回填单事务、成功后才删缓冲**：中途失败保留缓冲下次重试，宁可重放不可丢失；重放靠 `request_id` 主键 + `INSERT OR REPLACE` 保持幂等。
+- **取证不用全屏截图**：会连带拍到桌面其它窗口的私有内容。仅渲染一项用裁剪到窗口的截图，其余以审计表 + 文件系统产物为证据——更难伪造，也更贴近"事后可追溯"目标。
+
+Validation:
+- `cargo test`：53 passed，无回归；`cargo test agent_bridge -- --ignored`（带真实 key）：9 passed。
+- 新增用例：无工作区审批→回填后可查、重复回填不产生重复行、损坏缓冲行不挡其它记录。
+
+Known limitation:
+- 缓冲文件跨工作区。若在无工作区时产生审批、随后打开的是另一个工作区，记录回填进那个工作区。对单人桌面工具合理，但审计行归属是"回填时所在工作区"而非"决定发生时的工作区"（当时本就没有）。
+
 ## 2026-09-03（三）
 
 ### 闭环 B 收尾：前端接通 / 审批持久化 / 挂起槽位清理

@@ -837,6 +837,147 @@ fn an_audit_write_failure_does_not_alter_the_decision() {
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
 }
 
+/// The decision path the task pins down: an approval settled while no workspace
+/// is open must not vanish. It spools, and the next workspace activation
+/// backfills it into `agent_approval_log`.
+#[test]
+fn an_approval_taken_with_no_workspace_is_backfilled_when_one_opens() {
+    let spool = std::env::temp_dir().join(format!(
+        "lamber-approval-spool-{}.jsonl",
+        uuid::Uuid::new_v4().simple()
+    ));
+
+    // A runtime with no workspace: `require_db` fails, so the recorder spools.
+    let runtime = Arc::new(crate::workspace::WorkspaceRuntime::new());
+    assert!(runtime.require_db().is_err(), "前提：此时没有打开工作区");
+
+    let gate = Arc::new(ApprovalGate::new(Duration::from_secs(20)));
+    gate.set_recorder(approval_log::workspace_recorder(
+        Arc::clone(&runtime),
+        spool.clone(),
+    ));
+
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let server = approval_bridge(Arc::clone(&gate), Arc::clone(&prompts));
+    let responder_gate = Arc::clone(&gate);
+    let responder_prompts = Arc::clone(&prompts);
+    std::thread::spawn(move || loop {
+        let id = responder_prompts
+            .lock()
+            .expect("prompts lock")
+            .first()
+            .map(|p| p.request_id.clone());
+        if let Some(id) = id {
+            let _ = responder_gate.resolve(&id, true);
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    });
+
+    let (status, body) = http_post(
+        &server.origin(),
+        APPROVAL_ROUTE,
+        server.token(),
+        &approval_payload("write_test_marker"),
+    );
+    assert_eq!(status, 200, "body: {body}");
+    let decision: Value = serde_json::from_str(&body).expect("json body");
+    assert_eq!(decision["approved"], true, "没有工作区不应影响决定本身");
+
+    // The decision is buffered, not lost.
+    assert_eq!(
+        approval_log::spool_len(&spool),
+        1,
+        "无工作区时的审批决定应进入缓冲"
+    );
+
+    // Now a workspace opens.
+    let (_db_path, conn) = audit_db("spool-backfill");
+    let drained = approval_log::drain_spool(&spool, &conn).expect("drain succeeds");
+    assert_eq!(drained, 1);
+    assert!(!spool.exists(), "回填后缓冲文件应被清除");
+
+    // The record is queryable exactly as a directly written one would be.
+    let entries = approval_log::recent(&conn, 10).expect("read audit log");
+    assert_eq!(entries.len(), 1, "回填后应能查到该审批记录");
+    assert_eq!(entries[0].tool_name, "write_test_marker");
+    assert!(entries[0].approved);
+    assert_eq!(entries[0].decided_by, "user");
+    assert!(entries[0].args_json.contains("联调"));
+    assert!(!entries[0].decided_at.is_empty());
+}
+
+/// Backfilling must be replay-safe: an interrupted drain leaves the spool in
+/// place, and draining the same decisions again must not duplicate rows.
+#[test]
+fn backfilling_the_same_decisions_twice_does_not_duplicate_rows() {
+    let spool = std::env::temp_dir().join(format!(
+        "lamber-approval-spool-{}.jsonl",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let record = ApprovalRecord {
+        request_id: "req-replay".to_string(),
+        tool_name: "write_test_marker".to_string(),
+        call_id: Some("call-1".to_string()),
+        reason: Some("需要确认".to_string()),
+        args_json: "{\"note\":\"联调\"}".to_string(),
+        approved: false,
+        decided_by: super::approval::DecidedBy::Timeout,
+        decision_reason: "等待用户确认超时（90 秒），按拒绝处理".to_string(),
+        requested_at: "2026-01-01T00:00:00Z".to_string(),
+        decided_at: "2026-01-01T00:01:30Z".to_string(),
+    };
+    approval_log::append_to_spool(&spool, &record).expect("spool write");
+    approval_log::append_to_spool(&spool, &record).expect("spool write");
+    assert_eq!(approval_log::spool_len(&spool), 2);
+
+    let (_db_path, conn) = audit_db("spool-replay");
+    approval_log::drain_spool(&spool, &conn).expect("first drain");
+    // Simulate a replay of the same buffered decision after an interrupted run.
+    approval_log::append_to_spool(&spool, &record).expect("spool write");
+    approval_log::drain_spool(&spool, &conn).expect("second drain");
+
+    let entries = approval_log::recent(&conn, 10).expect("read audit log");
+    assert_eq!(entries.len(), 1, "同一 request_id 不应产生重复记录");
+    assert_eq!(entries[0].decided_by, "timeout");
+    assert!(!entries[0].approved);
+}
+
+/// A torn trailing line from a crash mid-append must not block the rest.
+#[test]
+fn a_corrupt_spool_line_does_not_block_backfilling_the_others() {
+    let spool = std::env::temp_dir().join(format!(
+        "lamber-approval-spool-{}.jsonl",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let good = ApprovalRecord {
+        request_id: "req-good".to_string(),
+        tool_name: "write_test_marker".to_string(),
+        call_id: None,
+        reason: None,
+        args_json: "{}".to_string(),
+        approved: true,
+        decided_by: super::approval::DecidedBy::User,
+        decision_reason: "用户已确认".to_string(),
+        requested_at: "2026-01-01T00:00:00Z".to_string(),
+        decided_at: "2026-01-01T00:00:03Z".to_string(),
+    };
+    approval_log::append_to_spool(&spool, &good).expect("spool write");
+    // A half-written line, as a crash during append would leave.
+    {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&spool).unwrap();
+        write!(f, "{{\"requestId\":\"req-torn\",\"toolNa").unwrap();
+    }
+
+    let (_db_path, conn) = audit_db("spool-corrupt");
+    let drained = approval_log::drain_spool(&spool, &conn).expect("drain succeeds");
+    assert_eq!(drained, 1, "完整的那条应被回填");
+    let entries = approval_log::recent(&conn, 10).expect("read audit log");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].request_id, "req-good");
+}
+
 // -------------------------------------- Rust <-> frontend contract (always) --
 
 /// Read one frontend source file that participates in the approval contract.
