@@ -156,7 +156,7 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
     const aiWindow = new WebviewWindow(AI_ASSISTANT_LABEL, {
       url: `/#/ai-assistant?view=${encodeURIComponent(currentView)}`,
       title: 'Lamber AI 助手',
-      width: 420,
+      width: 780,
       height: 680,
       minWidth: 360,
       minHeight: 480,

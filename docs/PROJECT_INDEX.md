@@ -29,6 +29,8 @@ Lamber 是一个基于 **Tauri + React + Rust** 架构的销售支撑桌面工�
    * 工作空间维护：[workspace_maintenance.rs](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-tauri/src/workspace_maintenance.rs)
 5. **AI 顾问 (AI Assistant)**
    * 前端：[AiChatPanel.tsx](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-ui/src/components/ai/AiChatPanel.tsx)
+   * 多会话状态：[useAiSessionStore.ts](../src-ui/src/store/useAiSessionStore.ts)
+   * 模块文档：[ai-session-workspace.md](./modules/ai-session-workspace.md)
    * 上下文构建：[buildAiChatContext.ts](file:///Users/hermesjang/Documents/CMCC/tools/lamber/src-ui/src/ai/context/buildAiChatContext.ts)
 6. **AI Agent 工具执行桥接 (Agent Bridge · deepseek-harness)**
    * 模块文档：[agent-bridge/README.md](../agent-bridge/README.md)
@@ -45,6 +47,7 @@ Lamber 是一个基于 **Tauri + React + Rust** 架构的销售支撑桌面工�
 * **智算测算与金额来源 (Intelligent Compute)**: [ai-compute-quote.md](./modules/ai-compute-quote.md)
 * **测算方案甄选阶段 (Scheme Stage · 甄选前/甄选后切换)**: [scheme-stage.md](./modules/scheme-stage.md)
 * **AI Agent 工具执行桥接 (Agent Bridge)**: [agent-bridge/README.md](../agent-bridge/README.md)
+* **AI 多 Session 会话工作区**: [ai-session-workspace.md](./modules/ai-session-workspace.md)
 
 ## AI 上下文读取规则
 在每轮开发任务开始前，AI 必须严格执行按需读取，以节省上下文空间：

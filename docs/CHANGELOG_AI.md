@@ -8,6 +8,31 @@ This changelog records structural modifications, business rules, and context cha
 
 ## 2026-09-03（四）
 
+### AI 窗口升级为前端多 Session 会话工作区
+
+Added:
+- `AiSession` 前端数据契约与 Zustand `useAiSessionStore`，预留 `projectId`、`harnessSessionId` 和标题来源字段。
+- `AiSessionSidebar` / `AiSessionItem`，支持新建、选择、列表内重命名、确认删除、最近更新时间排序、当前项目与其他/通用会话分组。
+- 版本化 localStorage 快照，恢复 Session 列表、当前 Session 和聊天文本；流式写入采用节流，图片附件持久化去除 base64 并保留元数据。
+
+Modified:
+- `AiChatPanel` 改为从当前 Session 读取 history，并按请求发起时固定的 `sessionId` 定向写回流式内容，切换会话不会串消息。
+- 删除当前会话时自动选择最近更新的剩余会话；删除最后一个会话后自动补建空白会话；删除生成中会话会先走既有 Abort / parser 停止链路。
+- AI 窗口默认宽度改为 `780px`；小于 `680px` 时 Session Sidebar 使用覆盖式抽屉，避免压缩输入区。
+- 新布局沿用 Lamber semantic token、ROUND_FOUR、dark mode 与 No-Line surface 层级。
+
+Validation:
+- `npm run build --prefix src-ui` 通过。
+- 本地 UI 实测创建 3 个会话、独立消息、切换恢复和刷新恢复；`900px` 双栏与 `420px` 抽屉布局均通过。
+- 本地 UI 实测会话重命名与确认删除，标题更新和会话数量变化均正确。
+- 本地 mock SSE 验证流式期间切换不会串 Session，Abort 后不再接收后续 chunk 且输入框恢复可用。
+- `npm run lint --prefix src-ui` 的唯一 error 仍为既有 `useAiContextStore.ts` `no-this-alias`，本次文件无新增 lint error。
+
+Scope:
+- 未修改 `AiRuntime.ts`、PromptRenderer、Rust 或任何业务模块。
+- 未实现 deepseek-harness、dsh、JSON-RPC、Agent Tool、Approval、Sub-Agent 或服务端 Session 持久化。
+- 本轮未增加项目创建入口、会话归属移动，也未调整背景配色；这些需求按用户要求留待后续单独设计。
+
 ### 闭环 B 最终收尾：真实点击验证 + 审批记录不再静默丢失
 
 Verified:

@@ -1,3 +1,34 @@
+# AI 多 Session 会话工作区（前端阶段已完成）
+
+- **Status:** 已完成前端多 Session UI、消息隔离、项目归属元数据、localStorage 持久化和窄窗抽屉。
+- **模块文档:** [docs/modules/ai-session-workspace.md](./modules/ai-session-workspace.md)
+
+## 已完成
+
+- `AiChatPanel` 的单一本地 `messages` 状态迁移到 `useAiSessionStore`，每个 Session 独立保存 `AiChatMessage[]`。
+- 新增 Session Sidebar、当前项目 / 其他会话分组、最近更新时间排序和当前会话恢复。
+- Session 操作菜单已支持列表内重命名和确认后删除；删除当前会话自动选择最近会话，删除最后一个会话自动补建空白会话，删除生成中的会话会先停止流式请求。
+- 流式输出按发送时固定的 `sessionId` 写回，生成期间切换会话不会串消息；现有 AiRuntime、PromptRenderer、SSE、Abort、图片输入和项目上下文链路保持不变。
+- 默认 AI 窗口宽度调整为 `780px`；小于 `680px` 时侧栏变为覆盖式抽屉，输入区不被压缩。
+- localStorage 保存版本化 Session 快照；图片附件持久化时去除大体积 base64、保留元数据。
+
+## Validation
+
+- `npm run build --prefix src-ui`：通过。
+- 应用内浏览器实测：创建 3 个会话、消息隔离、切换恢复、刷新恢复均通过。
+- 应用内浏览器实测：会话重命名即时更新并持久化，确认删除后会话数量正确减少。
+- 本地 mock SSE 实测：生成期间切换会话只更新发起会话；停止生成后流立即中断且输入框恢复可用。
+- `900px` 双栏与 `420px` 抽屉两种布局均完成截图检查。
+- `npm run lint --prefix src-ui`：本次新增/修改文件无新错误；全仓仍被既有 `useAiContextStore.ts` 的 `@typescript-eslint/no-this-alias` 阻断。
+
+## Scope Boundary
+
+- 未修改 `AiRuntime.ts`、PromptRenderer、Rust、数据库 schema、效益测算、文档生成或项目管理逻辑。
+- 未接入 deepseek-harness，未新增 dsh、JSON-RPC、Agent Tool、Approval、Sub-Agent 或服务端 Session。
+- 按当前范围未新增项目创建入口、会话项目/通用归属移动，也未调整 AI 窗口背景配色。
+
+---
+
 # agent-bridge：deepseek-harness 接入（闭环 A + 闭环 B 已完成）
 
 - **Status:** 闭环 A、闭环 B 均已完成，并通过真实点击验证。
@@ -58,12 +89,12 @@ dsh 的审批是进程内 Cordis 事件（`approval/request`，waterfall），**
 ## 尚未开始的部分
 
 1. **新建项目工具 `create_project`** —— 第一个真正写 lamber 业务数据的工具。审批通道已验证可用，是它的前置条件；现在可以做了。需要考虑：参数校验、与现有 `create_project_in_workspace` 命令的关系、审批文案要能让用户看清将写入什么。
-2. **多会话 / 多项目 Agent 面板** —— 目前只有 `#/agent-lab` 这个单会话联调台（`LAMBER_AGENT_LAB` 门控，不是给终端用户的）。真正接进 `AiChatPanel`、支持多会话与项目上下文切换尚未开始。
+2. **多会话对应 Harness Session** —— `AiChatPanel` 的前端多 Session 工作区已经完成，但 `harnessSessionId` 仍只是预留字段；尚未把终端用户会话接入 dsh / Harness 执行链。
 3. **参数抽取二次确认** —— 模型从自然语言里抽出的参数（金额、项目名、年限等）在执行前让用户核对修正。当前审批弹窗只做"批准 / 拒绝"，不能改参数。
 
 ## Scope Boundary
 
 - 未改动 `calculator.rs` / `docfill.rs` / 测算引擎 / NPV / 现金流 / 税额 / 甄选费 / 反算 / 0 容差校验。
-- 未改动 `AiRuntime.ts` / `AiChatPanel.tsx` 既有行为。
+- 未改动 `AiRuntime.ts`；`AiChatPanel.tsx` 仅增加前端 Session 容器与响应式布局，仍使用既有 OpenAI-compatible SSE 调用链。
 - 插件包内除 `run_benefit_calculation` 与无害的 `write_test_marker` 外无其它工具；**没有**任何会写 lamber 业务数据的工具。
 - 未做 SEA 单文件打包 / 瘦身。
