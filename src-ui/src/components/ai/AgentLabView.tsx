@@ -2,8 +2,33 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
-/** Backend event carrying every dsh session notification. */
+/** Backend event carrying every ACP notification and turn outcome. */
 const AI_SESSION_EVENT = "ai://session-event";
+
+/** Method the backend labels one ACP `session/update` with. */
+const UPDATE_METHOD = "session/update";
+
+/** Method the backend labels the end of one turn with. */
+const TURN_ENDED_METHOD = "session/turn-ended";
+
+/**
+ * Label one backend event for the log.
+ *
+ * ACP tags every notification kind inside the payload rather than giving each
+ * its own method, so the interesting name lives in `params.update.sessionUpdate`
+ * and every update would otherwise read as the same line.
+ */
+function describeEvent(method: string, params: unknown): string {
+  if (method === TURN_ENDED_METHOD) {
+    // Fire-and-forget prompts return before the turn runs, so this event is the
+    // only thing that says the agent has stopped working.
+    const outcome = params as { stopReason?: string; error?: string };
+    return outcome.error ? "本轮结束（出错）" : `本轮结束 · ${outcome.stopReason ?? "?"}`;
+  }
+  if (method !== UPDATE_METHOD) return method;
+  const kind = (params as { update?: { sessionUpdate?: string } })?.update?.sessionUpdate;
+  return kind ? `${method} · ${kind}` : method;
+}
 
 /** One line in the event log. */
 interface LogLine {
@@ -47,8 +72,7 @@ export default function AgentLabView() {
     let disposed = false;
     listen<{ method: string; params: unknown }>(AI_SESSION_EVENT, event => {
       const { method, params } = event.payload;
-      const evt = (params as { event?: { type?: string; data?: unknown } })?.event;
-      append(evt?.type ? `${method} · ${evt.type}` : method, JSON.stringify(evt?.data ?? params));
+      append(describeEvent(method, params), JSON.stringify(params));
     })
       .then(handler => {
         if (disposed) handler();
@@ -85,8 +109,9 @@ export default function AgentLabView() {
     const sessionId = `lab-${Date.now()}`;
     append("prompt", `${sessionId} · ${text}`);
     try {
-      const messageId = await invoke<string>("ai_send_prompt", { sessionId, text });
-      append("accepted", messageId);
+      // ACP names sessions itself, so this is the agent's id, not the one sent.
+      const acpSession = await invoke<string>("ai_send_prompt", { sessionId, text });
+      append("accepted", `ACP 会话 ${acpSession}`);
     } catch (error) {
       append("send-error", String(error));
     } finally {
@@ -105,7 +130,9 @@ export default function AgentLabView() {
     <div className="flex h-screen flex-col gap-3 bg-background p-5 text-foreground">
       <h1 className="text-lg font-semibold">Agent 联调台（实验）</h1>
       <p className="text-xs text-muted-foreground">
-        用于人工验证 dsh 工具调用与审批通道。需要设置 DEEPSEEK_API_KEY 环境变量后启动应用。
+        用于人工验证 dsh 工具调用与审批通道（ACP 协议，
+        <code className="px-1">dsh --profile acp</code>）。需要设置 DEEPSEEK_API_KEY
+        环境变量后启动应用。
       </p>
 
       <div className="flex gap-2">

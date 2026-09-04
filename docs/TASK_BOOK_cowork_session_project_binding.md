@@ -1,5 +1,7 @@
 # 任务书：Cowork 会话 = 绑定已有项目 + 工具调用硬性限权
 
+> **排序更新**：项目决定把 dsh 协议层从窄协议（`--profile sdk`）整体重写成 ACP（`--profile acp`），任务书见 `docs/TASK_BOOK_acp_protocol_rewrite.md`，**排在这份之前**。ACP 重写会废弃本文写作时假设的 HTTP 审批通道（`/lamber-bridge/approval`），改由 ACP 原生的 `session/requestPermission` 触发；本文"绑定会话 + 硬性限权"具体怎么接入审批链路，要在协议重写落地后重新核对，不要照抄本文现在的描述直接开工。
+
 这是"多会话接 Harness Session"（`CURRENT_TASK.md` 尚未开始的部分第 2 项）的落地第一步，**排在**"新建智算项目"工具（`docs/TASK_BOOK_create_intelligent_compute_project.md`）**之前**。那份任务书里的 create/update/calculate 工具，都要在本次的会话绑定机制做完之后，才能作为"绑定会话里可用的工具"接上去——先后顺序不要颠倒。
 
 产品语义：会话分两种。Chat 模式＝现在的 `AiRuntime.ts` 路径，只读上下文注入，不能操作，本次不碰。Cowork 模式＝dsh 路径，新建时从**已有 lamber 项目列表**里选一个绑定（不是任意文件系统文件夹选择器），绑定之后这个会话里所有工具调用都被硬性限制只能操作这一个项目，不允许模型跑去操作别的 projectId。

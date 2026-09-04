@@ -9,27 +9,36 @@ React 前端 (AiChatPanel.tsx)
    │  Tauri invoke: ai_send_prompt / ai_agent_status / ai_agent_stop
    │  Tauri event:  ai://session-event
 Rust 后端 (src-tauri/src/agent_bridge/)
-   │  spawn 子进程 + newline-delimited JSON-RPC 2.0 over stdio
-dsh 子进程 (--profile sdk --patch patch.yml)
+   │  spawn 子进程 + Agent Client Protocol (ACP) over stdio
+dsh 子进程 (--profile acp --patch patch.yml)
    │  dsh-tool-lamber 插件的 execute() 内部
    │  HTTP POST 到 127.0.0.1:<随机端口>（Rust 侧 tiny_http 桥接服务）
    └─ 回调 benefit::calculator::calculate_ict_benefit
 ```
 
-审批走同一条桥、方向相反：
+审批**不走这条桥**，走 ACP 那条连接、方向相反——这是 ACP 化之后最容易记错的一点：
 
 ```
 dsh 工具调用前 tools/pre-execute 守卫 → {kind:'ask'}
    │
-ctx.approval.request() → approval/request 瀑布 → lamber answerer 插件
-   │  HTTP POST /lamber-bridge/approval（挂住不返回）
+ctx.approval.request() → approval/request 瀑布
+   │  ← dsh-acp 自己的处理器抢先接住（排在 dsh-tool-lamber 之前）
+dsh-acp 转成 ACP 请求 session/requestPermission 发给客户端
+   │  params 里只有 sessionId / toolCall.toolCallId / options 两项
+Rust dsh_session.rs 的 on_receive_request 处理器
+   │  按 toolCallId 去 ToolCallIndex 取回工具名与参数
+   │  （这两样来自更早那条 session/update 的 tool_call 通知）
 Rust ApprovalGate：登记槽位 → emit ai://approval-request → 条件变量挂起
    │
 React AgentApprovalDialog 弹窗 → 用户点确认/拒绝
    │  invoke ai_resolve_approval(requestId, approved)
-Rust 填充槽位 → 唤醒挂起线程 → HTTP 响应
-   └─ answerer 返回 ApprovalOutcome → dsh 放行或拒绝该次调用
+Rust 填充槽位 → 唤醒挂起的 blocking 任务
+   └─ 回 session/requestPermission：Selected(allow-once) 或 Selected(reject-once)
 ```
+
+> **`/lamber-bridge/approval` 这条 HTTP 路由已经删除**，插件里的 answerer 与
+> `pendingCalls.ts` 也一并删除。ACP 下 `dsh-acp` 会先接住 `approval/request`
+> 事件，插件自己的答复器永远排不上，留着就是死代码加第二条通往同一个「批准」的路。
 
 一条原则：**dsh 只做编排，一行业务数学都不在 TypeScript 里。** 插件是桥接服务的瘦客户端，桥接服务是既有 Rust 模块的瘦转发层。
 
@@ -38,19 +47,20 @@ Rust 填充槽位 → 唤醒挂起线程 → HTTP 响应
 | 路径 | 作用 |
 | --- | --- |
 | `dsh-tool-lamber/` | 自定义工具插件（独立 npm 包，`defineTool` 注册 `run_benefit_calculation`） |
-| `patch.yml` | dsh profile 补丁层，把插件挂进 `sdk` profile |
-| `scripts/provision-profile.mjs` | 一次性准备：构建插件 + `dsh plugin add` 链接进 `$DSH_HOME/profiles/sdk/` |
+| `patch.yml` | dsh profile 补丁层，把插件挂进 `acp` profile |
+| `scripts/provision-profile.mjs` | 一次性准备：构建插件 + `dsh plugin add` 链接进 `$DSH_HOME/profiles/acp/` |
 | `scripts/check-bridge.mjs` | 只跑「插件工具体 → 桥接服务 → calculator」这一跳的排错脚本，不启动 dsh、不消耗 LLM |
-| `scripts/check-approval.mjs` | 只跑「answerer → 桥接 → 审批网关 → 结果回传」这一跳，不启动 dsh、不消耗 LLM |
 | `scripts/check-gating.mjs` | 打印每个工具是否需要审批，用于断言只读工具没被误拦 |
 | `../src-tauri/src/agent_bridge/bridge_server.rs` | 仅监听 `127.0.0.1` 的 HTTP 桥接服务（tiny_http） |
 | `../src-tauri/src/agent_bridge/calculation.rs` | `POST /lamber-bridge/calculate` 路由：项目 → 方案 → 最新快照 → 测算引擎 |
-| `../src-tauri/src/agent_bridge/dsh_session.rs` | dsh 子进程管理 + JSON-RPC 2.0 客户端 |
-| `../src-tauri/src/agent_bridge/approval.rs` | `POST /lamber-bridge/approval` 路由与 `ApprovalGate`（挂起/唤醒/超时/关闭排空） |
+| `../src-tauri/src/agent_bridge/dsh_session.rs` | dsh 子进程管理 + ACP 客户端（握手与版本断言、`session/new`、`session/prompt`、`session/requestPermission` 应答） |
+| `../src-tauri/src/agent_bridge/tool_calls.rs` | 按 `toolCallId` 关联 `tool_call` 通知与随后的权限请求（原 `pendingCalls.ts` 的继任者） |
+| `../src-tauri/src/agent_bridge/approval.rs` | `ApprovalGate`（挂起/唤醒/超时/关闭排空）与展示文案镜像表 |
 | `../src-tauri/src/agent_bridge/approval_log.rs` | 审批审计日志的 SQLite 落库与查询 |
 | `../src-tauri/src/agent_bridge/mod.rs` | Tauri 命令、`AgentRuntime` 生命周期、事件转发 |
 | `../src-ui/src/components/ai/AgentApprovalDialog.tsx` | 最简审批弹窗，挂在 App 根节点 |
 | `../src-ui/src/components/ai/AgentLabView.tsx` | Agent 联调台（`#/agent-lab`），真实应用里驱动 Agent 与审批的唯一入口 |
+| `../docs/verification/acp-approval-manual-check.md` | ACP 下四条审批路径的真人点击验证记录 |
 
 ## 本地准备（一次性）
 
@@ -59,7 +69,7 @@ cd agent-bridge && npm install && cd dsh-tool-lamber && npm install && cd ..
 npm run provision
 ```
 
-`provision` 做两件事：构建 `dsh-tool-lamber/lib`，然后 `dsh plugin --profile sdk add <插件绝对路径>`。
+`provision` 做两件事：构建 `dsh-tool-lamber/lib`，然后 `dsh plugin --profile acp add <插件绝对路径>`。
 
 > **为什么必须 provision**：dsh 解析 `patch.yml` 里的插件包名是**相对 `$DSH_HOME/profiles/<profile>/`**，不是相对当前工作目录。只写 `--patch` 而不先把包链接进 profile 目录，插件加载不到。链接动作由 dsh 转发给 `pnpm` 执行——`pnpm` 已作为 `agent-bridge` 的 devDependency 装在本地，脚本会把 `node_modules/.bin` 放进 `PATH`，无需全局安装。
 
@@ -80,35 +90,45 @@ npm run provision
 **关于令牌**：只绑定回环地址不等于做了鉴权——同机任何进程都能访问该端口，进而读到客户项目的财务数据。因此桥接服务对每个请求校验一次性令牌（定长比较），令牌通过环境变量交给子进程，不落盘。
 
 
-## 审批通道（闭环 B）
+## 审批通道（闭环 B，ACP 化后）
 
 ### 设计
 
-**两半，缺一不可。**
+**仍是两半，但两半现在分居协议两侧。**
 
-* **守卫**（`tools/pre-execute`）决定*哪些*调用需要人。dsh 的 `defineTool` **没有**声明式的"风险等级"字段——被拦的工具就是某个 pre-execute 监听器对它返回 `{kind:'ask'}` 的工具。瀑布的终止默认值是 `{kind:'allow'}`（`dsh-tools/lib/index.js:3117`），所以守卫没点名的工具（包括只读的 `run_benefit_calculation`）原样放行。
-* **答复器**（`approval/request`）决定*人说了什么*。它把问题经同一条带鉴权的桥转给 lamber，阻塞等待决定。
+* **守卫**（`tools/pre-execute`，在插件里）决定*哪些*调用需要人。dsh 的 `defineTool` **没有**声明式的"风险等级"字段——被拦的工具就是某个 pre-execute 监听器对它返回 `{kind:'ask'}` 的工具。瀑布的终止默认值是 `{kind:'allow'}`（`dsh-tools/lib/index.js:3117`），所以守卫没点名的工具（包括只读的 `run_benefit_calculation`）原样放行。这一半 ACP 化后**完全没动**。
+* **应答方**（`session/requestPermission`，在 lamber 里）决定*人说了什么*。ACP 化前它是插件里的 `approval/request` 监听器 + 一条 HTTP 路由；现在 `dsh-acp` 抢先接住那个 Cordis 事件并转成 ACP 请求发给客户端，所以答复器移进了 Rust。
+
+> 顺带一提：ACP 下 lamber 是这条连接上**唯一**的权限应答方。`acp` profile 里 dsh 自带的
+> 工具若触发权限请求，也会走到同一个弹窗。策略是"照问不误、从不默许"——索引里查不到对应
+> 的 `tool_call` 公告时，弹窗会以调用 id 命名并给通用文案，但仍然会问。
 
 ### 超时与失败语义
 
 | 环节 | 时长 | 超时结果 |
 | --- | --- | --- |
-| Rust `ApprovalGate` | 90 秒（可用 `LAMBER_APPROVAL_TIMEOUT_SECS` 覆盖） | 返回 `{approved:false, reason:"等待用户确认超时…"}` |
-| 插件 answerer | 180 秒 | `'rejected'` |
+| Rust `ApprovalGate` | 90 秒（可用 `LAMBER_APPROVAL_TIMEOUT_SECS` 覆盖） | 应答 `Selected(reject-once)`，审计理由为"等待用户确认超时…" |
 | 前端弹窗倒计时 | 跟随后端下发的 `timeoutSeconds` | 自行关闭（后端此时已判拒） |
 
-答复器的 180 秒**故意长于**网关的 90 秒：正常路径应该是网关给出明确的 `rejected`，答复器那道界只兜"桥彻底不应答"。
+**ACP 下 dsh 不给权限请求设上限**，它就等客户端的应答。SDK 时期插件答复器那道 180 秒的
+兜底因此没有了对应物：网关的 90 秒是**唯一**能结束一次无人应答的机制，必须永远会触发。
 
 **全程失败关闭。** 桥接报错、返回体格式不对、超时、锁中毒——一律 `'rejected'`，不挂起也不默认放行。dsh 侧把 `rejected` / `cancelled` / `unavailable` 分别映射成措辞不同的拒绝，模型能区分"用户说不"和"审批通道不可用"。
 
-**没有 answerer 时的默认行为**（读源码确认，两条都是失败关闭）：
+**没有应答方时的默认行为**（读源码确认，都是失败关闭）：
 - 未挂载 `ApprovalService` → `ctx.get('approval')` 为 `undefined` → 直接拒绝，理由 `tool "X" requires approval (not yet supported)`。
-- 挂载了但无人应答 → 瀑布落到 `'unavailable'` → 拒绝，理由 `no approval channel is available`。
-- 会话策略 `approval/policy` 为 `'never'` 时，**根本不问人**，一律 `'rejected'`。`sdk` profile 默认是 `'ask'`（实测启动时会 emit `approval/policy {"policy":"ask"}`）。
+- 挂载了但瀑布无人接 → 落到 `'unavailable'` → 拒绝，理由 `no approval channel is available`。
+- 客户端答 `Cancelled`（本实现只在 agent 没给出所需 kind 的选项时用它）→ dsh 记为 `'cancelled'`，同样不放行。
 
 ### 并发
 
-桥接服务改成**每请求一个线程**（上限 16）。审批会把请求挂住到用户应答为止，单线程 accept 循环会让一个弹窗卡死所有其它路由；`a_parked_approval_does_not_block_the_calculation_route` 用例专门守这条。
+**两处并发，别混为一谈。**
+
+* **ACP 连接**：权限处理器跑在连接的派发循环上，直接在里面挂起会卡住整条连接——包括
+  弹窗打开期间本该继续流回来的 `session/update`。所以审批是 `cx.spawn` +
+  `spawn_blocking` 出去等的，连接线程用 2 worker 的多线程 tokio runtime。
+* **桥接服务**：仍是每请求一个线程（上限 16）。审批已经不走这条路了，但工具调用可能并发，
+  这个结构保留不变。
 
 ### 测试工具的边界
 
@@ -153,13 +173,15 @@ npm run provision
 | 正常关闭（`ai_agent_stop`） | `gate.shutdown()` 立即拒绝所有挂起审批并唤醒线程，随后 `reopen()` 让下次启动可用 | Rust |
 | 应用退出（`RunEvent::Exit`） | `main.rs` 的退出钩子调 `shutdown_approvals()`，挂起请求当场收到拒绝 | Rust |
 | 关闭后新到的请求 | 网关处于 `closed` 状态，**不建槽位**，当场拒绝 | Rust |
-| 进程崩溃 / 被 kill | 桥接套接字随进程消失，answerer 的 `fetch` 报错 → `'rejected'` | 插件侧 catch |
-| 桥接活着但不应答 | 网关 90 秒超时 → 明确拒绝 | Rust |
-| 桥接彻底失联 | answerer 自己的 180 秒上限 → `'rejected'` | 插件侧 |
+| 进程崩溃 / 被 kill | ACP stdio 连接随进程关闭，dsh 的权限请求以传输关闭失败 | 传输层 |
+| 无人点弹窗 | 网关 90 秒超时 → 明确拒绝并应答 `reject-once` | Rust（**唯一**兜底） |
 
 **槽位不会永久占用**：每条路径要么填充并移除槽位，要么在超时分支里 `remove` 掉。`shutdown_denies_parked_approvals_immediately` 断言关闭后请求在 10 秒内释放（网关超时设成 300 秒，只有关闭能救它），`approvals_after_shutdown_are_denied_without_parking` 断言关闭后 `pending_count() == 0`。
 
-**dsh 侧不会永久挂起**：崩溃时它的 HTTP 请求直接断开（`answerer_fails_closed_when_the_bridge_dies_mid_request` 用一个接受后立刻关闭套接字的假监听器验证了这一点），最坏情况也有 180 秒兜底。**没有做优雅通知**——lamber 崩溃时没有机会通知 dsh，靠的是连接断开与超时兜底，行为与既有的"失败关闭"原则一致。
+**dsh 侧不会永久挂起**：lamber 崩溃时 ACP 的 stdio 连接随进程关闭，dsh 的
+`session/requestPermission` 以传输关闭失败；子进程本身也会随进程组一起被收掉
+（crate 对 spawn 出来的进程组装了 `ChildGuard`）。**没有做优雅通知**——lamber 崩溃时没有
+机会通知 dsh，靠的是连接断开，行为与既有的"失败关闭"原则一致。
 
 ### 前端弹窗：已接通，但真实点击未由我验证
 
@@ -215,7 +237,8 @@ cargo test agent_bridge
 默认跑的 19 个用例**不需要 Node、不需要网络**：
 
 - 计算路由（6）：默认方案 / 按阶段 / 按方案名 / 按方案 id 选择、未知 scenario 拒绝、令牌鉴权、桥接端到端返回引擎数字。
-- 审批网关（6）：超时判拒且不挂死、确认唤醒挂起请求、拒绝如实回传、响应不存在的请求报错、审批路由仍需令牌、挂起的审批不阻塞计算路由。
+- 审批网关（6）：超时判拒且不挂死、确认唤醒挂起请求、拒绝如实回传、响应不存在的请求报错、抢在公告返回前到达的答复不丢失、旧的 `/lamber-bridge/approval` 路由确已下线（404）。
+- ACP 关联与策略（4）：工具调用索引取回公告过的名字与参数、重复公告不留两行、索引有上限会淘汰、Rust 展示文案镜像表与插件 `GATED_TOOLS` 名单一致。
 - 审计与关闭（5）：决定跨进程重启仍可查、拒绝与超时可区分、关闭立即释放挂起审批、关闭后请求不建槽位、审计写失败不改变决定。
 - 前后端契约（2）：审批事件字段与弹窗读取的名字一致、弹窗挂在所有能触发 Agent 的路由上。
 
@@ -224,51 +247,93 @@ cargo test agent_bridge
 ```bash
 cargo test agent_bridge -- --ignored --nocapture
 ```
-需要先完成上面的 provision。9 个用例，按"从底层往上缩范围"排列：
+需要先完成上面的 provision。6 个用例，按"从底层往上缩范围"排列：
 
 | 用例 | 验证什么 | 需要 API key |
 | --- | --- | --- |
 | `only_the_write_tool_is_gated_behind_approval` | 只读工具没被审批误伤（守卫策略本身） | 否 |
 | `plugin_tool_body_reaches_the_calculator_over_the_bridge` | 插件 `execute()` → 桥接 → calculator，数字与引擎直算一致 | 否 |
-| `answerer_receives_the_users_decision_through_the_gate` | answerer → 桥接 → 网关 → 模拟前端确认/拒绝 → 结果回到插件（两个方向都测） | 否 |
-| `answerer_fails_closed_when_nobody_answers` | 无人应答时 answerer 明确返回 `rejected`，不挂起 | 否 |
-| `dsh_advertises_the_lamber_tool_in_its_request_header` | dsh 子进程启动、`initialize` 握手、工具 schema 注入 | 否 |
-| `dsh_advertises_the_gated_tool_alongside_the_readonly_one` | 两个工具都在目录里 | 否 |
-| `dsh_tool_call_reaches_the_calculator_and_returns_real_numbers` | 闭环 A 完整链路 | **是** |
-| `answerer_fails_closed_when_the_bridge_dies_mid_request` | lamber 崩溃（套接字中途断开）时 answerer 失败关闭而非挂起 | 否 |
-| `dsh_gated_tool_runs_only_after_the_user_confirms` | 闭环 B 完整链路：确认→真的写出标记文件；拒绝→不执行；`approval/decided` 审计事件与模拟操作一致 | **是** |
+| `acp_handshake_negotiates_the_expected_protocol_version` | `acp` profile 装配、`--patch` 加载、ACP 握手、**协议版本断言**、`session/new` | 否 |
+| `a_finished_turn_reports_its_stop_reason` | 投递即返回的一轮会发出 `session/turn-ended` 终结事件 | **是** |
+| `dsh_tool_call_reaches_the_calculator_and_returns_real_numbers` | 闭环 A 完整链路，且只读工具全程不弹审批 | **是** |
+| `dsh_gated_tool_runs_only_after_the_user_confirms` | 闭环 B 完整链路：`tool_call` 先于权限请求到达、弹窗认出工具名与参数、确认→真的写出标记文件、拒绝→不写 | **是** |
 
-排错顺序建议：`check-gating.mjs`（策略对不对）→ `check-bridge.mjs`（桥接坏没坏）→ `check-approval.mjs`（审批通道坏没坏）→ `dsh_advertises...`（插件/协议坏没坏）→ 最后带 key 的两个完整闭环（模型/提示词的问题）。
+没有 key 时，带 key 的三个用例会打印「跳过：未设置 DEEPSEEK_API_KEY」并通过——**这是跳过，不是验证过**。
+带真实 key 的完整运行结果记在
+[`docs/CURRENT_TASK.md`](../docs/CURRENT_TASK.md) 的 Validation 一节。
 
-反复跑时注意：dsh 会把会话持久化到 `$DSH_HOME/sessions/`，**同一个 `sessionId` 复用会报 `id collision`**。测试里每次用新 UUID；手工调试时可以直接删掉该目录。
+排错顺序建议：`check-gating.mjs`（拦截策略对不对）→ `check-bridge.mjs`（桥接坏没坏）→ `acp_handshake_negotiates_the_expected_protocol_version`（profile / 协议 / 握手坏没坏，不需要 key）→ 最后带 key 的几个完整闭环（模型/提示词的问题）。
+
+反复跑时注意：dsh 仍会把会话持久化到 `$DSH_HOME/sessions/`。ACP 下会话 id 由
+**dsh 自己生成**（`session/new` 的返回值），不再由 lamber 指定，所以 SDK 时代那个
+"复用同一个 sessionId 会报 id collision" 的坑不复存在。手工调试时该目录仍可直接删掉。
 
 ## 与任务书中「已验证事实」的差异
 
 实际接入时发现以下几点与预设不同，以此处为准：
 
 1. **包版本**：`@deepseek-ai/dsh` 与 `@deepseek-ai/dsh-tools` 最新为 `0.1.2-alpha.5`（不是 `alpha.4`），本项目已固定到 `alpha.5`。`@deepseek-ai/cordis` 仍为 `^4.0.2`。
-2. **provider / model 名**：`initialize` 的 `provider` 不是 `deepseek`。`sdk` profile 注册的路由是 **`deepseek-official`**，默认模型 **`deepseek-v4-flash`**；传 `deepseek` 会得到 `no adapter registered for provider "deepseek"`。
+2. **provider / model 名**：路由不是 `deepseek`，而是 **`deepseek-official`**，默认模型 **`deepseek-v4-flash`**；传 `deepseek` 会得到 `no adapter registered for provider "deepseek"`。
 3. **`output.schema` 的属性默认是可选的**。除了 `type: 'object'` 必须显式写 `additionalProperties` 之外，对象的每个属性还要加 `required: true`，否则推断出的类型全是 `T | undefined`，`execute()` 的返回值过不了类型检查。
 4. **API key 可以走环境变量**。dsh 的报错文案建议「通过 credentials service 存储」，但实测 `DEEPSEEK_API_KEY` 环境变量会被直接采用（用假 key 能拿到上游 401，而不是 `MISSING_CREDENTIAL`），所以 Rust 侧用 env 注入即可。
 5. **`dsh plugin add` 会有一条无害告警**：`dsh-tool-lamber declares no dsh.bundle — installed as a plain dependency, not a profile layer`。插件由 `patch.yml` 显式挂载，不依赖 bundle 自动激活，功能正常。
 6. **`pnpm` 无需全局安装**，作为 `agent-bridge` 的 devDependency 即可，provision 脚本负责把它放进 `PATH`。
 
-协议本身（`initialize` / `session/prompt` / `shutdown`，以及 `session.event` / `session.status` / `subagent.*` 四种通知，一行一个 JSON 对象）与任务书描述完全一致，已对照 `node_modules/@deepseek-ai/dsh-sdk-protocol/lib/types/types.d.ts` 核对。
+### ACP 协议层重写时发现的差异
 
-### 闭环 B（审批通道）实现时发现的差异
+以读到的源码为准（`agent-client-protocol@2.0.0`、`@deepseek-ai/dsh-acp@0.1.2-alpha.5`）。
+握手兼容性的一次性验证记录见
+[`docs/verification/acp-rust-crate-handshake.md`](../docs/verification/acp-rust-crate-handshake.md)。
 
+1. **依赖版本以 `cargo tree` 实测为准。** `agent-client-protocol 2.0.0` 把
+   `agent-client-protocol-schema` **精确锁死在 `=1.5.0`**（不是早期调研以为的
+   1.7.0）。两者都讲 ACP 线上协议 **v1**——线上版本是个整数，跟包版本号不是一套体系。
+2. **dsh 不做版本协商。** `initialize(_params)` 忽略客户端请求的版本，无条件回自己的
+   `PROTOCOL_VERSION`（`dsh-acp/lib/index.js:1143-1146`）。也就是说 dsh 升到 v2 那天，
+   **握手期不会有任何报错来提示我们**，不匹配只会在后面某个字段上炸开。因此客户端侧在
+   `dsh_session.rs` 里加了显式断言：协商结果不等于 `EXPECTED_PROTOCOL_VERSION` 就直接
+   启动失败。`acp_handshake_negotiates_the_expected_protocol_version` 守着这条。
+3. **`session/requestPermission` 里没有工具名，也没有参数。** dsh 构造的 params 只有
+   `{sessionId, toolCall: {toolCallId}, options: [allow-once, reject-once]}`
+   （`dsh-acp/lib/index.js:1118-1140`），连守卫写的 `reason` 都被丢掉。工具名与参数来自
+   更早那条 `session/update` 的 `tool_call` 通知（`title` 与 `rawInput`）——dsh 在发问前
+   会先 `drainUpdates()`，所以那条通知一定已经到了。Rust 侧 `tool_calls.rs` 按
+   `toolCallId` 做这个关联，它是插件里 `pendingCalls.ts` 的继任者。
+   弹窗要显示的说明文案则由 `approval.rs` 的镜像表提供，`gated_tool_names_match_the_plugin`
+   保证它和插件的 `GATED_TOOLS` 不会各走各的。
+4. **`AcpAgentConfig` 没有 `env_remove`，也没有 `current_dir`。** 子进程继承 lamber 的环境
+   变量，所以"配置里没有 key"必须显式传空串来表达——dsh 的凭证层把空值等同于未设置
+   （`dsh-credentials-local/lib/index.js:427`），这与旧代码的 `env_remove` 语义一致，不是
+   将就。工作目录则由 `session/new` 的 `cwd` 参数显式给出，不再依赖子进程的 cwd。
+5. **ACP 会话 id 由 agent 决定。** `session/new` 返回 dsh 生成的 id，与 SDK 协议下由
+   lamber 指定相反。前端仍然给自己的会话起名，`AgentRuntime` 负责把两套 id 映射起来。
+6. **`session/prompt` 是长请求**，要整轮结束才回 `stopReason`。lamber 侧做成投递即返回，
+   轮次结束另发一条 `session/turn-ended` 事件，否则一次 `ai_send_prompt` 会挂住整轮。
+7. **处理器跑在连接的派发循环上。** 权限处理器里直接挂起会卡住整条连接的消息收发，所以
+   审批是 `cx.spawn` + `spawn_blocking` 出去等的；连接线程用的是 2 worker 的多线程
+   tokio runtime。tokio 只出现在这一层，后端其余部分仍是同步的。
+8. **`session/resume` 不等于 `session/load`。** dsh 只实现前者，且不重放历史消息；跨重启
+   要显示的历史对话仍得靠 lamber 自己的会话记录。
+9. **ACP 支持图片内容块**（`ImageContent`，base64 + mimeType），本轮**未启用**——还需要挂
+   `dsh-attachment` 系列插件且模型路由声明支持图片输入。协议层现在具备这个能力而已。
+
+### 闭环 B（审批通道）实现时发现的差异（SDK 协议时期，历史记录）
+
+以下是 `--profile sdk` 时期的记录，保留作为背景。其中第 2、4 条描述的 HTTP 审批通道已在
+ACP 重写中删除，**不要照着它开工**；第 1、3、5、6 条仍然成立。
 以读到的源码为准（`@deepseek-ai/dsh-user-approval@0.1.2-alpha.5`、`@deepseek-ai/dsh-tools@0.1.2-alpha.5`）：
 
 1. **没有"审批等级"这种声明式字段。** `defineTool` 的选项只有 `name` / `description` / `parameters` / `output` / `timeoutMs` / `isConcurrencySafe` / `execute` / `finalizeContent` / `presentCall` / `presentResult`。要让一个工具需要审批，只能注册 `tools/pre-execute` 监听器对它返回 `{kind:'ask', reason}`。任务书里"标记为需要审批的等级"这个说法在当前版本没有对应实现。
-2. **审批请求里没有工具参数。** `ApprovalRequestEvent` 只有 `{agent, toolName, callId?, reason?, signal?}`；其文档明确写着 `callId` "links to an already presented tool call, so arguments are not duplicated here"。要在弹窗里显示参数，必须自己做关联——本实现由守卫按 `callId` 把参数记进进程内的 `pendingCalls` 表，答复器再取回。**这也是 answerer 没有拆成独立 npm 包的原因**：两个包在 pnpm link 下有可能拿到两份模块实例、两张表，守卫写进去的参数答复器读不到。守卫与答复器因此和工具同包，源码上仍分文件（`approval.ts` / `pendingCalls.ts`）。
+2. **审批请求里没有工具参数。** `ApprovalRequestEvent` 只有 `{agent, toolName, callId?, reason?, signal?}`；其文档明确写着 `callId` "links to an already presented tool call, so arguments are not duplicated here"。当时由守卫把参数记进进程内的 `pendingCalls` 表、答复器再取回。**ACP 下这个约束依然在，但关联点搬到了 Rust 侧**（`tool_calls.rs`），插件里的答复器与 `pendingCalls.ts` 已删除。
 3. **`ApprovalOutcome` 只有四个值**：`'allowed-once'` / `'rejected'` / `'cancelled'` / `'unavailable'`。只有 `allowed-once` 是放行，且只对这一次调用有效——没有"永久允许"。
-4. **`approval/asked` 和 `approval/decided` 是 session 事件**，会经 `session.event` 通知流到 Rust 侧。这比解析 `tool/result` 更适合做审批结果的断言，闭环 B 的完整用例就是这么验的。
+4. ~~**`approval/asked` 和 `approval/decided` 是 session 事件**，会经 `session.event` 通知流到 Rust 侧。~~ ACP 下没有这两个事件：审批结果只体现在客户端自己给出的应答，以及随后的 `tool_call_update` 上。
 5. **`approval.request()` 要求有开启的 turn**，空闲时调用会直接抛错（"an idle ask rejects before appending anything"），因为审计事件对必须落在日志的提交边界内。
 6. **桥接服务原来的单线程 accept 循环撑不住审批**：一个挂起的审批会卡死其它所有路由。已改成每请求一线程（上限 16）。这是闭环 A 遗留的设计缺陷，被闭环 B 暴露出来。
 
 ## 目前还没做的部分（留给下一轮）
 
-* **真实写操作工具。** 审批通道已验证可用，但本轮**只**放了无害的 `write_test_marker`。要接真正会改 lamber 数据的工具（改方案、生成文档等），下一轮把它们加进 `approval.ts` 的 `GATED_TOOLS`，并逐个补桥接路由与端到端用例。
+* **真实写操作工具。** 审批通道已验证可用，但本轮**只**放了无害的 `write_test_marker`。要接真正会改 lamber 数据的工具（改方案、生成文档等），下一轮把它们加进 `approval.ts` 的 `GATED_TOOLS`**以及 `approval.rs` 的镜像表**（两处，有测试卡着），并逐个补桥接路由与端到端用例。
+* **dsh 自带工具的审批。** ACP 下 lamber 现在是**唯一**的权限应答方，`acp` profile 里 dsh 自带的工具（bash、文件编辑等）若触发权限请求，也会弹到同一个弹窗；索引里没有对应公告时，弹窗会以调用 id 命名并给通用文案。目前是"照问不误、从不默许"，还没有按工具分类的策略。
 * **对话流展示。** `AiChatPanel.tsx` / `AiRuntime.ts` 仍未改动，工具调用过程没有在对话里可视化。Rust 侧已把所有通知按 `{method, params}` 打包 emit 到 `ai://session-event`，前端订阅这一个事件、按 `method` 分派即可，新增通知类型不需要再加 Tauri 事件名。审批弹窗是独立事件 `ai://approval-request`，已接好。
 * **审批弹窗的产品化。** 现在是能演示流程的最简实现：单一模态、JSON 原样展示参数、倒计时。没有做"记住选择""按工具批量授权""历史审批记录"，也没有按 DESIGN.md 精修视觉。
 * **API key 来源。** 目前从环境变量读。前端的 key 存在 `localStorage.lamber_ai_api_key`，接入时应改为由前端传入或落到 lamber 自己的凭证存储，而不是依赖环境变量。
@@ -276,6 +341,11 @@ cargo test agent_bridge -- --ignored --nocapture
 
 ## 依赖说明
 
-Rust 侧新增一个直接依赖：`tiny_http 0.12`（`default-features = false`，仅 `ascii`/`chunked_transfer`/`httpdate`/`log` 四个小传递依赖，不含 TLS）。
+ACP 重写新增两个直接依赖：`agent-client-protocol 2.0.0`（ACP 客户端，传递依赖
+`agent-client-protocol-schema 1.5.0`）与 `tokio 1`（仅
+`rt-multi-thread`/`sync`/`time`/`io-std`/`io-util` 五个 feature）。tokio 只服务于
+`dsh_session.rs` 这一层，后端其余部分仍是同步的。
+
+闭环 A 时期已有的直接依赖：`tiny_http 0.12`（`default-features = false`，仅 `ascii`/`chunked_transfer`/`httpdate`/`log` 四个小传递依赖，不含 TLS）。
 
 选它而不是 hyper/axum 的原因：lamber 后端整体是同步的（`rusqlite` + `Arc<Mutex<Connection>>`，`calculate_ict_benefit` 是同步函数），在异步 handler 里做同步加锁是反模式；桥接服务只有一个回环路由、并发量极低，用阻塞式服务器跑在独立线程上与既有代码风格一致。也没有手写 HTTP 解析——那是比引入一个小依赖更大的技术债。

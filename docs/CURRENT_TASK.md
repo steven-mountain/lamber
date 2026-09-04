@@ -29,6 +29,120 @@
 
 ---
 
+# ACP 协议层重写（`--profile sdk` → `--profile acp`）
+
+- **Status:** ✅ 已完成。代码、带真实 key 的集成测试、四条审批路径的真人点击验证全部通过。
+- **真人点击验证记录:** [docs/verification/acp-approval-manual-check.md](./verification/acp-approval-manual-check.md)
+- **任务书:** [docs/TASK_BOOK_acp_protocol_rewrite.md](./TASK_BOOK_acp_protocol_rewrite.md)
+- **前置验证:** [docs/verification/acp-rust-crate-handshake.md](./verification/acp-rust-crate-handshake.md)
+- **模块文档:** [agent-bridge/README.md](../agent-bridge/README.md)
+
+## 为什么要重写
+
+ACP 是**双向**协议：agent 也会向客户端发请求。原来那个手写的 JSON-RPC 客户端是纯
+「发请求等回应」模型（`next_id` + `pending` 表），收到服务端主动发起的请求只会当日志丢掉。
+`session/requestPermission` 恰恰就是这样一条请求，所以传输层是整体换掉，不是打补丁。
+
+## 改了什么
+
+### 传输层
+
+- `agent-client-protocol 2.0.0` + `tokio` 从 `[dev-dependencies]` 转正为 `[dependencies]`。
+  实测解析到的 schema 是 **1.5.0**（crate 把它精确锁死在 `=1.5.0`），不是早期调研说的 1.7.0。
+- `dsh_session.rs` 重写：`DshSession`（手写 JSON-RPC）→ `AcpRuntime`（crate 的 client builder）。
+  握手、`session/new`、`session/prompt`，外加 `on_receive_request` 处理
+  `session/requestPermission`、`on_receive_notification` 强类型解析 `session/update`。
+- **协议版本显式断言**：dsh 的 `initialize` 不校验入参、无条件回自己的版本
+  （`dsh-acp/lib/index.js:1143-1146`），所以它升到 v2 的那天握手期不会报错。
+  客户端侧现在协商结果不等于 `EXPECTED_PROTOCOL_VERSION` 就直接启动失败。
+- tokio **只**出现在这一层：连接跑在自己的线程和 runtime 上，同步侧通过命令通道 +
+  `std::sync::mpsc` 回执与它交互，后端其余部分未引入异步。
+- `session/prompt` 做成**投递即返回**（ACP 那条请求要整轮结束才回），轮次结束另发
+  `session/turn-ended` 事件。ACP 会话 id 由 dsh 生成，`AgentRuntime` 负责把前端自己的
+  会话名映射到它。
+- 探针 `src-tauri/examples/acp_handshake_probe.rs` 已删除——验证代码不原地转正。
+
+### 审批链路
+
+- 触发入口从 `POST /lamber-bridge/approval` 换成 ACP 的 `session/requestPermission`。
+  `ApprovalGate`、`agent_approval_log` 落库、`ai://approval-request` 事件、
+  `ai_resolve_approval` 命令这些核心机制**原样复用**。
+- 新增 `tool_calls.rs`：`session/requestPermission` 只带 `toolCallId`，工具名与参数来自
+  更早那条 `tool_call` 通知，这个索引负责按 id 关联。它是插件里 `pendingCalls.ts` 的继任者。
+- 新增 `approval.rs` 里的展示文案镜像表：`dsh-acp` 把守卫写的 `reason` 丢掉了，弹窗文案
+  只能存在 Rust 侧。`gated_tool_names_match_the_plugin` 读插件源码守住两边不漂移。
+- **顺带修掉一个真实的时序缺口**：`handle_request` 原先先公告、后登记槽位，中间有个窗口，
+  在此期间到达的答复会被判成「请求不存在」，用户的点击会被丢掉、问题继续挂到超时。改成
+  登记后在锁内公告，`an_answer_racing_the_announcement_is_not_lost` 守这条。
+
+### 删除的东西（不留双通道）
+
+- `dsh-tool-lamber/src/approval.ts` 里的 `approval/request` 答复器与 `askLamber()`
+- `dsh-tool-lamber/src/pendingCalls.ts`
+- Rust `mod.rs` 的 `APPROVAL_ROUTE` 分支（桥接现在只剩一条只读路由）
+- `agent-bridge/scripts/check-approval.mjs`
+- `examples/acp_handshake_probe.rs`
+- 依赖 `@deepseek-ai/dsh-user-approval`（插件已不再引用其类型）
+
+`tools/pre-execute` 守卫（`GATED_TOOLS` / `isGatedTool`）按任务书要求**保留未动**。
+
+### profile
+
+- `dsh-tool-lamber` 已有意识地链进 `.dsh-home/profiles/acp/`，`patch.yml` 与
+  `provision-profile.mjs` 的默认 profile 都改成 `acp`。
+- `.dsh-home/profiles/sdk/` 目录保留未删，但生产代码已不再引用它。
+
+## Validation
+
+- `cargo test`：**57 passed, 0 failed**。
+- `cargo test agent_bridge -- --ignored`（**带真实 `DEEPSEEK_API_KEY`**）：**6 passed, 0 failed**。
+  覆盖 `initialize`（含版本断言）→ `session/new` → `session/prompt` → 真实模型响应 →
+  真实 gated 工具触发 `session/requestPermission` 全链路。
+- `npm run build --prefix src-ui`：通过。
+- `npm run typecheck --prefix agent-bridge/dsh-tool-lamber`：通过。
+
+### 集成测试的旁证（不只看「测试变绿」）
+
+真实模型跑完后，系统临时目录下每次运行**恰好**多出一个标记文件，内容是
+`备注: ACP 联调`——正是测试提示词里要求模型填的 `note` 参数。这同时证明了三件事：
+
+1. 模型真的解析了指令并发出 `write_test_marker` 的工具调用（不是桩）；
+2. 审批真的经由 ACP 的 `session/requestPermission` 走通，确认后工具才执行；
+3. 用例内部循环了「确认」与「拒绝」两种立场，而每次运行只产出**一个**文件——
+   拒绝那一轮确实没有执行，不是"执行了但断言没看见"。
+
+`dsh_tool_call_reaches_the_calculator_and_returns_real_numbers` 另外断言了桥接**恰好**
+被打一次、`projectId` 正确、工具结果里出现 `calculator.rs` 算出的真实 NPV，且只读工具
+全程**没有**触发任何审批弹窗。
+
+### 真人点击验证（四条路径全通过）
+
+2026-09-04，经应用内 `#/agent-lab` 联调台操作，触发入口为 ACP 的
+`session/requestPermission`。完整记录与原始报文见
+[acp-approval-manual-check.md](./verification/acp-approval-manual-check.md)。
+
+| 路径 | 结果 | 证据 |
+| --- | --- | --- |
+| 点「确认执行」 | ✅ `decided_by=user`、已批准 | 审计表 + 标记文件（决定后 10ms 写出，顺序正确） |
+| 点「拒绝」 | ✅ `decided_by=user`、已拒绝 | 审计表；无新标记文件 |
+| 不操作等 90 秒 | ✅ `decided_by=timeout` | 审计表；无新标记文件；随后可继续正常发指令 |
+| 无工作区时审批 | ✅ 决定照常生效，缓冲后回填 | `agent-approval-spool.jsonl` → 打开工作区后入库、缓冲文件被删 |
+
+事件流同时证实了本次改动最关键的结构性判断：弹窗里的工具名与参数确实取自更早那条
+`tool_call` 通知的 `title` / `rawInput`——权限请求本身只带 `toolCallId`。
+
+旧的 [approval-channel-manual-check.md](./verification/approval-channel-manual-check.md)
+是 SDK 协议时期、完全不同触发机制下测的，**未被援引为本次的结论**；该文件按要求保留未动。
+
+## 本次未覆盖的部分（照实记录）
+
+1. 审批只覆盖了 `write_test_marker` 一个工具——`GATED_TOOLS` 目前也只有它。
+2. dsh 自带工具（bash、文件编辑等）触发权限请求时的表现未验证。ACP 下 lamber 是唯一的
+   权限应答方，那条路径存在但没走过。
+3. 并发审批（同时挂起两个问题）未验证。
+
+---
+
 # agent-bridge：deepseek-harness 接入（闭环 A + 闭环 B 已完成）
 
 - **Status:** 闭环 A、闭环 B 均已完成，并通过真实点击验证。
@@ -45,7 +159,7 @@ lamber 原有的 AI copilot 只是一个裸的 OpenAI 兼容流式客户端，`i
 ```
 React 前端  →  Tauri 命令  →  Rust 后端
                                  │ spawn 子进程 + newline-delimited JSON-RPC 2.0 over stdio
-                              dsh 子进程（--profile sdk）
+                              dsh 子进程（--profile sdk；已由 ACP 重写取代，见本文首节）
                                  │ 自定义插件工具 execute() 内 fetch
                               127.0.0.1 桥接服务（tiny_http，令牌鉴权）
                                  └─ benefit::calculator / 审批网关

@@ -1,43 +1,52 @@
 //! Agent bridge — runs lamber's business capabilities as deepseek-harness tools.
 //!
 //! ```text
-//! React (AiChatPanel)  --tauri invoke-->  agent_bridge commands
+//! React (AgentLabView)  --tauri invoke-->  agent_bridge commands
 //!                                             |
-//!                        spawn + JSON-RPC over stdio (dsh_session)
+//!                              ACP over stdio (dsh_session)
 //!                                             v
-//!                                   dsh child process
+//!                            dsh child process (--profile acp)
 //!                                             |
 //!                            dsh-tool-lamber tool body (HTTP)
 //!                                             v
 //!                       bridge_server --> benefit::calculator
 //! ```
 //!
-//! The split is deliberate: dsh owns the agent loop, tool catalog, and approval
-//! policy; lamber keeps every line of business math. The bridge is the only
-//! seam, and today it carries exactly one read-only route.
+//! The split is deliberate: dsh owns the agent loop and tool catalog; lamber
+//! keeps every line of business math, and now owns the approval decision too.
 //!
-//! Not yet implemented (tracked in `agent-bridge/README.md`): the approval
-//! channel for write-capable tools, which needs a dsh-side answerer plugin
-//! because `approval/request` is an in-process Cordis event and is not
-//! forwarded over the SDK JSON-RPC protocol.
+//! Two different seams, easily confused:
+//!
+//! * **Tool calls** run *into* lamber over the loopback bridge: the plugin's
+//!   tool body POSTs to `bridge_server`, which dispatches to `benefit`.
+//! * **Approval** runs *out of* lamber over ACP: dsh asks
+//!   `session/requestPermission` on the same connection it streams output over.
+//!
+//! Approval used to travel over the bridge too, as a route the plugin posted
+//! to. Under `--profile acp` that route is unreachable — `dsh-acp` answers the
+//! `approval/request` Cordis event itself and forwards it to the client — so it
+//! was removed rather than left as dead code. The bridge is back to carrying
+//! exactly one read-only route.
 
 pub mod approval;
 pub mod approval_log;
 pub mod bridge_server;
 pub mod calculation;
 pub mod dsh_session;
+pub mod tool_calls;
 
 #[cfg(test)]
 mod tests;
 
-use approval::{ApprovalGate, ApprovalPrompt, ApprovalRequest, APPROVAL_EVENT, APPROVAL_ROUTE};
+use approval::{ApprovalGate, ApprovalPrompt, APPROVAL_EVENT};
 use bridge_server::{BridgeHandler, BridgeReply, BridgeServer};
 use calculation::{CalculateRequest, CALCULATE_ROUTE};
-use dsh_session::{DshLaunchConfig, DshSession};
+use dsh_session::{AcpRuntime, DshLaunchConfig};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
 
-/// Frontend event carrying every `session.event` / `session.status` notification.
+/// Frontend event carrying every ACP notification and turn outcome.
 pub const SESSION_EVENT: &str = "ai://session-event";
 
 /// Called with each approval question before lamber parks waiting for an answer.
@@ -52,14 +61,8 @@ pub type ApprovalAnnouncer = Arc<dyn Fn(&ApprovalPrompt) + Send + Sync>;
 /// database they build themselves.
 ///
 /// @param runtime - the workspace runtime holding the open database.
-/// @param gate - registry of approval questions awaiting a human.
-/// @param announce - surfaces one question to the user.
 /// @returns a handler suitable for `BridgeServer::start`.
-pub fn workspace_handler(
-    runtime: Arc<crate::workspace::WorkspaceRuntime>,
-    gate: Arc<ApprovalGate>,
-    announce: ApprovalAnnouncer,
-) -> BridgeHandler {
+pub fn workspace_handler(runtime: Arc<crate::workspace::WorkspaceRuntime>) -> BridgeHandler {
     Arc::new(move |path, body| match path {
         CALCULATE_ROUTE => {
             let request: CalculateRequest = match serde_json::from_str(body) {
@@ -72,19 +75,6 @@ pub fn workspace_handler(
                     Err(e) => BridgeReply::error(500, &format!("结果序列化失败: {e}")),
                 },
                 Err(message) => BridgeReply::error(422, &message),
-            }
-        }
-        APPROVAL_ROUTE => {
-            let request: ApprovalRequest = match serde_json::from_str(body) {
-                Ok(request) => request,
-                Err(e) => return BridgeReply::error(400, &format!("审批请求解析失败: {e}")),
-            };
-            // Blocks this bridge worker thread until the user answers or the
-            // gate times out; the answerer is holding its HTTP request open.
-            let decision = approval::handle_request(&gate, request, |prompt| announce(prompt));
-            match serde_json::to_string(&decision) {
-                Ok(json) => BridgeReply::ok(json),
-                Err(e) => BridgeReply::error(500, &format!("审批结果序列化失败: {e}")),
             }
         }
         other => BridgeReply::error(404, &format!("未知的 AI 桥接路由: {other}")),
@@ -117,18 +107,29 @@ pub struct AgentRuntime {
 struct RunningAgent {
     /// Dropped last; keeps the loopback listener alive while dsh may call it.
     _bridge: BridgeServer,
-    session: DshSession,
+    acp: AcpRuntime,
     config: DshLaunchConfig,
+    /// lamber's own session ids mapped onto the ones the agent issued.
+    ///
+    /// ACP inverts session ownership: `session/new` returns an id the *agent*
+    /// chose, where the SDK protocol accepted whatever id lamber invented. The
+    /// frontend still names its own conversations, so each new name opens an ACP
+    /// session once and reuses it for every later turn.
+    sessions: HashMap<String, String>,
 }
 
 impl AgentRuntime {
-    /// Start the bridge and dsh if they are not already running, then run one turn.
+    /// Start the bridge and dsh if they are not already running, then queue one turn.
+    ///
+    /// Blocking: call it off the async executor (see `ai_send_prompt`). The turn
+    /// itself is not awaited — output streams back as `SESSION_EVENT`s and the
+    /// outcome arrives as a `session/turn-ended` event.
     ///
     /// @param app - handle used to emit session events to the frontend.
     /// @param runtime - workspace runtime backing the bridge routes.
-    /// @param session_id - dsh session id; must be unique per turn-series.
+    /// @param session_id - lamber's own conversation id; mapped to an ACP session.
     /// @param text - the user's prompt.
-    /// @returns the enqueued message id reported by dsh.
+    /// @returns the ACP session id the turn was queued on.
     pub fn send_prompt(
         &self,
         app: &tauri::AppHandle,
@@ -143,20 +144,26 @@ impl AgentRuntime {
         if guard.is_none() {
             *guard = Some(self.launch(app, runtime)?);
         }
-        let agent = guard.as_ref().expect("just launched");
-        let result = agent.session.prompt(session_id, text)?;
-        Ok(result
-            .get("messageId")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .to_string())
+        let agent = guard.as_mut().expect("just launched");
+        let acp_session = match agent.sessions.get(session_id) {
+            Some(existing) => existing.clone(),
+            None => {
+                let opened = agent.acp.new_session(&agent.config.cwd)?;
+                agent
+                    .sessions
+                    .insert(session_id.to_string(), opened.clone());
+                opened
+            }
+        };
+        agent.acp.prompt(&acp_session, text)?;
+        Ok(acp_session)
     }
 
     /// Tear the runtime down; the next prompt relaunches it.
     ///
-    /// Open approvals are denied first, so a parked bridge worker is released
-    /// immediately instead of holding the dsh answerer's HTTP request open for
-    /// the rest of the gate's timeout.
+    /// Open approvals are denied first, so a parked approval task is released
+    /// immediately and its `session/requestPermission` is answered, instead of
+    /// leaving dsh waiting out the rest of the gate's timeout.
     pub fn stop(&self) -> Result<(), String> {
         let denied = self.gate.shutdown();
         if denied > 0 {
@@ -179,7 +186,7 @@ impl AgentRuntime {
         self.gate.shutdown()
     }
 
-    /// Deliver a user's decision to the parked bridge thread.
+    /// Deliver a user's decision to the parked approval task.
     pub fn resolve_approval(&self, request_id: &str, approved: bool) -> Result<(), String> {
         self.gate.resolve(request_id, approved)
     }
@@ -201,18 +208,15 @@ impl AgentRuntime {
             Arc::clone(&runtime),
             spool,
         ));
-        let bridge = BridgeServer::start(workspace_handler(
-            runtime,
-            Arc::clone(&self.gate),
-            announce,
-        ))?;
+        let bridge = BridgeServer::start(workspace_handler(runtime))?;
 
         let mut config = DshLaunchConfig::from_repo_root(&repo_root()?);
         config.bridge_url = bridge.origin();
         config.bridge_token = bridge.token().to_string();
 
         let emitter = app.clone();
-        let session = DshSession::spawn(
+        let gate = Arc::clone(&self.gate);
+        let acp = AcpRuntime::start(
             &config,
             Arc::new(move |method, params| {
                 // The frontend subscribes to one channel and switches on `method`,
@@ -222,25 +226,38 @@ impl AgentRuntime {
                     serde_json::json!({ "method": method, "params": params }),
                 );
             }),
+            Arc::new(move |question| {
+                approval::handle_request(&gate, question, |prompt| announce(prompt))
+            }),
         )?;
-        session.initialize(&config)?;
 
         Ok(RunningAgent {
             _bridge: bridge,
-            session,
+            acp,
             config,
+            sessions: HashMap::new(),
         })
     }
 }
 
 impl RunningAgent {
-    /// Provider/model this runtime was initialized on, for diagnostics.
+    /// What this runtime is, for diagnostics.
+    ///
+    /// Reports the negotiated protocol version and the agent's self-description
+    /// alongside the route: under ACP those are the facts that say *which* peer
+    /// lamber is actually talking to.
     fn describe(&self) -> serde_json::Value {
+        let handshake = self.acp.handshake();
         serde_json::json!({
+            "profile": self.config.profile,
             "provider": self.config.provider,
             "model": self.config.model,
             "hasApiKey": self.config.api_key.is_some(),
             "bridgeUrl": self.config.bridge_url,
+            "protocolVersion": format!("{:?}", handshake.protocol_version),
+            "agentName": handshake.agent_name,
+            "agentVersion": handshake.agent_version,
+            "openSessions": self.sessions.len(),
         })
     }
 }
@@ -266,6 +283,10 @@ fn repo_root() -> Result<std::path::PathBuf, String> {
 }
 
 /// Send one prompt to the agent, starting the runtime on first use.
+///
+/// The work is pushed to a blocking thread: launching dsh and opening an ACP
+/// session both park the caller, and doing that on Tauri's async executor would
+/// tie up a worker that the connection's own tasks need.
 #[tauri::command]
 pub async fn ai_send_prompt(
     app: tauri::AppHandle,
@@ -277,7 +298,12 @@ pub async fn ai_send_prompt(
         .inner()
         .clone();
     let agent = app.state::<Arc<AgentRuntime>>().inner().clone();
-    agent.send_prompt(&app, runtime, &session_id, &text)
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        agent.send_prompt(&handle, runtime, &session_id, &text)
+    })
+    .await
+    .map_err(|e| format!("AI 请求执行失败: {e}"))?
 }
 
 /// Report whether the agent runtime is up, and on what route.

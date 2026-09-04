@@ -6,6 +6,50 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-09-04（五）
+
+### dsh 协议层从 `--profile sdk` 整体重写为 `--profile acp`
+
+**为什么**：ACP 是双向协议，agent 也会向客户端发请求。原来那个手写的 JSON-RPC 客户端是纯
+"发请求等回应"模型，收到服务端主动发起的请求（`session/requestPermission`）只会当日志丢掉。
+传输层整体更换，不是打补丁。任务书：`docs/TASK_BOOK_acp_protocol_rewrite.md`；
+前置握手验证：`docs/verification/acp-rust-crate-handshake.md`。
+
+**新增**
+- `src-tauri/src/agent_bridge/tool_calls.rs`：按 `toolCallId` 关联 `tool_call` 通知与随后的
+  权限请求。`session/requestPermission` 只带调用 id，工具名与参数都在更早那条通知里。
+  它是插件里 `pendingCalls.ts` 的继任者。
+- `approval.rs` 的展示文案镜像表 + `gated_tool_names_match_the_plugin` 契约测试。
+- `dsh_session.rs::EXPECTED_PROTOCOL_VERSION` 与握手期的显式版本断言。
+- `session/turn-ended` 事件：`session/prompt` 做成投递即返回，轮次结束靠它通知。
+- `docs/verification/acp-approval-manual-check.md`（**待执行**的真人点击验证步骤）。
+
+**重写**
+- `dsh_session.rs`：`DshSession`（手写 JSON-RPC）→ `AcpRuntime`（`agent-client-protocol`
+  crate 的 client builder + 自有 tokio 线程与 runtime）。tokio 只出现在这一层。
+- `mod.rs`：`AgentRuntime` 改为维护「lamber 会话名 → dsh 生成的 ACP 会话 id」映射；
+  `ai_send_prompt` 用 `spawn_blocking` 把阻塞工作移出异步执行器。
+- `AgentLabView.tsx`：按 ACP 的 `sessionUpdate` 判别式给事件命名。
+
+**删除（不留双通道）**
+- `dsh-tool-lamber/src/approval.ts` 的 `approval/request` 答复器与 `askLamber()`；
+  `tools/pre-execute` 守卫保留未动。
+- `dsh-tool-lamber/src/pendingCalls.ts`
+- Rust `mod.rs` 的 `APPROVAL_ROUTE` 分支（桥接只剩一条只读路由）
+- `agent-bridge/scripts/check-approval.mjs`
+- `src-tauri/examples/acp_handshake_probe.rs`（探针达到目的后退役，不原地转正）
+- 依赖 `@deepseek-ai/dsh-user-approval`
+
+**顺带修掉的真实缺陷**
+- `approval::handle_request` 原先先公告、后登记槽位，中间的窗口里到达的答复会被判成
+  "请求不存在"，用户的点击会被丢掉、问题继续挂到超时判拒。改为登记后在锁内公告；
+  `an_answer_racing_the_announcement_is_not_lost` 守这条。
+
+**记录在案的两处版本事实**
+- `agent-client-protocol 2.0.0` 把 schema 精确锁死在 `=1.5.0`（不是早期调研说的 1.7.0）。
+- dsh 的 `initialize` 不校验入参、无条件回自己的版本，升到 v2 时握手期不会报错——
+  故在客户端侧加断言。
+
 ## 2026-09-03（四）
 
 ### AI 窗口升级为前端多 Session 会话工作区

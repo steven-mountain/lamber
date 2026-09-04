@@ -1,9 +1,15 @@
 //! Human-in-the-loop approval: suspend a dsh tool call until the user decides.
 //!
-//! The dsh answerer plugin posts a question to `POST /lamber-bridge/approval`
-//! and holds that HTTP request open. This module parks the bridge worker thread
-//! on a condition variable, emits the question to the frontend, and wakes the
-//! thread when `ai_resolve_approval` arrives with the user's answer.
+//! The question arrives as an ACP `session/requestPermission` request on the
+//! dsh connection (see `dsh_session.rs`). This module parks a blocking task on
+//! a condition variable, emits the question to the frontend, and wakes the task
+//! when `ai_resolve_approval` arrives with the user's answer.
+//!
+//! Until the ACP rewrite the question arrived instead over a loopback HTTP
+//! route the plugin posted to. That route is gone: under `--profile acp`,
+//! `dsh-acp` answers the `approval/request` Cordis event itself and forwards it
+//! to the client, so nothing could ever have reached lamber's own answerer. The
+//! gate below is unchanged by that move — only its trigger is new.
 //!
 //! Every ambiguous outcome is a denial. A timeout resolves `rejected` with an
 //! explicit reason rather than leaving the request hanging or falling through to
@@ -19,16 +25,14 @@ use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-/// Route serving approval questions.
-pub const APPROVAL_ROUTE: &str = "/lamber-bridge/approval";
-
 /// Frontend event carrying one pending approval question.
 pub const APPROVAL_EVENT: &str = "ai://approval-request";
 
 /// Default wait for a human before failing closed.
 ///
-/// Shorter than the answerer's own bound (180s) so the normal timeout path is
-/// this explicit `rejected` reply rather than the plugin's abort.
+/// dsh imposes no deadline of its own on a `session/requestPermission`: it
+/// waits for whatever the client answers. So this bound is the only thing that
+/// keeps an unattended turn from parking forever, and it must always fire.
 pub const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// Overrides the wait, in seconds. Tests use it to exercise the timeout path
@@ -45,21 +49,55 @@ pub fn approval_timeout() -> Duration {
         .unwrap_or(DEFAULT_APPROVAL_TIMEOUT)
 }
 
-/// Question posted by the dsh answerer.
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct ApprovalRequest {
+/// Tools that require a human decision, with the text shown in the dialog.
+///
+/// This is a *mirror* of the plugin's own `GATED_TOOLS`
+/// (`agent-bridge/dsh-tool-lamber/src/approval.ts`), and the duplication is
+/// forced by the protocol rather than chosen. The plugin's `tools/pre-execute`
+/// guard still decides *which* calls need a human — that half is untouched by
+/// the ACP move. But `dsh-acp` builds its `session/requestPermission` params
+/// from the tool call id alone and drops the guard's `reason`
+/// (`dsh-acp/lib/index.js:1123-1134`), so the explanation the user reads has
+/// nowhere to travel and must exist on this side.
+///
+/// The two tables are kept honest by `gated_tool_names_match_the_plugin`, which
+/// reads the plugin source and fails if either side gains or loses a tool.
+const GATED_TOOLS: &[(&str, &str)] = &[(
+    "write_test_marker",
+    "该工具会写入文件（测试标记文件，位于系统临时目录），需要你确认后才执行。",
+)];
+
+/// Why a tool needs confirming, or `None` when lamber does not gate it.
+///
+/// @param tool_name - the tool name announced on the ACP tool call.
+/// @returns the dialog text for a gated tool.
+pub fn gated_tool_reason(tool_name: &str) -> Option<&'static str> {
+    GATED_TOOLS
+        .iter()
+        .find(|(name, _)| *name == tool_name)
+        .map(|(_, reason)| *reason)
+}
+
+/// Every tool name lamber expects to be gated. Used by the contract test.
+pub fn gated_tool_names() -> Vec<&'static str> {
+    GATED_TOOLS.iter().map(|(name, _)| *name).collect()
+}
+
+/// One question, as the ACP permission handler assembled it.
+///
+/// Built from two ACP messages rather than one payload: the id and the session
+/// come from `session/requestPermission`, while the tool name and arguments come
+/// from the `session/update` that announced the call (see `tool_calls.rs`).
+#[derive(Debug, Clone)]
+pub struct ApprovalQuestion {
     pub tool_name: String,
-    #[serde(default)]
     pub call_id: Option<String>,
-    #[serde(default)]
     pub reason: Option<String>,
-    /// Parsed tool arguments, forwarded so the dialog can show what would run.
-    #[serde(default)]
+    /// Arguments the tool would run with, so the dialog can show what happens.
     pub args: serde_json::Value,
 }
 
-/// Decision returned to the answerer. `approved` is true only for an explicit grant.
+/// Decision handed back to the ACP handler. `approved` is true only for an explicit grant.
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApprovalDecision {
@@ -136,7 +174,7 @@ pub struct ApprovalRecord {
     pub decided_at: String,
 }
 
-/// Persists settled questions. Called on the bridge worker thread.
+/// Persists settled questions. Called on the blocking approval task.
 pub type ApprovalRecorder = Arc<dyn Fn(&ApprovalRecord) + Send + Sync>;
 
 /// What the gate remembers about a question while it is open.
@@ -200,9 +238,24 @@ impl ApprovalGate {
 
     /// Park the calling thread until the user answers, or the timeout elapses.
     ///
+    /// `announce` runs once the question is registered and while its lock is
+    /// still held. That ordering is the point: `resolve` needs the same lock, so
+    /// an answer cannot arrive before the slot it would fill exists. Announcing
+    /// first instead would leave a window — however small — in which a fast
+    /// answer is told the request does not exist.
+    ///
+    /// The cost of that ordering is that `announce` must not call back into this
+    /// gate — `resolve` and `shutdown` want the same lock, and the mutex is not
+    /// reentrant. Emitting an event is fine; waiting on the answer is not.
+    ///
     /// @param prompt - the question, retained so a settled record can describe it.
+    /// @param announce - surfaces the question; runs under the lock, must not block or re-enter.
     /// @returns the decision; a timeout, a shutdown, or a lost slot yields a denial.
-    pub fn wait(&self, prompt: &ApprovalPrompt) -> ApprovalDecision {
+    pub fn wait(
+        &self,
+        prompt: &ApprovalPrompt,
+        announce: impl FnOnce(&ApprovalPrompt),
+    ) -> ApprovalDecision {
         let request_id = prompt.request_id.clone();
         let requested_at = chrono::Utc::now().to_rfc3339();
         let deadline = Instant::now() + self.timeout;
@@ -234,6 +287,7 @@ impl ApprovalGate {
                 requested_at: requested_at.clone(),
             },
         );
+        announce(prompt);
 
         loop {
             match state.slots.get_mut(&request_id) {
@@ -382,27 +436,30 @@ impl ApprovalGate {
 
 /// Handle one approval question: announce it, then wait for the answer.
 ///
+/// Blocking by design — the ACP permission handler runs it on a blocking task
+/// so the connection's dispatch loop stays free to deliver `session/update`
+/// notifications while the dialog is open.
+///
 /// `announce` is separate from the Tauri layer so tests can drive the gate with
 /// a plain closure instead of a running app.
 ///
 /// @param gate - the shared registry of pending questions.
-/// @param request - the question posted by the answerer.
-/// @param announce - called with the prompt before parking; must not block.
-/// @returns the decision to serialize back to the answerer.
+/// @param question - the question the permission handler assembled.
+/// @param announce - called with the prompt once it is registered; must not block.
+/// @returns the decision to answer `session/requestPermission` with.
 pub fn handle_request(
     gate: &Arc<ApprovalGate>,
-    request: ApprovalRequest,
+    question: ApprovalQuestion,
     announce: impl FnOnce(&ApprovalPrompt),
 ) -> ApprovalDecision {
     let request_id = uuid::Uuid::new_v4().to_string();
     let prompt = ApprovalPrompt {
         request_id: request_id.clone(),
-        tool_name: request.tool_name,
-        call_id: request.call_id,
-        reason: request.reason,
-        args: request.args,
+        tool_name: question.tool_name,
+        call_id: question.call_id,
+        reason: question.reason,
+        args: question.args,
         timeout_seconds: gate.timeout().as_secs(),
     };
-    announce(&prompt);
-    gate.wait(&prompt)
+    gate.wait(&prompt, announce)
 }

@@ -10,13 +10,16 @@
 //!   `cargo test agent_bridge -- --ignored --nocapture`.
 
 use super::approval::{
-    handle_request as handle_approval, ApprovalGate, ApprovalPrompt, ApprovalRecord,
-    ApprovalRequest, APPROVAL_ROUTE,
+    gated_tool_names, gated_tool_reason, handle_request as handle_approval, ApprovalDecision,
+    ApprovalGate, ApprovalPrompt, ApprovalQuestion, ApprovalRecord,
 };
 use super::approval_log;
 use super::bridge_server::{BridgeReply, BridgeServer, BRIDGE_TOKEN_HEADER};
 use super::calculation::{run_calculation, CalculateRequest, CALCULATE_ROUTE};
-use super::dsh_session::{DshLaunchConfig, DshSession};
+use super::dsh_session::{
+    AcpRuntime, DshLaunchConfig, EXPECTED_PROTOCOL_VERSION, TURN_ENDED_METHOD, UPDATE_METHOD,
+};
+use super::tool_calls::{ToolCallIndex, TrackedCall};
 use crate::benefit::models::{
     BenefitAnalysisScheme, BenefitAnalysisSnapshot, IctInput, IctItem, IctResult,
 };
@@ -314,9 +317,18 @@ fn bridge_server_requires_its_token_and_serves_json() {
 
     let unauthorized = http_post(&server.origin(), CALCULATE_ROUTE, "wrong-token", "{}");
     assert_eq!(unauthorized.0, 401, "body: {}", unauthorized.1);
-    assert_eq!(hits.load(Ordering::SeqCst), 0, "handler ran without a token");
+    assert_eq!(
+        hits.load(Ordering::SeqCst),
+        0,
+        "handler ran without a token"
+    );
 
-    let (status, body) = http_post(&server.origin(), CALCULATE_ROUTE, server.token(), "{\"a\":1}");
+    let (status, body) = http_post(
+        &server.origin(),
+        CALCULATE_ROUTE,
+        server.token(),
+        "{\"a\":1}",
+    );
     assert_eq!(status, 200, "body: {body}");
     let parsed: Value = serde_json::from_str(&body).expect("json body");
     assert_eq!(parsed["path"], CALCULATE_ROUTE);
@@ -349,7 +361,10 @@ fn bridge_server_end_to_end_returns_engine_numbers() {
     let parsed: Value = serde_json::from_str(&body).expect("json body");
     assert_eq!(parsed["schemeId"], fx.post_scheme_id);
     assert_eq!(parsed["metrics"]["npv"], expected("1272000").npv);
-    assert_eq!(parsed["metrics"]["marginRate"], expected("1272000").margin_rate);
+    assert_eq!(
+        parsed["metrics"]["marginRate"],
+        expected("1272000").margin_rate
+    );
 }
 
 /// Minimal blocking HTTP/1.1 client, so the tests exercise the real socket path
@@ -378,36 +393,56 @@ fn http_post(origin: &str, path: &str, token: &str, body: &str) -> (u16, String)
 
 // ------------------------------------------- approval gate (always runs) --
 
-/// Serve the approval route over a gate, so tests exercise the real socket path.
-fn approval_bridge(
-    gate: Arc<ApprovalGate>,
-    prompts: Arc<Mutex<Vec<ApprovalPrompt>>>,
-) -> BridgeServer {
-    BridgeServer::start(Arc::new(move |path, body| {
-        if path != APPROVAL_ROUTE {
-            return BridgeReply::error(404, path);
-        }
-        let request: ApprovalRequest = match serde_json::from_str(body) {
-            Ok(request) => request,
-            Err(e) => return BridgeReply::error(400, &e.to_string()),
-        };
-        let prompts = Arc::clone(&prompts);
-        let decision = handle_approval(&gate, request, |prompt| {
-            prompts.lock().expect("prompts lock").push(prompt.clone());
-        });
-        BridgeReply::ok(serde_json::to_string(&decision).unwrap())
-    }))
-    .expect("bridge starts")
+/// Build the question the ACP permission handler would assemble.
+fn approval_question(tool: &str) -> ApprovalQuestion {
+    ApprovalQuestion {
+        tool_name: tool.to_string(),
+        call_id: Some("call-1".to_string()),
+        reason: Some("该工具会写入文件，需要你确认后才执行。".to_string()),
+        args: serde_json::json!({ "note": "联调" }),
+    }
 }
 
-fn approval_payload(tool: &str) -> String {
-    serde_json::json!({
-        "toolName": tool,
-        "callId": "call-1",
-        "reason": "该工具会写入文件，需要你确认后才执行。",
-        "args": { "note": "联调" },
+/// Run one question on a background thread, as the ACP handler's blocking task does.
+///
+/// Returns a handle yielding the decision, plus the prompts the announcer saw.
+/// The gate parks its caller, so a test that wants to answer a question has to
+/// ask it from somewhere other than the thread that will answer.
+fn ask_in_background(
+    gate: Arc<ApprovalGate>,
+    question: ApprovalQuestion,
+    prompts: Arc<Mutex<Vec<ApprovalPrompt>>>,
+) -> std::thread::JoinHandle<ApprovalDecision> {
+    std::thread::spawn(move || {
+        handle_approval(&gate, question, |prompt| {
+            prompts.lock().expect("prompts lock").push(prompt.clone());
+        })
     })
-    .to_string()
+}
+
+/// Poll for an announced prompt and answer it, standing in for the frontend.
+fn answer_when_asked(
+    gate: Arc<ApprovalGate>,
+    prompts: Arc<Mutex<Vec<ApprovalPrompt>>>,
+    approved: bool,
+) -> std::thread::JoinHandle<Result<(), String>> {
+    std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let id = prompts
+                .lock()
+                .expect("prompts lock")
+                .first()
+                .map(|p| p.request_id.clone());
+            if let Some(id) = id {
+                return gate.resolve(&id, approved);
+            }
+            if Instant::now() >= deadline {
+                return Err("等待审批提示超时".to_string());
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    })
 }
 
 /// No answer must produce an explicit denial, never a hang and never a grant.
@@ -416,23 +451,18 @@ fn approval_times_out_as_an_explicit_rejection() {
     // This gate's own short wait; the production default is 90s.
     let gate = Arc::new(ApprovalGate::new(Duration::from_secs(1)));
     let prompts = Arc::new(Mutex::new(Vec::new()));
-    let server = approval_bridge(Arc::clone(&gate), Arc::clone(&prompts));
 
     let started = Instant::now();
-    let (status, body) = http_post(
-        &server.origin(),
-        APPROVAL_ROUTE,
-        server.token(),
-        &approval_payload("write_test_marker"),
-    );
+    let decision = handle_approval(&gate, approval_question("write_test_marker"), |prompt| {
+        prompts.lock().expect("prompts lock").push(prompt.clone());
+    });
     let elapsed = started.elapsed();
 
-    assert_eq!(status, 200, "body: {body}");
-    let decision: Value = serde_json::from_str(&body).expect("json body");
-    assert_eq!(decision["approved"], false, "超时必须判定为拒绝");
+    assert!(!decision.approved, "超时必须判定为拒绝");
     assert!(
-        decision["reason"].as_str().unwrap_or_default().contains("超时"),
-        "拒绝原因应说明是超时: {decision}"
+        decision.reason.contains("超时"),
+        "拒绝原因应说明是超时: {}",
+        decision.reason
     );
     assert!(
         elapsed < Duration::from_secs(20),
@@ -448,39 +478,19 @@ fn approval_times_out_as_an_explicit_rejection() {
 fn approval_confirmation_wakes_the_parked_request() {
     let gate = Arc::new(ApprovalGate::default());
     let prompts = Arc::new(Mutex::new(Vec::new()));
-    let server = approval_bridge(Arc::clone(&gate), Arc::clone(&prompts));
-
-    // Stand in for the frontend: poll for the prompt, then answer it.
-    let responder_gate = Arc::clone(&gate);
-    let responder_prompts = Arc::clone(&prompts);
-    let responder = std::thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            let id = responder_prompts
-                .lock()
-                .expect("prompts lock")
-                .first()
-                .map(|p| p.request_id.clone());
-            if let Some(id) = id {
-                return responder_gate.resolve(&id, true);
-            }
-            assert!(Instant::now() < deadline, "等待审批提示超时");
-            std::thread::sleep(Duration::from_millis(20));
-        }
-    });
-
-    let (status, body) = http_post(
-        &server.origin(),
-        APPROVAL_ROUTE,
-        server.token(),
-        &approval_payload("write_test_marker"),
+    let asking = ask_in_background(
+        Arc::clone(&gate),
+        approval_question("write_test_marker"),
+        Arc::clone(&prompts),
     );
-    responder.join().expect("responder thread").expect("resolve succeeds");
+    answer_when_asked(Arc::clone(&gate), Arc::clone(&prompts), true)
+        .join()
+        .expect("responder thread")
+        .expect("resolve succeeds");
 
-    assert_eq!(status, 200, "body: {body}");
-    let decision: Value = serde_json::from_str(&body).expect("json body");
-    assert_eq!(decision["approved"], true);
-    assert_eq!(decision["reason"], "用户已确认");
+    let decision = asking.join().expect("asking thread");
+    assert!(decision.approved);
+    assert_eq!(decision.reason, "用户已确认");
 
     // The prompt handed to the frontend must carry what the dialog needs to show.
     let prompt = prompts.lock().expect("prompts lock")[0].clone();
@@ -495,32 +505,19 @@ fn approval_confirmation_wakes_the_parked_request() {
 fn approval_rejection_is_reported_as_denied() {
     let gate = Arc::new(ApprovalGate::default());
     let prompts = Arc::new(Mutex::new(Vec::new()));
-    let server = approval_bridge(Arc::clone(&gate), Arc::clone(&prompts));
-
-    let responder_gate = Arc::clone(&gate);
-    let responder_prompts = Arc::clone(&prompts);
-    std::thread::spawn(move || loop {
-        let id = responder_prompts
-            .lock()
-            .expect("prompts lock")
-            .first()
-            .map(|p| p.request_id.clone());
-        if let Some(id) = id {
-            let _ = responder_gate.resolve(&id, false);
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    });
-
-    let (_, body) = http_post(
-        &server.origin(),
-        APPROVAL_ROUTE,
-        server.token(),
-        &approval_payload("write_test_marker"),
+    let asking = ask_in_background(
+        Arc::clone(&gate),
+        approval_question("write_test_marker"),
+        Arc::clone(&prompts),
     );
-    let decision: Value = serde_json::from_str(&body).expect("json body");
-    assert_eq!(decision["approved"], false);
-    assert_eq!(decision["reason"], "用户已拒绝");
+    answer_when_asked(Arc::clone(&gate), Arc::clone(&prompts), false)
+        .join()
+        .expect("responder thread")
+        .expect("resolve succeeds");
+
+    let decision = asking.join().expect("asking thread");
+    assert!(!decision.approved);
+    assert_eq!(decision.reason, "用户已拒绝");
 }
 
 /// Answering an unknown or already-settled request must fail loudly.
@@ -533,71 +530,76 @@ fn resolving_an_unknown_approval_request_errors() {
     assert!(error.contains("不存在"), "unexpected error: {error}");
 }
 
-/// The approval route must not weaken the bridge's token check.
+/// An answer that arrives the instant the question is raised must still land.
+///
+/// The gate registers a question before announcing it, so `resolve` blocks on
+/// the gate's own lock until the asker has parked. Announcing first would leave
+/// a window in which the fastest possible answer is told the request does not
+/// exist — and the question would then sit there until it timed out, denied,
+/// with the user's actual click thrown away.
 #[test]
-fn approval_route_still_requires_the_bridge_token() {
-    let gate = Arc::new(ApprovalGate::default());
-    let server = approval_bridge(Arc::clone(&gate), Arc::new(Mutex::new(Vec::new())));
-    let (status, _) = http_post(
-        &server.origin(),
-        APPROVAL_ROUTE,
-        "wrong-token",
-        &approval_payload("write_test_marker"),
+fn an_answer_racing_the_announcement_is_not_lost() {
+    // Short enough that a lost answer shows up as a timeout, not a slow pass.
+    let gate = Arc::new(ApprovalGate::new(Duration::from_secs(3)));
+    let resolver_gate = Arc::clone(&gate);
+    let resolver: Mutex<Option<std::thread::JoinHandle<Result<(), String>>>> = Mutex::new(None);
+
+    let decision = handle_approval(&gate, approval_question("write_test_marker"), |prompt| {
+        // The most aggressive answerer possible: it starts resolving before the
+        // announcement has even returned. It is joined *after* `handle_approval`
+        // — `announce` runs under the gate's lock, so joining here would park
+        // the asker behind its own answer.
+        let id = prompt.request_id.clone();
+        *resolver.lock().expect("resolver lock") =
+            Some(std::thread::spawn(move || resolver_gate.resolve(&id, true)));
+    });
+
+    let joined = resolver
+        .lock()
+        .expect("resolver lock")
+        .take()
+        .expect("resolver was spawned")
+        .join()
+        .expect("resolver thread");
+    assert!(
+        joined.is_ok(),
+        "抢在公告返回前到达的答复被判为「请求不存在」: {joined:?}"
     );
-    assert_eq!(status, 401);
-    assert_eq!(gate.pending_count(), 0, "未鉴权的请求不应创建审批槽位");
+    assert!(decision.approved, "用户的确认被丢掉了: {}", decision.reason);
+    assert_eq!(decision.reason, "用户已确认");
 }
 
-/// A parked approval must not stall an unrelated route on the same bridge.
+/// The retired HTTP approval route must not answer, on any workspace bridge.
+///
+/// This is the regression guard for the ACP move's central decision: approval
+/// travels over `session/requestPermission` and nowhere else. A second path to
+/// the same grant — even a working one — would be a way to approve a tool call
+/// without the audit log and the dialog agreeing on what happened.
 #[test]
-fn a_parked_approval_does_not_block_the_calculation_route() {
-    let fx = build_fixture("parked-approval");
-    let service = Arc::new(fx.service);
-    let gate = Arc::new(ApprovalGate::new(Duration::from_secs(5)));
-    let handler_gate = Arc::clone(&gate);
-    let server = BridgeServer::start(Arc::new(move |path, body| {
-        if path == APPROVAL_ROUTE {
-            let request: ApprovalRequest = serde_json::from_str(body).expect("request");
-            let decision = handle_approval(&handler_gate, request, |_| {});
-            return BridgeReply::ok(serde_json::to_string(&decision).unwrap());
-        }
-        let request: CalculateRequest = serde_json::from_str(body).expect("request");
-        match run_calculation(&service, &request) {
-            Ok(response) => BridgeReply::ok(serde_json::to_string(&response).unwrap()),
-            Err(e) => BridgeReply::error(422, &e),
-        }
-    }))
-    .expect("bridge starts");
+fn the_retired_approval_route_is_gone_from_the_bridge() {
+    // No workspace needs to be open: an unknown path is refused before the
+    // handler ever looks for a database.
+    let runtime = Arc::new(crate::workspace::WorkspaceRuntime::new());
+    let server = BridgeServer::start(super::workspace_handler(runtime)).expect("bridge starts");
 
-    let origin = server.origin();
-    let token = server.token().to_string();
-    let parked = {
-        let origin = origin.clone();
-        let token = token.clone();
-        std::thread::spawn(move || {
-            http_post(&origin, APPROVAL_ROUTE, &token, &approval_payload("write_test_marker"))
-        })
-    };
-
-    // While that request is parked, the calculation route must answer promptly.
-    let started = Instant::now();
-    let payload = serde_json::json!({ "projectId": fx.project_id }).to_string();
-    let (status, body) = http_post(&origin, CALCULATE_ROUTE, &token, &payload);
-    assert_eq!(status, 200, "body: {body}");
-    assert!(
-        started.elapsed() < Duration::from_secs(3),
-        "计算路由被挂起的审批请求阻塞了 {:?}",
-        started.elapsed()
+    let (status, body) = http_post(
+        &server.origin(),
+        "/lamber-bridge/approval",
+        server.token(),
+        &serde_json::json!({ "toolName": "write_test_marker" }).to_string(),
     );
-
-    let (approval_status, _) = parked.join().expect("parked thread");
-    assert_eq!(approval_status, 200);
+    assert_eq!(status, 404, "审批路由必须已经下线: {body}");
 }
 
 // ------------------------------- audit persistence & shutdown (always runs) --
 
 /// Open a throwaway workspace database for audit-log tests.
-fn audit_db(name: &str) -> (std::path::PathBuf, Arc<std::sync::Mutex<rusqlite::Connection>>) {
+fn audit_db(
+    name: &str,
+) -> (
+    std::path::PathBuf,
+    Arc<std::sync::Mutex<rusqlite::Connection>>,
+) {
     let path = temp_db_path(name);
     let conn = crate::db::init_db(&path).expect("init_db");
     (path, Arc::new(std::sync::Mutex::new(conn)))
@@ -622,33 +624,18 @@ fn approval_decisions_survive_a_process_restart() {
     let (path, conn) = audit_db("audit-restart");
     let gate = recording_gate(Duration::from_secs(20), Arc::clone(&conn));
     let prompts = Arc::new(Mutex::new(Vec::new()));
-    let server = approval_bridge(Arc::clone(&gate), Arc::clone(&prompts));
-
-    let responder_gate = Arc::clone(&gate);
-    let responder_prompts = Arc::clone(&prompts);
-    std::thread::spawn(move || loop {
-        let id = responder_prompts
-            .lock()
-            .expect("prompts lock")
-            .first()
-            .map(|p| p.request_id.clone());
-        if let Some(id) = id {
-            let _ = responder_gate.resolve(&id, true);
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    });
-
-    let (status, _) = http_post(
-        &server.origin(),
-        APPROVAL_ROUTE,
-        server.token(),
-        &approval_payload("write_test_marker"),
+    let asking = ask_in_background(
+        Arc::clone(&gate),
+        approval_question("write_test_marker"),
+        Arc::clone(&prompts),
     );
-    assert_eq!(status, 200);
+    answer_when_asked(Arc::clone(&gate), Arc::clone(&prompts), true)
+        .join()
+        .expect("responder thread")
+        .expect("resolve succeeds");
+    assert!(asking.join().expect("asking thread").approved);
 
     // Drop everything that held the decision in memory.
-    drop(server);
     drop(gate);
     drop(conn);
 
@@ -662,7 +649,10 @@ fn approval_decisions_survive_a_process_restart() {
     assert_eq!(entry.decided_by, "user");
     assert_eq!(entry.decision_reason, "用户已确认");
     assert_eq!(entry.call_id.as_deref(), Some("call-1"));
-    assert!(entry.args_json.contains("联调"), "应保留当时展示给用户的参数");
+    assert!(
+        entry.args_json.contains("联调"),
+        "应保留当时展示给用户的参数"
+    );
     assert!(!entry.requested_at.is_empty() && !entry.decided_at.is_empty());
 }
 
@@ -674,37 +664,20 @@ fn audit_log_distinguishes_rejection_from_timeout() {
     // A refusal by a human.
     let gate = recording_gate(Duration::from_secs(20), Arc::clone(&conn));
     let prompts = Arc::new(Mutex::new(Vec::new()));
-    let server = approval_bridge(Arc::clone(&gate), Arc::clone(&prompts));
-    let responder_gate = Arc::clone(&gate);
-    let responder_prompts = Arc::clone(&prompts);
-    std::thread::spawn(move || loop {
-        let id = responder_prompts
-            .lock()
-            .expect("prompts lock")
-            .first()
-            .map(|p| p.request_id.clone());
-        if let Some(id) = id {
-            let _ = responder_gate.resolve(&id, false);
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    });
-    http_post(
-        &server.origin(),
-        APPROVAL_ROUTE,
-        server.token(),
-        &approval_payload("write_test_marker"),
+    let asking = ask_in_background(
+        Arc::clone(&gate),
+        approval_question("write_test_marker"),
+        Arc::clone(&prompts),
     );
+    answer_when_asked(Arc::clone(&gate), Arc::clone(&prompts), false)
+        .join()
+        .expect("responder thread")
+        .expect("resolve succeeds");
+    asking.join().expect("asking thread");
 
     // Nobody answering at all.
     let silent_gate = recording_gate(Duration::from_secs(1), Arc::clone(&conn));
-    let silent = approval_bridge(Arc::clone(&silent_gate), Arc::new(Mutex::new(Vec::new())));
-    http_post(
-        &silent.origin(),
-        APPROVAL_ROUTE,
-        silent.token(),
-        &approval_payload("write_test_marker"),
-    );
+    handle_approval(&silent_gate, approval_question("write_test_marker"), |_| {});
 
     let entries = approval_log::recent(&conn, 10).expect("read audit log");
     assert_eq!(entries.len(), 2);
@@ -725,13 +698,11 @@ fn shutdown_denies_parked_approvals_immediately() {
     // A long wait, so only the shutdown can end this request quickly.
     let gate = recording_gate(Duration::from_secs(300), Arc::clone(&conn));
     let prompts = Arc::new(Mutex::new(Vec::new()));
-    let server = approval_bridge(Arc::clone(&gate), Arc::clone(&prompts));
-
-    let origin = server.origin();
-    let token = server.token().to_string();
-    let parked = std::thread::spawn(move || {
-        http_post(&origin, APPROVAL_ROUTE, &token, &approval_payload("write_test_marker"))
-    });
+    let parked = ask_in_background(
+        Arc::clone(&gate),
+        approval_question("write_test_marker"),
+        Arc::clone(&prompts),
+    );
 
     // Wait until the question is actually parked, then tear the gate down.
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -743,18 +714,17 @@ fn shutdown_denies_parked_approvals_immediately() {
     let denied = gate.shutdown();
     assert_eq!(denied, 1, "应拒绝掉 1 个未完成的审批");
 
-    let (status, body) = parked.join().expect("parked thread");
-    assert_eq!(status, 200, "body: {body}");
+    let decision = parked.join().expect("parked thread");
     assert!(
         started.elapsed() < Duration::from_secs(10),
         "关闭后请求未及时释放，用时 {:?}",
         started.elapsed()
     );
-    let decision: Value = serde_json::from_str(&body).expect("json body");
-    assert_eq!(decision["approved"], false);
+    assert!(!decision.approved);
     assert!(
-        decision["reason"].as_str().unwrap_or_default().contains("关闭"),
-        "拒绝原因应说明是关闭: {decision}"
+        decision.reason.contains("关闭"),
+        "拒绝原因应说明是关闭: {}",
+        decision.reason
     );
 
     let entries = approval_log::recent(&conn, 10).expect("read audit log");
@@ -771,23 +741,15 @@ fn approvals_after_shutdown_are_denied_without_parking() {
     let gate = recording_gate(Duration::from_secs(300), Arc::clone(&conn));
     gate.shutdown();
 
-    let server = approval_bridge(Arc::clone(&gate), Arc::new(Mutex::new(Vec::new())));
     let started = Instant::now();
-    let (status, body) = http_post(
-        &server.origin(),
-        APPROVAL_ROUTE,
-        server.token(),
-        &approval_payload("write_test_marker"),
-    );
+    let decision = handle_approval(&gate, approval_question("write_test_marker"), |_| {});
 
-    assert_eq!(status, 200, "body: {body}");
     assert!(
         started.elapsed() < Duration::from_secs(5),
         "关闭后的请求不应挂起，用时 {:?}",
         started.elapsed()
     );
-    let decision: Value = serde_json::from_str(&body).expect("json body");
-    assert_eq!(decision["approved"], false);
+    assert!(!decision.approved);
     assert_eq!(gate.pending_count(), 0, "关闭后不应再占用槽位");
 
     let entries = approval_log::recent(&conn, 10).expect("read audit log");
@@ -810,30 +772,17 @@ fn an_audit_write_failure_does_not_alter_the_decision() {
     }));
 
     let prompts = Arc::new(Mutex::new(Vec::new()));
-    let server = approval_bridge(Arc::clone(&gate), Arc::clone(&prompts));
-    let responder_gate = Arc::clone(&gate);
-    let responder_prompts = Arc::clone(&prompts);
-    std::thread::spawn(move || loop {
-        let id = responder_prompts
-            .lock()
-            .expect("prompts lock")
-            .first()
-            .map(|p| p.request_id.clone());
-        if let Some(id) = id {
-            let _ = responder_gate.resolve(&id, true);
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    });
-
-    let (_, body) = http_post(
-        &server.origin(),
-        APPROVAL_ROUTE,
-        server.token(),
-        &approval_payload("write_test_marker"),
+    let asking = ask_in_background(
+        Arc::clone(&gate),
+        approval_question("write_test_marker"),
+        Arc::clone(&prompts),
     );
-    let decision: Value = serde_json::from_str(&body).expect("json body");
-    assert_eq!(decision["approved"], true, "审计失败不应影响用户的决定");
+    answer_when_asked(Arc::clone(&gate), Arc::clone(&prompts), true)
+        .join()
+        .expect("responder thread")
+        .expect("resolve succeeds");
+    let decision = asking.join().expect("asking thread");
+    assert!(decision.approved, "审计失败不应影响用户的决定");
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
 }
 
@@ -858,31 +807,17 @@ fn an_approval_taken_with_no_workspace_is_backfilled_when_one_opens() {
     ));
 
     let prompts = Arc::new(Mutex::new(Vec::new()));
-    let server = approval_bridge(Arc::clone(&gate), Arc::clone(&prompts));
-    let responder_gate = Arc::clone(&gate);
-    let responder_prompts = Arc::clone(&prompts);
-    std::thread::spawn(move || loop {
-        let id = responder_prompts
-            .lock()
-            .expect("prompts lock")
-            .first()
-            .map(|p| p.request_id.clone());
-        if let Some(id) = id {
-            let _ = responder_gate.resolve(&id, true);
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    });
-
-    let (status, body) = http_post(
-        &server.origin(),
-        APPROVAL_ROUTE,
-        server.token(),
-        &approval_payload("write_test_marker"),
+    let asking = ask_in_background(
+        Arc::clone(&gate),
+        approval_question("write_test_marker"),
+        Arc::clone(&prompts),
     );
-    assert_eq!(status, 200, "body: {body}");
-    let decision: Value = serde_json::from_str(&body).expect("json body");
-    assert_eq!(decision["approved"], true, "没有工作区不应影响决定本身");
+    answer_when_asked(Arc::clone(&gate), Arc::clone(&prompts), true)
+        .join()
+        .expect("responder thread")
+        .expect("resolve succeeds");
+    let decision = asking.join().expect("asking thread");
+    assert!(decision.approved, "没有工作区不应影响决定本身");
 
     // The decision is buffered, not lost.
     assert_eq!(
@@ -966,7 +901,10 @@ fn a_corrupt_spool_line_does_not_block_backfilling_the_others() {
     // A half-written line, as a crash during append would leave.
     {
         use std::io::Write;
-        let mut f = std::fs::OpenOptions::new().append(true).open(&spool).unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&spool)
+            .unwrap();
         write!(f, "{{\"requestId\":\"req-torn\",\"toolNa").unwrap();
     }
 
@@ -983,8 +921,7 @@ fn a_corrupt_spool_line_does_not_block_backfilling_the_others() {
 /// Read one frontend source file that participates in the approval contract.
 fn frontend_source(relative: &str) -> String {
     let path = repo_root_for_tests().join("src-ui/src").join(relative);
-    std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("读取 {} 失败: {e}", path.display()))
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读取 {} 失败: {e}", path.display()))
 }
 
 /// The emitted prompt and the dialog that consumes it must agree on names.
@@ -1029,10 +966,7 @@ fn the_approval_prompt_contract_matches_the_frontend_dialog() {
         "弹窗订阅的事件名与后端 APPROVAL_EVENT 不一致"
     );
     for field in ["requestId", "toolName", "reason", "args", "timeoutSeconds"] {
-        assert!(
-            dialog.contains(field),
-            "弹窗未使用审批事件字段 `{field}`"
-        );
+        assert!(dialog.contains(field), "弹窗未使用审批事件字段 `{field}`");
     }
 
     // The response command and its parameter names, as Tauri will deserialize them.
@@ -1077,9 +1011,109 @@ fn the_approval_dialog_is_mounted_on_every_agent_reachable_route() {
     );
 }
 
+// ---------------------------------- ACP correlation & policy (always runs) --
+
+/// The dialog's contents come from an earlier notification, so the index that
+/// carries them across must hand back exactly what was announced.
+#[test]
+fn the_tool_call_index_returns_what_the_update_announced() {
+    let index = ToolCallIndex::default();
+    index.record(
+        "call-1",
+        TrackedCall {
+            tool_name: "write_test_marker".to_string(),
+            args: serde_json::json!({ "note": "联调" }),
+        },
+    );
+
+    let found = index.take("call-1").expect("recorded call is found");
+    assert_eq!(found.tool_name, "write_test_marker");
+    assert_eq!(found.args["note"], "联调");
+    // Consumed, so a replayed permission request cannot answer twice from one row.
+    assert!(index.take("call-1").is_none());
+    assert_eq!(index.len(), 0);
+}
+
+/// A restated call must not leave two rows for one question to choose between.
+#[test]
+fn re_announcing_a_tool_call_replaces_it_rather_than_duplicating() {
+    let index = ToolCallIndex::default();
+    for note in ["first", "second"] {
+        index.record(
+            "call-1",
+            TrackedCall {
+                tool_name: "write_test_marker".to_string(),
+                args: serde_json::json!({ "note": note }),
+            },
+        );
+    }
+    assert_eq!(index.len(), 1);
+    assert_eq!(index.take("call-1").expect("call").args["note"], "second");
+}
+
+/// The index must stay bounded: ungated calls are announced too and never
+/// consumed, so an unbounded map would grow for the life of the runtime.
+#[test]
+fn the_tool_call_index_evicts_the_oldest_when_full() {
+    let index = ToolCallIndex::default();
+    for i in 0..200 {
+        index.record(
+            &format!("call-{i}"),
+            TrackedCall {
+                tool_name: "run_benefit_calculation".to_string(),
+                args: Value::Null,
+            },
+        );
+    }
+    assert!(index.len() <= 64, "索引未设上限: {}", index.len());
+    assert!(index.take("call-0").is_none(), "最早的调用应已被淘汰");
+    assert!(index.take("call-199").is_some(), "最近的调用必须还在");
+}
+
+/// lamber's dialog text and the plugin's gating policy must name the same tools.
+///
+/// The duplication exists because ACP drops the guard's reason on the way
+/// through (see `approval::GATED_TOOLS`), and a mirror nobody checks is a
+/// mirror that drifts: a tool gated in the plugin but missing here would raise
+/// a dialog with a generic explanation, and a tool listed here but ungated in
+/// the plugin would be dead text nobody ever sees.
+#[test]
+fn gated_tool_names_match_the_plugin() {
+    let source = std::fs::read_to_string(
+        repo_root_for_tests().join("agent-bridge/dsh-tool-lamber/src/approval.ts"),
+    )
+    .expect("read the plugin's approval guard");
+
+    // The plugin names its gated tools by constant, so compare against the
+    // constant's own name rather than the string it expands to.
+    let plugin_gates_write_marker =
+        source.contains("GATED_TOOLS = new Map") && source.contains("[WRITE_TEST_MARKER,");
+    assert!(
+        plugin_gates_write_marker,
+        "插件的 GATED_TOOLS 结构变了，镜像表的对照失效"
+    );
+
+    let names = gated_tool_names();
+    assert_eq!(
+        names,
+        vec!["write_test_marker"],
+        "Rust 镜像表与插件的 GATED_TOOLS 不一致"
+    );
+    for name in &names {
+        assert!(
+            gated_tool_reason(name).is_some(),
+            "被列入镜像表的工具必须有展示文案: {name}"
+        );
+    }
+    assert!(
+        gated_tool_reason("run_benefit_calculation").is_none(),
+        "只读工具不应出现在镜像表里"
+    );
+}
+
 // ------------------------------------------- full loop through dsh (ignored) --
 
-/// Collects notifications off the dsh reader thread so a test can wait on them.
+/// Collects notifications off the ACP connection thread so a test can wait on them.
 #[derive(Default)]
 struct EventLog {
     state: Mutex<Vec<(String, Value)>>,
@@ -1123,13 +1157,17 @@ impl EventLog {
     }
 }
 
-/// Read one session-event payload, if the notification is one.
-fn session_event<'a>(method: &str, params: &'a Value) -> Option<(&'a str, &'a Value)> {
-    if method != "session.event" {
+/// Read one ACP `session/update` as `(sessionUpdate discriminant, update body)`.
+///
+/// ACP tags its updates with an internal `sessionUpdate` field rather than
+/// giving each kind its own method, so every notification arrives on the same
+/// method and this is where a test picks the kind it cares about.
+fn acp_update<'a>(method: &str, params: &'a Value) -> Option<(&'a str, &'a Value)> {
+    if method != UPDATE_METHOD {
         return None;
     }
-    let event = params.get("event")?;
-    Some((event.get("type")?.as_str()?, event.get("data")?))
+    let update = params.get("update")?;
+    Some((update.get("sessionUpdate")?.as_str()?, update))
 }
 
 fn repo_root_for_tests() -> std::path::PathBuf {
@@ -1140,7 +1178,14 @@ fn repo_root_for_tests() -> std::path::PathBuf {
         .to_path_buf()
 }
 
-/// How a test answers approval questions the agent raises.
+fn has_api_key() -> bool {
+    std::env::var("DEEPSEEK_API_KEY")
+        .ok()
+        .filter(|k| !k.is_empty())
+        .is_some()
+}
+
+/// How a test answers permission requests the agent raises.
 #[derive(Clone, Copy, PartialEq)]
 enum ApprovalStance {
     /// Never answer; the gate must time out on its own.
@@ -1151,12 +1196,12 @@ enum ApprovalStance {
     Reject,
 }
 
-/// Launch the bridge over `fixture`'s database plus a dsh child wired to it.
+/// Launch the bridge over `fixture`'s database plus a dsh ACP runtime wired to it.
 fn launch_dsh(
     fixture: &Fixture,
     hits: Arc<Mutex<Vec<Value>>>,
     log: Arc<EventLog>,
-) -> (BridgeServer, DshSession, DshLaunchConfig) {
+) -> (BridgeServer, AcpRuntime) {
     launch_dsh_with_approval(
         fixture,
         hits,
@@ -1166,47 +1211,24 @@ fn launch_dsh(
     )
 }
 
-/// Launch the bridge and dsh, answering approval questions per `stance`.
+/// Launch the bridge and dsh, answering permission requests per `stance`.
+///
+/// The permission responder is the production one — `approval::handle_request`
+/// over a real `ApprovalGate` — so what these tests exercise is the same code
+/// path the app uses. Only the click is simulated.
 fn launch_dsh_with_approval(
     fixture: &Fixture,
     hits: Arc<Mutex<Vec<Value>>>,
     log: Arc<EventLog>,
     stance: ApprovalStance,
     prompts: Arc<Mutex<Vec<ApprovalPrompt>>>,
-) -> (BridgeServer, DshSession, DshLaunchConfig) {
+) -> (BridgeServer, AcpRuntime) {
     let service = Arc::new(ProjectService::new(Box::new(SqliteProjectRepository::new(
         Arc::new(std::sync::Mutex::new(
             crate::db::init_db(&fixture._db_path).expect("reopen db"),
         )),
     ))));
-    // Short enough that a silent stance fails closed well inside the test's own
-    // wait, rather than parking for the production default.
-    let gate = Arc::new(ApprovalGate::new(Duration::from_secs(20)));
-    let handler_gate = Arc::clone(&gate);
     let bridge = BridgeServer::start(Arc::new(move |path, body| {
-        if path == APPROVAL_ROUTE {
-            let request: ApprovalRequest = match serde_json::from_str(body) {
-                Ok(request) => request,
-                Err(e) => return BridgeReply::error(400, &e.to_string()),
-            };
-            let gate = Arc::clone(&handler_gate);
-            let responder_gate = Arc::clone(&handler_gate);
-            let prompts = Arc::clone(&prompts);
-            let decision = handle_approval(&gate, request, |prompt| {
-                prompts.lock().expect("prompts lock").push(prompt.clone());
-                if stance == ApprovalStance::Silent {
-                    return;
-                }
-                // Stand in for the frontend: answer from another thread, exactly
-                // as `ai_resolve_approval` would.
-                let id = prompt.request_id.clone();
-                let approved = stance == ApprovalStance::Approve;
-                std::thread::spawn(move || {
-                    let _ = responder_gate.resolve(&id, approved);
-                });
-            });
-            return BridgeReply::ok(serde_json::to_string(&decision).unwrap());
-        }
         if path != CALCULATE_ROUTE {
             return BridgeReply::error(404, path);
         }
@@ -1228,14 +1250,36 @@ fn launch_dsh_with_approval(
     config.bridge_url = bridge.origin();
     config.bridge_token = bridge.token().to_string();
 
+    // Short enough that a silent stance fails closed well inside the test's own
+    // wait, rather than parking for the production default.
+    let gate = Arc::new(ApprovalGate::new(Duration::from_secs(20)));
+    let responder_gate = Arc::clone(&gate);
     let sink_log = Arc::clone(&log);
-    let session = DshSession::spawn(
+
+    let acp = AcpRuntime::start(
         &config,
         Arc::new(move |method, params| sink_log.record(method, params)),
+        Arc::new(move |question| {
+            let prompts = Arc::clone(&prompts);
+            let responder_gate = Arc::clone(&responder_gate);
+            handle_approval(&gate, question, move |prompt| {
+                prompts.lock().expect("prompts lock").push(prompt.clone());
+                if stance == ApprovalStance::Silent {
+                    return;
+                }
+                // Stand in for the frontend: answer from another thread, exactly
+                // as `ai_resolve_approval` would.
+                let id = prompt.request_id.clone();
+                let approved = stance == ApprovalStance::Approve;
+                std::thread::spawn(move || {
+                    let _ = responder_gate.resolve(&id, approved);
+                });
+            })
+        }),
     )
-    .expect("dsh spawns");
+    .expect("dsh ACP runtime starts");
 
-    (bridge, session, config)
+    (bridge, acp)
 }
 
 /// Checkpoint that needs no API key and no dsh boot: run the plugin's own tool
@@ -1278,8 +1322,7 @@ fn plugin_tool_body_reaches_the_calculator_over_the_bridge() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let value: Value =
-        serde_json::from_slice(&output.stdout).expect("tool value is json");
+    let value: Value = serde_json::from_slice(&output.stdout).expect("tool value is json");
     assert_eq!(value["schemeId"], fx.post_scheme_id);
     assert_eq!(value["stage"], "post_selection");
     assert_eq!(value["metrics"]["npv"], expected("1272000").npv);
@@ -1288,17 +1331,21 @@ fn plugin_tool_body_reaches_the_calculator_over_the_bridge() {
         expected("1272000").margin_rate
     );
     assert!(
-        !value["cashflow"].as_array().expect("cashflow rows").is_empty(),
+        !value["cashflow"]
+            .as_array()
+            .expect("cashflow rows")
+            .is_empty(),
         "现金流不应为空"
     );
 }
 
-/// 闭环 A's read-only tool must stay ungated after the approval work landed.
+/// 闭环 A's read-only tool must stay ungated after the ACP move.
 ///
 /// The guard's policy is a pure function of the tool name, so this asserts it
 /// directly rather than inferring it from an agent run. Combined with the
 /// `tools/pre-execute` waterfall's terminal default of `allow`, an ungated tool
-/// never reaches the approval seam at all.
+/// never raises an `approval/request` at all — and so never reaches ACP's
+/// `session/requestPermission` either.
 #[test]
 #[ignore = "needs agent-bridge provisioned: npm install && npm run provision"]
 fn only_the_write_tool_is_gated_behind_approval() {
@@ -1326,227 +1373,50 @@ fn only_the_write_tool_is_gated_behind_approval() {
     );
 }
 
-/// The answerer's own path, with no dsh and no LLM: `askLamber` → bridge →
-/// gate → a simulated frontend decision → the outcome back in the plugin.
-#[test]
-#[ignore = "needs agent-bridge provisioned: npm install && npm run provision"]
-fn answerer_receives_the_users_decision_through_the_gate() {
-    for (approved, expected) in [(true, "allowed-once"), (false, "rejected")] {
-        let gate = Arc::new(ApprovalGate::new(Duration::from_secs(20)));
-        let prompts = Arc::new(Mutex::new(Vec::new()));
-        let server = approval_bridge(Arc::clone(&gate), Arc::clone(&prompts));
-
-        let responder_gate = Arc::clone(&gate);
-        let responder_prompts = Arc::clone(&prompts);
-        std::thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(15);
-            while Instant::now() < deadline {
-                let id = responder_prompts
-                    .lock()
-                    .expect("prompts lock")
-                    .first()
-                    .map(|p| p.request_id.clone());
-                if let Some(id) = id {
-                    let _ = responder_gate.resolve(&id, approved);
-                    return;
-                }
-                std::thread::sleep(Duration::from_millis(20));
-            }
-        });
-
-        let script = repo_root_for_tests().join("agent-bridge/scripts/check-approval.mjs");
-        let output = std::process::Command::new("node")
-            .arg(&script)
-            .arg("write_test_marker")
-            .env("LAMBER_BRIDGE_URL", server.origin())
-            .env("LAMBER_BRIDGE_TOKEN", server.token())
-            .env("LAMBER_BRIDGE_TOKEN_HEADER", BRIDGE_TOKEN_HEADER)
-            .output()
-            .expect("node runs check-approval.mjs");
-        assert!(
-            output.status.success(),
-            "check-approval.mjs 失败: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let outcome = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        assert_eq!(
-            outcome, expected,
-            "用户{}时应得到 {expected}",
-            if approved { "确认" } else { "拒绝" }
-        );
-    }
-}
-
-/// Application crash: lamber vanishes while the answerer is waiting.
+/// Checkpoint that needs no API key: the `acp` profile boots with the lamber
+/// patch, the handshake completes, and its protocol version is the one this
+/// client implements.
 ///
-/// The parked HTTP request dies with the process, so the answerer's `fetch`
-/// rejects. It must settle closed rather than hang until its own 180s bound —
-/// otherwise a crashed lamber would freeze the agent's turn.
+/// This is the test that would fail the day dsh moves to ACP v2. dsh will not
+/// say so on the wire — it answers its own version regardless of what was asked
+/// (`dsh-acp/lib/index.js:1143-1146`) — so the assertion has to live here.
 #[test]
-#[ignore = "needs agent-bridge provisioned: npm install && npm run provision"]
-fn answerer_fails_closed_when_the_bridge_dies_mid_request() {
-    // A listener that accepts the request and then drops the socket, exactly as
-    // a killed process would. Not the real BridgeServer: this test is about what
-    // the *answerer* does when its peer disappears.
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
-    let origin = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
-    std::thread::spawn(move || {
-        if let Ok((stream, _)) = listener.accept() {
-            // Read the request head so the client finishes sending, then hang up.
-            let mut buf = [0u8; 1024];
-            use std::io::Read;
-            let mut stream = stream;
-            let _ = stream.read(&mut buf);
-            drop(stream);
-        }
-    });
+#[ignore = "needs agent-bridge provisioned: npm install && npm run provision -- --profile acp"]
+fn acp_handshake_negotiates_the_expected_protocol_version() {
+    let fx = build_fixture("acp-handshake");
+    let log = Arc::new(EventLog::default());
+    let (_bridge, acp) = launch_dsh(&fx, Arc::new(Mutex::new(Vec::new())), log);
 
-    let script = repo_root_for_tests().join("agent-bridge/scripts/check-approval.mjs");
-    let started = Instant::now();
-    let output = std::process::Command::new("node")
-        .arg(&script)
-        .env("LAMBER_BRIDGE_URL", &origin)
-        .env("LAMBER_BRIDGE_TOKEN", "any-token")
-        .env("LAMBER_BRIDGE_TOKEN_HEADER", BRIDGE_TOKEN_HEADER)
-        .output()
-        .expect("node runs check-approval.mjs");
-
-    assert!(
-        output.status.success(),
-        "check-approval.mjs 失败: {}",
-        String::from_utf8_lossy(&output.stderr)
+    let handshake = acp.handshake();
+    assert_eq!(
+        handshake.protocol_version, EXPECTED_PROTOCOL_VERSION,
+        "ACP 协议版本必须与本客户端实现的一致"
     );
     assert_eq!(
-        String::from_utf8_lossy(&output.stdout).trim(),
-        "rejected",
-        "桥接进程消失后必须失败关闭"
+        handshake.agent_name.as_deref(),
+        Some("deepseek-harness-acp"),
+        "握手对端不是 dsh 的 ACP 服务: {handshake:?}"
     );
-    assert!(
-        started.elapsed() < Duration::from_secs(30),
-        "连接断开后答复器挂起了 {:?}",
-        started.elapsed()
-    );
+
+    // `session/new` needs no credentials, so a session id here proves the
+    // profile assembled and the patch loaded without a single LLM call.
+    let session = acp
+        .new_session(&repo_root_for_tests())
+        .expect("session/new succeeds without an API key");
+    assert!(!session.is_empty(), "session/new 未返回会话 id");
 }
 
-/// A bridge that never answers must still let the answerer settle, closed.
-#[test]
-#[ignore = "needs agent-bridge provisioned: npm install && npm run provision"]
-fn answerer_fails_closed_when_nobody_answers() {
-    let gate = Arc::new(ApprovalGate::new(Duration::from_secs(2)));
-    let server = approval_bridge(Arc::clone(&gate), Arc::new(Mutex::new(Vec::new())));
-
-    let script = repo_root_for_tests().join("agent-bridge/scripts/check-approval.mjs");
-    let started = Instant::now();
-    let output = std::process::Command::new("node")
-        .arg(&script)
-        .env("LAMBER_BRIDGE_URL", server.origin())
-        .env("LAMBER_BRIDGE_TOKEN", server.token())
-        .env("LAMBER_BRIDGE_TOKEN_HEADER", BRIDGE_TOKEN_HEADER)
-        .output()
-        .expect("node runs check-approval.mjs");
-
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout).trim(),
-        "rejected",
-        "无人应答必须判定为拒绝"
-    );
-    assert!(started.elapsed() < Duration::from_secs(30), "答复器挂起了");
-}
-
-/// Checkpoint that needs no API key: dsh boots, the patch loads `dsh-tool-lamber`,
-/// and `run_benefit_calculation` reaches the model's tool catalog.
-#[test]
-#[ignore = "needs agent-bridge provisioned: npm install && npm run provision"]
-fn dsh_advertises_the_lamber_tool_in_its_request_header() {
-    let fx = build_fixture("dsh-header");
-    let log = Arc::new(EventLog::default());
-    let (_bridge, session, config) =
-        launch_dsh(&fx, Arc::new(Mutex::new(Vec::new())), Arc::clone(&log));
-
-    session.initialize(&config).expect("initialize");
-    session
-        .prompt(
-            &format!("lamber-test-{}", uuid::Uuid::new_v4().simple()),
-            &format!("帮我算一下项目 {} 的效益", fx.project_id),
-        )
-        .expect("prompt accepted");
-
-    let tools = log.wait_for(Duration::from_secs(60), "request/header", |method, params| {
-        let (kind, data) = session_event(method, params)?;
-        if kind != "request/header" {
-            return None;
-        }
-        Some(
-            data.get("header")?
-                .get("tools")?
-                .as_array()?
-                .iter()
-                .filter_map(|t| t.get("name")?.as_str().map(str::to_string))
-                .collect::<Vec<_>>(),
-        )
-    });
-
-    assert!(
-        tools.iter().any(|name| name == "run_benefit_calculation"),
-        "run_benefit_calculation 未出现在工具目录中: {tools:?}"
-    );
-}
-
-/// Both tools must be advertised, and the read-only one must stay ungated —
-///闭环 B's guard names only `write_test_marker`, and the `tools/pre-execute`
-/// waterfall's terminal default is `allow`.
-#[test]
-#[ignore = "needs agent-bridge provisioned: npm install && npm run provision"]
-fn dsh_advertises_the_gated_tool_alongside_the_readonly_one() {
-    let fx = build_fixture("dsh-gated-header");
-    let log = Arc::new(EventLog::default());
-    let (_bridge, session, config) =
-        launch_dsh(&fx, Arc::new(Mutex::new(Vec::new())), Arc::clone(&log));
-
-    session.initialize(&config).expect("initialize");
-    session
-        .prompt(
-            &format!("lamber-test-{}", uuid::Uuid::new_v4().simple()),
-            "你有哪些工具？",
-        )
-        .expect("prompt accepted");
-
-    let tools = log.wait_for(Duration::from_secs(60), "request/header", |method, params| {
-        let (kind, data) = session_event(method, params)?;
-        if kind != "request/header" {
-            return None;
-        }
-        Some(
-            data.get("header")?
-                .get("tools")?
-                .as_array()?
-                .iter()
-                .filter_map(|t| t.get("name")?.as_str().map(str::to_string))
-                .collect::<Vec<_>>(),
-        )
-    });
-
-    assert!(
-        tools.iter().any(|name| name == "write_test_marker"),
-        "write_test_marker 未出现在工具目录中: {tools:?}"
-    );
-    assert!(
-        tools.iter().any(|name| name == "run_benefit_calculation"),
-        "run_benefit_calculation 未出现在工具目录中: {tools:?}"
-    );
-}
-
-/// The full approval闭环: the model calls the gated tool, lamber asks, a
-/// simulated user confirms, and the tool actually runs.
+/// The full approval 闭环 under ACP: the model calls the gated tool, dsh asks
+/// over `session/requestPermission`, a simulated user answers, and the tool
+/// runs or does not.
+///
+/// This is what replaces the SDK-era loop. The trigger is entirely different —
+/// an inbound ACP request rather than an outbound HTTP post — so nothing about
+/// the old run carries over as evidence.
 #[test]
 #[ignore = "needs DEEPSEEK_API_KEY plus a provisioned agent-bridge"]
 fn dsh_gated_tool_runs_only_after_the_user_confirms() {
-    if std::env::var("DEEPSEEK_API_KEY")
-        .ok()
-        .filter(|k| !k.is_empty())
-        .is_none()
-    {
+    if !has_api_key() {
         eprintln!("跳过：未设置 DEEPSEEK_API_KEY");
         return;
     }
@@ -1555,7 +1425,7 @@ fn dsh_gated_tool_runs_only_after_the_user_confirms() {
         let fx = build_fixture("dsh-approval-loop");
         let log = Arc::new(EventLog::default());
         let prompts = Arc::new(Mutex::new(Vec::new()));
-        let (_bridge, session, config) = launch_dsh_with_approval(
+        let (_bridge, acp) = launch_dsh_with_approval(
             &fx,
             Arc::new(Mutex::new(Vec::new())),
             Arc::clone(&log),
@@ -1563,45 +1433,70 @@ fn dsh_gated_tool_runs_only_after_the_user_confirms() {
             Arc::clone(&prompts),
         );
 
-        session.initialize(&config).expect("initialize");
-        session
-            .prompt(
-                &format!("lamber-test-{}", uuid::Uuid::new_v4().simple()),
-                "请调用 write_test_marker 工具，note 参数填「闭环B联调」。",
-            )
-            .expect("prompt accepted");
+        let session = acp
+            .new_session(&repo_root_for_tests())
+            .expect("session/new");
+        acp.prompt(
+            &session,
+            "请调用 write_test_marker 工具，note 参数填「ACP 联调」。",
+        )
+        .expect("prompt queued");
 
-        // dsh audits every question; `approval/decided` carries the outcome.
-        let outcome = log.wait_for(
-            Duration::from_secs(120),
-            "approval/decided",
-            |method, params| {
-                let (kind, data) = session_event(method, params)?;
-                if kind != "approval/decided" {
-                    return None;
-                }
-                Some(data.get("outcome")?.as_str()?.to_string())
-            },
-        );
-
-        let expected = match stance {
-            ApprovalStance::Approve => "allowed-once",
-            _ => "rejected",
-        };
-        assert_eq!(outcome, expected, "审批结果与模拟的用户操作不一致");
-        assert_eq!(
-            prompts.lock().expect("prompts lock").len(),
-            1,
-            "应恰好向用户提出一次审批"
-        );
-
-        let result = log.wait_for(Duration::from_secs(120), "tool/result", |method, params| {
-            let (kind, data) = session_event(method, params)?;
-            if kind != "tool/result" {
+        // The call is announced before permission is asked — dsh drains its
+        // updates first — so this also proves the ordering the dialog relies on.
+        let announced = log.wait_for(Duration::from_secs(120), "tool_call", |method, params| {
+            let (kind, update) = acp_update(method, params)?;
+            if kind != "tool_call" || update.get("title")?.as_str()? != "write_test_marker" {
                 return None;
             }
-            Some(data.to_string())
+            Some(update.get("rawInput").cloned().unwrap_or(Value::Null))
         });
+
+        // The prompt lamber raised must describe that same call.
+        let deadline = Instant::now() + Duration::from_secs(60);
+        loop {
+            if !prompts.lock().expect("prompts lock").is_empty() {
+                break;
+            }
+            assert!(Instant::now() < deadline, "模型调用了工具但未触发审批弹窗");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let raised = prompts.lock().expect("prompts lock").clone();
+        assert_eq!(raised.len(), 1, "应恰好向用户提出一次审批");
+        assert_eq!(
+            raised[0].tool_name, "write_test_marker",
+            "审批弹窗必须认出被调用的工具名"
+        );
+        assert_eq!(
+            raised[0].args, announced,
+            "审批弹窗展示的参数必须与 tool_call 通知里的一致"
+        );
+        assert!(
+            raised[0]
+                .reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("写入文件"),
+            "审批弹窗应给出 Rust 侧镜像表里的说明: {:?}",
+            raised[0].reason
+        );
+
+        // The tool's own outcome arrives as a `tool_call_update`.
+        let result = log.wait_for(
+            Duration::from_secs(120),
+            "tool_call_update",
+            |method, params| {
+                let (kind, update) = acp_update(method, params)?;
+                if kind != "tool_call_update" {
+                    return None;
+                }
+                let status = update.get("status")?.as_str()?;
+                if status != "completed" && status != "failed" {
+                    return None;
+                }
+                Some(update.to_string())
+            },
+        );
 
         match stance {
             ApprovalStance::Approve => {
@@ -1616,15 +1511,21 @@ fn dsh_gated_tool_runs_only_after_the_user_confirms() {
                     "标记文件必须落在系统临时目录: {marker}"
                 );
             }
-            _ => assert!(
-                result.contains("rejected") || result.contains("拒绝"),
-                "拒绝后 tool/result 应说明被拒: {result}"
-            ),
+            _ => {
+                assert!(
+                    extract_marker_path(&result).is_none(),
+                    "拒绝后不应写出任何标记文件: {result}"
+                );
+                assert!(
+                    result.contains("rejected") || result.contains("拒绝"),
+                    "拒绝后工具结果应说明被拒: {result}"
+                );
+            }
         }
     }
 }
 
-/// Pull the marker path out of a `tool/result` payload, if it wrote one.
+/// Pull the marker path out of a tool result payload, if it wrote one.
 ///
 /// The payload embeds the path in prose (`已写入测试标记文件：<path>（207 字节…`),
 /// so the bounds are anchored on the filename itself rather than on whitespace:
@@ -1646,16 +1547,13 @@ fn extract_marker_path(result: &str) -> Option<String> {
     Some(result[start..end].to_string())
 }
 
-/// The full闭环: the model calls the tool, the bridge runs the real engine, and
-/// the engine's numbers come back in `tool/result`.
+/// The full 闭环 A loop under ACP: the model calls the read-only tool, the
+/// bridge runs the real engine, and the engine's numbers come back — with no
+/// approval question raised anywhere along the way.
 #[test]
 #[ignore = "needs DEEPSEEK_API_KEY plus a provisioned agent-bridge"]
 fn dsh_tool_call_reaches_the_calculator_and_returns_real_numbers() {
-    if std::env::var("DEEPSEEK_API_KEY")
-        .ok()
-        .filter(|k| !k.is_empty())
-        .is_none()
-    {
+    if !has_api_key() {
         eprintln!("跳过：未设置 DEEPSEEK_API_KEY");
         return;
     }
@@ -1663,41 +1561,51 @@ fn dsh_tool_call_reaches_the_calculator_and_returns_real_numbers() {
     let fx = build_fixture("dsh-tool-call");
     let log = Arc::new(EventLog::default());
     let hits = Arc::new(Mutex::new(Vec::new()));
-    // `DshLaunchConfig::from_repo_root` reads DEEPSEEK_API_KEY, and the child
-    // inherits it at spawn time — assigning it after the spawn would be a no-op.
-    let (_bridge, session, config) = launch_dsh(&fx, Arc::clone(&hits), Arc::clone(&log));
-    assert!(config.api_key.is_some(), "dsh 启动配置未带上 API key");
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let (_bridge, acp) = launch_dsh_with_approval(
+        &fx,
+        Arc::clone(&hits),
+        Arc::clone(&log),
+        ApprovalStance::Silent,
+        Arc::clone(&prompts),
+    );
 
-    session.initialize(&config).expect("initialize");
-    session
-        .prompt(
-            &format!("lamber-test-{}", uuid::Uuid::new_v4().simple()),
-            &format!(
-                "请调用 run_benefit_calculation 工具，projectId 用 {}，scenario 用 post_selection，\
-                 然后把 NPV 和利润率告诉我。",
-                fx.project_id
-            ),
-        )
-        .expect("prompt accepted");
+    let session = acp
+        .new_session(&repo_root_for_tests())
+        .expect("session/new");
+    acp.prompt(
+        &session,
+        &format!(
+            "请调用 run_benefit_calculation 工具，projectId 用 {}，scenario 用 post_selection，\
+             然后把 NPV 和利润率告诉我。",
+            fx.project_id
+        ),
+    )
+    .expect("prompt queued");
 
-    let call = log.wait_for(Duration::from_secs(120), "tool/call", |method, params| {
-        let (kind, data) = session_event(method, params)?;
-        if kind != "tool/call" || data.get("name")?.as_str()? != "run_benefit_calculation" {
+    let args = log.wait_for(Duration::from_secs(120), "tool_call", |method, params| {
+        let (kind, update) = acp_update(method, params)?;
+        if kind != "tool_call" || update.get("title")?.as_str()? != "run_benefit_calculation" {
             return None;
         }
-        Some(data.get("arguments")?.as_str()?.to_string())
+        update.get("rawInput").cloned()
     });
-    let args: Value = serde_json::from_str(&call).expect("tool arguments are json");
     assert_eq!(args["projectId"], fx.project_id);
 
-    let result_text = log.wait_for(Duration::from_secs(120), "tool/result", |method, params| {
-        let (kind, data) = session_event(method, params)?;
-        if kind != "tool/result" {
-            return None;
-        }
-        assert!(data.get("error").is_none(), "工具调用失败: {data}");
-        Some(data.get("message")?.to_string())
-    });
+    let result_text = log.wait_for(
+        Duration::from_secs(120),
+        "tool_call_update",
+        |method, params| {
+            let (kind, update) = acp_update(method, params)?;
+            if kind != "tool_call_update" {
+                return None;
+            }
+            if update.get("status")?.as_str()? != "completed" {
+                return None;
+            }
+            Some(update.get("content")?.to_string())
+        },
+    );
 
     let bridge_hits = hits.lock().expect("hits lock");
     assert_eq!(bridge_hits.len(), 1, "桥接服务应恰好被调用一次");
@@ -1706,6 +1614,46 @@ fn dsh_tool_call_reaches_the_calculator_and_returns_real_numbers() {
     let npv = expected("1272000").npv;
     assert!(
         result_text.contains(&npv),
-        "tool/result 中未出现引擎算出的 NPV {npv}: {result_text}"
+        "工具结果中未出现引擎算出的 NPV {npv}: {result_text}"
+    );
+    assert!(
+        prompts.lock().expect("prompts lock").is_empty(),
+        "只读工具不应触发任何审批弹窗"
+    );
+}
+
+/// One turn must announce its own end, so the UI can stop showing "generating".
+///
+/// `session/prompt` is fire-and-forget on lamber's side — the ACP request is
+/// long-lived and its answer only arrives when the whole turn is over — so this
+/// terminal event is the only thing that tells the caller the turn finished.
+#[test]
+#[ignore = "needs DEEPSEEK_API_KEY plus a provisioned agent-bridge"]
+fn a_finished_turn_reports_its_stop_reason() {
+    if !has_api_key() {
+        eprintln!("跳过：未设置 DEEPSEEK_API_KEY");
+        return;
+    }
+
+    let fx = build_fixture("acp-turn-end");
+    let log = Arc::new(EventLog::default());
+    let (_bridge, acp) = launch_dsh(&fx, Arc::new(Mutex::new(Vec::new())), Arc::clone(&log));
+
+    let session = acp
+        .new_session(&repo_root_for_tests())
+        .expect("session/new");
+    acp.prompt(&session, "回复 ok 两个字")
+        .expect("prompt queued");
+
+    let ended = log.wait_for(
+        Duration::from_secs(120),
+        TURN_ENDED_METHOD,
+        |method, params| (method == TURN_ENDED_METHOD).then(|| params.clone()),
+    );
+    assert_eq!(ended["sessionId"], session, "结束事件应带上所属会话");
+    assert!(ended.get("error").is_none(), "本轮不应报错: {ended}");
+    assert_eq!(
+        ended["stopReason"], "EndTurn",
+        "正常结束的一轮应报 EndTurn: {ended}"
     );
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Provision the dsh `sdk` profile used by lamber's agent bridge.
+ * Provision the dsh `acp` profile used by lamber's agent bridge.
  *
  * dsh resolves a patched plugin's package name relative to
  * `$DSH_HOME/profiles/<profile>/`, not relative to the launcher's cwd. So the
@@ -8,7 +8,7 @@
  * before `dsh --patch patch.yml` can find it. This script is idempotent: run it
  * once per machine, or whenever $DSH_HOME is reset.
  *
- * Usage: node scripts/provision-profile.mjs [--profile sdk] [--home <dir>]
+ * Usage: node scripts/provision-profile.mjs [--profile acp] [--home <dir>]
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
@@ -24,7 +24,7 @@ function arg(flag, fallback) {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
-const profile = arg('--profile', 'sdk');
+const profile = arg('--profile', 'acp');
 const dshHome = resolve(
   arg('--home', process.env.DSH_HOME ?? join(agentBridgeDir, '.dsh-home')),
 );

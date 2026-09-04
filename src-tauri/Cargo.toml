@@ -26,6 +26,17 @@ rusqlite = { version = "0.31.0", features = ["bundled"] }
 uuid = { version = "1.8", features = ["v4"] }
 tiny_http = { version = "0.12", default-features = false }
 
+# ACP protocol client. Versions here are what `cargo tree` actually resolves:
+# `agent-client-protocol 2.0.0` pins `agent-client-protocol-schema` to `=1.5.0`
+# (not the 1.7.0 an early survey assumed), and both speak ACP wire version 1.
+# `dsh_session.rs` asserts that wire version on every handshake.
+#
+# tokio is confined to the dsh transport: the rest of lamber's backend stays
+# synchronous, and `AcpRuntime` owns the only runtime, on its own thread.
+agent-client-protocol = "2.0.0"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "io-std", "io-util"] }
+
 [features]
 default = [ "custom-protocol" ]
 custom-protocol = [ "tauri/custom-protocol" ]
+

@@ -5,11 +5,11 @@
  * Every tool is a thin client over the loopback bridge server the lamber Tauri
  * backend hosts (`LAMBER_BRIDGE_URL`); no business math lives in this package.
  *
- * The plugin also owns lamber's approval channel. Tools and their approval
- * policy ship together on purpose: the guard correlates a gated call's
- * arguments to its approval question through an in-process map, and splitting
- * the halves across two npm packages would risk two module instances holding
- * two separate maps.
+ * The plugin also owns the approval *guard*: which of its tools need a human.
+ * Tools and their gating policy ship together on purpose — a tool whose risk is
+ * declared in another package drifts from the tool itself. The decision half
+ * lives in lamber, which answers ACP's `session/requestPermission` directly;
+ * see `dsh-tool-lamber/src/approval.ts` for why the split falls there.
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { applyApproval } from './approval.js';
@@ -21,7 +21,7 @@ export const name = 'dsh-tool-lamber';
 export const inject = ['tools'] as const;
 
 /**
- * Register lamber's tools and its approval channel on the harness runtime.
+ * Register lamber's tools and its approval guard on the harness runtime.
  *
  * @param ctx - the plugin context, with `tools` injected.
  */
@@ -33,13 +33,7 @@ export function apply(ctx: Context): void {
 
 export { runBenefitCalculation, CALCULATE_ROUTE } from './runBenefitCalculation.js';
 export { writeTestMarker, WRITE_TEST_MARKER } from './writeTestMarker.js';
-export {
-  applyApproval,
-  askLamber,
-  isGatedTool,
-  APPROVAL_ROUTE,
-  ANSWERER_TIMEOUT_MS,
-} from './approval.js';
+export { applyApproval, isGatedTool } from './approval.js';
 export {
   BRIDGE_URL_ENV,
   BRIDGE_TOKEN_ENV,

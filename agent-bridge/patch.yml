@@ -1,4 +1,8 @@
-# dsh profile patch: mount lamber's custom tool plugin into the `sdk` profile.
+# dsh profile patch: mount lamber's custom tool plugin into the `acp` profile.
+#
+# The plugin is a dependency of the profile directory, not a bundle layer, so it
+# is only loaded when dsh is launched with `--patch` pointing at this file. The
+# `acp` profile's own `bundles` list does not include it.
 #
 # `name` must be the package name as resolvable from
 # $DSH_HOME/profiles/<profile>/ — see scripts/provision-profile.mjs, which links
