@@ -29,44 +29,6 @@ interface SubjectRoleActionsProps {
   subjects: Array<{ subject: IctSubjectDefinition; item: IctTaxItemLike | null }>;
 }
 
-export const highlightSubjectElement = (el: HTMLElement) => {
-  el.style.transition = "background-color 0.5s ease, box-shadow 0.5s ease";
-  el.style.boxShadow = "0 0 0 4px rgba(40, 90, 185, 0.25)";
-  el.style.backgroundColor = "rgba(40, 90, 185, 0.05)";
-  el.style.borderRadius = "6px";
-
-  setTimeout(() => {
-    el.style.boxShadow = "none";
-    el.style.backgroundColor = "transparent";
-  }, 2000);
-};
-
-export const scrollToSubject = (
-  side: string,
-  groupId: string,
-  key: string,
-  activeTab: string,
-  setActiveTab: (tab: any) => void
-) => {
-  const targetTab = side === "revenue" ? "revenue" : "cost";
-  if (activeTab !== targetTab) {
-    setActiveTab(targetTab);
-    setTimeout(() => {
-      const el = document.getElementById(`subject-anchor-${side}-${groupId}-${key}`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        highlightSubjectElement(el);
-      }
-    }, 150);
-  } else {
-    const el = document.getElementById(`subject-anchor-${side}-${groupId}-${key}`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      highlightSubjectElement(el);
-    }
-  }
-};
-
 export const SubjectRoleActions: React.FC<SubjectRoleActionsProps> = ({
   subject,
   item,

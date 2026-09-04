@@ -179,10 +179,12 @@ fn item_from_cells(
     let custom_subject_name =
         extract_custom_subject_name(&display_name, standard_subject_name, template_subject_name);
 
+    // 派生方向的金额四舍五入到分，与财务口径（两位小数）保持一致。
+    let round2 = |v: f64| (v * 100.0).round() / 100.0;
     let (incl_tax, excl_tax) = if incl.abs() > f64::EPSILON {
-        (incl, incl / (1.0 + tax / 100.0))
+        (incl, round2(incl / (1.0 + tax / 100.0)))
     } else if excl.abs() > f64::EPSILON {
-        (excl * (1.0 + tax / 100.0), excl)
+        (round2(excl * (1.0 + tax / 100.0)), excl)
     } else {
         (0.0, 0.0)
     };
@@ -772,6 +774,7 @@ pub fn auto_import_excel_calculation(
             billing_subject_name: billing_subject_name
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
+            split_parts: None,
         }
     };
 
@@ -855,6 +858,7 @@ pub fn auto_import_excel_calculation(
         selection_fee_amount: None,
         selection_fee_limit: None,
         selection_fee_anchor: selection_fee_quote.map(|_| "quote".to_string()),
+        selection_fee_target_subject_code: None,
         subject_funding_plans: None,
         subject_funding_plan_migration_version: Some(1),
 

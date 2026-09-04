@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:ai-compute-quote": "node scripts/test_ai_compute_quote.cjs"
+    "test:ai-compute-quote": "node scripts/test_ai_compute_quote.cjs",
+    "test:tax-split": "node scripts/test_tax_split.cjs",
+    "test:selection-batch": "node scripts/test_selection_result_batch.cjs"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.8",

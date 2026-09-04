@@ -4,7 +4,7 @@
 > **历史兼容性说明**：本文件作为系统架构与模块数据流的详细技术地图，不再作为 AI 每次任务的默认必读文件。
 > 后续开发请默认阅读入口文件 [PROJECT_INDEX.md](./PROJECT_INDEX.md) 和 [CURRENT_TASK.md](./CURRENT_TASK.md)，并仅在需要深入分析架构、启动流程或底层细节时阅读本文件。
 
-Last updated: 2026-06-04 (Common Materials & Project Presets Phase 1)
+Last updated: 2026-08-03 (Selection Result Batch)
 
 ## 1. Repository overview
 
@@ -267,6 +267,15 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 5. Meeting-review investment detail text is assembled in `TemplateForms.tsx` from the same resolved IT/CT cost subjects used by the sign-off form variables (`SUBJECT_IT_COST`, `SUBJECT_CT_COST`), while amount totals continue to come from the existing tax-exclusive lifecycle cost buckets.
 6. The sign-off form's project situation section uses full generated text variables (`PROJECT_INVESTMENT_SITUATION`, `PROJECT_REVENUE_SITUATION`) so all non-zero IT, CT, non-IT/CT, and comprehensive subjects can be listed from the measurement table. Manual sign-off billing-subject override inputs are not part of this path.
 
+### 4.6.1 Multi-project selection-result document flow
+
+1. `TemplateForms.tsx` switches the selection-result form into batch mode and stores the ordered project IDs, editable batch name, conflict acknowledgement, and renewal classifications in the current template state.
+2. `selectionResultBatchService.ts` lists ICT projects and selects the latest saved `pre_selection` and `post_selection` scheme for each project. It reads scheme-scoped lifecycle/cashflow state first and falls back to that scheme's latest snapshot.
+3. `selectionResultBatch.ts` restores the saved tax items, runs the existing zero-tolerance validator, checks required post-selection metrics, detects shared-field conflicts, and constructs ordered A-E table rows with Decimal totals.
+4. The approval amount is recalculated independently as post-selection IT cost plus dedicated-line CT construction, maintenance, and bandwidth cost; the mixed renewal subject is included only after explicit user classification.
+5. Generation is blocked when a project is invalid, a blocking field conflicts, renewal classification is incomplete, or the batch approval amount is at least CNY 500,000 excluding tax.
+6. The existing `generate_lifecycle_docs` / `docfill.rs` path receives one variable map and five `TABLE_*` JSON arrays. The generic DOCX row cloner creates one approval document; source documents are never concatenated and other projects are never written.
+
 ### 4.7 Template image document embedding flow
 
 1. `TemplateForms.tsx` keeps preview images in UI state, but serializes document-generation image payloads with `assetId` first.
@@ -309,6 +318,22 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 5. Structure reverse candidates synchronize target and balancing subject funding plans for candidate evaluation; the accepted final amounts are written through `updateTaxItemsInclBatch`.
 6. `CashflowSegment` amount-mode synchronization from earlier phases is retired as a formal calculation path. Stored segment fields are preserved only for old data compatibility.
 7. CT product revenue and CT line revenue retain their paired cost-subject behavior: product revenue mirrors to CT other-product cost, and line revenue mirrors to CT bandwidth cost. The paired changes also synchronize subject funding plans through the shared amount-update path.
+
+### 4.8.4 ICT tax-split reconciliation and persistence flow
+
+1. `financeValidator.ts` produces split candidates only for isolated C1 tax-group errors. Each candidate preserves subject inclusive total and tax rate, validates both child lines bidirectionally, and must make the group difference exactly zero.
+2. The reconciliation modal never applies a candidate implicitly. A user click calls the shared `useIctState.applyTaxItemSplitParts` entry, which revalidates the proposed parts against the live subject before updating `excl` and `splitParts`.
+3. Subject changes mark lifecycle, cashflow, and benefit-analysis dirty together. Lifecycle payloads and cashflow assumptions serialize the same `split_parts`; hydration accepts snake_case or camelCase and preserves a valid lifecycle/snapshot split when older assumptions have none.
+4. Rust `IctItem` persists `split_parts` in benefit snapshots. `calculator.rs` independently checks positive child amounts, inclusive total equality, and both tax conversion directions before using the sum of child tax-exclusive amounts; invalid parts fall back to the original single-line calculation.
+5. If the applied candidate was the only reconciliation error, the UI continues to the originally requested cashflow or document page. With other errors, the modal remains open and only the resolved error is removed.
+
+### 4.8.5 PPT tax-split presentation flow
+
+1. `TemplateForms.tsx` derives a valid split summary only from the IT/CT revenue and cost subjects displayed on the investment-return slide. Projects without displayed split subjects keep the existing PPT configuration unchanged.
+2. The per-project, per-template `gen_ppt_tax_row_mode` setting defaults to `merged` and persists through the existing template-form state. It changes document presentation only and never writes lifecycle financial state.
+3. `pptTaxRows.ts` revalidates snake-case or camel-case split parts against the live subject. Merged mode emits one aggregate row; split mode emits one row per valid child with an audit note. Invalid parts fall back to one aggregate row.
+4. The four `TABLE_PPT_*` builders repeat the subject fields for child rows while leaving all headline totals, subtotals, cashflow, and benefit metrics on the original aggregate values.
+5. `docfill.rs` clones duplicate subject rows and divides the original placeholder row height across the generated rows. When cost details expand, it preserves the template font size and moves only the evaluation heading plus contract/payback notes down by a bounded offset; bottom benefit metrics remain fixed.
 
 ### 4.9 Inquiry vendor screenshot state flow
 

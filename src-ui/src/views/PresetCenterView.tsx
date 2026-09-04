@@ -148,7 +148,6 @@ export default function PresetCenterView({ onBack }: PresetCenterViewProps) {
     if (!hasUnsavedChanges) return true;
     return window.confirm("当前资料有未保存改动，确定放弃这些改动吗？");
   };
-
   const loadItems = useCallback(async () => {
     setLoading(true);
     setError("");

@@ -5,6 +5,12 @@ fn default_zero_string() -> String {
 }
 
 #[derive(Deserialize, Serialize, Clone)]
+pub struct IctTaxSplitPart {
+    pub incl_tax: String,
+    pub excl_tax: String,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
 pub struct IctItem {
     pub incl_tax: String,
     pub tax_rate: String,
@@ -12,6 +18,8 @@ pub struct IctItem {
     pub custom_subject_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub billing_subject_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub split_parts: Option<Vec<IctTaxSplitPart>>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Default)]
@@ -93,7 +101,7 @@ pub struct IctInput {
     pub it_cost_cashflow_excl: Option<Vec<String>>,
 
     // Optional procurement selection-fee helper inputs. These are persisted for
-    // Excel template back-filling only and are not part of benefit math.
+    // state restoration and document back-filling, but are not part of benefit math.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selection_fee_quote: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -106,6 +114,8 @@ pub struct IctInput {
     pub selection_fee_limit: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selection_fee_anchor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_fee_target_subject_code: Option<String>,
 
     pub rev_it_integration: IctItem,
     pub rev_it_maintenance: IctItem,
@@ -299,7 +309,24 @@ pub struct StoreData {
 
 #[cfg(test)]
 mod tests {
-    use super::IctResult;
+    use super::{IctItem, IctResult};
+
+    #[test]
+    fn ict_item_preserves_split_parts_through_snapshot_serialization() {
+        let value = serde_json::json!({
+            "incl_tax": "826.00",
+            "tax_rate": "6",
+            "split_parts": [
+                { "incl_tax": "413.00", "excl_tax": "389.62" },
+                { "incl_tax": "413.00", "excl_tax": "389.62" }
+            ]
+        });
+        let item: IctItem = serde_json::from_value(value).unwrap();
+        let serialized = serde_json::to_value(item).unwrap();
+
+        assert_eq!(serialized["split_parts"][0]["incl_tax"], "413.00");
+        assert_eq!(serialized["split_parts"][1]["excl_tax"], "389.62");
+    }
 
     #[test]
     fn ict_result_deserializes_legacy_cashflow_without_it_fields() {

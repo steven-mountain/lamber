@@ -1,31 +1,11 @@
 import type { ReactNode } from "react";
 import AppIcon from "../icons/AppIcon";
 import { IctMetricsCards } from "../IctMetricsDashboard";
+import type { TemplateCompletion } from "../../lib/templateCompletion";
 
 export interface TemplateLayoutTab<T extends string = string> {
   id: T;
   label: string;
-}
-
-export interface TemplateCompletionItem {
-  label: string;
-  filled: boolean;
-}
-
-export interface TemplateCompletion {
-  completedCount: number;
-  totalCount: number;
-  percent: number;
-}
-
-export function getTemplateCompletion(items: TemplateCompletionItem[]): TemplateCompletion {
-  const totalCount = items.length;
-  const completedCount = items.filter(item => item.filled).length;
-  return {
-    completedCount,
-    totalCount,
-    percent: totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0,
-  };
 }
 
 interface TemplateDocumentLayoutProps<T extends string> {

@@ -412,11 +412,67 @@ fn internal_generate_docx(
 
 /// 填充 PPTX 模板：遍历 ppt/slides/*.xml，做 {VAR} 替换与 TABLE_* 模板行（<a:tr>）克隆。
 /// 机制与 docx 版一致，仅命名空间不同（DrawingML）；不支持图片占位符。
+fn fit_ppt_detail_rows_to_template_height(
+    row_xml: &str,
+    row_count: usize,
+    fallback_height: u64,
+) -> String {
+    if row_count <= 1 {
+        return row_xml.to_string();
+    }
+    let height_re = Regex::new(r#"<a:tr h="(\d+)""#).unwrap();
+    let original_height = height_re
+        .captures(row_xml)
+        .and_then(|captures| captures[1].parse::<u64>().ok())
+        .unwrap_or(0);
+    let template_height = if original_height == 0 {
+        fallback_height
+    } else {
+        original_height
+    };
+    let fitted_height = template_height / row_count as u64;
+    height_re
+        .replace(row_xml, format!(r#"<a:tr h="{}""#, fitted_height))
+        .to_string()
+}
+
+fn shift_ppt_evaluation_section(xml: &str, offset: u64) -> String {
+    if offset == 0 {
+        return xml.to_string();
+    }
+
+    // These two shapes are the evaluation heading and its contract/payback notes in
+    // the maintained 2025 lifecycle PPT template. Metrics stay fixed at the bottom;
+    // the template leaves enough middle whitespace for this bounded safety offset.
+    [
+        (5_029_189_u64, 5_029_189_u64 + offset),
+        (5_300_345, 5_300_345 + offset),
+    ]
+    .into_iter()
+    .fold(xml.to_string(), |result, (from, to)| {
+        result.replace(&format!(r#"y="{}""#, from), &format!(r#"y="{}""#, to))
+    })
+}
+
 fn internal_generate_pptx(
     template_path: &str,
     output_path: &str,
     variables: &HashMap<String, String>,
 ) -> Result<(), String> {
+    let expanded_cost_row_count = ["TABLE_PPT_COST_IT", "TABLE_PPT_COST_CT"]
+        .iter()
+        .filter_map(|key| variables.get(*key))
+        .filter_map(|value| {
+            serde_json::from_str::<Vec<std::collections::HashMap<String, String>>>(value).ok()
+        })
+        .map(|rows| rows.len().saturating_sub(1))
+        .sum::<usize>();
+    let evaluation_section_offset = if expanded_cost_row_count > 0 {
+        180_000
+    } else {
+        0
+    };
+
     let file = File::open(template_path).map_err(|e| format!("Failed to open template: {}", e))?;
     let mut archive =
         ZipArchive::new(file).map_err(|e| format!("Failed to read template zip: {}", e))?;
@@ -439,8 +495,7 @@ fn internal_generate_pptx(
     }
 
     for (name, content) in files.iter_mut() {
-        if !(name.starts_with("ppt/slides/") && name.ends_with(".xml") && !name.contains("_rels"))
-        {
+        if !(name.starts_with("ppt/slides/") && name.ends_with(".xml") && !name.contains("_rels")) {
             continue;
         }
         let mut xml_str = String::from_utf8(content.clone()).map_err(|e| e.to_string())?;
@@ -451,13 +506,11 @@ fn internal_generate_pptx(
             if !k.starts_with("TABLE_") {
                 continue;
             }
-            let rows_data = match serde_json::from_str::<
-                Vec<std::collections::HashMap<String, String>>,
-            >(v)
-            {
-                Ok(rows) => rows,
-                Err(_) => continue,
-            };
+            let rows_data =
+                match serde_json::from_str::<Vec<std::collections::HashMap<String, String>>>(v) {
+                    Ok(rows) => rows,
+                    Err(_) => continue,
+                };
             let first_key = match rows_data.first().and_then(|row| row.keys().next().cloned()) {
                 Some(key) => key,
                 None => continue,
@@ -480,9 +533,23 @@ fn internal_generate_pptx(
             };
 
             let row_xml = xml_str[tr_start..tr_end].to_string();
+            // 投资收益页的下一张表及收益指标均为固定坐标。若动态明细继续沿用
+            // 模板单行高度，增加一行就会覆盖后续区域；四组明细在原占位行预算内
+            // 等分高度，保持模板整体布局不变。
+            let fitted_row_xml = if matches!(
+                k.as_str(),
+                "TABLE_PPT_REV_IT" | "TABLE_PPT_REV_CT" | "TABLE_PPT_COST_IT" | "TABLE_PPT_COST_CT"
+            ) {
+                // CT 投入明细占位行在原模板中使用 h="0" 自动高度；复制多行时
+                // PowerPoint/LibreOffice 无法据此等分，采用相邻 CT 小计行的原始高度。
+                let fallback_height = if k == "TABLE_PPT_COST_CT" { 244_475 } else { 0 };
+                fit_ppt_detail_rows_to_template_height(&row_xml, rows_data.len(), fallback_height)
+            } else {
+                row_xml
+            };
             let mut new_rows = String::new();
             for row_data in &rows_data {
-                let mut new_row = row_xml.clone();
+                let mut new_row = fitted_row_xml.clone();
                 for (rk, rv) in row_data {
                     let r_pattern = format!("{{{}}}", rk);
                     let escaped_rv = rv
@@ -519,6 +586,10 @@ fn internal_generate_pptx(
         // 清理未解析的占位符
         let unresolved_re = Regex::new(r"\{[a-zA-Z0-9_一-龥（）]+\}").unwrap();
         xml_str = unresolved_re.replace_all(&xml_str, "").to_string();
+
+        if evaluation_section_offset > 0 {
+            xml_str = shift_ppt_evaluation_section(&xml_str, evaluation_section_offset);
+        }
 
         *content = xml_str.into_bytes();
     }
@@ -957,7 +1028,10 @@ fn internal_generate_xlsx(
 
 #[cfg(test)]
 mod tests {
-    use super::{internal_generate_pptx, internal_generate_xlsx};
+    use super::{
+        fit_ppt_detail_rows_to_template_height, internal_generate_docx, internal_generate_pptx,
+        internal_generate_xlsx, shift_ppt_evaluation_section,
+    };
     use calamine::{open_workbook, Reader, Xlsx};
     use std::collections::HashMap;
     use std::fs;
@@ -965,6 +1039,172 @@ mod tests {
     use std::path::Path;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn ppt_detail_rows_share_the_template_row_height_budget() {
+        let row = r#"<a:tr h="375920"><a:tc/></a:tr>"#;
+        assert_eq!(
+            fit_ppt_detail_rows_to_template_height(row, 2, 0),
+            r#"<a:tr h="187960"><a:tc/></a:tr>"#,
+        );
+        assert_eq!(fit_ppt_detail_rows_to_template_height(row, 1, 0), row);
+        assert_eq!(
+            fit_ppt_detail_rows_to_template_height(
+                r#"<a:tr h="0"><a:rPr sz="1100"/><a:endParaRPr sz="1200"/></a:tr>"#,
+                2,
+                244_475,
+            ),
+            r#"<a:tr h="122237"><a:rPr sz="1100"/><a:endParaRPr sz="1200"/></a:tr>"#,
+        );
+    }
+
+    #[test]
+    fn ppt_expanded_cost_rows_move_evaluation_notes_without_moving_metrics() {
+        let xml = r#"<a:off x="311155" y="5029189"/><a:off x="352425" y="5300345"/><a:off x="3220720" y="6028690"/>"#;
+        assert_eq!(
+            shift_ppt_evaluation_section(xml, 180_000),
+            r#"<a:off x="311155" y="5209189"/><a:off x="352425" y="5480345"/><a:off x="3220720" y="6028690"/>"#,
+        );
+    }
+
+    #[test]
+    fn selection_result_docx_fills_batch_rows_and_approval_amount() {
+        let template_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../项目全生命周期文件模版/【2025版】ICT项目甄选结果签批表（仅适用50万以下项目）模板.docx",
+        );
+        assert!(
+            template_path.exists(),
+            "missing test template: {}",
+            template_path.display()
+        );
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let keep_output = std::env::var("LAMBER_SELECTION_DOCX_QA_OUT").ok();
+        let output_path = keep_output
+            .as_ref()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::env::temp_dir().join(format!("lamber-selection-result-{}.docx", suffix))
+            });
+
+        let mut variables: HashMap<String, String> = HashMap::new();
+        for (key, value) in [
+            ("PROJECT_NAME", "消防检测等2个ICT项目"),
+            ("PROJECT_BACKGROUND", "两个已完成甄选的ICT项目合并报批"),
+            ("IT_CONTENT", "消防检测项目、视频监控项目"),
+            ("CT_CONTENT", "视频监控项目（含专线）"),
+            ("SELECTION_CONTENT_DESC", "详见各子项目甄选明细"),
+            ("SELECTION_LIMIT_TOTAL", "370.00"),
+            ("SELECTION_SCOPE", "二级库"),
+            ("SELECTION_INDUSTRY", "DICT"),
+            ("SELECTION_METHOD", "公开甄选"),
+            ("SELECTION_RULE", "综合评分法"),
+            ("SELECTION_STANDARD_PLAN", "否"),
+            ("WINNER_DESC", "供应商A，中选金额300.00元（不含税）"),
+            ("REV_COLLECTION", "详见各子项目"),
+            ("EXP_PAYMENT", "详见各子项目"),
+            ("PROJECT_INVESTMENT_SITUATION", "共2个项目，投入450.00元"),
+            ("PROJECT_REVENUE_SITUATION", "共2个项目，收入480.00元"),
+            ("CONTRACT_DURATION", "详见各子项目"),
+            ("DYNAMIC_PAYBACK_PERIOD", "详见各子项目"),
+            ("IT_INVESTMENT", "400.00"),
+            ("IS_ADVANCE_PAYMENT", "否"),
+            ("IS_SME", "是"),
+            ("IT_BUSINESS_MODE", "一次性"),
+            ("IT_FUNDING_SOURCE", "客户资金"),
+            ("CURR_DATE", "2026年8月3日"),
+            ("A_TOTAL_LIMIT", "370.00"),
+            ("B_TOTAL_EXCL", "300.00"),
+            ("B_TOTAL_INCL", "318.00"),
+            ("C_TOTAL_EXCL", "450.00"),
+            ("C_TOTAL_INCL", "477.00"),
+            ("D_TOTAL_EXCL", "480.00"),
+            ("D_TOTAL_INCL", "508.80"),
+        ] {
+            variables.insert(key.into(), value.into());
+        }
+
+        variables.insert(
+            "TABLE_A".into(),
+            serde_json::json!([
+                {"A_SEQ":"1", "A_NAME":"消防检测项目", "A_FEE_TYPE":"检测服务", "A_TAX_RATE":"6%", "A_LIMIT":"140.00"},
+                {"A_SEQ":"2", "A_NAME":"视频监控项目", "A_FEE_TYPE":"集成服务", "A_TAX_RATE":"6%", "A_LIMIT":"230.00"}
+            ])
+            .to_string(),
+        );
+        variables.insert(
+            "TABLE_B".into(),
+            serde_json::json!([
+                {"B_SEQ":"1", "B_NAME":"消防检测项目", "B_TYPE":"检测服务", "B_EXCL":"120.00", "B_TAX_RATE":"6%", "B_INCL":"127.20"},
+                {"B_SEQ":"2", "B_NAME":"视频监控项目", "B_TYPE":"集成服务", "B_EXCL":"180.00", "B_TAX_RATE":"6%", "B_INCL":"190.80"}
+            ])
+            .to_string(),
+        );
+        variables.insert(
+            "TABLE_C".into(),
+            serde_json::json!([
+                {"C_SEQ":"1", "C_NAME":"消防检测项目", "C_TYPE":"IT成本", "C_EXCL":"150.00", "C_TAX_RATE":"6%", "C_INCL":"159.00"},
+                {"C_SEQ":"2", "C_NAME":"视频监控项目", "C_TYPE":"IT及CT成本", "C_EXCL":"300.00", "C_TAX_RATE":"6%", "C_INCL":"318.00"}
+            ])
+            .to_string(),
+        );
+        variables.insert(
+            "TABLE_D".into(),
+            serde_json::json!([
+                {"D_SEQ":"1", "D_NAME":"消防检测项目", "D_TYPE":"IT收入", "D_EXCL":"180.00", "D_TAX_RATE":"6%", "D_INCL":"190.80"},
+                {"D_SEQ":"2", "D_NAME":"视频监控项目", "D_TYPE":"IT及CT收入", "D_EXCL":"300.00", "D_TAX_RATE":"6%", "D_INCL":"318.00"}
+            ])
+            .to_string(),
+        );
+        variables.insert(
+            "TABLE_E".into(),
+            serde_json::json!([
+                {"E_SEQ":"1", "E_NAME":"消防检测项目", "E_IT_NPV":"8.00%", "E_NPV_RATE":"10.00%", "E_MARGIN":"12.00%"},
+                {"E_SEQ":"2", "E_NAME":"视频监控项目", "E_IT_NPV":"9.00%", "E_NPV_RATE":"11.00%", "E_MARGIN":"13.00%"}
+            ])
+            .to_string(),
+        );
+
+        internal_generate_docx(
+            None,
+            None,
+            None,
+            template_path.to_str().unwrap(),
+            output_path.to_str().unwrap(),
+            &variables,
+        )
+        .expect("generate selection result docx");
+
+        let file = fs::File::open(&output_path).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let mut document_xml = String::new();
+        archive
+            .by_name("word/document.xml")
+            .unwrap()
+            .read_to_string(&mut document_xml)
+            .unwrap();
+
+        assert!(document_xml.contains("消防检测等2个ICT项目"));
+        assert!(document_xml.contains("消防检测项目"));
+        assert!(document_xml.contains("视频监控项目"));
+        assert!(document_xml.contains("400.00"));
+        assert!(document_xml.contains("480.00"));
+        assert!(document_xml.contains("13.00%"));
+        let unresolved = regex::Regex::new(r"\{[A-Z_0-9]+\}").unwrap();
+        assert!(
+            !unresolved.is_match(&document_xml),
+            "unresolved placeholders remain in document.xml"
+        );
+
+        if let Some(path) = keep_output {
+            println!("kept selection-result docx output: {}", path);
+        } else {
+            fs::remove_file(&output_path).ok();
+        }
+    }
 
     #[test]
     fn lifecycle_pptx_fills_vars_and_clones_table_rows() {
@@ -996,12 +1236,12 @@ mod tests {
         variables.insert("PPT_REV_IT_INCL".into(), "170712.00".into());
         variables.insert("PPT_REV_CT_EXCL".into(), "14716.98".into());
         variables.insert("PPT_REV_CT_INCL".into(), "15600.00".into());
-        variables.insert("PPT_COST_TOTAL_EXCL".into(), "158189.00".into());
-        variables.insert("PPT_COST_TOTAL_INCL".into(), "167680.34".into());
+        variables.insert("PPT_COST_TOTAL_EXCL".into(), "158968.24".into());
+        variables.insert("PPT_COST_TOTAL_INCL".into(), "168506.34".into());
         variables.insert("PPT_COST_IT_EXCL".into(), "158189.00".into());
         variables.insert("PPT_COST_IT_INCL".into(), "167680.34".into());
-        variables.insert("PPT_COST_CT_EXCL".into(), "0.00".into());
-        variables.insert("PPT_COST_CT_INCL".into(), "0.00".into());
+        variables.insert("PPT_COST_CT_EXCL".into(), "779.24".into());
+        variables.insert("PPT_COST_CT_INCL".into(), "826.00".into());
         variables.insert(
             "PPT_CONTRACT_DESC".into(),
             "白走路1套、白彭路2套及走温路1套共4套8车道 & 特殊<说明>".into(),
@@ -1016,11 +1256,11 @@ mod tests {
             "TABLE_PPT_REV_IT".into(),
             serde_json::json!([
                 {"PR_IT_CLASS": "通服收入", "PR_IT_TYPE": "ICT-集成", "PR_IT_PERIOD": "12月",
-                 "PR_IT_DETAIL": "集成费", "PR_IT_EXCL": "161049.06", "PR_IT_TAX": "6%",
-                 "PR_IT_INCL": "170712.00", "PR_IT_NOTE": ""},
-                {"PR_IT_CLASS": "", "PR_IT_TYPE": "ICT-维保", "PR_IT_PERIOD": "12月",
-                 "PR_IT_DETAIL": "维保费", "PR_IT_EXCL": "5.66", "PR_IT_TAX": "6%",
-                 "PR_IT_INCL": "6.00", "PR_IT_NOTE": ""}
+                 "PR_IT_DETAIL": "集成费", "PR_IT_EXCL": "80524.53", "PR_IT_TAX": "6%",
+                 "PR_IT_INCL": "85356.00", "PR_IT_NOTE": "拆分第1笔/共2笔"},
+                {"PR_IT_CLASS": "", "PR_IT_TYPE": "ICT-集成", "PR_IT_PERIOD": "12月",
+                 "PR_IT_DETAIL": "集成费", "PR_IT_EXCL": "80524.53", "PR_IT_TAX": "6%",
+                 "PR_IT_INCL": "85356.00", "PR_IT_NOTE": "拆分第2笔/共2笔"}
             ])
             .to_string(),
         );
@@ -1043,8 +1283,10 @@ mod tests {
         variables.insert(
             "TABLE_PPT_COST_CT".into(),
             serde_json::json!([
-                {"PC_CT_CLASS": "CT-大数据", "PC_CT_DETAIL": "", "PC_CT_EXCL": "0.00",
-                 "PC_CT_TAX": "6%", "PC_CT_INCL": "0.00", "PC_CT_NOTE": ""}
+                {"PC_CT_CLASS": "CT-大数据", "PC_CT_DETAIL": "", "PC_CT_EXCL": "389.62",
+                 "PC_CT_TAX": "6%", "PC_CT_INCL": "413.00", "PC_CT_NOTE": "拆分第1笔/共2笔"},
+                {"PC_CT_CLASS": "CT-大数据", "PC_CT_DETAIL": "", "PC_CT_EXCL": "389.62",
+                 "PC_CT_TAX": "6%", "PC_CT_INCL": "413.00", "PC_CT_NOTE": "拆分第2笔/共2笔"}
             ])
             .to_string(),
         );
@@ -1072,18 +1314,23 @@ mod tests {
         assert!(combined.contains("超限运输动态监控检测系统维护项目"));
         assert!(combined.contains("沙坪坝分公司AI云数中心"));
         assert!(combined.contains("2026年6月"));
-        // 表格行克隆：两行 IT 收入都在，CT/投入行也在
-        assert!(combined.contains("ICT-集成"));
-        assert!(combined.contains("ICT-维保"));
-        assert!(combined.contains("161049.06"));
-        assert!(combined.contains("5.66"));
+        // 表格行克隆：同一科目的两笔拆分均生成独立行，CT/投入行也在
+        assert_eq!(combined.matches("ICT-集成").count(), 2);
+        assert_eq!(combined.matches("80524.53").count(), 2);
+        assert!(combined.contains("拆分第1笔/共2笔"));
+        assert!(combined.contains("拆分第2笔/共2笔"));
         assert!(combined.contains("CT-大数据"));
         assert!(combined.contains("IT-建设"));
+        assert_eq!(combined.matches("389.62").count(), 2);
         // 汇总与指标
         assert!(combined.contains("175766.04"));
         assert!(combined.contains("186312.00"));
         assert!(combined.contains("11.14%"));
         assert!(combined.contains("16161.42"));
+        // 成本表新增明细行时，仅下移评分标题与说明，底部指标坐标保持不变
+        assert!(combined.contains(r#"y="5209189""#));
+        assert!(combined.contains(r#"y="5480345""#));
+        assert!(combined.contains(r#"y="6028690""#));
         // XML 转义
         assert!(combined.contains("&amp; 特殊&lt;说明&gt;"));
         // 未提供的占位符被清空，且不残留任何 {VAR}

@@ -4,7 +4,7 @@ import { useRef } from "react";
 import AppIcon from "../components/icons/AppIcon";
 import TemplateForms from "./TemplateForms";
 import { useNavigationStore } from "../store/useNavigationStore";
-import { validateFinancialData, type ValidationReport } from "../lib/financeValidator";
+import { validateFinancialData, type TaxGroupSplitSuggestion, type ValidationReport } from "../lib/financeValidator";
 import { SCHEME_STAGE_OPTIONS, getSchemeStageLabel, type SchemeStage } from "../lib/schemeStage";
 import { useAiContextStore } from "../store/useAiContextStore";
 import { AI_CONTEXT_KEY, buildAiContextKey } from "../utils/aiContextKeys";
@@ -24,6 +24,7 @@ import { useWorkspaceStore } from "../store/useWorkspaceStore";
 import { useProjectStore } from "../store/useProjectStore";
 import { useSaveStore } from "../store/useSaveStore";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
+import { useLatestCallback } from "../hooks/useLatestCallback";
 import { domainSaveService } from "../services/domainSaveService";
 import type { LifecycleStatePayload, CashflowStatePayload } from "../services/domainSaveService";
 import {
@@ -55,8 +56,8 @@ import {
 import {
   SubjectRoleActions,
   SelectedSubjectRoleSummary,
-  scrollToSubject,
 } from "../components/IctSubjectRoleComponents";
+import { scrollToSubject } from "../lib/ictSubjectNavigation";
 import IctSubjectFundingPlanEditor from "../components/IctSubjectFundingPlanEditor";
 import ProjectPresetProjectActions from "../components/project-presets/ProjectPresetProjectActions";
 import {
@@ -72,9 +73,20 @@ import {
   SUBJECT_FUNDING_PLAN_MIGRATION_VERSION,
   type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
+import { exclFromIncl, normalizeTaxPairFromIncl, resolveSerializedTaxSplitParts, restoreTaxSplitParts, roundMoneyHalfUp, splitInclAmount, type TaxSplitPart } from "../lib/taxAmount";
+import { useCalcPreferencesStore } from "../store/useCalcPreferencesStore";
+import {
+  DEFAULT_SELECTION_FEE_TARGET_SUBJECT_CODE,
+  SELECTION_FEE_TARGET_SUBJECTS,
+} from "../lib/selectionFee";
 
 const restoreCustomSubjectName = (item: any) => normalizeCustomSubjectName(item?.customSubjectName ?? item?.custom_subject_name ?? "");
 const restoreBillingSubjectName = (item: any) => normalizeCustomSubjectName(item?.billingSubjectName ?? item?.billing_subject_name ?? "");
+const SELECTION_FEE_TARGET_GROUPS = [
+  { groupId: "costIt", label: "IT/移动云投入" },
+  { groupId: "costCt", label: "CT投入" },
+  { groupId: "costMix", label: "非IT/CT投入与综合类成本" },
+] as const;
 
 const syncRestoredSubjectNamePair = (
   leftItem: any,
@@ -123,6 +135,35 @@ const buildFinancialStateHash = (data: any) => JSON.stringify({
   costMix: Object.fromEntries(Object.entries(data.costMix || {}).map(([key, item]) => [key, taxItemFinancialPart(item)])),
 });
 
+const resolveValidationSubjectDefinition = (
+  side: ValidationReport["side"],
+  subjectKey: string,
+): IctSubjectDefinition | null => {
+  const separatorIndex = subjectKey.indexOf(".");
+  if (separatorIndex < 0) return null;
+  const category = subjectKey.slice(0, separatorIndex);
+  const itemKey = subjectKey.slice(separatorIndex + 1);
+  const groupId = side === "income"
+    ? category === "it"
+      ? "revIt"
+      : category === "ct"
+        ? "revCt"
+        : category === "non_it_ct"
+          ? "revNonItCt"
+          : null
+    : category === "it"
+      ? "costIt"
+      : category === "ct"
+        ? "costCt"
+        : category === "mix"
+          ? "costMix"
+          : null;
+  if (!groupId) return null;
+  return ICT_SUBJECT_DEFINITIONS.find(
+    subject => subject.groupId === groupId && subject.key === itemKey,
+  ) || null;
+};
+
 const formatReverseCurrency = (value: number) =>
   new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY" }).format(value);
 
@@ -166,6 +207,7 @@ export default function IctLifecycle() {
   const workspaceId = useWorkspaceStore(state => state.workspaceId);
   const state = useIctState();
   const calculations = useIctCalculations(state);
+  const taxInclAutoFix = useCalcPreferencesStore(s => s.taxInclAutoFix);
   const restoreSelectionFeeState = calculations.restoreSelectionFeeState;
   const markDirty = useSaveStore(saveState => saveState.markDirty);
   const clearDirty = useSaveStore(saveState => saveState.clearDirty);
@@ -232,13 +274,22 @@ export default function IctLifecycle() {
 
     const applyTaxItem = (key: string, item: any) => {
       if (!item) return;
+      const incl = restoreTaxItemNumber(item, "incl_tax", "incl", 0);
+      const tax = restoreTaxItemNumber(item, "tax_rate", "tax", 0);
       const customSubjectName = restoreCustomSubjectName(item);
       const billingSubjectName = restoreBillingSubjectName(item);
+      const splitParts = resolveSerializedTaxSplitParts(
+        item?.split_parts ?? item?.splitParts,
+        merged[key]?.split_parts ?? merged[key]?.splitParts,
+        incl,
+        tax,
+      );
       merged[key] = {
-        incl_tax: String(item.incl ?? item.incl_tax ?? 0),
-        tax_rate: String(item.tax ?? item.tax_rate ?? 0),
+        incl_tax: String(incl),
+        tax_rate: String(tax),
         ...(customSubjectName ? { custom_subject_name: customSubjectName } : {}),
         ...(billingSubjectName ? { billing_subject_name: billingSubjectName } : {}),
+        ...(splitParts ? { split_parts: splitParts } : {}),
       };
     };
 
@@ -294,15 +345,18 @@ export default function IctLifecycle() {
       const explicitExcl = restoreTaxItemNumber(item, "excl_tax", "excl", Number.NaN);
       const excl = Number.isFinite(explicitExcl)
         ? explicitExcl
-        : incl === 0
-          ? 0
-          : Number((incl / (1 + tax / 100)).toFixed(2));
+        : exclFromIncl(incl, tax);
+      // 拆分明细随存档还原；不含税以两笔之和为准（逐行闭合口径）。
+      const splitParts = restoreTaxSplitParts(item?.split_parts ?? item?.splitParts, incl, tax);
       return {
         incl,
         tax,
-        excl,
+        excl: splitParts
+          ? roundMoneyHalfUp(splitParts.reduce((sum, part) => sum + part.excl, 0))
+          : excl,
         customSubjectName: restoreCustomSubjectName(item),
 	        billingSubjectName: restoreBillingSubjectName(item),
+	        ...(splitParts ? { splitParts } : {}),
 	      };
 	    };
 	    const restoreSubjectItem = (subjectCode: string, item: any) =>
@@ -414,7 +468,7 @@ export default function IctLifecycle() {
     restoreSelectionFeeState(params);
   }, [state, restoreSelectionFeeState]);
 
-  const loadProjectContext = useCallback(async (pId: string | null, sId?: string | null) => {
+  const loadProjectContext = useLatestCallback(async (pId: string | null, sId?: string | null) => {
     const requestId = ++projectLoadRequestRef.current;
     const targetProjectId = pId || null;
     const targetSchemeId = sId || null;
@@ -609,11 +663,11 @@ export default function IctLifecycle() {
       }
       console.error("Failed to load project context:", err);
     }
-  }, [state, restoreSelectionFeeState, fillCalculatorState, buildHydrationInput, isWorkspaceReady]);
+  });
 
   useEffect(() => {
-    loadProjectContext(activeProjectId, activeSchemeId);
-  }, [activeProjectId, activeSchemeId]);
+    void loadProjectContext(activeProjectId, activeSchemeId);
+  }, [activeProjectId, activeSchemeId, loadProjectContext]);
 
   const getSubjectFundingBlockingMessage = useCallback((actionLabel: string) => {
     if (calculations.subjectFundingCoverage.valid) {
@@ -860,9 +914,7 @@ export default function IctLifecycle() {
         const explicitExcl = restoreTaxItemNumber(item, "excl_tax", "excl", Number.NaN);
         const excl = Number.isFinite(explicitExcl)
           ? explicitExcl
-          : incl === 0
-            ? 0
-            : Number((incl / (1 + tax / 100)).toFixed(2));
+          : exclFromIncl(incl, tax);
         return {
           incl,
           tax,
@@ -976,6 +1028,10 @@ export default function IctLifecycle() {
     setIgnoredTailValue,
     loadTemplates,
     updateTaxItem,
+    commitTaxItemIncl,
+    splitTaxItemIncl,
+    applyTaxItemSplitParts,
+    cancelTaxItemSplit,
     clearFinancialSubjects,
     updateTaxItemCustomSubjectName,
     updateTaxItemBillingSubjectName,
@@ -989,6 +1045,7 @@ export default function IctLifecycle() {
     selFee,
     selLimit,
     selectionFeeAnchor, setSelectionFeeAnchor,
+    selectionFeeTargetSubjectCode, setSelectionFeeTargetSubjectCode,
     revMode, setRevMode,
     revTargetType, setRevTargetType,
     revTargetValue, setRevTargetValue,
@@ -1093,6 +1150,15 @@ export default function IctLifecycle() {
   const investmentBalanceSubjects = useMemo(
     () => balanceSubjectItems.filter(row => row.subject.side === "cost"),
     [balanceSubjectItems],
+  );
+
+  const selectedSelectionFeeTarget = useMemo(
+    () => investmentBalanceSubjects.find(
+      row => row.subject.subjectCode === selectionFeeTargetSubjectCode,
+    ) ?? investmentBalanceSubjects.find(
+      row => row.subject.subjectCode === DEFAULT_SELECTION_FEE_TARGET_SUBJECT_CODE,
+    ) ?? null,
+    [investmentBalanceSubjects, selectionFeeTargetSubjectCode],
   );
 
   const revenueBalanceEvaluation = useMemo(
@@ -1338,8 +1404,26 @@ export default function IctLifecycle() {
     state.subjectFundingPlans,
   ]);
 
+  // 科目金额及拆分明细同时属于 lifecycle 输入、cashflow assumptions 和正式效益方案。
+  // 三个作用域必须共同变脏，避免只保存 cashflow 后快照仍丢失 split_parts。
   useEffect(() => {
     if (isHydratingRef.current || !activeProject?.id) return;
+    markDirty("lifecycle");
+    markDirty("benefit-analysis");
+  }, [
+    activeProject?.id,
+    markDirty,
+    state.revIt,
+    state.revCt,
+    state.revNonItCt,
+    state.costIt,
+    state.costCt,
+    state.costMix,
+  ]);
+
+  useEffect(() => {
+    if (isHydratingRef.current || !activeProject?.id) return;
+    markDirty("lifecycle");
     markDirty("benefit-analysis");
   }, [
     activeProject?.id,
@@ -1350,7 +1434,19 @@ export default function IctLifecycle() {
     selFee,
     selLimit,
     selectionFeeAnchor,
+    selectionFeeTargetSubjectCode,
   ]);
+
+  const completeTabSwitch = (tab: string, templateName?: string) => {
+    setActiveTab(tab as any);
+    if (templateName) {
+      setSelectedTemplate(templateName);
+      setActiveModule(buildAiContextKey('ict', 'template', templateName));
+    } else {
+      setActiveModule(AI_CONTEXT_KEY.ICT_CORE);
+    }
+    setPendingTab(null);
+  };
 
   const handleTabSwitch = async (tab: string, templateName?: string, forceIgnore = false) => {
     if (templateName && templateName !== selectedTemplate && dirtyScopes.includes("template-forms")) {
@@ -1409,12 +1505,42 @@ export default function IctLifecycle() {
       setIgnoredDataHash(currentHash);
     }
 
-    setActiveTab(tab as any);
-    if (templateName) {
-      setSelectedTemplate(templateName);
-      setActiveModule(buildAiContextKey('ict', 'template', templateName));
-    } else {
-      setActiveModule(AI_CONTEXT_KEY.ICT_CORE);
+    completeTabSwitch(tab, templateName);
+  };
+
+  const handleApplyReconciliationSplit = (
+    errorIndex: number,
+    error: ValidationReport,
+    suggestion: TaxGroupSplitSuggestion,
+  ) => {
+    const subject = resolveValidationSubjectDefinition(error.side, suggestion.subjectKey);
+    if (!subject) {
+      alert("无法定位拆分建议对应的科目，请返回手工平账。");
+      return;
+    }
+
+    const applied = applyTaxItemSplitParts(subject.groupId, subject.key, suggestion.parts);
+    if (!applied) {
+      alert("当前科目金额或税率已经变化，原拆分建议已失效，请重新进入校验。");
+      setShowReconciliationModal(false);
+      return;
+    }
+
+    const remainingErrors = reconciliationErrors.filter((_, index) => index !== errorIndex);
+    setReconciliationErrors(remainingErrors);
+    setCurrentTotalDifference(
+      remainingErrors
+        .reduce((sum, item) => sum + Number(item.difference || 0), 0)
+        .toFixed(2),
+    );
+    setShowConfirmIgnore(false);
+
+    if (remainingErrors.length > 0) return;
+
+    setShowReconciliationModal(false);
+    const continuation = pendingTab;
+    if (continuation) {
+      completeTabSwitch(continuation.tab, continuation.template);
     }
   };
 
@@ -1701,6 +1827,16 @@ export default function IctLifecycle() {
           const itemErr = reconciliationErrors.find(e => e.key === `${groupId}.${item.key}`);
           const currentItem = groupState[item.key];
           const autoBalanced = isSubjectAutoBalanced(item);
+          // 已拆分科目按两笔子金额与业务系统逐笔闭合，不再对合计做尾差检查。
+          const splitParts: TaxSplitPart[] | null = currentItem?.splitParts?.length ? currentItem.splitParts : null;
+          // 财务口径检查：含税录入值若不可精确表示（round(excl×(1+r)) ≠ 录入值），提示并在失焦后归一。
+          const inclPair = !splitParts && Number(currentItem?.incl) > 0
+            ? normalizeTaxPairFromIncl(currentItem.incl, currentItem.tax)
+            : null;
+          const inclAdjust = inclPair?.adjusted ? inclPair : null;
+          const splitPreview = inclAdjust && !autoBalanced
+            ? splitInclAmount(currentItem.incl, currentItem.tax)
+            : null;
           const customSubjectName = getSubjectCustomName(currentItem);
           const billingSubjectName = getSubjectBillingName(currentItem);
           const displayName = getSubjectExcelDisplayName(item, currentItem);
@@ -1766,16 +1902,83 @@ export default function IctLifecycle() {
                 />
               </div>
               <div className="flex gap-2">
-                <input type="number" placeholder="含税" readOnly={autoBalanced} title={autoBalanced ? "该金额由总金额自动计算" : undefined} className={`w-full px-3 py-2 rounded-md outline-none text-sm ${autoBalanced ? "bg-muted text-secondary-foreground cursor-not-allowed" : "bg-card border border-input"}`} value={autoBalanced ? currentItem.incl : currentItem.incl === 0 ? "" : currentItem.incl} onChange={e => {
-                  if (!autoBalanced) updateTaxItem(groupId, item.key, 'incl', Number(e.target.value));
+                <input type="number" placeholder="含税" readOnly={autoBalanced || !!splitParts} title={autoBalanced ? "该金额由总金额自动计算" : splitParts ? "已拆分为两笔，如需修改请先取消拆分" : undefined} className={`w-full px-3 py-2 rounded-md outline-none text-sm ${autoBalanced || splitParts ? "bg-muted text-secondary-foreground cursor-not-allowed" : `bg-card border ${inclAdjust ? "border-amber-500 ring-1 ring-amber-400" : "border-input"}`}`} value={autoBalanced ? currentItem.incl : currentItem.incl === 0 ? "" : currentItem.incl} onChange={e => {
+                  if (!autoBalanced && !splitParts) updateTaxItem(groupId, item.key, 'incl', Number(e.target.value));
+                }} onBlur={() => {
+                  if (!autoBalanced && !splitParts) commitTaxItemIncl(groupId, item.key);
                 }} />
                 <input type="number" placeholder="税率" className="w-20 bg-card border border-input px-3 py-2 rounded-md outline-none text-sm" value={currentItem.tax} onChange={e => updateTaxItem(groupId, item.key, 'tax', Number(e.target.value))} />
-                <input type="number" placeholder="不含税" readOnly={autoBalanced} title={autoBalanced ? "该金额由总金额自动计算" : undefined} className={`w-full px-3 py-2 rounded-md outline-none text-sm ${autoBalanced ? "bg-muted text-secondary-foreground cursor-not-allowed" : `bg-card border focus:border-ring ${itemErr ? 'border-red-500 ring-1 ring-red-500' : 'border-input'}`}`} value={autoBalanced ? currentItem.excl : currentItem.excl === 0 ? "" : currentItem.excl} onChange={e => {
-                  if (!autoBalanced) updateTaxItem(groupId, item.key, 'excl', Number(e.target.value));
+                <input type="number" placeholder="不含税" readOnly={autoBalanced || !!splitParts} title={autoBalanced ? "该金额由总金额自动计算" : splitParts ? "已拆分为两笔，不含税为两笔之和" : undefined} className={`w-full px-3 py-2 rounded-md outline-none text-sm ${autoBalanced || splitParts ? "bg-muted text-secondary-foreground cursor-not-allowed" : `bg-card border focus:border-ring ${itemErr ? 'border-red-500 ring-1 ring-red-500' : 'border-input'}`}`} value={autoBalanced ? currentItem.excl : currentItem.excl === 0 ? "" : currentItem.excl} onChange={e => {
+                  if (!autoBalanced && !splitParts) updateTaxItem(groupId, item.key, 'excl', Number(e.target.value));
                 }} />
               </div>
               {autoBalanced && <span className="text-[10px] font-bold text-primary">该科目金额由总金额自动计算，税率可继续编辑。</span>}
-              {itemErr && <span className="text-[10px] text-red-500 font-bold">校验失败：偏离 {itemErr.difference} 元，要求：{itemErr.expectedExcl} 元</span>}
+              {inclAdjust && (
+                <div className="rounded-md border border-amber-300 bg-amber-50/60 px-2.5 py-1.5 flex flex-col gap-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500 text-white text-[10px] font-bold tabular-nums shrink-0">
+                      尾差 {inclAdjust.incl > inclAdjust.enteredIncl ? "+" : ""}{roundMoneyHalfUp(inclAdjust.incl - inclAdjust.enteredIncl).toFixed(2)} 元
+                    </span>
+                    <span className="text-[10px] text-amber-700 font-semibold tabular-nums">
+                      录入 {inclAdjust.enteredIncl.toFixed(2)} → 业务系统 {inclAdjust.incl.toFixed(2)}（按不含税 {inclAdjust.excl.toFixed(2)} 反推）
+                    </span>
+                  </div>
+                  {autoBalanced ? (
+                    <span className="text-[10px] text-secondary-foreground">该科目由总金额自动计算，可调整总金额分配，或在「设置 → 测算行为」开启自动修正。</span>
+                  ) : (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        className="text-[10px] font-bold px-2 py-0.5 rounded border border-amber-400 text-amber-700 hover:bg-amber-100 tabular-nums"
+                        onClick={() => updateTaxItem(groupId, item.key, 'incl', inclAdjust.incl)}
+                      >
+                        改为 {inclAdjust.incl.toFixed(2)}
+                      </button>
+                      {splitPreview && (
+                        <button
+                          type="button"
+                          className="text-[10px] font-bold px-2 py-0.5 rounded border border-amber-400 text-amber-700 hover:bg-amber-100 tabular-nums"
+                          onClick={() => splitTaxItemIncl(groupId, item.key)}
+                        >
+                          拆分两笔 {splitPreview.map(part => part.incl.toFixed(2)).join(" + ")}
+                        </button>
+                      )}
+                      <span className="text-[10px] text-secondary-foreground">
+                        {taxInclAutoFix ? "失焦后将自动修正" : "「设置 → 测算行为」可自动修正"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {splitParts && (
+                <div className="rounded-md border border-emerald-200 bg-emerald-50/60 px-2.5 py-1.5 flex flex-col gap-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold text-emerald-700">已拆两笔 · 每笔与业务系统口径闭合</span>
+                    <button
+                      type="button"
+                      className="text-[10px] underline text-primary shrink-0"
+                      onClick={() => cancelTaxItemSplit(groupId, item.key)}
+                    >
+                      取消拆分
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-[auto_1fr_1fr] gap-x-3 gap-y-0.5 items-baseline max-w-xs">
+                    <span />
+                    {splitParts.map((_, index) => (
+                      <span key={index} className="text-[10px] text-secondary-foreground text-right">第 {index + 1} 笔</span>
+                    ))}
+                    <span className="text-[10px] text-secondary-foreground">含税</span>
+                    {splitParts.map((part, index) => (
+                      <span key={index} className="text-sm font-bold text-emerald-700 tabular-nums text-right">{part.incl.toFixed(2)}</span>
+                    ))}
+                    <span className="text-[10px] text-secondary-foreground">不含税</span>
+                    {splitParts.map((part, index) => (
+                      <span key={index} className="text-sm font-bold text-emerald-700 tabular-nums text-right">{part.excl.toFixed(2)}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {itemErr && <span className="text-[10px] text-red-500 font-bold">校验失败：{itemErr.field === 'incl' ? '含税与财务口径' : '不含税'}偏离 {itemErr.difference} 元，要求：{itemErr.expectedExcl} 元</span>}
               <IctSubjectFundingPlanEditor
                 subject={item}
                 item={currentItem}
@@ -1910,12 +2113,38 @@ export default function IctLifecycle() {
            </div>
            <input type="number" aria-label="甄选最高限价" value={selLimit} onChange={e => handleSelFeeChange('limit', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none text-foreground font-bold" />
         </div>
+        <div className="flex flex-col gap-1.5 rounded-lg bg-muted/35 p-2.5">
+          <label className="text-xs font-semibold text-secondary-foreground" htmlFor="selection-fee-target-subject">
+            写入投入科目
+          </label>
+          <select
+            id="selection-fee-target-subject"
+            aria-label="甄选限价写入投入科目"
+            value={selectionFeeTargetSubjectCode}
+            onChange={event => setSelectionFeeTargetSubjectCode(event.target.value)}
+            className="bg-card border border-input px-3 py-2 rounded-md text-xs font-semibold text-foreground outline-none"
+          >
+            {SELECTION_FEE_TARGET_GROUPS.map(group => (
+              <optgroup key={group.groupId} label={group.label}>
+                {SELECTION_FEE_TARGET_SUBJECTS.filter(subject => subject.groupId === group.groupId).map(subject => {
+                  const row = investmentBalanceSubjects.find(item => item.subject.subjectCode === subject.subjectCode);
+                  return <option key={subject.subjectCode} value={subject.subjectCode}>{getSubjectExcelDisplayName(subject, row?.item)}</option>;
+                })}
+              </optgroup>
+            ))}
+          </select>
+          <span className="text-[11px] leading-relaxed text-secondary-foreground">
+            目标科目写入“最高限价－甄选服务费”，甄选服务费由供应商承担并单独写入“中标服务费”。
+          </span>
+        </div>
         <button
           onClick={applySelectionLimit}
           disabled={!selLimit}
           className="mt-2 bg-primary hover:bg-primary/95 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed font-bold py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all active:scale-[0.98] w-full text-xs flex items-center justify-center gap-1.5"
         >
-          <AppIcon name="download" size={14} /> 填入集成服务
+          <AppIcon name="download" size={14} /> 填入{selectedSelectionFeeTarget
+            ? getSubjectExcelDisplayName(selectedSelectionFeeTarget.subject, selectedSelectionFeeTarget.item)
+            : "投入科目"}
         </button>
       </div>
     </>
@@ -2264,6 +2493,7 @@ export default function IctLifecycle() {
                   amount: selFee,
                   limit: selLimit,
                   anchor: selectionFeeAnchor,
+                  targetSubjectCode: selectionFeeTargetSubjectCode,
                 },
               }}
               metrics={metrics}
@@ -2277,8 +2507,11 @@ export default function IctLifecycle() {
               projectId={activeProject?.id || undefined}
               currentSchemeLabel={pendingNewSchemeName || activeScheme?.name || "默认方案"}
               fetchPreSelectionCostIt={fetchPreSelectionCostIt}
+              preSchemeId={preScheme?.id}
               preSchemeName={preScheme?.name}
               onProjectPresetBindingsChange={handleTemplatePresetBindingsChange}
+              currentSchemeId={activeScheme?.id}
+              currentSchemeStage={activeScheme?.stage}
             />
           </div>
 
@@ -2314,11 +2547,11 @@ export default function IctLifecycle() {
                   </div>
                   <div className="grid grid-cols-3 gap-4 mt-2 text-sm">
                     <div className="flex flex-col gap-1">
-                      <span className="text-secondary-foreground text-xs">录入不含税</span>
+                      <span className="text-secondary-foreground text-xs">{err.field === 'incl' ? '录入含税' : '录入不含税'}</span>
                       <span className="font-bold">{err.actualExcl} 元</span>
                     </div>
                     <div className="flex flex-col gap-1">
-                      <span className="text-secondary-foreground text-xs">预期绝对值</span>
+                      <span className="text-secondary-foreground text-xs">{err.field === 'incl' ? '财务口径含税（不含税×(1+税率)）' : '预期不含税'}</span>
                       <span className="font-bold text-primary">{err.expectedExcl} 元</span>
                     </div>
                     <div className="flex flex-col gap-1">
@@ -2326,6 +2559,67 @@ export default function IctLifecycle() {
                       <span className="font-bold text-red-500">{err.difference} 元</span>
                     </div>
                   </div>
+                  {err.splitSuggestions?.length ? (
+                    <div className="mt-2 rounded-lg bg-primary-soft/70 p-3 flex flex-col gap-2">
+                      <div>
+                        <div className="text-sm font-bold text-primary">可行的科目拆分建议</div>
+                        <p className="text-[11px] text-secondary-foreground mt-0.5">
+                          以下方案均保持科目含税总额和税率不变，并已验证拆分后本税率组尾差为 0.00 元。
+                        </p>
+                      </div>
+                      {err.splitSuggestions.map((suggestion, suggestionIndex) => {
+                        const subject = resolveValidationSubjectDefinition(err.side, suggestion.subjectKey);
+                        const adjustmentPrefix = Number(suggestion.exclAdjustment) > 0 ? "+" : "";
+                        return (
+                          <div
+                            key={`${suggestion.subjectKey}-${suggestionIndex}`}
+                            className="rounded-md bg-card/80 px-3 py-2.5 shadow-sm"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-xs font-bold text-foreground">
+                                {suggestionIndex === 0 ? "优先建议" : `备选 ${suggestionIndex}`} · {subject?.standardSubjectName || suggestion.subjectKey}
+                              </span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[10px] text-secondary-foreground numeric-value">
+                                  不含税调整 {adjustmentPrefix}{suggestion.exclAdjustment} 元
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApplyReconciliationSplit(i, err, suggestion)}
+                                  className="rounded-md bg-primary px-2.5 py-1.5 text-[10px] font-bold text-primary-foreground shadow-sm hover:bg-primary/90"
+                                >
+                                  {reconciliationErrors.length === 1 ? "应用并继续" : "应用此拆分"}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                              <span className="text-secondary-foreground">原科目</span>
+                              <span className="font-semibold numeric-value">含税 {suggestion.originalIncl} 元</span>
+                              <span className="text-secondary-foreground">建议拆为</span>
+                              <span className="font-semibold text-primary numeric-value">
+                                含税 {suggestion.parts.map(part => part.incl.toFixed(2)).join(" + ")} 元
+                              </span>
+                              <span className="text-secondary-foreground">对应不含税</span>
+                              <span className="font-semibold numeric-value">
+                                {suggestion.parts.map(part => part.excl.toFixed(2)).join(" + ")} 元
+                              </span>
+                              <span className="text-secondary-foreground">税率组尾差</span>
+                              <span className="font-semibold numeric-value">
+                                {suggestion.differenceBefore} → {suggestion.differenceAfter} 元
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <p className="text-[10px] text-secondary-foreground leading-relaxed">
+                        仅在该科目确有两笔业务、开票或入账明细时采用。点击应用属于用户确认操作；系统会保存拆分明细，不会改变该科目含税总额和税率。
+                      </p>
+                    </div>
+                  ) : err.key === "[汇总误差-公式C1]" ? (
+                    <div className="mt-2 rounded-lg bg-muted/70 px-3 py-2 text-[11px] text-secondary-foreground leading-relaxed">
+                      未找到能在保持科目含税总额、税率不变且每笔独立闭合的前提下，将本组尾差精确归零的单科目两笔拆分方案。系统不会为了放行而生成近似建议。
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

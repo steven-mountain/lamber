@@ -20,6 +20,13 @@ import {
   type IctSubjectDefinition,
 } from "../lib/ictSubjectCatalog";
 import {
+  calculateSelectionFeeWriteAmounts,
+  DEFAULT_SELECTION_FEE_TARGET_SUBJECT_CODE,
+  normalizeSelectionFeeTargetSubjectCode,
+  resolveSelectionFeeTargetSubject,
+  SELECTION_FEE_SERVICE_SUBJECT_CODE,
+} from "../lib/selectionFee";
+import {
   serializeBalanceAllocationRule,
 } from "../lib/ictBalanceAllocation";
 import {
@@ -38,6 +45,9 @@ import {
   type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
 import { buildIctFundingCashflowFields } from "../lib/ictCalculationInput";
+import { useLatestCallback } from "./useLatestCallback";
+import { normalizeTaxPairFromIncl, serializeTaxSplitParts } from "../lib/taxAmount";
+import { isTaxInclAutoFixEnabled } from "../store/useCalcPreferencesStore";
 import {
   buildCostReverseFeasibilityProbeAmounts,
   selectHighestMetricProbe,
@@ -108,6 +118,11 @@ const serializeTaxItemForPayload = (item: TaxItem) => {
     tax_rate: String(item.tax),
     ...(customSubjectName ? { custom_subject_name: customSubjectName } : {}),
     ...(billingSubjectName ? { billing_subject_name: billingSubjectName } : {}),
+    ...(item.splitParts?.length
+      ? {
+          split_parts: serializeTaxSplitParts(item.splitParts),
+        }
+      : {}),
   };
 };
 
@@ -130,6 +145,9 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   const [selFee, setSelFee] = useState<string>("");
   const [selLimit, setSelLimit] = useState<string>("");
   const [selectionFeeAnchor, setSelectionFeeAnchorState] = useState<SelectionFeeAnchor>("quote");
+  const [selectionFeeTargetSubjectCode, setSelectionFeeTargetSubjectCodeState] = useState<string>(
+    DEFAULT_SELECTION_FEE_TARGET_SUBJECT_CODE,
+  );
 
   const buildSelectionFeePayload = () => {
     const quote = normalizeSelectionFeeText(selQuote);
@@ -137,7 +155,9 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     const actualCost = normalizeSelectionFeeText(selActualCost);
     const fee = normalizeSelectionFeeText(selFee);
     const limit = normalizeSelectionFeeText(selLimit);
-    const hasSelectionFeeData = [quote, actualCost, fee, limit].some(value => value.length > 0);
+    const targetSubjectCode = normalizeSelectionFeeTargetSubjectCode(selectionFeeTargetSubjectCode);
+    const hasSelectionFeeData = [quote, actualCost, fee, limit].some(value => value.length > 0)
+      || targetSubjectCode !== DEFAULT_SELECTION_FEE_TARGET_SUBJECT_CODE;
 
     return hasSelectionFeeData
       ? {
@@ -147,6 +167,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
           selection_fee_amount: fee,
           selection_fee_limit: limit,
           selection_fee_anchor: selectionFeeAnchor,
+          selection_fee_target_subject_code: targetSubjectCode,
         }
       : {};
   };
@@ -162,11 +183,18 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     setSelFee(normalizeSelectionFeeText(payload?.selection_fee_amount));
     setSelLimit(normalizeSelectionFeeText(payload?.selection_fee_limit));
     setSelectionFeeAnchorState(payload?.selection_fee_anchor === "limit" ? "limit" : "quote");
+    setSelectionFeeTargetSubjectCodeState(
+      normalizeSelectionFeeTargetSubjectCode(payload?.selection_fee_target_subject_code),
+    );
   }, []);
 
   const setSelectionFeeAnchor = (anchor: SelectionFeeAnchor) => {
     selectionFeeRequestSeqRef.current += 1;
     setSelectionFeeAnchorState(anchor);
+  };
+
+  const setSelectionFeeTargetSubjectCode = (subjectCode: string) => {
+    setSelectionFeeTargetSubjectCodeState(normalizeSelectionFeeTargetSubjectCode(subjectCode));
   };
 
   // --- Smart Reverse State ---
@@ -326,7 +354,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     };
   };
 
-  const getInputDataPayload = () => buildInputDataPayload();
+  const getInputDataPayload = useLatestCallback(() => buildInputDataPayload());
 
   const performCalculation = useCallback(async () => {
     // Note: we no longer block the whole calculation when coverage is invalid.
@@ -344,7 +372,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     } catch (e) {
       console.error(e);
     }
-  }, [state, subjectFundingCoverage]);
+  }, [getInputDataPayload]);
 
   // Recalculate whenever state variables change
   useEffect(() => {
@@ -369,15 +397,10 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     cashflow: includeCalculated ? (overrides?.cashflow ?? cashflowTable) : [],
     ...(overrides?.extra ?? {}),
   }), [
-    state,
+    getInputDataPayload,
+    state.projectBackground,
     metrics,
     cashflowTable,
-    selQuote,
-    selMarkup,
-    selActualCost,
-    selFee,
-    selLimit,
-    selectionFeeAnchor,
   ]);
 
   useEffect(() => {
@@ -389,7 +412,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     state.discountRate, state.projectYears, state.cashflowModel,
     state.distRev, state.distCost, state.segmentValueMode, state.cashflowSegments,
     state.ignoredTailValue, state.balanceAllocation, state.cashflowCalculationSource, state.subjectFundingPlans,
-    selQuote, selMarkup, selActualCost, selFee, selLimit, selectionFeeAnchor,
+    selQuote, selMarkup, selActualCost, selFee, selLimit, selectionFeeAnchor, selectionFeeTargetSubjectCode,
     updateData, buildAiContextPayload
   ]);
 
@@ -413,7 +436,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     state.propertyRights, state.discountRate, state.projectYears, state.cashflowModel,
     state.distRev, state.distCost, state.segmentValueMode, state.cashflowSegments,
     state.ignoredTailValue, state.balanceAllocation, state.cashflowCalculationSource, state.subjectFundingPlans,
-    selQuote, selMarkup, selActualCost, selFee, selLimit, selectionFeeAnchor,
+    selQuote, selMarkup, selActualCost, selFee, selLimit, selectionFeeAnchor, selectionFeeTargetSubjectCode,
     updateData, buildAiContextPayload
   ]);
 
@@ -451,12 +474,72 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   };
 
   const applySelectionLimit = () => {
-    if (selLimit) {
-      state.updateTaxItem('costIt', 'integration', 'incl', Number(selLimit));
-      if (selFee) {
-        state.updateTaxItem('costIt', 'bidding', 'incl', Number(selFee));
+    if (!selLimit) return;
+
+    const targetSubject = resolveSelectionFeeTargetSubject(selectionFeeTargetSubjectCode);
+    const serviceFeeSubject = ICT_SUBJECT_DEFINITIONS.find(
+      subject => subject.subjectCode === SELECTION_FEE_SERVICE_SUBJECT_CODE,
+    );
+    if (!serviceFeeSubject) {
+      return alert("未找到中标服务费科目，已停止写入。");
+    }
+
+    const resolveCostItem = (subject: IctSubjectDefinition): TaxItem | null => {
+      if (subject.groupId === "costIt") return state.costIt[subject.key as keyof typeof state.costIt] || null;
+      if (subject.groupId === "costCt") return state.costCt[subject.key as keyof typeof state.costCt] || null;
+      if (subject.groupId === "costMix") return state.costMix[subject.key as keyof typeof state.costMix] || null;
+      return null;
+    };
+    const targetItem = resolveCostItem(targetSubject);
+    const serviceFeeItem = resolveCostItem(serviceFeeSubject);
+    const writeAmounts = calculateSelectionFeeWriteAmounts(selLimit, selFee);
+    if (!writeAmounts.valid) {
+      return alert(writeAmounts.message || "甄选测算金额无法写入。");
+    }
+
+    // 财务口径检查：未开启自动修正时，不可精确表示的含税金额明确拒绝写入。
+    if (!isTaxInclAutoFixEnabled()) {
+      const checks = [
+        {
+          label: getSubjectExcelDisplayName(targetSubject, targetItem),
+          amount: writeAmounts.targetIncl,
+          tax: Number(targetItem?.tax ?? targetSubject.defaultTaxRate),
+        },
+        {
+          label: "甄选服务费",
+          amount: writeAmounts.serviceFeeIncl,
+          tax: Number(serviceFeeItem?.tax ?? serviceFeeSubject.defaultTaxRate),
+        },
+      ];
+      for (const check of checks) {
+        const pair = normalizeTaxPairFromIncl(check.amount, check.tax);
+        if (pair.adjusted) {
+          return alert(
+            `${check.label}含税 ${pair.enteredIncl.toFixed(2)} 元在 ${check.tax}% 税率下不可精确表示：` +
+            `业务系统按不含税 ${pair.excl.toFixed(2)} 元反推为 ${pair.incl.toFixed(2)} 元。已停止写入。\n` +
+            `请调整金额后重试，或在「设置 → 测算行为」中开启财务口径自动修正。`
+          );
+        }
       }
     }
+
+    // 最高限价已经包含由供应商承担的甄选服务费，因此目标科目只写入
+    // “最高限价 - 甄选服务费”（等价于供应商报价 + 上浮）。两个科目一次批量提交，
+    // 避免同属 costIt 时后一次 React 更新覆盖前一次，并统一同步科目付款计划。
+    state.updateTaxItemsInclBatch([
+      {
+        groupId: targetSubject.groupId,
+        key: targetSubject.key,
+        incl: writeAmounts.targetIncl,
+        reason: "manual_amount_sync",
+      },
+      {
+        groupId: serviceFeeSubject.groupId,
+        key: serviceFeeSubject.key,
+        incl: writeAmounts.serviceFeeIncl,
+        reason: "manual_amount_sync",
+      },
+    ]);
   };
 
   const selectReverseSegmentIndex = (segments: CashflowSegment[], side: "revenue" | "cost") => {
@@ -1143,6 +1226,18 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       }
 
       const finalAmount = Number((revMode === "revenue" ? high : low).toFixed(2));
+
+      // 财务口径检查：反算结果的含税金额不可精确表示且未开启自动修正时，明确拒绝写入。
+      const subjectTax = Number(selectedSubject.item?.tax ?? selectedSubject.subject.defaultTaxRate ?? 0);
+      const finalPair = normalizeTaxPairFromIncl(finalAmount, subjectTax);
+      if (finalPair.adjusted && !isTaxInclAutoFixEnabled()) {
+        return alert(
+          `反算结果含税 ${finalPair.enteredIncl.toFixed(2)} 元在 ${subjectTax}% 税率下不可精确表示：` +
+          `业务系统按不含税 ${finalPair.excl.toFixed(2)} 元反推为 ${finalPair.incl.toFixed(2)} 元。已停止写入。\n` +
+          `可在「设置 → 测算行为」中开启财务口径自动修正后重试，或手动填入 ${finalPair.incl.toFixed(2)} 元。`
+        );
+      }
+
       const beforeAmount = readSubjectInclAmount(getCurrentReverseSubjectState(), selectedSubject.ref);
       const finalCandidate = buildCandidate(finalAmount);
       const refreshed: any = await invoke('calculate_ict_benefit', { input: finalCandidate.payload });
@@ -1155,14 +1250,18 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
         selectedSubject.subject.key,
         "incl",
         finalAmount,
-        "reverse_calculation_sync"
+        "reverse_calculation_sync",
+        { normalizeIncl: true }
       );
 
       if (revMode === "revenue") {
         state.setActiveTab("revenue");
       } else {
-        if (selectedSubject.subject.subjectCode === "cost_it_integration") {
-          handleSelFeeChange('limit', String(finalAmount));
+        if (selectedSubject.subject.subjectCode === selectionFeeTargetSubjectCode) {
+          const markup = Number(selMarkup || 0);
+          // 反算得到的是目标投入科目含税额。按“目标科目 = 报价 + 上浮”回推报价，
+          // 再由甄选费公式正向刷新服务费与最高限价。
+          handleSelFeeChange('quote', String(roundMoney(Math.max(0, finalAmount - markup))));
         }
         state.setActiveTab("cost");
       }
@@ -1215,6 +1314,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     selFee,
     selLimit, setSelLimit,
     selectionFeeAnchor, setSelectionFeeAnchor,
+    selectionFeeTargetSubjectCode, setSelectionFeeTargetSubjectCode,
     revMode, setRevMode,
     revTargetType, setRevTargetType,
     revTargetValue, setRevTargetValue,

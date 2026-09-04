@@ -64,6 +64,7 @@ export interface IctInput {
   selection_fee_amount?: string;
   selection_fee_limit?: string;
   selection_fee_anchor?: "quote" | "limit";
+  selection_fee_target_subject_code?: string;
   [key: string]: any;
 }
 
