@@ -6,6 +6,20 @@
 
 This changelog records structural modifications, business rules, and context changes made by AI agents to maintain a reliable project state mapping.
 
+## 2026-09-04 · 分支整合与单主线收口
+
+Modified:
+- 将项目预设、甄选结果签批、AI 多会话和 Agent Bridge 开发线完整合入 `master`，并保留各开发线提交历史。
+- 冲突消解以当前财务/模板主线为基线，补入项目预设与业务字典能力；项目创建同时支持 `project_type` 与 `project_preset_template_id`。
+- 数据库沿用既有 v7-v9 生命周期迁移并升级到 schema v10；项目预设/业务字典采用独立幂等建表，Agent 审批记录使用 v10 审计表。
+- 应用版本统一到 1.1.1；保留主线 `protocol-asset`、窗口与资源协议配置，并纳入 Windows 自动打包脚本。
+- Agent Bridge 测试夹具补齐甄选分支新增的税额拆分与目标科目字段，避免数据模型演进后测试构造失配。
+
+Validation:
+- `cargo test`：67 passed，6 ignored，0 failed。
+- 前端 lint、生产构建和智算/税额/甄选/预设专项测试全部通过。
+- Windows 打包脚本测试、`dsh-tool-lamber` build/typecheck 通过。
+
 ## 2026-08-07
 
 ### 前端 lint 债务清理与副作用生命周期稳定化

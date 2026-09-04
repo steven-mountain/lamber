@@ -46,6 +46,7 @@ fn item(incl_tax: &str, tax_rate: &str) -> IctItem {
         tax_rate: tax_rate.to_string(),
         custom_subject_name: None,
         billing_subject_name: None,
+        split_parts: None,
     }
 }
 
@@ -87,6 +88,7 @@ fn sample_input(project_name: &str) -> IctInput {
         selection_fee_amount: None,
         selection_fee_limit: None,
         selection_fee_anchor: None,
+        selection_fee_target_subject_code: None,
         rev_it_integration: item("1060000", "0.06"),
         rev_it_maintenance: zero_item(),
         rev_it_device_sales: zero_item(),

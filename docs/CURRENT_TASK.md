@@ -1,3 +1,25 @@
+# 分支整合与单主线收口
+
+- **Status:** Done
+- **Objective:** 将项目预设、甄选结果签批和 AI 多会话 / Agent Bridge 开发线完整整合到 `master`，完成冲突消解和统一验证后只保留主分支。
+
+## Result
+
+1. [x] `master` 已同步远端既有签批表提交，并合入 `codex/project-presets-v1.1.0`、`feat/zhenxuan-result-signoff`、`codex/ai-multi-session-ui`；后者已覆盖两个 Agent Bridge 子分支。
+2. [x] 项目类型与项目预设创建参数并存；数据库保留主线生命周期迁移并升级到 schema v10，同时初始化业务字典、项目预设和 Agent 审批审计表。
+3. [x] 模板页保留新版分栏布局、甄选签批字段与项目预设绑定，动态业务字典继续通过原字段 setter 和统一保存链路生效。
+4. [x] 应用版本统一为 1.1.1；保留 `protocol-asset`、主窗口配置和 Windows 自动打包脚本。
+5. [x] 全部分支 tip 均已验证为 `master` 祖先；合并前完整 Git 引用已保存为仓库外 bundle。
+
+## Validation
+
+- `cargo test`：67 passed，6 ignored（需要真实 API key / 已 provision 的 dsh 环境），0 failed。
+- `npm run lint --prefix src-ui`、`npm run build --prefix src-ui`：通过。
+- 智算、税额拆分、甄选批量、常用资料、业务字典、项目预设、Windows 打包专项测试：全部通过。
+- `dsh-tool-lamber` build 与 typecheck：通过。
+
+---
+
 # 采购甄选费 · 可选投入科目写入
 
 - **Status:** Done
