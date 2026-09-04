@@ -30,6 +30,10 @@ lerna-debug.log*
 /src-tauri/target/
 /src-tauri/gen/
 
+# Agent bridge (deepseek-harness runtime)
+/agent-bridge/.dsh-home/
+/agent-bridge/dsh-tool-lamber/lib/
+
 # Log files
 *.log
 
@@ -91,3 +95,6 @@ ESOP附件/
 /*.docx
 /*.pptx
 /*.xlsx
+
+# Claude Code 本机配置：含本机绝对路径与内部项目命名，不进公开仓库
+.claude/

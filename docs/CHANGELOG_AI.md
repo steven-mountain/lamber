@@ -73,6 +73,200 @@ Modified:
 
 Decision:
 - 发布前检查已跟踪文件中的本机绝对路径和个人标识；项目文档一律使用相对链接，不依赖开发者主目录或用户名。
+## 2026-09-04（五）
+
+### dsh 协议层从 `--profile sdk` 整体重写为 `--profile acp`
+
+**为什么**：ACP 是双向协议，agent 也会向客户端发请求。原来那个手写的 JSON-RPC 客户端是纯
+"发请求等回应"模型，收到服务端主动发起的请求（`session/requestPermission`）只会当日志丢掉。
+传输层整体更换，不是打补丁。任务书：`docs/TASK_BOOK_acp_protocol_rewrite.md`；
+前置握手验证：`docs/verification/acp-rust-crate-handshake.md`。
+
+**新增**
+- `src-tauri/src/agent_bridge/tool_calls.rs`：按 `toolCallId` 关联 `tool_call` 通知与随后的
+  权限请求。`session/requestPermission` 只带调用 id，工具名与参数都在更早那条通知里。
+  它是插件里 `pendingCalls.ts` 的继任者。
+- `approval.rs` 的展示文案镜像表 + `gated_tool_names_match_the_plugin` 契约测试。
+- `dsh_session.rs::EXPECTED_PROTOCOL_VERSION` 与握手期的显式版本断言。
+- `session/turn-ended` 事件：`session/prompt` 做成投递即返回，轮次结束靠它通知。
+- `docs/verification/acp-approval-manual-check.md`（**待执行**的真人点击验证步骤）。
+
+**重写**
+- `dsh_session.rs`：`DshSession`（手写 JSON-RPC）→ `AcpRuntime`（`agent-client-protocol`
+  crate 的 client builder + 自有 tokio 线程与 runtime）。tokio 只出现在这一层。
+- `mod.rs`：`AgentRuntime` 改为维护「lamber 会话名 → dsh 生成的 ACP 会话 id」映射；
+  `ai_send_prompt` 用 `spawn_blocking` 把阻塞工作移出异步执行器。
+- `AgentLabView.tsx`：按 ACP 的 `sessionUpdate` 判别式给事件命名。
+
+**删除（不留双通道）**
+- `dsh-tool-lamber/src/approval.ts` 的 `approval/request` 答复器与 `askLamber()`；
+  `tools/pre-execute` 守卫保留未动。
+- `dsh-tool-lamber/src/pendingCalls.ts`
+- Rust `mod.rs` 的 `APPROVAL_ROUTE` 分支（桥接只剩一条只读路由）
+- `agent-bridge/scripts/check-approval.mjs`
+- `src-tauri/examples/acp_handshake_probe.rs`（探针达到目的后退役，不原地转正）
+- 依赖 `@deepseek-ai/dsh-user-approval`
+
+**顺带修掉的真实缺陷**
+- `approval::handle_request` 原先先公告、后登记槽位，中间的窗口里到达的答复会被判成
+  "请求不存在"，用户的点击会被丢掉、问题继续挂到超时判拒。改为登记后在锁内公告；
+  `an_answer_racing_the_announcement_is_not_lost` 守这条。
+
+**记录在案的两处版本事实**
+- `agent-client-protocol 2.0.0` 把 schema 精确锁死在 `=1.5.0`（不是早期调研说的 1.7.0）。
+- dsh 的 `initialize` 不校验入参、无条件回自己的版本，升到 v2 时握手期不会报错——
+  故在客户端侧加断言。
+
+## 2026-09-03（四）
+
+### AI 窗口升级为前端多 Session 会话工作区
+
+Added:
+- `AiSession` 前端数据契约与 Zustand `useAiSessionStore`，预留 `projectId`、`harnessSessionId` 和标题来源字段。
+- `AiSessionSidebar` / `AiSessionItem`，支持新建、选择、列表内重命名、确认删除、最近更新时间排序、当前项目与其他/通用会话分组。
+- 版本化 localStorage 快照，恢复 Session 列表、当前 Session 和聊天文本；流式写入采用节流，图片附件持久化去除 base64 并保留元数据。
+
+Modified:
+- `AiChatPanel` 改为从当前 Session 读取 history，并按请求发起时固定的 `sessionId` 定向写回流式内容，切换会话不会串消息。
+- 删除当前会话时自动选择最近更新的剩余会话；删除最后一个会话后自动补建空白会话；删除生成中会话会先走既有 Abort / parser 停止链路。
+- AI 窗口默认宽度改为 `780px`；小于 `680px` 时 Session Sidebar 使用覆盖式抽屉，避免压缩输入区。
+- 新布局沿用 Lamber semantic token、ROUND_FOUR、dark mode 与 No-Line surface 层级。
+
+Validation:
+- `npm run build --prefix src-ui` 通过。
+- 本地 UI 实测创建 3 个会话、独立消息、切换恢复和刷新恢复；`900px` 双栏与 `420px` 抽屉布局均通过。
+- 本地 UI 实测会话重命名与确认删除，标题更新和会话数量变化均正确。
+- 本地 mock SSE 验证流式期间切换不会串 Session，Abort 后不再接收后续 chunk 且输入框恢复可用。
+- `npm run lint --prefix src-ui` 的唯一 error 仍为既有 `useAiContextStore.ts` `no-this-alias`，本次文件无新增 lint error。
+
+Scope:
+- 未修改 `AiRuntime.ts`、PromptRenderer、Rust 或任何业务模块。
+- 未实现 deepseek-harness、dsh、JSON-RPC、Agent Tool、Approval、Sub-Agent 或服务端 Session 持久化。
+- 本轮未增加项目创建入口、会话归属移动，也未调整背景配色；这些需求按用户要求留待后续单独设计。
+
+### 闭环 B 最终收尾：真实点击验证 + 审批记录不再静默丢失
+
+Verified:
+- 真实鼠标点击跑通审批通道四条路径（弹窗渲染 / 确认 / 拒绝 / 超时），全部通过，未发现问题。记录见 `docs/verification/approval-channel-manual-check.md`。
+- 确认后工具在决定落库 14ms 后写出标记文件；拒绝与超时均未产生标记文件，即工具确实没执行。
+- **点击由人工完成，不是自动化验证。** 本机对 `osascript` 的辅助功能（Accessibility）授权始终未生效（-1719/-25211，疑似 TCC 决定在授权前已被宿主进程缓存），因此确认/拒绝两次点击由仓库所有者本人操作，AI 侧只做截图与数据核对。超时一路无需点击，是完全自动的。
+
+Added:
+- 审批缓冲 `agent-approval-spool.jsonl`（应用数据目录）+ 工作区打开时回填（`drain_spool_on_workspace_open`，挂在 `workspace::open_workspace_internal` 这一唯一切入点，含启动恢复路径）。
+- `LAMBER_AGENT_LAB=autorun`：启动后自动发一次指令，便于让弹窗出现而无需点「发送」。
+
+Decisions:
+- **否决"无工作区时阻塞审批"**：弹窗里没有"打开工作区"这个动作，用户解不开该前提，Agent 会挂死，与既有"绝不挂起"原则冲突；且审批不一定与项目相关。改为缓冲+回填，不再"只打个 stderr 警告就算了"。
+- **回填单事务、成功后才删缓冲**：中途失败保留缓冲下次重试，宁可重放不可丢失；重放靠 `request_id` 主键 + `INSERT OR REPLACE` 保持幂等。
+- **取证不用全屏截图**：会连带拍到桌面其它窗口的私有内容。仅渲染一项用裁剪到窗口的截图，其余以审计表 + 文件系统产物为证据——更难伪造，也更贴近"事后可追溯"目标。
+
+Validation:
+- `cargo test`：53 passed，无回归；`cargo test agent_bridge -- --ignored`（带真实 key）：9 passed。
+- 新增用例：无工作区审批→回填后可查、重复回填不产生重复行、损坏缓冲行不挡其它记录。
+
+Known limitation:
+- 缓冲文件跨工作区。若在无工作区时产生审批、随后打开的是另一个工作区，记录回填进那个工作区。对单人桌面工具合理，但审计行归属是"回填时所在工作区"而非"决定发生时的工作区"（当时本就没有）。
+
+## 2026-09-03（三）
+
+### 闭环 B 收尾：前端接通 / 审批持久化 / 挂起槽位清理
+
+Added:
+- `src-ui/src/components/ai/AgentLabView.tsx` + 路由 `#/agent-lab`：真实应用里驱动 Agent 与审批的入口（发指令 / 会话事件流 / 审批审计日志）。`LAMBER_AGENT_LAB=1` 启动自动跳转。
+- `src-tauri/src/agent_bridge/approval_log.rs`：审批审计的 SQLite 落库与查询；Tauri 命令 `ai_list_approval_log`。
+- `agent_approval_log` 表（schema v9 → v10，纯建表无数据迁移），`decided_by` 区分 user/timeout/shutdown/internal。
+- `ApprovalGate::shutdown()` / `reopen()` / `set_recorder()`；`main.rs` 增加 `RunEvent::Exit` 排空钩子。
+
+Fixed:
+- **真实缺口**：前端此前无任何地方调用 `ai_send_prompt`（`AiChatPanel` 仍走旧 `AiRuntime`），导致审批弹窗在真实应用里永远无法出现。补 `AgentLabView` 作为触发入口。
+
+Decisions:
+- **网关不碰数据库**，只持 `ApprovalRecorder` 回调；连接在决定时解析而非启动时捕获，使 Agent 起来后才打开的工作区也能记账。
+- **审计写失败只警告不改变决定**：让存储故障阻塞 Agent 是错的，失败放行更错。
+- **崩溃路径不做优雅通知**：lamber 崩溃时没有机会通知 dsh，靠套接字断开 + 180 秒兜底，与既有失败关闭原则一致。
+- **联调台路由靠环境变量开启**：窗口无地址栏，否则不可达；正常启动完全不受影响。
+
+Validation:
+- `cargo test`：50 passed，无回归。
+- `cargo test agent_bridge -- --ignored`（带真实 key）：9 passed。
+- 新增用例覆盖：跨进程重启后审批记录仍可查、拒绝与超时可区分、审计写失败不改变决定、关闭立即释放挂起审批、关闭后不建槽位、桥接中途断开时 answerer 失败关闭、前后端字段契约、弹窗挂载点。
+
+Known limitation:
+- **真实鼠标点击未由 AI 验证**：本机未授予 `osascript` 辅助功能权限与 `screencapture` 屏幕录制权限，无法发出真实点击也无法截图。已用两个契约用例覆盖"点击本来能发现的那类问题"（跨进程名字漂移），但弹窗视觉呈现与可点性仍需人工确认，步骤见 `agent-bridge/README.md`。
+- 审计表位于工作区数据库；审批发生时若未打开工作区，该条记录会丢（只留 stderr 警告）。
+
+## 2026-09-03（二）
+
+### Agent 人工审批通道（deepseek-harness / 闭环 B）
+
+Added:
+- `dsh-tool-lamber/src/writeTestMarker.ts`：无害测试工具 `write_test_marker(note?)`，只往 `os.tmpdir()` 下新建的临时目录写一个带时间戳的文本文件，**不碰 lamber 工作区/数据库/项目文件**。
+- `dsh-tool-lamber/src/approval.ts`：审批守卫（`tools/pre-execute` 对被拦工具返回 `{kind:'ask'}`）+ 答复器（`approval/request` 转发给 Rust，阻塞等待）。导出 `isGatedTool` 作为拦截策略的唯一真相源。
+- `dsh-tool-lamber/src/pendingCalls.ts`：按 `callId` 关联被拦调用的参数（有上限、自清理）。
+- `agent-bridge/scripts/check-approval.mjs` / `check-gating.mjs`：分别单跑「答复器→桥接→网关→回传」和「拦截策略」两跳的排错脚本。
+- `src-tauri/src/agent_bridge/approval.rs`：`POST /lamber-bridge/approval` 路由与 `ApprovalGate`（条件变量挂起/唤醒、超时、槽位回收）。
+- Tauri 命令 `ai_resolve_approval(requestId, approved)`；前端事件 `ai://approval-request`。
+- `src-ui/src/components/ai/AgentApprovalDialog.tsx`：最简审批弹窗，挂在 App 根节点。
+
+Changed:
+- `bridge_server.rs` 由单线程 accept 循环改为**每请求一个线程**（上限 16）。
+- `workspace_handler` 增加 `gate` 与 `announce` 两个入参；`AgentRuntime` 持有跨 dsh 启动周期的 `ApprovalGate`。
+
+Decisions:
+- **守卫与答复器和工具同包，不拆成 `dsh-answerer-lamber/`**（推翻上一轮 README 里的预留）。根因：`ApprovalRequestEvent` 不带工具参数，必须靠进程内 map 按 `callId` 关联；两个 npm 包在 pnpm link 下可能拿到两份模块实例、两张表。源码上仍分文件保持接缝清晰。
+- **全程失败关闭**：桥接报错、返回体异常、超时、锁中毒一律 `'rejected'`，不挂起也不默认放行。
+- **超时分层**：Rust 网关 90 秒（`LAMBER_APPROVAL_TIMEOUT_SECS` 可覆盖），答复器 180 秒。答复器故意更长，让正常路径是网关给出明确 `rejected`。
+- **网关超时时长做成 `ApprovalGate` 字段而非 wait 时读环境变量**：否则并行测试改同一个进程全局变量会互相干扰。
+- **审批弹窗挂在 App 根节点而非 AI 面板内**：后端挂着一个 dsh 工具调用等这个答复，监听器随面板关闭而消失会把每次审批都变成超时。
+- **仍不加任何真实写操作工具**，符合本轮硬约束与 AGENTS.md。
+
+Validation:
+- `cargo test`：42 passed（新增 6 个默认审批用例），既有用例无回归。
+- `cargo test agent_bridge -- --ignored`：8 passed。含闭环 A 的两个回归检查点（`dsh_advertises_the_lamber_tool_in_its_request_header`、`plugin_tool_body_reaches_the_calculator_over_the_bridge`）仍通过。
+- `only_the_write_tool_is_gated_behind_approval` 直接断言 `run_benefit_calculation=false` / `write_test_marker=true`，证明只读工具没被审批误伤。
+- `npm run build --prefix src-ui` 通过；`npm run lint` 新文件零告警（仅既有 `useAiContextStore.ts` 的 `no-this-alias` 报错）。
+- 带 `DEEPSEEK_API_KEY` 的完整闭环用例 `dsh_gated_tool_runs_only_after_the_user_confirms` 已写好（确认/拒绝两路都测），本机无 key，按设计跳过。
+
+读源码确认的协议事实（与任务书预设有出入的部分，详见 `agent-bridge/README.md`）：
+- `defineTool` **没有**"审批等级"字段，只能靠 `tools/pre-execute` 返回 `{kind:'ask'}`；瀑布终止默认值是 `allow`，所以未点名的工具原样放行。
+- `ApprovalRequestEvent` 只有 `{agent, toolName, callId?, reason?, signal?}`，**不含参数**。
+- `ApprovalOutcome` 四值：`allowed-once` / `rejected` / `cancelled` / `unavailable`，只有 `allowed-once` 放行且仅此一次。
+- 无 answerer 时两种默认都是失败关闭；会话策略 `never` 时根本不问人，直接 `rejected`。
+- `approval/asked` / `approval/decided` 是 session 事件，会流到 Rust 侧，适合做断言。
+
+## 2026-09-03
+
+### Agent 工具执行能力接入（deepseek-harness / 闭环 A）
+
+Added:
+- `agent-bridge/dsh-tool-lamber/`：独立 npm 包形态的 dsh 自定义工具插件，用 `defineTool` 注册唯一工具 `run_benefit_calculation(projectId, scenario?)`。工具体只做一件事——把参数 POST 给 lamber 的回环桥接服务，不含任何业务数学。`npx tsc` 零报错。
+- `agent-bridge/patch.yml` + `scripts/provision-profile.mjs`：把插件挂进 dsh 的 `sdk` profile。dsh 解析插件包名是相对 `$DSH_HOME/profiles/<profile>/`，因此必须先 `dsh plugin add` 链接，只写 `--patch` 不生效。
+- `agent-bridge/scripts/check-bridge.mjs`：只跑「插件工具体 → 桥接 → calculator」一跳的排错脚本，不启 dsh、不消耗 LLM。
+- `src-tauri/src/agent_bridge/bridge_server.rs`：仅监听 `127.0.0.1`、临时端口的 HTTP 桥接服务（tiny_http，独立线程，阻塞式）。
+- `src-tauri/src/agent_bridge/calculation.rs`：`POST /lamber-bridge/calculate` 路由，项目 → 方案 → 最新快照 → `benefit::calculator::calculate_ict_benefit`。严格只读。
+- `src-tauri/src/agent_bridge/dsh_session.rs`：dsh 子进程管理与手写 JSON-RPC 2.0（newline-delimited over stdio）客户端。
+- `src-tauri/src/agent_bridge/mod.rs`：`AgentRuntime` 生命周期 + Tauri 命令 `ai_send_prompt` / `ai_agent_status` / `ai_agent_stop`，通知统一按 `{method, params}` emit 到前端事件 `ai://session-event`。
+- 新增直接依赖 `tiny_http 0.12`（`default-features = false`，4 个小传递依赖，无 TLS）。
+
+Decisions:
+- **业务逻辑边界**：dsh 只负责 agent loop / 工具编排 / 审批，`calculator.rs`、`docfill.rs` 等一律不动。桥接是唯一接缝，本轮只开一条只读路由。
+- **不引入官方 TS/Python SDK 客户端**：协议是一行一个 JSON 对象的 JSON-RPC 2.0，Rust 侧手写读写即可，避免为拼 JSON 而嵌入一个 Node SDK。
+- **选 tiny_http 而非 hyper/axum**：lamber 后端整体同步（`rusqlite` + `Arc<Mutex<Connection>>`，`calculate_ict_benefit` 是同步函数），在异步 handler 里同步加锁是反模式；桥接只有一个回环路由、并发极低。也不手写 HTTP 解析——那比引入一个小依赖债更大。
+- **桥接令牌鉴权**：只绑回环不等于鉴权，同机任意进程都能读到客户项目财务数据。每次启动随机生成令牌经环境变量交给子进程，请求头 `x-lamber-bridge-token` 定长比较校验，不落盘。
+- **遥测强制关闭**：`sdk` profile 默认把遥测发往外部主机，Rust 侧硬编码 `DSH_TELEMETRY_MODE=DISABLED`。
+- **`scenario` 未命中即报错，不静默回退**：报错好过让 agent 引用错方案的财务数字。选择器支持 `pre_selection` / `post_selection` / 方案 id / 方案名，缺省用项目 `default_scheme_id`。
+- **懒启动**：dsh 子进程在首次 prompt 时才拉起，不占用未使用 AI 面板用户的启动时间。
+- **本轮不加任何会写数据的工具**，等审批通道（闭环 B）就绪后再说，避免绕过 AGENTS.md 的用户确认要求。
+
+Validation:
+- `cargo test`：36 passed（新增 6 个默认用例：默认方案 / 按阶段 / 按方案名与 id 选择、未知 scenario 拒绝、令牌鉴权、桥接端到端返回引擎数字），既有 29 个用例无回归。
+- `cargo test agent_bridge -- --ignored`：`plugin_tool_body_reaches_the_calculator_over_the_bridge` 与 `dsh_advertises_the_lamber_tool_in_its_request_header` 均通过——已实测 dsh 真实子进程启动、`initialize` 握手成功、`request/header` 通知中出现 `run_benefit_calculation` schema。
+- 带 `DEEPSEEK_API_KEY` 的完整闭环用例已写好，本机无 key，运行时按设计跳过。
+
+与任务书预设的差异（详见 `agent-bridge/README.md`）：包版本为 `0.1.2-alpha.5`；provider 是 `deepseek-official` 而非 `deepseek`，模型 `deepseek-v4-flash`；`output.schema` 的对象属性除 `additionalProperties` 外还需逐个 `required: true`；`DEEPSEEK_API_KEY` 环境变量确实生效；`pnpm` 无需全局安装。
+
+Not done (下一轮):
+- 闭环 B 审批通道（需 dsh 侧 answerer 插件转发进程内 Cordis 事件）、前端 `AiChatPanel.tsx` 展示、API key 改由前端凭证传入、SEA 打包瘦身。
 
 ## 2026-07-01
 

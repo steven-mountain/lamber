@@ -112,10 +112,10 @@ export default function AiFloatingWindow({ currentView }: AiFloatingWindowProps)
   return (
     <div className="h-screen w-screen overflow-hidden bg-transparent text-foreground">
       <div className="flex h-full w-full flex-col overflow-hidden rounded-[18px] border border-border bg-background">
-        <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border bg-card px-4 select-none">
+        <div className="flex h-12 flex-shrink-0 items-center justify-between bg-card px-4 select-none">
           <div data-tauri-drag-region className="flex h-full flex-1 cursor-move items-center gap-2 text-sm font-semibold">
             <AppIcon name="aiMessage" size={18} className="text-primary" />
-            Lamber AI 助手
+            Lamber AI 工作区
           </div>
 
           <button

@@ -39,8 +39,14 @@ Lamber 是一个基于 **Tauri + React + Rust** 架构的销售支撑桌面工�
    * 工作空间维护：[workspace_maintenance.rs](../src-tauri/src/workspace_maintenance.rs)
 5. **AI 顾问 (AI Assistant)**
    * 前端：[AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx)
+   * 多会话状态：[useAiSessionStore.ts](../src-ui/src/store/useAiSessionStore.ts)
+   * 模块文档：[ai-session-workspace.md](./modules/ai-session-workspace.md)
    * 上下文构建：[buildAiChatContext.ts](../src-ui/src/ai/context/buildAiChatContext.ts)
-6. **智算测算与金额来源 (Intelligent Compute)**
+6. **AI Agent 工具执行桥接 (Agent Bridge · deepseek-harness)**
+   * 模块文档：[agent-bridge/README.md](../agent-bridge/README.md)
+   * 工具插件：[dsh-tool-lamber](../agent-bridge/dsh-tool-lamber/src/runBenefitCalculation.ts)
+   * 后端桥接：[agent_bridge/mod.rs](../src-tauri/src/agent_bridge/mod.rs)
+7. **智算测算与金额来源 (Intelligent Compute)**
    * 前端：[AiComputeQuoteView.tsx](../src-ui/src/features/ai-compute-quote/AiComputeQuoteView.tsx)
    * 计算核心：[calculations.ts](../src-ui/src/features/ai-compute-quote/calculations.ts)
    * 模块文档：[ai-compute-quote.md](./modules/ai-compute-quote.md)
@@ -52,6 +58,8 @@ Lamber 是一个基于 **Tauri + React + Rust** 架构的销售支撑桌面工�
 * **测算方案甄选阶段 (Scheme Stage · 甄选前/甄选后切换)**: [scheme-stage.md](./modules/scheme-stage.md)
 * **多项目甄选结果签批表 (Selection Result Batch)**: [selection-result-batch.md](./modules/selection-result-batch.md)
 * **税额换算与尾差核验 (Tax Reconciliation)**: [tax-reconciliation.md](./modules/tax-reconciliation.md)
+* **AI Agent 工具执行桥接 (Agent Bridge)**: [agent-bridge/README.md](../agent-bridge/README.md)
+* **AI 多 Session 会话工作区**: [ai-session-workspace.md](./modules/ai-session-workspace.md)
 
 ## AI 上下文读取规则
 在每轮开发任务开始前，AI 必须严格执行按需读取，以节省上下文空间：

@@ -60,6 +60,14 @@ Lamber 采用 **“建筑账本 (The Architectural Ledger)”** 创意方向，�
 * 悬浮入口拖拽位置使用外层 `translate3d(...)` 更新，拖动过程中通过 `requestAnimationFrame` 直接刷新 DOM transform；React 状态和 `lamber_ai_launcher_position` 只在拖动结束、取消或窗口 resize 时同步。
 * 外层定位元素不得使用 `transition-all`、`left/top` 连续更新或其他会对位置变化做动画插值的样式；hover/active 动画应放在内部视觉层，避免拖拽时产生鼠标滞后。
 
+### 2.6 AI 多会话工作区
+
+* AI 窗口宽屏采用约 `216px` 的 Session Sidebar 与自适应 Chat Area；Sidebar 使用 `bg-muted/40`，active Session 使用 `bg-card + shadow-sm`，依靠 surface shift 而非硬分割线建立层级。
+* 当前项目会话优先分组展示，其他项目和通用会话进入次级分组；项目归属只使用低干扰 caption，不与会话标题争夺视觉层级。
+* 小于 `680px` 时 Session Sidebar 必须转为覆盖式抽屉，禁止继续压缩消息和输入区；Chat 顶栏必须保留明确的展开入口。
+* AI 会话工作区继续消费全局 semantic token、圆角、字体缩放和 dark mode，不允许增加独立配色、任意 HEX 背景或大面积高饱和色块。
+* 详细状态与执行边界见 [ai-session-workspace.md](./ai-session-workspace.md)。
+
 ---
 
 ## 3. 高级自定义与对比度无障碍防护 (Phase 3)

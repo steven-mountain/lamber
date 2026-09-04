@@ -19,12 +19,18 @@ import {
 import { useStreamingParser } from '../../hooks/useStreamingParser';
 import MessageBubble from '../MessageBubble';
 import AiInputBox from './AiInputBox';
+import AiSessionSidebar from './AiSessionSidebar';
 import { AI_CONTEXT_KEY, getAiContextScope } from '../../utils/aiContextKeys';
 import AppIcon, { type AppIconName } from '../icons/AppIcon';
+import { useAiSessionStore } from '../../store/useAiSessionStore';
+import { readStoredCurrentProject, useProjectStore } from '../../store/useProjectStore';
 
 interface AiChatPanelProps {
   currentView?: string;
 }
+
+const EMPTY_MESSAGES: AiChatMessage[] = [];
+const SESSION_SIDEBAR_BREAKPOINT = 680;
 
 function isTauriRuntime() {
   return typeof window !== 'undefined' && Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
@@ -49,11 +55,30 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [input, setInput] = useState('');
   const [images, setImages] = useState<AiImageAttachment[]>([]);
-  const [messages, setMessages] = useState<AiChatMessage[]>([
-    { role: 'assistant', content: '您好！我是 Lamber 智能售前顾问。我可以帮您分析当前页面的项目效益、推荐内置产品。请问有什么可以帮您？' },
-  ]);
   const [isTyping, setIsTyping] = useState(false);
+  const [streamingSessionId, setStreamingSessionId] = useState<string | null>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [isCompactLayout, setIsCompactLayout] = useState(() => (
+    typeof window !== 'undefined' ? window.innerWidth < SESSION_SIDEBAR_BREAKPOINT : false
+  ));
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => (
+    typeof window !== 'undefined' ? window.innerWidth >= SESSION_SIDEBAR_BREAKPOINT : true
+  ));
+
+  const sessions = useAiSessionStore(state => state.sessions);
+  const currentSessionId = useAiSessionStore(state => state.currentSessionId);
+  const createSession = useAiSessionStore(state => state.createSession);
+  const ensureActiveSession = useAiSessionStore(state => state.ensureActiveSession);
+  const selectSession = useAiSessionStore(state => state.selectSession);
+  const deleteSession = useAiSessionStore(state => state.deleteSession);
+  const appendMessages = useAiSessionStore(state => state.appendMessages);
+  const updateLastAssistantMessage = useAiSessionStore(state => state.updateLastAssistantMessage);
+  const resetSessionMessages = useAiSessionStore(state => state.resetSessionMessages);
+  const setSessionTitle = useAiSessionStore(state => state.setSessionTitle);
+  const flushSessionPersistence = useAiSessionStore(state => state.flushPersistence);
+  const currentProject = useProjectStore(state => state.currentProject);
+  const currentSession = sessions.find(session => session.id === currentSessionId);
+  const messages = currentSession?.messages ?? EMPTY_MESSAGES;
 
   // Settings state with persistence
   const [endpoint, setEndpoint] = useState(() => localStorage.getItem('lamber_ai_endpoint') || 'http://localhost:11434/v1/chat/completions');
@@ -85,8 +110,24 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
   const handledTemplateAssetRequestsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    ensureActiveSession(currentProject?.id);
+  }, [currentProject?.id, ensureActiveSession]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const compact = window.innerWidth < SESSION_SIDEBAR_BREAKPOINT;
+      setIsCompactLayout(compact);
+      setIsSidebarOpen(!compact);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
     const hydrateAiContext = () => {
       useAiContextStore.getState().hydrateFromStorage();
+      useProjectStore.setState({ currentProject: readStoredCurrentProject() });
     };
 
     hydrateAiContext();
@@ -233,8 +274,9 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
       if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
       if (abortControllerRef.current) abortControllerRef.current.abort();
       stopParser();
+      flushSessionPersistence();
     };
-  }, [stopParser]);
+  }, [flushSessionPersistence, stopParser]);
 
   useEffect(() => {
     if (isAtBottom.current) {
@@ -242,41 +284,27 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
     }
   }, []);
 
-  // Sync parser state to the last message
+  // Bind parser output to the session that initiated the request. The active
+  // session may change while the stream is running, so currentSessionId must
+  // never be used as the write target here.
   useEffect(() => {
-    if (isTyping) {
-      setMessages(prev => {
-        if (!prev || prev.length === 0) return prev;
-        const newMessages = [...prev];
-        const lastIdx = newMessages.length - 1;
-        const lastMsg = newMessages[lastIdx];
-
-        // Safety check: Only update if the last message is an assistant response
-        if (lastMsg?.role === 'assistant') {
-          const nextContent = normalText;
-          const nextThink = thinkText;
-          if (lastMsg.content === nextContent && lastMsg.think === nextThink) {
-            return prev;
-          }
-          newMessages[lastIdx] = {
-            ...lastMsg,
-            content: nextContent,
-            think: nextThink,
-          };
-          return newMessages;
-        }
-        return prev;
-      });
-    }
-  }, [normalText, thinkText, isTyping]);
+    if (!streamingSessionId) return;
+    updateLastAssistantMessage(streamingSessionId, {
+      content: normalText,
+      think: thinkText || undefined,
+    });
+  }, [normalText, streamingSessionId, thinkText, updateLastAssistantMessage]);
 
   const handleSend = async (overrideInput?: string) => {
     const textToSend = overrideInput ?? input;
     const imagesToSend = overrideInput ? [] : [...images];
     if ((!textToSend.trim() && imagesToSend.length === 0) || isTyping) return;
 
+    const sessionId = ensureActiveSession(currentProject?.id);
+    const sessionMessages = useAiSessionStore.getState().sessions
+      .find(session => session.id === sessionId)?.messages ?? EMPTY_MESSAGES;
     const userMessage = textToSend.trim();
-    const conversationHistory = messages.filter(message => message.content.trim());
+    const conversationHistory = sessionMessages.filter(message => message.content.trim());
     const promptText = userMessage || '请分析图片内容。';
 
     if (!overrideInput) {
@@ -288,12 +316,12 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
     if (abortControllerRef.current) abortControllerRef.current.abort();
     abortControllerRef.current = new AbortController();
 
-    const updatedMessages: AiChatMessage[] = [
-      ...messages,
+    const pendingMessages: AiChatMessage[] = [
       { role: 'user', content: userMessage, images: imagesToSend },
       { role: 'assistant', content: '' },
     ];
-    setMessages(updatedMessages);
+    appendMessages(sessionId, pendingMessages);
+    setStreamingSessionId(sessionId);
     setIsTyping(true);
 
     // --- Enterprise LLM Infrastructure: AST Construction ---
@@ -400,21 +428,17 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
       }
 
       console.error('Chat error:', error);
-      setMessages(prev => {
-        if (!prev || prev.length === 0) return prev;
-        const newMessages = [...prev];
-        const lastIdx = newMessages.length - 1;
-        if (newMessages[lastIdx]?.role === 'assistant') {
-          newMessages[lastIdx] = {
-            ...newMessages[lastIdx],
-            content: `**Error:** 连接 AI 服务失败 (${(error as Error).message})`,
-          };
-        }
-        return newMessages;
+      updateLastAssistantMessage(sessionId, {
+        content: `**Error:** 连接 AI 服务失败 (${(error as Error).message})`,
+        think: undefined,
       });
     } finally {
       setIsTyping(false);
+      flushSessionPersistence();
       if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+      window.setTimeout(() => {
+        setStreamingSessionId(activeId => activeId === sessionId ? null : activeId);
+      }, 0);
     }
   };
 
@@ -424,15 +448,71 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
     }
     stopParser();
     setIsTyping(false);
+    flushSessionPersistence();
   };
 
   const clearMessages = () => {
-    if (window.confirm('确定要清除所有聊天记录吗？')) {
-      if (abortControllerRef.current) abortControllerRef.current.abort();
+    if (!currentSessionId) return;
+    if (window.confirm('确定要清除当前会话的聊天记录吗？')) {
+      if (streamingSessionId === currentSessionId && abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        stopParser();
+        setIsTyping(false);
+        setStreamingSessionId(null);
+        resetParser();
+      } else if (!isTyping) {
+        resetParser();
+      }
+      resetSessionMessages(currentSessionId, {
+        role: 'assistant',
+        content: '聊天记录已清除。请问还有什么可以帮您？',
+      });
+    }
+  };
+
+  const handleCreateSession = () => {
+    createSession(currentProject?.id);
+    setInput('');
+    setImages([]);
+    setCopiedIdx(null);
+    if (isCompactLayout) setIsSidebarOpen(false);
+  };
+
+  const handleSelectSession = (sessionId: string) => {
+    selectSession(sessionId);
+    setInput('');
+    setImages([]);
+    setCopiedIdx(null);
+    isAtBottom.current = true;
+    if (isCompactLayout) setIsSidebarOpen(false);
+  };
+
+  const handleRenameSession = (sessionId: string, title: string) => {
+    setSessionTitle(sessionId, title, 'manual');
+  };
+
+  const handleDeleteSession = (sessionId: string) => {
+    const session = useAiSessionStore.getState().sessions.find(item => item.id === sessionId);
+    if (!session || !window.confirm(`确定删除会话「${session.title}」吗？此操作无法撤销。`)) return;
+    const wasCurrentSession = currentSessionId === sessionId;
+
+    if (streamingSessionId === sessionId) {
+      abortControllerRef.current?.abort();
+      stopParser();
       resetParser();
-      setMessages([
-        { role: 'assistant', content: '聊天记录已清除。请问还有什么可以帮您？' },
-      ]);
+      setIsTyping(false);
+      setStreamingSessionId(null);
+    }
+
+    deleteSession(sessionId);
+    if (useAiSessionStore.getState().sessions.length === 0) {
+      createSession(currentProject?.id);
+    }
+    if (wasCurrentSession) {
+      setInput('');
+      setImages([]);
+      setCopiedIdx(null);
+      isAtBottom.current = true;
     }
   };
 
@@ -471,14 +551,79 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
     ? `已连接：${connectedScope}`
     : '未检测到业务状态';
   const connectionStatusClassName = connectedContextModule
-    ? 'border-success/20 bg-success-soft text-success'
-    : 'border-border bg-muted text-muted-foreground';
+    ? 'bg-success-soft text-success'
+    : 'bg-muted text-muted-foreground';
   const connectionDotClassName = connectedContextModule
     ? 'bg-success'
     : 'bg-muted-foreground/50';
+  const isCurrentSessionStreaming = isTyping && currentSessionId === streamingSessionId;
+  const isOtherSessionStreaming = isTyping && Boolean(streamingSessionId) && !isCurrentSessionStreaming;
+  const sessionContextLabel = currentSession?.projectId
+    ? currentSession.projectId === currentProject?.id
+      ? currentProject.name
+      : '项目会话'
+    : '通用会话';
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background">
+    <div className="relative flex min-h-0 flex-1 overflow-hidden bg-background">
+      {isCompactLayout && isSidebarOpen && (
+        <button
+          type="button"
+          className="absolute inset-0 z-20 bg-foreground/10 backdrop-blur-[1px]"
+          aria-label="收起会话列表"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {(!isCompactLayout || isSidebarOpen) && (
+        <div className={isCompactLayout ? 'absolute inset-y-0 left-0 z-30' : 'relative'}>
+          <AiSessionSidebar
+            sessions={sessions}
+            currentSessionId={currentSessionId}
+            generatingSessionId={isTyping ? streamingSessionId : null}
+            currentProjectId={currentProject?.id}
+            currentProjectName={currentProject?.name}
+            compact={isCompactLayout}
+            onCreate={handleCreateSession}
+            onSelect={handleSelectSession}
+            onRename={handleRenameSession}
+            onDelete={handleDeleteSession}
+            onClose={() => setIsSidebarOpen(false)}
+          />
+        </div>
+      )}
+
+      <div className="flex min-w-0 flex-1 flex-col bg-background">
+        <div className="flex h-12 shrink-0 items-center justify-between gap-3 bg-card/70 px-4">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {isCompactLayout && (
+              <button
+                type="button"
+                onClick={() => setIsSidebarOpen(true)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title="展开会话列表"
+              >
+                <AppIcon name="panelLeft" size={17} />
+              </button>
+            )}
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold text-foreground">
+                {currentSession?.title || '新会话'}
+              </div>
+              <div className="truncate text-[10px] text-muted-foreground">
+                {sessionContextLabel}
+              </div>
+            </div>
+          </div>
+
+          {isOtherSessionStreaming && (
+            <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-primary-soft px-2.5 py-1 text-[10px] font-semibold text-primary">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+              其他会话正在生成
+            </div>
+          )}
+        </div>
+
       <div
         ref={chatContainerRef}
         onScroll={handleScroll}
@@ -486,15 +631,15 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
       >
         {messages.map((msg, idx) => (
           <MessageBubble
-            key={idx}
+            key={`${currentSessionId || 'session'}-${idx}`}
             msg={msg}
             idx={idx}
-            isStreaming={isTyping && idx === messages.length - 1 && msg.role === 'assistant'}
+            isStreaming={isCurrentSessionStreaming && idx === messages.length - 1 && msg.role === 'assistant'}
             onCopy={copyToClipboard}
             copiedIdx={copiedIdx}
           />
         ))}
-        {messages.length > 0 && isTyping && !messages[messages.length - 1]?.content && !messages[messages.length - 1]?.think && (
+        {messages.length > 0 && isCurrentSessionStreaming && !messages[messages.length - 1]?.content && !messages[messages.length - 1]?.think && (
           <div className="flex animate-in items-center gap-3 self-start rounded-2xl rounded-bl-sm border border-border bg-muted p-4 text-foreground shadow-sm fade-in duration-300">
             <AppIcon name="loading" size={16} className="animate-spin text-primary" />
             <span className="animate-pulse text-xs font-bold text-secondary-foreground">{loadingStatus}</span>
@@ -504,7 +649,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
       </div>
 
       {showSettings && (
-        <div className="flex flex-col gap-3 border-t border-border bg-muted/50 p-4 text-sm animate-in slide-in-from-bottom-2 duration-200">
+        <div className="flex flex-col gap-3 bg-muted/50 p-4 text-sm animate-in slide-in-from-bottom-2 duration-200">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-muted-foreground">API Endpoint</label>
             <input
@@ -550,7 +695,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
         </div>
       )}
 
-      <div className="border-t border-border bg-card p-4">
+      <div className="bg-card p-4 shadow-[0_-8px_24px_hsl(var(--foreground)/0.025)]">
         {!isTyping && (
           <div className="mb-3 flex flex-wrap gap-2">
             {quickActions.map((action, index) => (
@@ -577,7 +722,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
           </button>
           <div className="flex items-center gap-2">
             <div
-              className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold shadow-sm ${connectionStatusClassName}`}
+              className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${connectionStatusClassName}`}
               title={`activeModule: ${activeModule || '--'} · lastUpdated: ${formatLastUpdated(statusLastUpdated)}`}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${connectedContextModule ? 'animate-pulse' : ''} ${connectionDotClassName}`} />
@@ -586,7 +731,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
             <button
               type="button"
               onClick={clearMessages}
-              title="清除聊天记录"
+              title="清除当前会话记录"
               className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
             >
               <AppIcon name="delete" size={16} />
@@ -604,6 +749,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
           onSend={() => handleSend()}
           onStop={handleStop}
         />
+      </div>
       </div>
     </div>
   );
