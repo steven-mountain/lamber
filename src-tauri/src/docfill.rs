@@ -963,6 +963,7 @@ mod tests {
     use std::fs;
     use std::io::Read;
     use std::path::Path;
+    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -1118,10 +1119,40 @@ mod tests {
             .unwrap_or(0.0)
     }
 
+    fn lifecycle_xlsx_test_template() -> PathBuf {
+        let file_name = "效益分析表 .xlsx";
+        let mut candidates = Vec::new();
+
+        if let Some(root) = std::env::var_os("LAMBER_TEMPLATE_ROOT") {
+            let root = PathBuf::from(root);
+            candidates.push(root.join(file_name));
+            candidates.push(root.join("templates").join(file_name));
+        }
+
+        candidates.push(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../项目全生命周期文件模版")
+                .join(file_name),
+        );
+        candidates.push(
+            PathBuf::from(r"D:\HermesJang\CMCC\tools\workspace")
+                .join("templates")
+                .join(file_name),
+        );
+
+        candidates
+            .into_iter()
+            .find(|candidate| candidate.exists())
+            .unwrap_or_else(|| {
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../项目全生命周期文件模版")
+                    .join(file_name)
+            })
+    }
+
     #[test]
     fn lifecycle_xlsx_subject_mapping_writes_names_excl_and_incl() {
-        let template_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../项目全生命周期文件模版/效益分析表 .xlsx");
+        let template_path = lifecycle_xlsx_test_template();
         assert!(
             template_path.exists(),
             "missing test template: {}",
@@ -1168,8 +1199,7 @@ mod tests {
 
     #[test]
     fn lifecycle_xlsx_blank_amounts_clear_formula_and_do_not_write_zero() {
-        let template_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../项目全生命周期文件模版/效益分析表 .xlsx");
+        let template_path = lifecycle_xlsx_test_template();
         assert!(
             template_path.exists(),
             "missing test template: {}",

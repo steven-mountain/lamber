@@ -2,6 +2,7 @@
 
 mod ai_context;
 mod benefit;
+mod business_dictionaries;
 mod common_presets;
 mod config_manager;
 mod db;
@@ -9,13 +10,17 @@ mod docfill;
 mod intelligent_compute;
 mod migration;
 mod project_files;
+mod project_presets;
 mod project_state;
 mod workspace;
 mod workspace_maintenance;
 
 use config_manager::{AppConfig, ConfigManager};
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, State};
+use std::time::Duration;
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 #[tauri::command]
 fn open_file(path: String) -> Result<(), String> {
@@ -72,17 +77,84 @@ async fn set_module_path(
 }
 
 fn main() {
+    fn write_webview_diagnostic_log(message: &str) {
+        let path = std::env::temp_dir().join("lamber-webview-diagnostic.log");
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+            let _ = writeln!(file, "{}", message);
+        }
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            write_webview_diagnostic_log("setup reached");
+
             let manager = ConfigManager::new(app.handle());
             let config = manager.load();
             app.manage(Mutex::new(config.clone()));
 
             let workspace_runtime = std::sync::Arc::new(workspace::WorkspaceRuntime::new());
-            workspace::try_restore_last_workspace(app.handle(), &workspace_runtime, &config);
+            workspace::spawn_restore_last_workspace(
+                app.handle().clone(),
+                workspace_runtime.clone(),
+                config.clone(),
+            );
             app.manage(workspace_runtime);
+
+            if std::env::var_os("LAMBER_WEBVIEW_DIAGNOSTIC").is_some() {
+                write_webview_diagnostic_log("diagnostic enabled in setup");
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_secs(8));
+                    match app_handle.get_webview_window("main") {
+                        Some(window) => {
+                            write_webview_diagnostic_log("main webview window found");
+                            let script = r#"
+                                document.body.style.margin = "0";
+                                document.body.innerHTML = "<div style='min-height:100vh;display:grid;place-items:center;background:#f8fafc;color:#0f172a;font:16px system-ui'>WebView diagnostic eval reached</div>";
+                            "#;
+                            match window.eval(script) {
+                                Ok(_) => {
+                                    write_webview_diagnostic_log("diagnostic eval succeeded");
+                                    eprintln!("Lamber WebView diagnostic eval succeeded");
+                                }
+                                Err(err) => {
+                                    write_webview_diagnostic_log(&format!(
+                                        "diagnostic eval failed: {}",
+                                        err
+                                    ));
+                                    eprintln!("Lamber WebView diagnostic eval failed: {}", err);
+                                }
+                            }
+                        }
+                        None => {
+                            write_webview_diagnostic_log("main webview window not found");
+                            eprintln!("Lamber WebView diagnostic could not find main window");
+                        }
+                    }
+                });
+            }
+
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                write_webview_diagnostic_log("main window build started");
+                match WebviewWindowBuilder::new(
+                    &app_handle,
+                    "main",
+                    WebviewUrl::App("index.html".into()),
+                )
+                .title("云数中心工具集")
+                .inner_size(1024.0, 768.0)
+                .build()
+                {
+                    Ok(_) => write_webview_diagnostic_log("main window build succeeded"),
+                    Err(err) => write_webview_diagnostic_log(&format!(
+                        "main window build failed: {}",
+                        err
+                    )),
+                }
+            });
 
             Ok(())
         })
@@ -93,10 +165,22 @@ fn main() {
             ai_context::commands::list_ai_workspace_projects,
             ai_context::commands::load_ai_template_asset,
             common_presets::list_common_presets,
+            common_presets::list_preset_field_settings,
             common_presets::save_common_preset,
+            common_presets::set_preset_field_enabled,
             common_presets::set_common_preset_enabled,
             common_presets::delete_common_preset,
             common_presets::mark_common_preset_used,
+            business_dictionaries::list_business_dictionaries,
+            business_dictionaries::get_business_dictionary_options,
+            business_dictionaries::save_business_dictionary_item,
+            business_dictionaries::set_business_dictionary_item_enabled,
+            business_dictionaries::delete_business_dictionary_item,
+            business_dictionaries::reorder_business_dictionary_items,
+            project_presets::list_project_preset_templates,
+            project_presets::save_project_preset_template,
+            project_presets::set_project_preset_template_enabled,
+            project_presets::delete_project_preset_template,
             benefit::reverse_calc_ict_target,
             benefit::reverse_calc_ict_revenue_target,
             benefit::calculate_selection_fee,

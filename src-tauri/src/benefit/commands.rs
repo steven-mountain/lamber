@@ -152,6 +152,7 @@ pub async fn create_project_in_workspace(
     name: String,
     customer_name: String,
     project_type: Option<String>,
+    project_preset_template_id: Option<String>,
 ) -> Result<Project, String> {
     let ws = runtime.require_workspace()?;
     let conn = runtime.require_db()?;
@@ -275,7 +276,32 @@ pub async fn create_project_in_workspace(
         }
     }
 
-    Ok(project)
+    if let Some(template_id) = project_preset_template_id
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        let init_result = {
+            let db = runtime.require_db()?;
+            let conn = db.lock().map_err(|error| error.to_string())?;
+            crate::project_presets::initialize_new_project_locked(
+                &conn,
+                &project.id,
+                &project.name,
+                &template_id,
+            )
+        };
+        if let Err(error) = init_result {
+            let _ = repo.delete_project(&project.id);
+            let _ = std::fs::remove_dir_all(&project_dir);
+            return Err(format!(
+                "ProjectPresetInitializationFailed::{}; project creation rolled back",
+                error
+            ));
+        }
+    }
+
+    repo.get_project(&project.id)?
+        .ok_or_else(|| "CreatedProjectNotFound".to_string())
 }
 
 #[tauri::command]

@@ -1,9 +1,13 @@
 {
   "name": "benefit-calculator",
-  "version": "1.0.2",
+  "version": "1.1.1",
   "description": "Project Benefit Calculation Tool",
   "scripts": {
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "package:windows": "node scripts/package-windows.mjs",
+    "package:windows:minor": "node scripts/package-windows.mjs minor",
+    "package:windows:major": "node scripts/package-windows.mjs major",
+    "test:packaging": "node --test scripts/package-windows.test.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0"

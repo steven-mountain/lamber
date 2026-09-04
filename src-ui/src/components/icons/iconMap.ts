@@ -3,6 +3,7 @@ import {
   Bot,
   BrainCircuit,
   BookOpenText,
+  Bookmark,
   Calculator,
   ChartNoAxesCombined,
   Check,
@@ -22,6 +23,7 @@ import {
   Landmark,
   Loader2,
   MessageCircle,
+  MoreHorizontal,
   Pencil,
   Percent,
   RotateCcw,
@@ -76,6 +78,7 @@ export const iconMap = {
   parameters: Settings2,
   project: ClipboardList,
   presets: BookOpenText,
+  presetLibrary: Bookmark,
   reverse: RotateCcw,
   revenue: WalletCards,
   save: Save,
@@ -86,6 +89,7 @@ export const iconMap = {
   success: CircleCheck,
   tableProperties: TableProperties,
   warning: TriangleAlert,
+  more: MoreHorizontal,
   quickAction: Zap,
 } as const satisfies Record<string, LucideIcon>
 

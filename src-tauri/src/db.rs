@@ -296,6 +296,8 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
     )?;
 
     crate::common_presets::ensure_schema(&conn)?;
+    crate::business_dictionaries::ensure_schema(&conn)?;
+    crate::project_presets::ensure_schema(&conn)?;
 
     conn.execute("CREATE INDEX IF NOT EXISTS idx_project_lifecycle_project_id ON project_lifecycle_states(project_id);", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_project_cashflow_project_id ON project_cashflow_states(project_id);", [])?;

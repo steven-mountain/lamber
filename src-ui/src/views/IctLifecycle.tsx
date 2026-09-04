@@ -58,6 +58,12 @@ import {
   scrollToSubject,
 } from "../components/IctSubjectRoleComponents";
 import IctSubjectFundingPlanEditor from "../components/IctSubjectFundingPlanEditor";
+import ProjectPresetProjectActions from "../components/project-presets/ProjectPresetProjectActions";
+import {
+  getProjectPresetValueType,
+  type ProjectPresetFieldBinding,
+} from "../lib/projectPresetFields";
+import { PRESET_FIELD_KEYS } from "../lib/presetFieldKeys";
 import {
   createSubjectFundingPlanId,
   normalizeSubjectFundingPlans,
@@ -186,6 +192,8 @@ export default function IctLifecycle() {
   const [showSelectProjectModal, setShowSelectProjectModal] = useState(false);
   const [fundingPlanFocus, setFundingPlanFocus] = useState<{ planId: string; token: number } | null>(null);
   const [cashflowSourceExpanded, setCashflowSourceExpanded] = useState(false);
+  const [templatePresetBindings, setTemplatePresetBindings] = useState<ProjectPresetFieldBinding[]>([]);
+  const appliedPresetSeedRef = useRef(new Set<string>());
 
   const buildHydrationInput = useCallback((baseInput: any, cashflowState: any) => {
     const merged = { ...(baseInput || {}) };
@@ -994,6 +1002,68 @@ export default function IctLifecycle() {
   } = calculations;
 
   const setActiveModule = useAiContextStore(storeState => storeState.setActiveModule);
+
+  const projectPresetBindings = useMemo<ProjectPresetFieldBinding[]>(() => [
+    {
+      fieldKey: PRESET_FIELD_KEYS.projectCustomerName,
+      value: state.customerName,
+      valueType: getProjectPresetValueType(PRESET_FIELD_KEYS.projectCustomerName),
+      sourceType: "from_project",
+      apply: value => state.setCustomerName(String(value ?? "")),
+    },
+    {
+      fieldKey: PRESET_FIELD_KEYS.projectPropertyRights,
+      value: state.propertyRights,
+      valueType: getProjectPresetValueType(PRESET_FIELD_KEYS.projectPropertyRights),
+      sourceType: "from_project",
+      apply: value => state.setPropertyRights(String(value ?? "")),
+    },
+    {
+      fieldKey: PRESET_FIELD_KEYS.projectBackground,
+      value: state.projectBackground,
+      valueType: getProjectPresetValueType(PRESET_FIELD_KEYS.projectBackground),
+      sourceType: "from_project",
+      apply: value => state.setProjectBackground(String(value ?? "")),
+    },
+    ...templatePresetBindings,
+  ], [
+    state,
+    templatePresetBindings,
+  ]);
+
+  const handleTemplatePresetBindingsChange = useCallback((bindings: ProjectPresetFieldBinding[]) => {
+    setTemplatePresetBindings(bindings);
+    if (!activeProject?.id || !selectedTemplate || bindings.length === 0) return;
+    const seedKey = `${activeProject.id}::${selectedTemplate}`;
+    if (appliedPresetSeedRef.current.has(seedKey)) return;
+    appliedPresetSeedRef.current.add(seedKey);
+    void projectService.getProjectSetting(activeProject.id, "project_preset_seed")
+      .then(raw => {
+        if (!raw) return;
+        const seed = JSON.parse(raw) as {
+          entries?: Array<{ fieldKey: string; value: unknown }>;
+          appliedTemplates?: string[];
+        };
+        if (seed.appliedTemplates?.includes(selectedTemplate)) return;
+        const bindingMap = new Map(bindings.map(binding => [binding.fieldKey, binding]));
+        let applied = 0;
+        for (const entry of seed.entries || []) {
+          const binding = bindingMap.get(entry.fieldKey);
+          if (!binding) continue;
+          binding.apply(entry.value);
+          applied += 1;
+        }
+        if (applied > 0) {
+          seed.appliedTemplates = [...new Set([...(seed.appliedTemplates || []), selectedTemplate])];
+          void projectService.saveProjectSetting(
+            activeProject.id,
+            "project_preset_seed",
+            JSON.stringify(seed),
+          );
+        }
+      })
+      .catch(error => console.error("Failed to apply project preset seed", error));
+  }, [activeProject?.id, selectedTemplate]);
 
   useEffect(() => {
     setActiveModule('ict');
@@ -2049,7 +2119,8 @@ export default function IctLifecycle() {
                   </div>
                 </div>
               </div>
-              <div className="grid w-full min-w-0 grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto] lg:w-auto lg:min-w-[420px] lg:max-w-[560px]">
+              <div className="grid w-full min-w-0 grid-cols-1 gap-2 md:grid-cols-[auto_minmax(0,1fr)_auto_auto] lg:w-auto lg:min-w-[520px] lg:max-w-[680px]">
+                <ProjectPresetProjectActions bindings={projectPresetBindings} />
                 <select
                   onChange={async (e) => {
                     const pid = e.target.value;
@@ -2207,6 +2278,7 @@ export default function IctLifecycle() {
               currentSchemeLabel={pendingNewSchemeName || activeScheme?.name || "默认方案"}
               fetchPreSelectionCostIt={fetchPreSelectionCostIt}
               preSchemeName={preScheme?.name}
+              onProjectPresetBindingsChange={handleTemplatePresetBindingsChange}
             />
           </div>
 

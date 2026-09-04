@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { emitTo } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import IctLifecycle from "./views/IctLifecycle";
 import ProjectBoard from "./views/ProjectBoard";
 import DataManagement from "./views/DataManagement";
@@ -19,6 +19,7 @@ import { useUnsavedChangesGuard } from "./hooks/useUnsavedChangesGuard";
 
 const AI_ASSISTANT_LABEL = "ai-assistant";
 const AI_CURRENT_VIEW_KEY = "lamber_ai_current_view";
+const WORKSPACE_STATE_CHANGED_EVENT = "lamber-workspace-state-changed";
 
 function isTauriRuntime() {
   return typeof window !== "undefined" && Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
@@ -44,7 +45,29 @@ export default function App() {
 
   useEffect(() => {
     if (aiAssistantView) return;
-    if (isTauriRuntime()) refreshWorkspaceState();
+    if (!isTauriRuntime()) return;
+
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+
+    listen(WORKSPACE_STATE_CHANGED_EVENT, () => {
+      if (!cancelled) {
+        refreshWorkspaceState();
+      }
+    }).then((handler) => {
+      if (cancelled) {
+        handler();
+      } else {
+        unlisten = handler;
+      }
+    }).catch(error => console.warn("Failed to listen for workspace state changes:", error));
+
+    refreshWorkspaceState();
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, [aiAssistantView, refreshWorkspaceState]);
 
   useEffect(() => {

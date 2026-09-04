@@ -10,6 +10,7 @@ import { domainSaveService } from "../services/domainSaveService"
 import { useSaveStore } from "../store/useSaveStore"
 import { useWorkspaceStore } from "../store/useWorkspaceStore"
 import { CommonPresetFieldHeader, CommonPresetLabelHeader } from "../components/common-presets/CommonPresetQuickFill"
+import BusinessDictionarySelect from "../components/business-dictionaries/BusinessDictionarySelect"
 import {
   getTemplateCompletion,
   TemplateConfirmationPanel,
@@ -19,6 +20,7 @@ import {
   type TemplateCompletionItem,
 } from "../components/templates/TemplateDocumentLayout"
 import { PRESET_FIELD_KEYS } from "../lib/presetFieldKeys"
+import { getProjectPresetValueType, type ProjectPresetFieldBinding } from "../lib/projectPresetFields"
 import { createTemplateAssetSelection, publishTemplateAssetSelection } from "../ai/templateAssetSelection"
 import {
   buildExcelSubjectVariables,
@@ -49,6 +51,7 @@ interface Props {
   /** 甄选结果签批表：异步读取甄选前方案的 IT 投入科目（costIt 同形结构），无甄选前方案返回 null */
   fetchPreSelectionCostIt?: () => Promise<Record<string, any> | null>;
   preSchemeName?: string;
+  onProjectPresetBindingsChange?: (bindings: ProjectPresetFieldBinding[]) => void;
 }
 
 type ProjectScale = "large" | "small"
@@ -57,6 +60,29 @@ type MeetingReviewTabId = "basic" | "content" | "business" | "risk" | "confirm"
 type ApprovalTemplateTabId = "content" | "confirm"
 type DemandTemplateTabId = "content" | "confirm"
 type SelectionResultTabId = "content" | "confirm"
+
+const BUSINESS_MODEL_OPTIONS = [
+  { value: "服务购销", label: "服务购销" },
+  { value: "服务模式", label: "服务模式" },
+  { value: "集成购销", label: "集成购销" },
+  { value: "投资", label: "投资" },
+]
+
+const FUNDING_SOURCE_OPTIONS = [
+  { value: "分公司成本开支", label: "分公司成本开支" },
+  { value: "市公司专项资源", label: "市公司专项资源" },
+]
+
+const PROCUREMENT_METHOD_OPTIONS = [
+  { value: "短名单甄选", label: "短名单甄选" },
+  { value: "采购", label: "采购" },
+  { value: "其他", label: "其他" },
+]
+
+const YES_NO_OPTIONS = [
+  { value: "是", label: "是" },
+  { value: "否", label: "否" },
+]
 
 const MEETING_REVIEW_TABS: Array<{ id: MeetingReviewTabId; label: string }> = [
   { id: "basic", label: "会审基础信息" },
@@ -188,7 +214,8 @@ export default function TemplateForms({
   onGenerated,
   currentSchemeLabel,
   fetchPreSelectionCostIt,
-  preSchemeName
+  preSchemeName,
+  onProjectPresetBindingsChange,
 }: Props) {
   const formRef = useRef<HTMLFormElement>(null)
   const markDirty = useSaveStore(state => state.markDirty)
@@ -317,6 +344,80 @@ export default function TemplateForms({
     setFormData({ ...formDataRef.current });
     setSyncTrigger(prev => prev + 1);
   };
+
+  useEffect(() => {
+    if (!onProjectPresetBindingsChange) return;
+    const bindings: ProjectPresetFieldBinding[] = [];
+    const add = (fieldKey: string, value: unknown, apply: (nextValue: unknown) => void) => {
+      const valueType = getProjectPresetValueType(fieldKey);
+      bindings.push({
+        fieldKey,
+        value,
+        valueType,
+        sourceType: valueType === "dictionary_value" ? "dictionary" : "from_project",
+        apply,
+      });
+    };
+    const addFormField = (fieldKey: string, name: string, defaultValue = "") =>
+      add(fieldKey, formData[name] ?? defaultValue, value => handleFieldChange(name, String(value ?? "")));
+
+    if (selectedTemplate.endsWith(".xlsx")) {
+      add(PRESET_FIELD_KEYS.templateItBusinessMode, itBusMode, value => setItBusMode(String(value ?? "")));
+      add(PRESET_FIELD_KEYS.templateItFundingSource, itFundSrc, value => setItFundSrc(String(value ?? "")));
+    }
+    if (selectedTemplate.includes("会审")) {
+      addFormField(PRESET_FIELD_KEYS.approvalReviewers, "gen_city_attendees");
+      addFormField(PRESET_FIELD_KEYS.approvalDepartment, "gen_branch_name", "XXXX");
+      addFormField(PRESET_FIELD_KEYS.approvalBranchAttendees, "gen_branch_attendees");
+      addFormField(PRESET_FIELD_KEYS.meetingOnsiteSupport, "gen_onsite_support");
+      add(PRESET_FIELD_KEYS.meetingItConstructionContent, itContent, value => setItContent(String(value ?? "")));
+      add(PRESET_FIELD_KEYS.meetingCtConstructionContent, ctContent, value => setCtContent(String(value ?? "")));
+      addFormField(PRESET_FIELD_KEYS.projectSolution, "gen_tech_solution");
+      addFormField(PRESET_FIELD_KEYS.meetingThreeization, "gen_threeization");
+      addFormField(PRESET_FIELD_KEYS.meetingStrategicValue, "gen_strategic_value");
+      addFormField(PRESET_FIELD_KEYS.meetingTechnicalConclusion, "gen_tech_conclusion");
+      addFormField(PRESET_FIELD_KEYS.meetingReviewAccuracy, "gen_review_acc");
+      addFormField(PRESET_FIELD_KEYS.approvalProjectManager, "gen_risk_owner");
+      addFormField(PRESET_FIELD_KEYS.procurementSingleSourceBasis, "gen_single_source");
+      addFormField(PRESET_FIELD_KEYS.procurementOtherMethod, "gen_procurement_method_other");
+      addFormField(PRESET_FIELD_KEYS.meetingTimeRequirement, "gen_construction_time_req");
+      addFormField(PRESET_FIELD_KEYS.implementationConstructionInterface, "gen_construction_interface");
+      addFormField(PRESET_FIELD_KEYS.tenderIsJoint, "gen_is_joint", "否");
+      add(PRESET_FIELD_KEYS.procurementSingleSource, hasSingleSource ? "是" : "否", value => setHasSingleSource(String(value) === "是"));
+      add(PRESET_FIELD_KEYS.procurementMethod, procurementMethod, value => setProcurementMethod(String(value ?? "")));
+      add(PRESET_FIELD_KEYS.paymentRevenueCollectionMethod, revCollection, value => setRevCollection(String(value ?? "")));
+      add(PRESET_FIELD_KEYS.paymentExpenditurePaymentMethod, expPayment, value => setExpPayment(String(value ?? "")));
+    }
+    if (selectedTemplate.includes("立项签批表")) {
+      addFormField(PRESET_FIELD_KEYS.approvalItServiceContent, "gen_sign_it_content");
+      addFormField(PRESET_FIELD_KEYS.approvalCtServiceContent, "gen_sign_ct_content");
+      add(PRESET_FIELD_KEYS.paymentRevenueCollectionMethod, revCollection, value => setRevCollection(String(value ?? "")));
+      add(PRESET_FIELD_KEYS.paymentExpenditurePaymentMethod, expPayment, value => setExpPayment(String(value ?? "")));
+    }
+    if (selectedTemplate.includes("需求导入表")) {
+      addFormField(PRESET_FIELD_KEYS.demandUnit, "gen_demand_branch_name");
+      addFormField(PRESET_FIELD_KEYS.demandItBusinessMode, "gen_demand_it_business_mode");
+      addFormField(PRESET_FIELD_KEYS.demandServiceContent, "gen_demand_service_content");
+      addFormField(PRESET_FIELD_KEYS.demandDeviceList, "gen_demand_device_list");
+      addFormField(PRESET_FIELD_KEYS.demandCustomerConfirmation, "gen_demand_customer_confirm");
+      addFormField(PRESET_FIELD_KEYS.demandDeploymentEnvironment, "gen_demand_env_require");
+      addFormField(PRESET_FIELD_KEYS.demandSecurityDetail, "gen_demand_security_detail");
+    }
+    onProjectPresetBindingsChange(bindings);
+    return () => onProjectPresetBindingsChange([]);
+  }, [
+    onProjectPresetBindingsChange,
+    selectedTemplate,
+    formData,
+    itBusMode,
+    itFundSrc,
+    itContent,
+    ctContent,
+    hasSingleSource,
+    procurementMethod,
+    revCollection,
+    expPayment,
+  ]);
 
   const getBind = (name: string, defaultVal: string = "") => {
     return {
@@ -1710,18 +1811,25 @@ export default function TemplateForms({
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">IT部分商务模式</label>
-                <select name="gen_it_bus_mode" value={itBusMode} onChange={e => setItBusMode(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm">
-                  <option value="服务模式">服务模式</option>
-                  <option value="集成购销">集成购销</option>
-                  <option value="投资">投资</option>
-                </select>
+                <BusinessDictionarySelect
+                  name="gen_it_bus_mode"
+                  dictionaryKey="business_model"
+                  value={itBusMode}
+                  onChange={setItBusMode}
+                  fallbackOptions={BUSINESS_MODEL_OPTIONS}
+                  className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm"
+                />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-semibold">IT部分资金来源</label>
-                <select name="gen_it_fund_src" value={itFundSrc} onChange={e => setItFundSrc(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm">
-                  <option value="分公司成本开支">分公司成本开支</option>
-                  <option value="市公司专项资源">市公司专项资源</option>
-                </select>
+                <BusinessDictionarySelect
+                  name="gen_it_fund_src"
+                  dictionaryKey="funding_source"
+                  value={itFundSrc}
+                  onChange={setItFundSrc}
+                  fallbackOptions={FUNDING_SOURCE_OPTIONS}
+                  className="bg-card border border-input px-3 py-2 rounded-md outline-none text-sm"
+                />
               </div>
             </div>
             <div className="bg-muted p-4 rounded-lg border border-border mt-2">
@@ -2041,18 +2149,25 @@ export default function TemplateForms({
                   <div className="grid grid-cols-1 gap-4 rounded-xl bg-muted/40 p-4 shadow-sm xl:col-span-2 xl:grid-cols-2">
                     <div className="flex flex-col gap-1">
                       <label className="text-sm font-semibold">IT部分商务模式</label>
-                      <select name="gen_it_bus_mode" value={itBusMode} onChange={e => setItBusMode(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md">
-                        <option value="服务模式">服务模式</option>
-                        <option value="集成购销">集成购销</option>
-                        <option value="投资">投资</option>
-                      </select>
+                      <BusinessDictionarySelect
+                        name="gen_it_bus_mode"
+                        dictionaryKey="business_model"
+                        value={itBusMode}
+                        onChange={setItBusMode}
+                        fallbackOptions={BUSINESS_MODEL_OPTIONS}
+                        className="bg-card border border-input px-3 py-2 rounded-md"
+                      />
                     </div>
                     <div className="flex flex-col gap-1">
                       <label className="text-sm font-semibold">IT部分资金来源</label>
-                      <select name="gen_it_fund_src" value={itFundSrc} onChange={e => setItFundSrc(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md">
-                        <option value="分公司成本开支">分公司成本开支</option>
-                        <option value="市公司专项资源">市公司专项资源</option>
-                      </select>
+                      <BusinessDictionarySelect
+                        name="gen_it_fund_src"
+                        dictionaryKey="funding_source"
+                        value={itFundSrc}
+                        onChange={setItFundSrc}
+                        fallbackOptions={FUNDING_SOURCE_OPTIONS}
+                        className="bg-card border border-input px-3 py-2 rounded-md"
+                      />
                     </div>
                   </div>
 
@@ -2221,7 +2336,14 @@ export default function TemplateForms({
                   </div>
                   <div className="flex flex-col gap-1">
                     <CommonPresetLabelHeader>是否联合体投标</CommonPresetLabelHeader>
-                    <input type="text" name="gen_is_joint" {...getBind("gen_is_joint", "否")} className="bg-card border border-input px-3 py-2 rounded-md" />
+                    <BusinessDictionarySelect
+                      name="gen_is_joint"
+                      dictionaryKey="yes_no"
+                      value={formData.gen_is_joint ?? "否"}
+                      onChange={(nextValue) => handleFieldChange("gen_is_joint", nextValue)}
+                      fallbackOptions={YES_NO_OPTIONS}
+                      className="bg-card border border-input px-3 py-2 rounded-md"
+                    />
                   </div>
                   <div className="flex flex-col gap-1 xl:col-span-2">
                     <label className="text-sm font-semibold">项目评审表准确完整</label>
@@ -2240,11 +2362,13 @@ export default function TemplateForms({
 
                   <div className="flex flex-col gap-1">
                     <CommonPresetLabelHeader labelClassName="text-sm font-bold text-foreground">采购方式</CommonPresetLabelHeader>
-                    <select value={procurementMethod} onChange={e => setProcurementMethod(e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md">
-                      <option value="短名单甄选">短名单甄选</option>
-                      <option value="采购">采购</option>
-                      <option value="其他">其他</option>
-                    </select>
+                    <BusinessDictionarySelect
+                      dictionaryKey="procurement_method"
+                      value={procurementMethod}
+                      onChange={setProcurementMethod}
+                      fallbackOptions={PROCUREMENT_METHOD_OPTIONS}
+                      className="bg-card border border-input px-3 py-2 rounded-md"
+                    />
                     {procurementMethod === '其他' && (
                       <input type="text" name="gen_procurement_method_other" {...getBind("gen_procurement_method_other")} placeholder="请输入其他采购方式" className="bg-card border border-input px-3 py-2 rounded-md mt-1" />
                     )}
@@ -2637,10 +2761,14 @@ export default function TemplateForms({
                     <div className="grid grid-cols-1 gap-4">
                       <div className="flex flex-col gap-1">
                         <CommonPresetLabelHeader>业务模式</CommonPresetLabelHeader>
-                        <select name="gen_demand_it_business_mode" {...getBind("gen_demand_it_business_mode", "服务模式")} className="bg-card border border-input px-3 py-2 rounded-md">
-                          <option value="服务模式">服务模式</option>
-                          <option value="投资">投资</option>
-                        </select>
+                        <BusinessDictionarySelect
+                          name="gen_demand_it_business_mode"
+                          dictionaryKey="business_model"
+                          value={formData.gen_demand_it_business_mode ?? "服务模式"}
+                          onChange={(nextValue) => handleFieldChange("gen_demand_it_business_mode", nextValue)}
+                          fallbackOptions={BUSINESS_MODEL_OPTIONS}
+                          className="bg-card border border-input px-3 py-2 rounded-md"
+                        />
                       </div>
                       <div className="flex flex-col gap-3">
                         <label className="text-sm font-bold text-foreground flex items-center gap-2">

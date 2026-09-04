@@ -38,6 +38,57 @@ fn validate_scope(scope: &str) -> Result<(), String> {
     }
 }
 
+const PRESET_ELIGIBLE_FIELD_KEYS: &[&str] = &[
+    "project_basic.customer_name",
+    "project_basic.background",
+    "project_basic.solution",
+    "project_basic.property_rights",
+    "approval.reviewers",
+    "approval.department",
+    "approval.branch_attendees",
+    "approval.project_manager",
+    "approval.it_service_content",
+    "approval.ct_service_content",
+    "demand.unit",
+    "demand.service_content",
+    "demand.customer_confirmation",
+    "demand.deployment_environment",
+    "meeting.onsite_support",
+    "meeting.it_construction_content",
+    "meeting.ct_construction_content",
+    "meeting.time_requirement",
+    "meeting.threeization",
+    "meeting.strategic_value",
+    "meeting.technical_conclusion",
+    "meeting.review_accuracy",
+    "payment.revenue_collection_method",
+    "payment.expenditure_payment_method",
+    "contract.income_terms",
+    "contract.expenditure_terms",
+    "service.description",
+    "risk.description",
+    "procurement.single_source_basis",
+    "procurement.other_method",
+    "implementation.construction_interface",
+    "demand.device_list",
+    "demand.security_detail",
+];
+
+fn validate_preset_field_key(field_key: &str) -> Result<(), String> {
+    if PRESET_ELIGIBLE_FIELD_KEYS.contains(&field_key) {
+        Ok(())
+    } else {
+        Err(format!("PresetFieldNotEligible::{}", field_key))
+    }
+}
+
+fn validate_preset_field_keys(field_keys: &[String]) -> Result<(), String> {
+    for field_key in field_keys {
+        validate_preset_field_key(field_key)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn ensure_schema(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS common_presets (
@@ -64,6 +115,14 @@ pub(crate) fn ensure_schema(conn: &Connection) -> rusqlite::Result<()> {
     )?;
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_common_presets_usage ON common_presets(scope, usage_count, last_used_at);",
+        [],
+    )?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS preset_field_settings (
+            field_key TEXT PRIMARY KEY,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+        );",
         [],
     )?;
     Ok(())
@@ -109,6 +168,14 @@ pub struct CommonPresetFilter {
     pub field_key: Option<String>,
     pub include_disabled: Option<bool>,
     pub sort_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetFieldSetting {
+    pub field_key: String,
+    pub enabled: bool,
+    pub updated_at: String,
 }
 
 fn row_to_preset(row: &rusqlite::Row<'_>) -> rusqlite::Result<CommonPreset> {
@@ -231,6 +298,7 @@ fn save_preset_locked(conn: &Connection, input: CommonPresetInput) -> Result<Com
 
     let tags = normalize_list(input.tags.unwrap_or_default());
     let applicable_field_keys = normalize_list(input.applicable_field_keys.unwrap_or_default());
+    validate_preset_field_keys(&applicable_field_keys)?;
     let now = now_iso();
     let enabled = input.enabled.unwrap_or(true);
 
@@ -294,6 +362,57 @@ fn save_preset_locked(conn: &Connection, input: CommonPresetInput) -> Result<Com
     get_preset_locked(conn, &id)
 }
 
+fn list_field_settings_locked(conn: &Connection) -> Result<Vec<PresetFieldSetting>, String> {
+    ensure_schema(conn).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT field_key, enabled, updated_at
+             FROM preset_field_settings
+             ORDER BY field_key ASC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(PresetFieldSetting {
+                field_key: row.get(0)?,
+                enabled: row.get::<_, i64>(1)? != 0,
+                updated_at: row.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut settings = Vec::new();
+    for row in rows {
+        settings.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(settings)
+}
+
+fn set_field_setting_locked(
+    conn: &Connection,
+    field_key: &str,
+    enabled: bool,
+) -> Result<PresetFieldSetting, String> {
+    ensure_schema(conn).map_err(|e| e.to_string())?;
+    let field_key = field_key.trim();
+    validate_preset_field_key(field_key)?;
+    let now = now_iso();
+    conn.execute(
+        "INSERT INTO preset_field_settings (field_key, enabled, updated_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(field_key) DO UPDATE SET
+            enabled = excluded.enabled,
+            updated_at = excluded.updated_at",
+        params![field_key, if enabled { 1 } else { 0 }, now],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(PresetFieldSetting {
+        field_key: field_key.to_string(),
+        enabled,
+        updated_at: now,
+    })
+}
+
 #[tauri::command]
 pub async fn list_common_presets(
     runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
@@ -312,6 +431,28 @@ pub async fn list_common_presets(
             sort_by: None,
         }),
     )
+}
+
+#[tauri::command]
+pub async fn list_preset_field_settings(
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
+) -> Result<Vec<PresetFieldSetting>, String> {
+    runtime.require_workspace()?;
+    let db = runtime.require_db()?;
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    list_field_settings_locked(&conn)
+}
+
+#[tauri::command]
+pub async fn set_preset_field_enabled(
+    runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
+    field_key: String,
+    enabled: bool,
+) -> Result<PresetFieldSetting, String> {
+    runtime.require_workspace()?;
+    let db = runtime.require_db()?;
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    set_field_setting_locked(&conn, &field_key, enabled)
 }
 
 #[tauri::command]
@@ -481,5 +622,64 @@ mod tests {
         )
         .unwrap();
         assert!(enabled_only.is_empty());
+    }
+
+    #[test]
+    fn field_settings_persist_and_financial_fields_are_rejected() {
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&conn).unwrap();
+
+        let preset = save_preset_locked(
+            &conn,
+            CommonPresetInput {
+                id: None,
+                scope: None,
+                kind: "short_value".to_string(),
+                category: "产权归属".to_string(),
+                name: "客户所有".to_string(),
+                content: "客户所有".to_string(),
+                tags: None,
+                applicable_field_keys: Some(vec!["project_basic.property_rights".to_string()]),
+                enabled: Some(true),
+            },
+        )
+        .unwrap();
+
+        let enabled =
+            set_field_setting_locked(&conn, "project_basic.property_rights", true).unwrap();
+        assert!(enabled.enabled);
+        assert_eq!(list_field_settings_locked(&conn).unwrap().len(), 1);
+
+        let disabled =
+            set_field_setting_locked(&conn, "project_basic.property_rights", false).unwrap();
+        assert!(!disabled.enabled);
+        let persisted = list_field_settings_locked(&conn).unwrap();
+        assert_eq!(persisted.len(), 1);
+        assert!(!persisted[0].enabled);
+        assert_eq!(
+            get_preset_locked(&conn, &preset.id).unwrap().content,
+            "客户所有"
+        );
+
+        let rejected = set_field_setting_locked(&conn, "finance.revenue_amount", true)
+            .expect_err("financial amount fields must not be preset-enabled");
+        assert!(rejected.starts_with("PresetFieldNotEligible::"));
+
+        let rejected_preset = save_preset_locked(
+            &conn,
+            CommonPresetInput {
+                id: None,
+                scope: None,
+                kind: "short_value".to_string(),
+                category: "财务字段".to_string(),
+                name: "收入金额".to_string(),
+                content: "100000".to_string(),
+                tags: None,
+                applicable_field_keys: Some(vec!["finance.revenue_amount".to_string()]),
+                enabled: Some(true),
+            },
+        )
+        .expect_err("financial amount fields must not accept preset bindings");
+        assert!(rejected_preset.starts_with("PresetFieldNotEligible::"));
     }
 }

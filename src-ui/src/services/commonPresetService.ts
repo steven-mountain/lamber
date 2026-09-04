@@ -37,6 +37,12 @@ export interface CommonPresetFilter {
   sortBy?: "recent" | "usage";
 }
 
+export interface PresetFieldSetting {
+  fieldKey: string;
+  enabled: boolean;
+  updatedAt: string;
+}
+
 export const commonPresetService = {
   list(filter: CommonPresetFilter = {}): Promise<CommonPreset[]> {
     return invoke<CommonPreset[]>("list_common_presets", { filter });
@@ -56,5 +62,13 @@ export const commonPresetService = {
 
   markUsed(id: string): Promise<CommonPreset> {
     return invoke<CommonPreset>("mark_common_preset_used", { id });
+  },
+
+  listFieldSettings(): Promise<PresetFieldSetting[]> {
+    return invoke<PresetFieldSetting[]>("list_preset_field_settings");
+  },
+
+  setFieldEnabled(fieldKey: string, enabled: boolean): Promise<PresetFieldSetting> {
+    return invoke<PresetFieldSetting>("set_preset_field_enabled", { fieldKey, enabled });
   },
 };
