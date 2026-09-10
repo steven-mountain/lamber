@@ -10,15 +10,15 @@
  *
  * Usage:
  *   LAMBER_BRIDGE_URL=http://127.0.0.1:PORT LAMBER_BRIDGE_TOKEN=… \
- *     node scripts/check-bridge.mjs <projectId> [scenario]
+ *     node scripts/check-bridge.mjs <projectId> <scenario> <testSessionId>
  *
  * Prints the tool's canonical JSON value on stdout; exits non-zero on failure.
  */
 import { runBenefitCalculation } from '../dsh-tool-lamber/lib/index.js';
 
-const [projectId, scenario] = process.argv.slice(2);
-if (!projectId) {
-  console.error('usage: check-bridge.mjs <projectId> [scenario]');
+const [projectId, scenario, sessionId] = process.argv.slice(2);
+if (!projectId || !sessionId) {
+  console.error('usage: check-bridge.mjs <projectId> <scenario> <testSessionId>');
   process.exit(2);
 }
 
@@ -26,7 +26,7 @@ const controller = new AbortController();
 try {
   const value = await runBenefitCalculation.execute(
     { projectId, ...(scenario ? { scenario } : {}) },
-    { signal: controller.signal },
+    { signal: controller.signal, agent: { session: { id: sessionId } } },
   );
   process.stdout.write(`${JSON.stringify(value)}\n`);
 } catch (error) {

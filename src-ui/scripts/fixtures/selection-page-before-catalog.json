@@ -1,0 +1,546 @@
+{
+  "catalog": {
+    "templates": [
+      {
+        "id": "demand",
+        "name": "需求导入表",
+        "suffix": ".docx",
+        "fields": [
+          {
+            "key": "gen_demand_branch_name",
+            "label": "项目需求单位",
+            "kind": "text",
+            "defaultValue": "XXX分公司"
+          },
+          {
+            "key": "gen_demand_it_business_mode",
+            "label": "业务模式",
+            "kind": "text",
+            "defaultValue": "服务模式"
+          },
+          {
+            "key": "gen_demand_service_content",
+            "label": "服务内容",
+            "kind": "text",
+            "defaultValue": "IT；CT"
+          },
+          {
+            "key": "gen_demand_device_list",
+            "label": "设备清单",
+            "kind": "text",
+            "defaultValue": "不涉及"
+          },
+          {
+            "key": "techItems",
+            "label": "技术方案可行性清单",
+            "kind": "list",
+            "columns": [
+              "serviceName",
+              "serviceDesc",
+              "amount",
+              "unit"
+            ],
+            "listType": "editable",
+            "reason": "AI仅提议内容，用户在卡片编辑并保存；amount为数量，此清单同时用于需求导入表与会审纪要"
+          },
+          {
+            "key": "gen_demand_customer_confirm",
+            "label": "客户确认",
+            "kind": "text",
+            "defaultValue": "微信截图"
+          },
+          {
+            "key": "gen_demand_env_require",
+            "label": "部署环境要求",
+            "kind": "text",
+            "defaultValue": "客户提供部署环境，不包含在本次项目范围内"
+          },
+          {
+            "key": "gen_demand_public_url",
+            "label": "公示网址/招标文件",
+            "kind": "text",
+            "requiredWhen": "hasPublicUrl"
+          },
+          {
+            "key": "gen_demand_security_detail",
+            "label": "信息安全/密评",
+            "kind": "text",
+            "requiredWhen": "hasSecurity"
+          },
+          {
+            "key": "attach1",
+            "label": "附件1客户确认材料",
+            "kind": "image"
+          },
+          {
+            "key": "attach2",
+            "label": "附件2招标材料",
+            "kind": "image",
+            "requiredWhen": "hasPublicUrl"
+          }
+        ]
+      },
+      {
+        "id": "approval",
+        "name": "立项签批表",
+        "suffix": ".docx",
+        "fields": [
+          {
+            "key": "gen_proj_bg",
+            "label": "项目背景",
+            "kind": "derived",
+            "reason": "由项目基本信息提供；不属于模板保存态，须在项目页修改"
+          },
+          {
+            "key": "gen_sign_it_content",
+            "label": "IT服务内容",
+            "kind": "text",
+            "dynamicDefault": true
+          },
+          {
+            "key": "gen_sign_ct_content",
+            "label": "CT服务内容",
+            "kind": "text",
+            "dynamicDefault": true
+          },
+          {
+            "key": "gen_is_advance",
+            "label": "是否涉及垫资",
+            "kind": "derived",
+            "completionAlways": true,
+            "reason": "布尔选项，不开放文本写入"
+          },
+          {
+            "key": "gen_after_approval_selection",
+            "label": "是否立项后甄选",
+            "kind": "derived",
+            "completionAlways": true,
+            "reason": "布尔选项，不开放文本写入"
+          },
+          {
+            "key": "gen_rev_collection",
+            "label": "收入侧收款方式",
+            "kind": "text",
+            "stateKey": "revCollection",
+            "defaultValue": "项目验收完成后30天内客户单位支付100%"
+          },
+          {
+            "key": "gen_exp_payment",
+            "label": "支出侧付款方式",
+            "kind": "text",
+            "stateKey": "expPayment",
+            "defaultValue": "项目验收完成且收到款项后30天内支付100%"
+          }
+        ]
+      },
+      {
+        "id": "selection",
+        "name": "甄选结果签批表",
+        "suffix": ".docx",
+        "fields": [
+          {
+            "key": "gen_proj_bg",
+            "label": "项目背景",
+            "kind": "derived",
+            "reason": "由项目基本信息提供；不属于模板保存态，须在项目页修改"
+          },
+          {
+            "key": "gen_zx_winner_name",
+            "label": "中选合作伙伴",
+            "kind": "text"
+          },
+          {
+            "key": "gen_zx_content_desc",
+            "label": "合作内容描述",
+            "kind": "text"
+          },
+          {
+            "key": "gen_zx_scope",
+            "label": "甄选范围",
+            "kind": "text",
+            "defaultValue": "三级库"
+          },
+          {
+            "key": "gen_zx_industry",
+            "label": "行业",
+            "kind": "text",
+            "defaultValue": "/"
+          },
+          {
+            "key": "gen_zx_method",
+            "label": "甄选方式",
+            "kind": "text",
+            "defaultValue": "竞争性甄选"
+          },
+          {
+            "key": "gen_zx_rule",
+            "label": "甄选规则",
+            "kind": "text",
+            "defaultValue": "标准方案"
+          },
+          {
+            "key": "gen_zx_std_plan",
+            "label": "标准方案",
+            "kind": "text",
+            "defaultValue": "竞价法"
+          },
+          {
+            "key": "gen_zx_is_sme",
+            "label": "供应商是否中小企业",
+            "kind": "text",
+            "defaultValue": "否"
+          },
+          {
+            "key": "gen_rev_collection",
+            "label": "收入侧收款方式",
+            "kind": "text",
+            "stateKey": "revCollection",
+            "defaultValue": "项目验收完成后30天内客户单位支付100%"
+          },
+          {
+            "key": "gen_exp_payment",
+            "label": "支出侧付款方式",
+            "kind": "text",
+            "stateKey": "expPayment",
+            "defaultValue": "项目验收完成且收到款项后30天内支付100%"
+          },
+          {
+            "key": "post_selection_scheme",
+            "label": "甄选后方案",
+            "kind": "check",
+            "reason": "由现有方案、批次或测算校验得出；不属于可写字段，读工具不推断通过"
+          },
+          {
+            "key": "public_fields_consistent",
+            "label": "公共字段一致",
+            "kind": "check",
+            "reason": "由现有方案、批次或测算校验得出；不属于可写字段，读工具不推断通过"
+          },
+          {
+            "key": "batch_overrides_acknowledged",
+            "label": "批次字段差异已确认",
+            "kind": "check",
+            "reason": "由现有方案、批次或测算校验得出；不属于可写字段，读工具不推断通过"
+          },
+          {
+            "key": "renewal_costs_confirmed",
+            "label": "续签成本归类已确认",
+            "kind": "check",
+            "reason": "由现有方案、批次或测算校验得出；不属于可写字段，读工具不推断通过"
+          },
+          {
+            "key": "approval_amount_below_500k",
+            "label": "立项金额低于50万元",
+            "kind": "check",
+            "reason": "由现有方案、批次或测算校验得出；不属于可写字段，读工具不推断通过"
+          }
+        ]
+      },
+      {
+        "id": "meeting",
+        "name": "会审纪要",
+        "suffix": ".docx",
+        "fields": [
+          {
+            "key": "gen_meet_start",
+            "label": "会议开始日期",
+            "kind": "text",
+            "dynamicDefault": true
+          },
+          {
+            "key": "gen_meet_end",
+            "label": "会议结束日期",
+            "kind": "text",
+            "dynamicDefault": true
+          },
+          {
+            "key": "gen_meet_mode",
+            "label": "会议方式",
+            "kind": "text",
+            "defaultValue": "线上"
+          },
+          {
+            "key": "gen_project_scale",
+            "label": "项目规模",
+            "kind": "derived",
+            "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+            "completionSources": [
+              {
+                "field": "projectScale"
+              }
+            ]
+          },
+          {
+            "key": "gen_city_attendees",
+            "label": "市公司参会人员",
+            "kind": "text",
+            "requiredWhen": {
+              "field": "projectScale",
+              "equals": "large"
+            }
+          },
+          {
+            "key": "gen_branch_name",
+            "label": "分公司参会人员",
+            "kind": "text",
+            "defaultValue": "XXXX",
+            "completionGroup": "branch_attendees"
+          },
+          {
+            "key": "gen_branch_attendees",
+            "label": "分公司参会人员",
+            "kind": "text",
+            "completionGroup": "branch_attendees"
+          },
+          {
+            "key": "gen_onsite_support",
+            "label": "驻点支撑人员",
+            "kind": "text"
+          },
+          {
+            "key": "gen_proj_bg",
+            "label": "项目背景",
+            "kind": "derived",
+            "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+            "completionSources": [
+              {
+                "field": "projectBackground"
+              }
+            ]
+          },
+          {
+            "key": "gen_it_content",
+            "label": "IT建设内容",
+            "kind": "derived",
+            "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+            "completionSources": [
+              {
+                "field": "itContent"
+              }
+            ]
+          },
+          {
+            "key": "gen_ct_content",
+            "label": "CT建设内容",
+            "kind": "derived",
+            "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+            "completionSources": [
+              {
+                "field": "ctContent"
+              }
+            ]
+          },
+          {
+            "key": "gen_tech_solution",
+            "label": "技术方案",
+            "kind": "text",
+            "defaultValue": "采用端-管-云架构..."
+          },
+          {
+            "key": "techItems",
+            "label": "技术方案可行性清单",
+            "kind": "list",
+            "columns": [
+              "serviceName",
+              "serviceDesc",
+              "amount",
+              "unit"
+            ],
+            "listType": "editable",
+            "reason": "AI仅提议内容，用户在卡片编辑并保存；amount为数量，此清单同时用于需求导入表与会审纪要"
+          },
+          {
+            "key": "gen_mid_three",
+            "label": "涉及中台能力调用",
+            "kind": "derived",
+            "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+            "completionSources": [
+              {
+                "field": "midThreeCode"
+              },
+              {
+                "field": "midThreeName"
+              }
+            ],
+            "requiredWhen": {
+              "field": "hasMidThree",
+              "equals": true
+            }
+          },
+          {
+            "key": "gen_self_three",
+            "label": "自主三问",
+            "kind": "derived",
+            "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+            "completionSources": [
+              {
+                "field": "selfThreeValue"
+              }
+            ]
+          },
+          {
+            "key": "gen_threeization",
+            "label": "三化方案",
+            "kind": "text",
+            "defaultValue": "本项目不涉及三化方案。"
+          },
+          {
+            "key": "gen_strategic_value",
+            "label": "战略价值",
+            "kind": "text"
+          },
+          {
+            "key": "gen_tech_conclusion",
+            "label": "综论",
+            "kind": "text",
+            "defaultValue": "方案可行同时能满足客户需求。"
+          },
+          {
+            "key": "gen_rev_collection",
+            "label": "收入付款方式",
+            "kind": "derived",
+            "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+            "completionSources": [
+              {
+                "field": "revCollection"
+              }
+            ]
+          },
+          {
+            "key": "gen_exp_payment",
+            "label": "支出付款方式",
+            "kind": "derived",
+            "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+            "completionSources": [
+              {
+                "field": "expPayment"
+              }
+            ]
+          },
+          {
+            "key": "gen_it_bus_mode",
+            "label": "IT服务模式/商务模式",
+            "kind": "derived",
+            "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+            "completionSources": [
+              {
+                "field": "itBusMode"
+              }
+            ]
+          },
+          {
+            "key": "gen_it_fund_src",
+            "label": "资金来源",
+            "kind": "derived",
+            "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+            "completionSources": [
+              {
+                "field": "itFundSrc"
+              }
+            ]
+          },
+          {
+            "key": "inqVendors",
+            "label": "询价情况/询价过程",
+            "kind": "list",
+            "columns": [
+              "vendorName",
+              "amount",
+              "taxRate",
+              "remark"
+            ],
+            "listType": "generated",
+            "reason": "AI仅提示用户确认调用既有autoGenerateInquiry，禁止提议或修改厂商/报价/税率；失败先完善成本或收入，不给绕过方案；生成后由用户修改及上传证据",
+            "validRow": {
+              "nonEmpty": [
+                "vendorName"
+              ],
+              "positive": [
+                "amount"
+              ]
+            }
+          },
+          {
+            "key": "gen_construction_time_req",
+            "label": "时间要求",
+            "kind": "text",
+            "defaultValue": "合同签定后30天内。"
+          },
+          {
+            "key": "gen_risk_owner",
+            "label": "风险点及其他责任人",
+            "kind": "text",
+            "defaultValue": "人员A"
+          },
+          {
+            "key": "gen_is_joint",
+            "label": "是否联合体投标",
+            "kind": "text",
+            "defaultValue": "否"
+          },
+          {
+            "key": "gen_review_acc",
+            "label": "项目评审清单准确完整",
+            "kind": "text",
+            "defaultValue": "是，项目投入收入核算完整，各表填写准确"
+          },
+          {
+            "key": "gen_single_source",
+            "label": "是否涉及单一来源",
+            "kind": "text",
+            "defaultValue": "单一来源决策依据：符合单一来源场景...",
+            "requiredWhen": {
+              "field": "hasSingleSource",
+              "equals": true
+            }
+          },
+          {
+            "key": "gen_procurement_method_other",
+            "label": "采购方式",
+            "kind": "text",
+            "requiredWhen": {
+              "field": "procurementMethod",
+              "equals": "其他"
+            }
+          },
+          {
+            "key": "gen_construction_interface",
+            "label": "售中建设及施工界面",
+            "kind": "text",
+            "defaultValue": "本项目采购统一集成单位实施。分公司负责客户侧的协调工作，并协调管理合作伙伴完成交付。"
+          }
+        ]
+      },
+      {
+        "id": "presales",
+        "name": "售前预算表",
+        "suffix": ".xlsx",
+        "excludedReason": "零占位符；数字由测算科目生成，无人工文本字段",
+        "fields": []
+      },
+      {
+        "id": "benefit",
+        "name": "效益分析表",
+        "suffix": ".xlsx",
+        "excludedReason": "零占位符；数字由测算科目生成，无人工文本字段",
+        "fields": []
+      },
+      {
+        "id": "decision",
+        "name": "立项决策纪要",
+        "suffix": ".docx",
+        "excludedReason": "零占位符；固定文本，无人工填写字段",
+        "fields": []
+      }
+    ]
+  },
+  "selectionBlock": "  const selectionResultCompletionItems: TemplateCompletionItem[] = [\n    {\n      label: \"甄选后方案\",\n      filled: selectionResultMode === \"batch\"\n        ? selectionBatchProjectIds.length >= 2 && selectionBatchProjects.length === selectionBatchProjectIds.length\n        : currentSchemeStage === \"post_selection\",\n    },\n    { label: \"合并项目名称\", filled: selectionResultMode === \"single\" || hasText(selectionBatchName) },\n    { label: \"项目背景\", filled: hasText(projectBackground) },\n    { label: \"中选合作伙伴\", filled: hasText(getFormValue(\"gen_zx_winner_name\")) },\n    { label: \"甄选范围\", filled: hasText(getFormValue(\"gen_zx_scope\", \"三级库\")) },\n    { label: \"甄选方式\", filled: hasText(getFormValue(\"gen_zx_method\", \"竞争性甄选\")) },\n    { label: \"甄选规则\", filled: hasText(getFormValue(\"gen_zx_rule\", \"标准方案\")) },\n    { label: \"供应商是否中小企业\", filled: true },\n    { label: \"收入侧收款方式\", filled: hasText(revCollection) },\n    { label: \"支出侧付款方式\", filled: hasText(expPayment) },\n    { label: \"公共字段一致\", filled: selectionResultMode === \"single\" || selectionBlockingConflicts.length === 0 },\n    { label: \"批次字段差异已确认\", filled: selectionResultMode === \"single\" || selectionOverrideConflicts.length === 0 || selectionConflictAcknowledged },\n    { label: \"续签成本归类已确认\", filled: selectionRenewalDecisionsComplete },\n    { label: \"立项金额低于50万元\", filled: Boolean(selectionApprovalAmountPreview && selectionApprovalAmountPreview.lt(500000)) },\n  ]\n",
+  "otherPageBlock": "  const meetingCompletionItems = getCatalogCompletion(\"会审纪要.docx\", {\n    formData: {gen_meet_start: todayStr, gen_meet_end: todayStr, ...formData},\n    projectScale, projectBackground, itContent, ctContent, techItems, hasMidThree,\n    midThreeCode, midThreeName, selfThreeValue, revCollection, expPayment, itBusMode,\n    itFundSrc, inqVendors, hasSingleSource, procurementMethod,\n  })\n  const approvalCompletionItems = getCatalogCompletion(\"立项签批表.docx\", {\n    formData: {gen_sign_it_content:defaultSignItContent,gen_sign_ct_content:defaultSignCtContent,...formData},\n    revCollection, expPayment, completionValues:{gen_proj_bg:hasText(projectBackground)},\n  })\n  const demandCompletionItems = getDemandCompletion(selectedTemplate, {\n    formData, techItems, hasPublicUrl, hasSecurity, attach1Images, attach2Images,\n  })\n",
+  "hashes": {
+    "src-ui/src/lib/templateCompletion/catalog.ts": "2e3ba000ce6413022a08371b824c0e847ee5adf1e5ddabc06dce2d7bbd1f37a9",
+    "src-tauri/src/agent_bridge/template_catalog.rs": "a4581a98de1a2cbde90d53bb521269da6629eaf0a1a18ae713c38c15dba85577",
+    "src-tauri/src/agent_bridge/template_read.rs": "960ee09e9fc4a5e77fe052386e6b46a1c7620388f55e8016daa945c21a50349c",
+    "agent-bridge/scripts/build-contract.mjs": "2206f23dea6b91ae329316bcb4909d98be759bd351369fe4ee48e94cc89d8ae3",
+    "agent-bridge/scripts/validate-template-catalog.mjs": "70e40cc23dd6ca27e9b5c23d6cf2898f8e28db0f03390bd82ab7ff736f7c160d"
+  }
+}

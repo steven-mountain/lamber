@@ -72,6 +72,7 @@ impl BridgeServer {
     /// @param handler - route dispatcher invoked for every authenticated request.
     /// @returns the running server; its `origin()` and `token()` are what the child process needs.
     pub fn start(handler: BridgeHandler) -> Result<Self, String> {
+        let handler = super::contract::handler(handler);
         let bind = SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0);
         let server = tiny_http::Server::http(bind)
             .map_err(|e| format!("无法启动 AI 桥接服务: {e}"))?;

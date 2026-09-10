@@ -1,0 +1,59 @@
+{
+  "cancelled": [
+    [
+      "session/update",
+      {
+        "sessionId": "e6e93a87-2a9d-46fd-a5fe-92e2178ce06b",
+        "update": {
+          "sessionUpdate": "agent_thought_chunk",
+          "content": {
+            "type": "text",
+            "text": "The"
+          },
+          "messageId": "a3b67257-2d1a-4db3-a7c0-1983b28e6430"
+        }
+      }
+    ],
+    [
+      "session/turn-ended",
+      {
+        "sessionId": "e6e93a87-2a9d-46fd-a5fe-92e2178ce06b",
+        "stopReason": "Cancelled"
+      }
+    ]
+  ],
+  "completed": [
+    [
+      "session/update",
+      {
+        "sessionId": "e6e93a87-2a9d-46fd-a5fe-92e2178ce06b",
+        "update": {
+          "sessionUpdate": "agent_message_chunk",
+          "content": {
+            "type": "text",
+            "text": "停止后可继续。"
+          },
+          "messageId": "47657570-bb5b-4ff6-bb8e-bbeacc1cfb21"
+        }
+      }
+    ],
+    [
+      "session/update",
+      {
+        "sessionId": "e6e93a87-2a9d-46fd-a5fe-92e2178ce06b",
+        "update": {
+          "sessionUpdate": "usage_update",
+          "used": 10320,
+          "size": 1000000
+        }
+      }
+    ],
+    [
+      "session/turn-ended",
+      {
+        "sessionId": "e6e93a87-2a9d-46fd-a5fe-92e2178ce06b",
+        "stopReason": "EndTurn"
+      }
+    ]
+  ]
+}

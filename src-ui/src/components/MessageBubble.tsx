@@ -151,7 +151,7 @@ const MessageBubble = ({ msg, idx, isStreaming, onCopy, copiedIdx }: MessageBubb
     }
   }, [isStreaming, msg.think]);
 
-  if (!msg.content?.trim() && !msg.think?.trim() && msg.role === 'assistant') {
+  if (!msg.content?.trim() && !msg.think?.trim() && !msg.toolCalls?.length && msg.role === 'assistant') {
     return null;
   }
 
@@ -224,6 +224,14 @@ const MessageBubble = ({ msg, idx, isStreaming, onCopy, copiedIdx }: MessageBubb
           </div>
         )}
  
+        {msg.toolCalls?.map(call => (
+          <details key={call.id} className="mb-2 rounded-lg bg-muted/50 px-3 py-2 text-caption">
+            <summary className="cursor-pointer text-secondary-foreground">
+              {call.title} · {{ pending: '等待执行', in_progress: '执行中', completed: '已完成', failed: '失败' }[call.status] ?? call.status}
+            </summary>
+            <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-words text-xs">{JSON.stringify({ input: call.input, output: call.output }, null, 2)}</pre>
+          </details>
+        ))}
         {msg.content && (
           <div className="relative">
             {isStreaming ? (

@@ -16,21 +16,51 @@ use super::approval::{
 use super::approval_log;
 use super::bridge_server::{BridgeReply, BridgeServer, BRIDGE_TOKEN_HEADER};
 use super::calculation::{run_calculation, CalculateRequest, CALCULATE_ROUTE};
+use super::distribution::{prepare_home_at, AgentDistribution};
 use super::dsh_session::{
     AcpRuntime, DshLaunchConfig, EXPECTED_PROTOCOL_VERSION, TURN_ENDED_METHOD, UPDATE_METHOD,
 };
 use super::tool_calls::{ToolCallIndex, TrackedCall};
+use super::{require_agent_workspace, AiAgentSettingsView};
 use crate::benefit::models::{
     BenefitAnalysisScheme, BenefitAnalysisSnapshot, IctInput, IctItem, IctResult,
 };
 use crate::benefit::repository::{ProjectRepository, SqliteProjectRepository};
 use crate::benefit::service::ProjectService;
+use crate::config_manager::AiAgentSettings;
 use serde_json::Value;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 // ---------------------------------------------------------------- fixtures --
+
+#[test]
+fn settings_view_exposes_key_presence_without_serializing_the_secret() {
+    let view = AiAgentSettingsView::from(AiAgentSettings {
+        api_key: Some("secret-must-not-cross-the-webview".to_string()),
+        model: "deepseek-v4-flash".to_string(),
+        base_url: "https://api.deepseek.com".to_string(),
+    });
+    let serialized = serde_json::to_string(&view).expect("serialize settings view");
+
+    assert!(serialized.contains("\"hasApiKey\":true"));
+    assert!(!serialized.contains("secret-must-not-cross-the-webview"));
+    assert!(!serialized.contains("apiKey"));
+}
+
+#[test]
+fn agent_launch_without_workspace_rejects_before_any_runtime_fallback() {
+    let runtime = crate::workspace::WorkspaceRuntime::new();
+    let error = require_agent_workspace(&runtime).expect_err("workspace is required");
+    let payload: Value = serde_json::from_str(&error).expect("structured workspace error");
+
+    assert_eq!(payload["code"], "NotReady");
+    assert_eq!(payload["message"], "请先新建或打开 Lamber 工作区");
+    assert!(!error.contains("agent-bridge"));
+    assert!(!error.contains("LAMBER_REPO_ROOT"));
+    assert!(!error.contains("npm install"));
+}
 
 fn temp_db_path(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
@@ -89,6 +119,7 @@ fn sample_input(project_name: &str) -> IctInput {
         selection_fee_limit: None,
         selection_fee_anchor: None,
         selection_fee_target_subject_code: None,
+        selection_fee_merge_service: None,
         rev_it_integration: item("1060000", "0.06"),
         rev_it_maintenance: zero_item(),
         rev_it_device_sales: zero_item(),
@@ -398,6 +429,7 @@ fn http_post(origin: &str, path: &str, token: &str, body: &str) -> (u16, String)
 /// Build the question the ACP permission handler would assemble.
 fn approval_question(tool: &str) -> ApprovalQuestion {
     ApprovalQuestion {
+        session_id: None, intent: None,
         tool_name: tool.to_string(),
         call_id: Some("call-1".to_string()),
         reason: Some("该工具会写入文件，需要你确认后才执行。".to_string()),
@@ -582,7 +614,7 @@ fn the_retired_approval_route_is_gone_from_the_bridge() {
     // No workspace needs to be open: an unknown path is refused before the
     // handler ever looks for a database.
     let runtime = Arc::new(crate::workspace::WorkspaceRuntime::new());
-    let server = BridgeServer::start(super::workspace_handler(runtime)).expect("bridge starts");
+    let server = BridgeServer::start(super::workspace_handler(runtime, Arc::new(super::project_bindings::ProjectBindings::default()))).expect("bridge starts");
 
     let (status, body) = http_post(
         &server.origin(),
@@ -936,6 +968,7 @@ fn frontend_source(relative: &str) -> String {
 #[test]
 fn the_approval_prompt_contract_matches_the_frontend_dialog() {
     let prompt = ApprovalPrompt {
+        session_id: None, intent: None, expires_at: "2099-01-01T00:00:00Z".into(),
         request_id: "req-1".to_string(),
         tool_name: "write_test_marker".to_string(),
         call_id: Some("call-1".to_string()),
@@ -954,8 +987,11 @@ fn the_approval_prompt_contract_matches_the_frontend_dialog() {
         vec![
             "args",
             "callId",
+            "expiresAt",
+            "intent",
             "reason",
             "requestId",
+            "sessionId",
             "timeoutSeconds",
             "toolName",
         ],
@@ -967,6 +1003,8 @@ fn the_approval_prompt_contract_matches_the_frontend_dialog() {
         dialog.contains(&format!("\"{}\"", super::approval::APPROVAL_EVENT)),
         "弹窗订阅的事件名与后端 APPROVAL_EVENT 不一致"
     );
+    assert!(dialog.contains("target: getCurrentWebviewWindow().label"), "审批请求不得订阅Any目标，否则浮窗和主窗同时弹出");
+    assert!(dialog.contains("ai://approval-settled"));
     for field in ["requestId", "toolName", "reason", "args", "timeoutSeconds"] {
         assert!(dialog.contains(field), "弹窗未使用审批事件字段 `{field}`");
     }
@@ -991,10 +1029,10 @@ fn the_approval_dialog_is_mounted_on_every_agent_reachable_route() {
         app.contains("<AgentApprovalDialog />"),
         "App 未挂载审批弹窗"
     );
-    // Two render paths can reach the agent: the main shell and the agent bench.
+    // All three render paths must host the existing dialog, including floating chat.
     assert!(
-        app.matches("<AgentApprovalDialog />").count() >= 2,
-        "审批弹窗必须同时挂在主界面和 Agent 联调台两条渲染路径上"
+        app.matches("<AgentApprovalDialog />").count() >= 3,
+        "审批弹窗必须挂在主界面、Agent 联调台和 AI 浮窗三条渲染路径上"
     );
     assert!(
         app.contains("#/agent-lab"),
@@ -1095,10 +1133,11 @@ fn gated_tool_names_match_the_plugin() {
         "插件的 GATED_TOOLS 结构变了，镜像表的对照失效"
     );
 
+    assert!(source.contains("[FILL_TEMPLATE_FIELDS,"), "模板写入必须登记审批守卫");
     let names = gated_tool_names();
     assert_eq!(
         names,
-        vec!["write_test_marker"],
+        vec!["fill_template_fields", "write_test_marker"],
         "Rust 镜像表与插件的 GATED_TOOLS 不一致"
     );
     for name in &names {
@@ -1111,6 +1150,14 @@ fn gated_tool_names_match_the_plugin() {
         gated_tool_reason("run_benefit_calculation").is_none(),
         "只读工具不应出现在镜像表里"
     );
+}
+
+
+fn handshake_only_bridge(config: &mut DshLaunchConfig) -> BridgeServer {
+    let bridge = BridgeServer::start(Arc::new(|_, _| BridgeReply::error(404, "未知的 AI 桥接路由"))).unwrap();
+    config.bridge_url = bridge.origin();
+    config.bridge_token = bridge.token().into();
+    bridge
 }
 
 // ------------------------------------------- full loop through dsh (ignored) --
@@ -1173,6 +1220,11 @@ fn acp_update<'a>(method: &str, params: &'a Value) -> Option<(&'a str, &'a Value
 }
 
 fn repo_root_for_tests() -> std::path::PathBuf {
+    if let Ok(explicit) = std::env::var("LAMBER_REPO_ROOT") {
+        if !explicit.is_empty() {
+            return explicit.into();
+        }
+    }
     // CARGO_MANIFEST_DIR is `<repo>/src-tauri`.
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -1190,6 +1242,7 @@ fn has_api_key() -> bool {
 /// How a test answers permission requests the agent raises.
 #[derive(Clone, Copy, PartialEq)]
 enum ApprovalStance {
+    Edit,
     /// Never answer; the gate must time out on its own.
     Silent,
     /// Answer as a user who clicked 确认.
@@ -1203,7 +1256,7 @@ fn launch_dsh(
     fixture: &Fixture,
     hits: Arc<Mutex<Vec<Value>>>,
     log: Arc<EventLog>,
-) -> (BridgeServer, AcpRuntime) {
+) -> (BridgeServer, AcpRuntime, Arc<super::project_bindings::ProjectBindings>) {
     launch_dsh_with_approval(
         fixture,
         hits,
@@ -1224,29 +1277,20 @@ fn launch_dsh_with_approval(
     log: Arc<EventLog>,
     stance: ApprovalStance,
     prompts: Arc<Mutex<Vec<ApprovalPrompt>>>,
-) -> (BridgeServer, AcpRuntime) {
-    let service = Arc::new(ProjectService::new(Box::new(SqliteProjectRepository::new(
-        Arc::new(std::sync::Mutex::new(
-            crate::db::init_db(&fixture._db_path).expect("reopen db"),
-        )),
-    ))));
+) -> (BridgeServer, AcpRuntime, Arc<super::project_bindings::ProjectBindings>) {
+    let gate = Arc::new(ApprovalGate::new(Duration::from_secs(20)));
+    let bindings = Arc::new(super::project_bindings::ProjectBindings::default());
+    let approval_runtime = scoped_workspace(fixture);
+    let db = approval_runtime.require_db().unwrap();
+    gate.set_recorder(Arc::new(move |record| approval_log::insert(&db, record).unwrap()));
+    let handler = super::template_write::handler(approval_runtime.clone(), bindings.clone(), gate.clone(), Arc::new(|_| {}), gate.reviewed.handler(super::workspace_handler(approval_runtime.clone(), bindings.clone())));
+    let approval_bindings = bindings.clone();
     let bridge = BridgeServer::start(Arc::new(move |path, body| {
-        if path != CALCULATE_ROUTE {
-            return BridgeReply::error(404, path);
+        if path == CALCULATE_ROUTE {
+            if let Ok(value) = serde_json::from_str::<Value>(body) { hits.lock().unwrap().push(value); }
         }
-        if let Ok(value) = serde_json::from_str::<Value>(body) {
-            hits.lock().expect("hits lock").push(value);
-        }
-        let request: CalculateRequest = match serde_json::from_str(body) {
-            Ok(request) => request,
-            Err(e) => return BridgeReply::error(400, &e.to_string()),
-        };
-        match run_calculation(&service, &request) {
-            Ok(response) => BridgeReply::ok(serde_json::to_string(&response).unwrap()),
-            Err(e) => BridgeReply::error(422, &e),
-        }
-    }))
-    .expect("bridge starts");
+        handler(path, body)
+    })).unwrap();
 
     let mut config = DshLaunchConfig::from_repo_root(&repo_root_for_tests());
     config.bridge_url = bridge.origin();
@@ -1254,7 +1298,6 @@ fn launch_dsh_with_approval(
 
     // Short enough that a silent stance fails closed well inside the test's own
     // wait, rather than parking for the production default.
-    let gate = Arc::new(ApprovalGate::new(Duration::from_secs(20)));
     let responder_gate = Arc::clone(&gate);
     let sink_log = Arc::clone(&log);
 
@@ -1264,7 +1307,7 @@ fn launch_dsh_with_approval(
         Arc::new(move |question| {
             let prompts = Arc::clone(&prompts);
             let responder_gate = Arc::clone(&responder_gate);
-            handle_approval(&gate, question, move |prompt| {
+            super::template_write::request_approval(&gate, &approval_runtime, &approval_bindings, question, move |prompt| {
                 prompts.lock().expect("prompts lock").push(prompt.clone());
                 if stance == ApprovalStance::Silent {
                     return;
@@ -1272,16 +1315,20 @@ fn launch_dsh_with_approval(
                 // Stand in for the frontend: answer from another thread, exactly
                 // as `ai_resolve_approval` would.
                 let id = prompt.request_id.clone();
-                let approved = stance == ApprovalStance::Approve;
+                let approved = matches!(stance, ApprovalStance::Approve | ApprovalStance::Edit);
+                let mut amended = prompt.args.clone();
+                if prompt.tool_name == "fill_template_fields" { for value in amended["fields"].as_object_mut().unwrap().values_mut() { *value = serde_json::json!("人工修订：分区实施并保留原网络。\n先完成回退演练，再按清单验收。"); } }
+                else { amended = serde_json::json!({"note":"人工修订正文：分区实施，验收前保留原网络。\n不得写回模型原文。"}); }
                 std::thread::spawn(move || {
-                    let _ = responder_gate.resolve(&id, approved);
+                    let modified = (stance == ApprovalStance::Edit).then_some(amended);
+                    let _ = responder_gate.resolve_with_args(&id, approved, modified);
                 });
             })
         }),
     )
     .expect("dsh ACP runtime starts");
 
-    (bridge, acp)
+    (bridge, acp, bindings)
 }
 
 /// Checkpoint that needs no API key and no dsh boot: run the plugin's own tool
@@ -1292,27 +1339,16 @@ fn launch_dsh_with_approval(
 #[ignore = "needs agent-bridge provisioned: npm install && npm run provision"]
 fn plugin_tool_body_reaches_the_calculator_over_the_bridge() {
     let fx = build_fixture("plugin-body");
-    let service = Arc::new(fx.service);
-    let server = BridgeServer::start(Arc::new(move |path, body| {
-        if path != CALCULATE_ROUTE {
-            return BridgeReply::error(404, path);
-        }
-        let request: CalculateRequest = match serde_json::from_str(body) {
-            Ok(request) => request,
-            Err(e) => return BridgeReply::error(400, &e.to_string()),
-        };
-        match run_calculation(&service, &request) {
-            Ok(response) => BridgeReply::ok(serde_json::to_string(&response).unwrap()),
-            Err(e) => BridgeReply::error(422, &e),
-        }
-    }))
-    .expect("bridge starts");
+    let bindings = Arc::new(super::project_bindings::ProjectBindings::default());
+    bindings.register("plugin-body", fixture_binding(&fx, Some(&fx.project_id))).unwrap();
+    let server = BridgeServer::start(super::workspace_handler(scoped_workspace(&fx), bindings)).unwrap();
 
     let script = repo_root_for_tests().join("agent-bridge/scripts/check-bridge.mjs");
     let output = std::process::Command::new("node")
         .arg(&script)
         .arg(&fx.project_id)
         .arg("post_selection")
+        .arg("plugin-body")
         .env("LAMBER_BRIDGE_URL", server.origin())
         .env("LAMBER_BRIDGE_TOKEN", server.token())
         .env("LAMBER_BRIDGE_TOKEN_HEADER", BRIDGE_TOKEN_HEADER)
@@ -1387,7 +1423,7 @@ fn only_the_write_tool_is_gated_behind_approval() {
 fn acp_handshake_negotiates_the_expected_protocol_version() {
     let fx = build_fixture("acp-handshake");
     let log = Arc::new(EventLog::default());
-    let (_bridge, acp) = launch_dsh(&fx, Arc::new(Mutex::new(Vec::new())), log);
+    let (_bridge, acp, _bindings) = launch_dsh(&fx, Arc::new(Mutex::new(Vec::new())), log);
 
     let handshake = acp.handshake();
     assert_eq!(
@@ -1408,6 +1444,370 @@ fn acp_handshake_negotiates_the_expected_protocol_version() {
     assert!(!session.is_empty(), "session/new 未返回会话 id");
 }
 
+/// The ACP image capability is determined by the exact configured model route.
+/// Keep both halves in one test so a dsh catalog or ACP change cannot make the
+/// product silently advertise the wrong input contract.
+#[test]
+#[ignore = "needs agent-bridge provisioned: npm install && npm run provision -- --profile acp"]
+fn acp_handshake_reports_image_capability_for_each_catalog_model() {
+    for (model, expected) in [
+        ("deepseek-v4-flash", false),
+        ("deepseek-v4-flash-vision-exp", true),
+    ] {
+        let fx = build_fixture(&format!("acp-image-capability-{model}"));
+        let log = Arc::new(EventLog::default());
+        let hits = Arc::new(Mutex::new(Vec::new()));
+        let service = Arc::new(ProjectService::new(Box::new(SqliteProjectRepository::new(
+            Arc::new(std::sync::Mutex::new(
+                crate::db::init_db(&fx._db_path).expect("reopen db"),
+            )),
+        ))));
+        let bridge = BridgeServer::start(Arc::new(move |path, body| {
+            if path != CALCULATE_ROUTE {
+                return BridgeReply::error(404, path);
+            }
+            if let Ok(value) = serde_json::from_str::<Value>(body) {
+                hits.lock().expect("hits lock").push(value);
+            }
+            let request: CalculateRequest = match serde_json::from_str(body) {
+                Ok(request) => request,
+                Err(e) => return BridgeReply::error(400, &e.to_string()),
+            };
+            match run_calculation(&service, &request) {
+                Ok(response) => BridgeReply::ok(serde_json::to_string(&response).unwrap()),
+                Err(e) => BridgeReply::error(422, &e),
+            }
+        }))
+        .expect("bridge starts");
+
+        let patch_path = std::env::temp_dir().join(format!(
+            "lamber-dsh-model-{}-{}.yml",
+            model,
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::write(
+            &patch_path,
+            format!(
+                "- id: acp\n  config:\n    provider: deepseek-official\n    model: {model}\n\n- insert:\n    - id: lamber-tools\n      name: dsh-tool-lamber\n"
+            ),
+        )
+        .expect("write model patch");
+
+        let mut config = DshLaunchConfig::from_repo_root(&repo_root_for_tests());
+        config.model = model.to_string();
+        config.patch_path = patch_path.clone();
+        config.bridge_url = bridge.origin();
+        config.bridge_token = bridge.token().to_string();
+        let sink_log = Arc::clone(&log);
+        let acp = AcpRuntime::start(
+            &config,
+            Arc::new(move |method, params| sink_log.record(method, params)),
+            Arc::new(|_| ApprovalDecision {
+            modified_args: None,
+                approved: false,
+                reason: "capability probe does not execute tools".to_string(),
+            }),
+        )
+        .expect("dsh ACP runtime starts");
+
+        eprintln!(
+            "model={model} promptCapabilities.image={}",
+            acp.handshake().supports_image_prompts
+        );
+        assert_eq!(
+            acp.handshake().supports_image_prompts,
+            expected,
+            "model {model} advertised the wrong image capability"
+        );
+        drop(acp);
+        let _ = std::fs::remove_file(patch_path);
+    }
+}
+
+/// The checked-in template, copied plugin, and generated settings patch must be
+/// sufficient to boot dsh without using the provisioned development DSH_HOME.
+#[test]
+#[ignore = "needs agent-bridge dependencies and a built dsh-tool-lamber"]
+fn clean_user_home_template_completes_acp_handshake() {
+    let repo_root = repo_root_for_tests();
+    let distribution = AgentDistribution::development(&repo_root).expect("dev distribution");
+    let app_data = std::env::temp_dir().join(format!(
+        "lamber-clean-dsh-home-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let settings = crate::config_manager::AiAgentSettings::default();
+    let (dsh_home, settings_patch) =
+        prepare_home_at(&app_data, &distribution, &settings).expect("prepare clean DSH_HOME");
+    let mut config = DshLaunchConfig::from_repo_root(&repo_root);
+    config.dsh_home = dsh_home;
+    config.extra_patch_path = Some(settings_patch);
+    let _bridge = handshake_only_bridge(&mut config);
+
+    let acp = AcpRuntime::start(
+        &config,
+        Arc::new(|_, _| {}),
+        Arc::new(|_| ApprovalDecision {
+            modified_args: None,
+            approved: false,
+            reason: "clean home probe does not execute tools".to_string(),
+        }),
+    )
+    .expect("clean DSH_HOME handshake");
+    assert_eq!(acp.handshake().protocol_version, EXPECTED_PROTOCOL_VERSION);
+    let session = acp.new_session(&repo_root).expect("session/new");
+    assert!(!session.is_empty());
+}
+
+/// Run the exact tree emitted by `prepareAgentRuntime`, including its copied
+/// Node executable, production-only dependencies, template, and plugin.
+#[test]
+#[ignore = "needs scripts/package-windows.mjs prepareAgentRuntime output"]
+fn prepared_release_resource_tree_completes_acp_handshake() {
+    let repo_root = repo_root_for_tests();
+    let root = repo_root.join("src-tauri/resources/agent-runtime");
+    let distribution = AgentDistribution {
+        node_bin: root.join("node.exe"),
+        dsh_entry: root.join("node_modules/@deepseek-ai/dsh/lib/bin.js"),
+        base_patch: root.join("patch.yml"),
+        home_template: root.join("dsh-home-template"),
+        lamber_plugin: root.join("dsh-tool-lamber"),
+    };
+    let app_data = std::env::temp_dir().join(format!(
+        "lamber-release-dsh-home-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let settings = crate::config_manager::AiAgentSettings::default();
+    let (dsh_home, settings_patch) =
+        prepare_home_at(&app_data, &distribution, &settings).expect("prepare release DSH_HOME");
+    let mut config = DshLaunchConfig {
+        dsh_bin: distribution.node_bin,
+        dsh_entry: Some(distribution.dsh_entry),
+        profile: "acp".to_string(),
+        patch_path: distribution.base_patch,
+        extra_patch_path: Some(settings_patch),
+        dsh_home,
+        cwd: repo_root.clone(),
+        provider: "deepseek-official".to_string(),
+        model: settings.model,
+        api_key: None,
+        stream_display: false,
+        bridge_url: String::new(),
+        bridge_token: String::new(),
+    };
+
+    let _bridge = handshake_only_bridge(&mut config);
+    let acp = AcpRuntime::start(
+        &config,
+        Arc::new(|_, _| {}),
+        Arc::new(|_| ApprovalDecision {
+            modified_args: None,
+            approved: false,
+            reason: "release resource probe does not execute tools".to_string(),
+        }),
+    )
+    .expect("prepared release resource handshake");
+    assert_eq!(acp.handshake().protocol_version, EXPECTED_PROTOCOL_VERSION);
+    assert!(!acp.new_session(&repo_root).expect("session/new").is_empty());
+}
+
+/// Record how the DeepSeek adapter behaves against a strict OpenAI-compatible
+/// endpoint. At the pinned dsh version it reaches the configured `baseURL`, but
+/// the endpoint rejects three non-standard fields, so baseURL alone is not a
+/// provider-neutral compatibility guarantee.
+#[test]
+#[ignore = "needs agent-bridge provisioned: npm install && npm run provision -- --profile acp"]
+fn strict_openai_endpoint_rejects_dsh_deepseek_extension_fields() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind mock LLM");
+    let address = listener.local_addr().expect("mock LLM address");
+    let (request_tx, request_rx) = std::sync::mpsc::channel::<Value>();
+    let server = std::thread::spawn(move || {
+        use std::io::{Read, Write};
+
+        let (mut stream, _) = listener.accept().expect("accept mock LLM request");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(30)))
+            .expect("set mock read timeout");
+        let mut bytes = Vec::new();
+        let mut buffer = [0_u8; 8192];
+        let (header_end, content_length) = loop {
+            let read = stream.read(&mut buffer).expect("read mock LLM request");
+            assert!(read > 0, "mock LLM request closed before headers");
+            bytes.extend_from_slice(&buffer[..read]);
+            if let Some(index) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                let header_end = index + 4;
+                let headers = String::from_utf8_lossy(&bytes[..header_end]);
+                assert!(
+                    headers.starts_with("POST /chat/completions HTTP/1.1"),
+                    "unexpected mock LLM request: {headers}"
+                );
+                let content_length = headers
+                    .lines()
+                    .find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse::<usize>().expect("content length"))
+                    })
+                    .expect("content-length header");
+                break (header_end, content_length);
+            }
+        };
+        while bytes.len() < header_end + content_length {
+            let read = stream.read(&mut buffer).expect("read mock LLM body");
+            assert!(read > 0, "mock LLM request closed before body");
+            bytes.extend_from_slice(&buffer[..read]);
+        }
+        let request: Value =
+            serde_json::from_slice(&bytes[header_end..header_end + content_length])
+                .expect("mock LLM request JSON");
+        request_tx
+            .send(request.clone())
+            .expect("record mock request");
+
+        let allowed = [
+            "model",
+            "messages",
+            "stream",
+            "stream_options",
+            "tools",
+            "temperature",
+            "max_tokens",
+            "stop",
+        ];
+        let rejected: Vec<&str> = request
+            .as_object()
+            .expect("request object")
+            .keys()
+            .map(String::as_str)
+            .filter(|key| !allowed.contains(key))
+            .collect();
+        if !rejected.is_empty() {
+            let body = serde_json::json!({
+                "error": {
+                    "message": format!("unsupported OpenAI fields: {}", rejected.join(", ")),
+                    "type": "invalid_request_error"
+                }
+            })
+            .to_string();
+            write!(
+                stream,
+                "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .expect("write mock rejection");
+            return;
+        }
+
+        let stream_body = concat!(
+            "data: {\"id\":\"chatcmpl-lamber\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"deepseek-v4-flash\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"mock-ok\"},\"finish_reason\":null}]}\n\n",
+            "data: {\"id\":\"chatcmpl-lamber\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"deepseek-v4-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}\n\n",
+            "data: [DONE]\n\n"
+        );
+        write!(
+            stream,
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            stream_body.len(),
+            stream_body
+        )
+        .expect("write mock completion");
+    });
+
+    let fx = build_fixture("dsh-base-url");
+    let log = Arc::new(EventLog::default());
+    let hits = Arc::new(Mutex::new(Vec::new()));
+    let service = Arc::new(ProjectService::new(Box::new(SqliteProjectRepository::new(
+        Arc::new(std::sync::Mutex::new(
+            crate::db::init_db(&fx._db_path).expect("reopen db"),
+        )),
+    ))));
+    let bridge = BridgeServer::start(Arc::new(move |path, body| {
+        if path != CALCULATE_ROUTE {
+            return BridgeReply::error(404, path);
+        }
+        if let Ok(value) = serde_json::from_str::<Value>(body) {
+            hits.lock().expect("hits lock").push(value);
+        }
+        let request: CalculateRequest = match serde_json::from_str(body) {
+            Ok(request) => request,
+            Err(e) => return BridgeReply::error(400, &e.to_string()),
+        };
+        match run_calculation(&service, &request) {
+            Ok(response) => BridgeReply::ok(serde_json::to_string(&response).unwrap()),
+            Err(e) => BridgeReply::error(422, &e),
+        }
+    }))
+    .expect("bridge starts");
+
+    let patch_path = std::env::temp_dir().join(format!(
+        "lamber-dsh-base-url-{}.yml",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::write(
+        &patch_path,
+        format!(
+            "- id: llm-deepseek\n  config:\n    baseURL: http://{address}\n\n- insert:\n    - id: lamber-tools\n      name: dsh-tool-lamber\n"
+        ),
+    )
+    .expect("write base URL patch");
+
+    let mut config = DshLaunchConfig::from_repo_root(&repo_root_for_tests());
+    config.patch_path = patch_path.clone();
+    config.api_key = Some("stage-0-local-mock-key".to_string());
+    config.bridge_url = bridge.origin();
+    config.bridge_token = bridge.token().to_string();
+    let sink_log = Arc::clone(&log);
+    let acp = AcpRuntime::start(
+        &config,
+        Arc::new(move |method, params| sink_log.record(method, params)),
+        Arc::new(|_| ApprovalDecision {
+            modified_args: None,
+            approved: false,
+            reason: "base URL probe does not execute tools".to_string(),
+        }),
+    )
+    .expect("dsh ACP runtime starts");
+    let session = acp
+        .new_session(&repo_root_for_tests())
+        .expect("session/new");
+    acp.prompt(&session, "Reply with the local mock answer.")
+        .expect("prompt queued");
+
+    let request = request_rx
+        .recv_timeout(Duration::from_secs(30))
+        .expect("captured mock request");
+    eprintln!(
+        "strict OpenAI request fields={:?}",
+        request.as_object().unwrap().keys()
+    );
+    let ended = log.wait_for(
+        Duration::from_secs(60),
+        TURN_ENDED_METHOD,
+        |method, params| (method == TURN_ENDED_METHOD).then(|| params.clone()),
+    );
+    let error = ended["error"]
+        .as_str()
+        .expect("strict endpoint must reject the non-standard fields");
+    assert!(
+        error.contains("thinking"),
+        "rejection did not name thinking: {error}"
+    );
+    assert!(
+        error.contains("reasoning_effort"),
+        "rejection did not name reasoning_effort: {error}"
+    );
+    assert!(
+        error.contains("dsh_plugin_packages"),
+        "rejection did not name dsh_plugin_packages: {error}"
+    );
+    assert!(request.get("thinking").is_some());
+    assert!(request.get("reasoning_effort").is_some());
+    assert!(request.get("dsh_plugin_packages").is_some());
+
+    drop(acp);
+    server.join().expect("mock LLM server");
+    let _ = std::fs::remove_file(patch_path);
+}
+
 /// The full approval 闭环 under ACP: the model calls the gated tool, dsh asks
 /// over `session/requestPermission`, a simulated user answers, and the tool
 /// runs or does not.
@@ -1423,11 +1823,11 @@ fn dsh_gated_tool_runs_only_after_the_user_confirms() {
         return;
     }
 
-    for stance in [ApprovalStance::Approve, ApprovalStance::Reject] {
+    for stance in [ApprovalStance::Approve, ApprovalStance::Edit, ApprovalStance::Reject] {
         let fx = build_fixture("dsh-approval-loop");
         let log = Arc::new(EventLog::default());
         let prompts = Arc::new(Mutex::new(Vec::new()));
-        let (_bridge, acp) = launch_dsh_with_approval(
+        let (_bridge, acp, bindings) = launch_dsh_with_approval(
             &fx,
             Arc::new(Mutex::new(Vec::new())),
             Arc::clone(&log),
@@ -1438,6 +1838,7 @@ fn dsh_gated_tool_runs_only_after_the_user_confirms() {
         let session = acp
             .new_session(&repo_root_for_tests())
             .expect("session/new");
+        bindings.register(&session, fixture_binding(&fx, Some(&fx.project_id))).unwrap();
         acp.prompt(
             &session,
             "请调用 write_test_marker 工具，note 参数填「ACP 联调」。",
@@ -1501,13 +1902,18 @@ fn dsh_gated_tool_runs_only_after_the_user_confirms() {
         );
 
         match stance {
-            ApprovalStance::Approve => {
+            ApprovalStance::Approve | ApprovalStance::Edit => {
                 let marker = extract_marker_path(&result)
                     .unwrap_or_else(|| panic!("确认后应写出标记文件: {result}"));
                 assert!(
                     std::path::Path::new(&marker).is_file(),
                     "标记文件不存在: {marker}"
                 );
+                if stance == ApprovalStance::Edit {
+                    let saved = std::fs::read_to_string(&marker).unwrap();
+                    assert!(saved.contains("人工修订正文：分区实施，验收前保留原网络。\n不得写回模型原文。"), "{saved}");
+                    assert!(!saved.contains("ACP 联调"));
+                }
                 assert!(
                     marker.starts_with(&std::env::temp_dir().to_string_lossy().to_string()),
                     "标记文件必须落在系统临时目录: {marker}"
@@ -1564,7 +1970,7 @@ fn dsh_tool_call_reaches_the_calculator_and_returns_real_numbers() {
     let log = Arc::new(EventLog::default());
     let hits = Arc::new(Mutex::new(Vec::new()));
     let prompts = Arc::new(Mutex::new(Vec::new()));
-    let (_bridge, acp) = launch_dsh_with_approval(
+    let (_bridge, acp, bindings) = launch_dsh_with_approval(
         &fx,
         Arc::clone(&hits),
         Arc::clone(&log),
@@ -1575,6 +1981,7 @@ fn dsh_tool_call_reaches_the_calculator_and_returns_real_numbers() {
     let session = acp
         .new_session(&repo_root_for_tests())
         .expect("session/new");
+        bindings.register(&session, fixture_binding(&fx, Some(&fx.project_id))).unwrap();
     acp.prompt(
         &session,
         &format!(
@@ -1639,11 +2046,12 @@ fn a_finished_turn_reports_its_stop_reason() {
 
     let fx = build_fixture("acp-turn-end");
     let log = Arc::new(EventLog::default());
-    let (_bridge, acp) = launch_dsh(&fx, Arc::new(Mutex::new(Vec::new())), Arc::clone(&log));
+    let (_bridge, acp, bindings) = launch_dsh(&fx, Arc::new(Mutex::new(Vec::new())), Arc::clone(&log));
 
     let session = acp
         .new_session(&repo_root_for_tests())
         .expect("session/new");
+        bindings.register(&session, fixture_binding(&fx, Some(&fx.project_id))).unwrap();
     acp.prompt(&session, "回复 ok 两个字")
         .expect("prompt queued");
 
@@ -1659,3 +2067,522 @@ fn a_finished_turn_reports_its_stop_reason() {
         "正常结束的一轮应报 EndTurn: {ended}"
     );
 }
+
+#[test]
+#[ignore = "needs DEEPSEEK_API_KEY plus a provisioned agent-bridge"]
+fn stage2_real_stream_cancels_and_accepts_next_turn() {
+    assert!(has_api_key(), "阶段 2 实流验证必须提供 key，不允许跳过");
+    let relay = RealDeltaRelay::start();
+    let log = Arc::new(EventLog::default());
+    let mut config = DshLaunchConfig::from_repo_root(&repo_root_for_tests());
+    let _bridge = handshake_only_bridge(&mut config);
+    config.extra_patch_path = Some(relay.patch.clone());
+    let sink = Arc::clone(&log);
+    let acp = AcpRuntime::start(
+        &config,
+        Arc::new(move |m, p| sink.record(m, p)),
+        Arc::new(|_| ApprovalDecision {
+            modified_args: None,
+            approved: false,
+            reason: "No tools in stream probe".into(),
+        }),
+    )
+    .unwrap();
+    let session = acp.new_session(&repo_root_for_tests()).unwrap();
+    acp.prompt(
+        &session,
+        "请用中文写一篇至少三千字的项目管理培训讲义，逐章展开。不要调用工具。",
+    )
+    .unwrap();
+    // ACP alpha.5 emits assistant chunks only after the durable message commits.
+    // Observe the real provider delta through a transparent loopback relay instead.
+    let marker = &relay.marker;
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while !std::path::Path::new(&marker).exists() {
+        assert!(Instant::now() < deadline, "未观察到真实模型 delta");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let cancelled_at = Instant::now();
+    acp.cancel(&session).unwrap();
+    let ended = log.wait_for(
+        Duration::from_secs(30),
+        "cancelled turn",
+        |method, params| (method == TURN_ENDED_METHOD).then(|| params.clone()),
+    );
+    assert_eq!(ended["stopReason"], "Cancelled", "{ended}");
+    eprintln!(
+        "stage2 cancel acknowledgement: {} ms",
+        cancelled_at.elapsed().as_millis()
+    );
+    let first_events = log.state.lock().unwrap().clone();
+    log.state.lock().unwrap().clear();
+    acp.prompt(&session, "现在只回复：停止后可继续。").unwrap();
+    let ended = log.wait_for(Duration::from_secs(120), "next turn", |method, params| {
+        (method == TURN_ENDED_METHOD).then(|| params.clone())
+    });
+    assert_eq!(ended["stopReason"], "EndTurn", "{ended}");
+    let next_events = log.state.lock().unwrap().clone();
+    let text: String = next_events
+        .iter()
+        .filter_map(|(method, params)| {
+            let (kind, update) = acp_update(method, params)?;
+            (kind == "agent_message_chunk")
+                .then(|| update["content"]["text"].as_str())
+                .flatten()
+        })
+        .collect();
+    assert!(!text.is_empty());
+    assert!(!text.contains('\u{fffd}'));
+    if let Ok(path) = std::env::var("LAMBER_DSH_TRACE_PATH") {
+        std::fs::write(
+            path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "cancelled": first_events, "completed": next_events
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    }
+}
+
+/// Observe an actual provider delta without changing production ACP or dsh code.
+struct RealDeltaRelay {
+    child: std::process::Child,
+    patch: std::path::PathBuf,
+    marker: std::path::PathBuf,
+}
+impl RealDeltaRelay {
+    fn start() -> Self {
+        use std::io::BufRead;
+        let mut child = std::process::Command::new("python3")
+            .arg(repo_root_for_tests().join("scripts/verify-dsh-stage2.py"))
+            .arg("--relay")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("Python 3 is required for the real-provider cancellation probe");
+        let mut line = String::new();
+        std::io::BufReader::new(child.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        let config: Value = serde_json::from_str(&line).expect("relay startup metadata");
+        Self {
+            child,
+            patch: config["patch"].as_str().unwrap().into(),
+            marker: config["marker"].as_str().unwrap().into(),
+        }
+    }
+}
+impl Drop for RealDeltaRelay {
+    fn drop(&mut self) {
+        use std::io::Write;
+        if let Some(mut input) = self.child.stdin.take() {
+            let _ = input.write_all(b"\n");
+        }
+        let _ = self.child.wait();
+    }
+}
+
+fn await_stage2_end(log: &EventLog) -> String {
+    let ended = log.wait_for(
+        Duration::from_secs(120),
+        "stage2 completed turn",
+        |method, params| (method == TURN_ENDED_METHOD).then(|| params.clone()),
+    );
+    assert!(ended.get("error").is_none(), "{ended}");
+    assert_eq!(ended["stopReason"], "EndTurn", "{ended}");
+    log.state
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|(method, params)| {
+            let (kind, update) = acp_update(method, params)?;
+            (kind == "agent_message_chunk")
+                .then(|| update["content"]["text"].as_str())
+                .flatten()
+        })
+        .collect()
+}
+
+fn stage2_runtime(config: &DshLaunchConfig, log: &Arc<EventLog>) -> AcpRuntime {
+    let sink = Arc::clone(log);
+    AcpRuntime::start(
+        config,
+        Arc::new(move |m, p| sink.record(m, p)),
+        Arc::new(|_| ApprovalDecision {
+            modified_args: None,
+            approved: false,
+            reason: "No tools in this probe".into(),
+        }),
+    )
+    .unwrap()
+}
+
+#[test]
+#[ignore = "needs DEEPSEEK_API_KEY plus a provisioned agent-bridge"]
+fn stage2_resume_after_restart_retains_memory_and_rejects_wrong_cwd() {
+    assert!(has_api_key(), "real key required");
+    let cwd =
+        std::env::temp_dir().join(format!("lamber-stage2-workspace-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&cwd).unwrap();
+    let map_path = cwd.join("mapping.sqlite");
+    let store = super::session_store::SessionStore::open(&map_path).unwrap();
+    let mut config = DshLaunchConfig::from_repo_root(&repo_root_for_tests());
+    let _bridge = handshake_only_bridge(&mut config);
+    let token = format!("MEMORY{}", uuid::Uuid::new_v4().simple());
+    let log = Arc::new(EventLog::default());
+    let acp = stage2_runtime(&config, &log);
+    let id = acp.new_session(&cwd).unwrap();
+    store.insert("front-restart", &id, &cwd).unwrap();
+    acp.prompt(
+        &id,
+        &format!("记住暗号 {token}。仅回复已记住，不要调用工具。"),
+    )
+    .unwrap();
+    await_stage2_end(&log);
+    drop(acp);
+    drop(store);
+    let store = super::session_store::SessionStore::open(&map_path).unwrap();
+    let restored = store.get("front-restart", &cwd).unwrap().unwrap();
+    assert_eq!(restored, id);
+    let log = Arc::new(EventLog::default());
+    let acp = stage2_runtime(&config, &log);
+    assert!(acp
+        .resume_session(&restored, &repo_root_for_tests())
+        .is_err());
+    acp.resume_session(&restored, &cwd).unwrap();
+    acp.set_model(&restored, &config.provider, &config.model)
+        .unwrap();
+    acp.prompt(&restored, "只回复之前让你记住的暗号，不要调用工具。")
+        .unwrap();
+    let reply = await_stage2_end(&log);
+    assert!(reply.contains(&token), "恢复后未保留记忆: {reply}");
+    assert!(acp.resume_session("missing-session-id", &cwd).is_err());
+    drop(acp);
+    drop(store);
+    let _ = std::fs::remove_dir_all(cwd);
+}
+
+#[test]
+#[ignore = "needs real key with deepseek-v4-flash-vision-exp access"]
+fn stage2_vision_model_recognizes_inline_image() {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let png = STANDARD.encode(include_bytes!("fixtures/red-square.png"));
+    let content = || {
+        super::prompt::blocks(
+            "图片的主要颜色是什么？仅用中文回答颜色，不要调用工具。",
+            vec![super::prompt::PromptImage {
+                data: png.clone(),
+                mime_type: "image/png".into(),
+            }],
+        )
+        .unwrap()
+    };
+    assert!(has_api_key(), "real key required");
+    let mut config = DshLaunchConfig::from_repo_root(&repo_root_for_tests());
+    let _bridge = handshake_only_bridge(&mut config);
+    let log = Arc::new(EventLog::default());
+    let acp = stage2_runtime(&config, &log);
+    let session = acp.new_session(&repo_root_for_tests()).unwrap();
+    assert!(acp
+        .prompt_blocks(&session, content())
+        .unwrap_err()
+        .contains("当前模型不支持图片"));
+    drop(acp);
+    let patch =
+        std::env::temp_dir().join(format!("lamber-stage2-vision-{}.yml", uuid::Uuid::new_v4()));
+    std::fs::write(&patch, "- id: acp\n  config:\n    provider: deepseek-official\n    model: deepseek-v4-flash-vision-exp\n").unwrap();
+    config.model = "deepseek-v4-flash-vision-exp".into();
+    config.extra_patch_path = Some(patch.clone());
+    let log = Arc::new(EventLog::default());
+    let acp = stage2_runtime(&config, &log);
+    assert!(acp.handshake().supports_image_prompts);
+    let session = acp.new_session(&repo_root_for_tests()).unwrap();
+    acp.prompt_blocks(&session, content()).unwrap();
+    let reply = await_stage2_end(&log);
+    assert!(reply.contains('红'), "实际识图结果错误: {reply}");
+    eprintln!("vision response: {reply}");
+    drop(acp);
+    let _ = std::fs::remove_file(patch);
+}
+
+// Project permission fixtures use the production dispatcher and synthetic data only.
+fn scoped_workspace(fx: &Fixture) -> Arc<crate::workspace::WorkspaceRuntime> {
+    let runtime = Arc::new(crate::workspace::WorkspaceRuntime::new());
+    let root = std::fs::canonicalize(repo_root_for_tests()).unwrap().to_string_lossy().into_owned();
+    let manifest = crate::workspace::WorkspaceManifest {
+        app: "lamber".into(), workspace_version: 1, workspace_id: fx.project_id.clone(),
+        name: "permission fixture".into(), created_at: "test".into(), last_opened_at: "test".into(),
+    };
+    runtime.switch_workspace(crate::workspace::CurrentWorkspace {
+        workspace_root: root, workspace_name: manifest.name.clone(), workspace_id: manifest.workspace_id.clone(), manifest,
+    }, crate::db::init_db(&fx._db_path).unwrap()).unwrap();
+    runtime
+}
+fn fixture_binding(fx: &Fixture, project: Option<&str>) -> super::project_bindings::ProjectBinding {
+    super::project_bindings::ProjectBinding {
+        workspace_id: fx.project_id.clone(), cwd: std::fs::canonicalize(repo_root_for_tests()).unwrap(), project_id: project.map(str::to_string),
+    }
+}
+
+#[test]
+fn project_scope_http_isolation_persistence_and_fail_closed() {
+    use super::{project_bindings::{ProjectBindings, AUTHORIZE_ROUTE}, session_store::SessionStore};
+    let fx = build_fixture("scope");
+    let runtime = scoped_workspace(&fx);
+    let repo = SqliteProjectRepository::new(runtime.require_db().unwrap());
+    let mut other = blank_project(); other.id = "project-b".into(); other.name = "Scope B".into();
+    repo.save_project(&other).unwrap();
+    let other_scheme = save_scheme(&repo, &other.id, "甄选后", "post_selection", 1, "1272000");
+    let bindings = Arc::new(ProjectBindings::default());
+    let path = temp_db_path("scope-session-store");
+    {
+        let mut store = SessionStore::open(&path).unwrap();
+        let binding = fixture_binding(&fx, Some(&fx.project_id));
+        store.bind("front-a", &binding).unwrap();
+        store.insert("front-a", "acp-a", &binding.cwd).unwrap();
+        assert!(store.bind("front-a", &fixture_binding(&fx, Some(&other.id))).is_err());
+        store.insert("legacy", "acp-old", &binding.cwd).unwrap();
+        assert!(store.bind("legacy", &binding).is_err());
+    }
+    // Simulate process restart: empty registry restored only from durable identity + permission.
+    let mut reopened = SessionStore::open(&path).unwrap();
+    let saved = reopened.binding("front-a").unwrap().unwrap();
+    let id = reopened.get("front-a", &saved.cwd).unwrap().unwrap();
+    bindings.register(&id, saved).unwrap();
+    bindings.register("acp-b", fixture_binding(&fx, Some(&other.id))).unwrap();
+    bindings.register("general", fixture_binding(&fx, None)).unwrap();
+    bindings.register("deleted", fixture_binding(&fx, Some("absent-project"))).unwrap();
+    let server = Arc::new(BridgeServer::start(super::workspace_handler(runtime.clone(), bindings.clone())).unwrap());
+    let post = |route: &str, value: Value| http_post(&server.origin(), route, server.token(), &value.to_string());
+    let (status, body) = post(CALCULATE_ROUTE, serde_json::json!({"sessionId":"acp-a", "projectId":fx.project_id,"scenario":"post_selection"}));
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(serde_json::from_str::<Value>(&body).unwrap()["metrics"]["npv"], expected("1272000").npv);
+    for value in [serde_json::json!({}), serde_json::json!({"projectId":fx.project_id}),
+        serde_json::json!({"sessionId":"missing","projectId":fx.project_id}),
+        serde_json::json!({"sessionId":"acp-a"}), serde_json::json!({"sessionId":"general"}),
+        serde_json::json!({"sessionId":"acp-a","projectId":other.id}),
+        serde_json::json!({"sessionId":"deleted","projectId":"absent-project"})] {
+        assert_eq!(post(CALCULATE_ROUTE, value.clone()).0, 403, "must deny {value}");
+    }
+    assert_ne!(post(CALCULATE_ROUTE, serde_json::json!({"sessionId":"acp-a","projectId":fx.project_id,"scenario":other_scheme})).0, 200);
+    assert_eq!(post(AUTHORIZE_ROUTE, serde_json::json!({"sessionId":"general","tool":"write_test_marker"})).0, 403);
+    assert_eq!(post(AUTHORIZE_ROUTE, serde_json::json!({"sessionId":"acp-a","tool":"write_test_marker"})).0, 200);
+    assert_eq!(post(AUTHORIZE_ROUTE, serde_json::json!({"sessionId":"acp-a","tool":"run_code"})).0, 403);
+    let workers: Vec<_> = [("acp-a", fx.project_id.clone(), other.id.clone()), ("acp-b", other.id.clone(), fx.project_id.clone())].into_iter().map(|(session, own, foreign)| {
+        let server = server.clone(); std::thread::spawn(move || {
+            for _ in 0..6 {
+                for (project, expected) in [(&own, 200), (&foreign, 403)] {
+                    assert_eq!(http_post(&server.origin(), CALCULATE_ROUTE, server.token(), &serde_json::json!({"sessionId":session,"projectId":project,"scenario":"post_selection"}).to_string()).0, expected);
+                }
+            }
+        })
+    }).collect();
+    for worker in workers { worker.join().unwrap(); }
+    bindings.forget("acp-a").unwrap(); reopened.remove("front-a").unwrap();
+    assert!(reopened.binding("front-a").unwrap().is_none());
+    assert_eq!(post(CALCULATE_ROUTE, serde_json::json!({"sessionId":"acp-a","projectId":fx.project_id})).0, 403);
+    let another = build_fixture("scope-other-workspace");
+    let context = scoped_workspace(&another).require_workspace().unwrap();
+    runtime.switch_workspace(context, crate::db::init_db(&fx._db_path).unwrap()).unwrap();
+    assert_eq!(post(CALCULATE_ROUTE, serde_json::json!({"sessionId":"acp-b","projectId":other.id})).0, 403);
+    drop(reopened); std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+#[ignore = "needs DEEPSEEK_API_KEY plus a provisioned agent-bridge"]
+fn dsh_project_scope_real_tool_denial_survives_restart() {
+    assert!(has_api_key(), "real key required");
+    use super::{project_bindings::ProjectBindings, session_store::SessionStore};
+    let fx = build_fixture("real-scope");
+    let runtime = scoped_workspace(&fx);
+    let repo = SqliteProjectRepository::new(runtime.require_db().unwrap());
+    let mut other = blank_project(); other.id = "deliberate-other-project".into(); other.name = "真实链路合成项目 B".into();
+    repo.save_project(&other).unwrap();
+    save_scheme(&repo, &other.id, "甄选后", "post_selection", 1, "1272000");
+    let map_path = temp_db_path("real-scope-mapping");
+    let binding = fixture_binding(&fx, Some(&fx.project_id));
+    let mut store = SessionStore::open(&map_path).unwrap();
+    store.bind("real-front", &binding).unwrap();
+    let mut resumed = None;
+    for restart in [false, true] {
+        let bindings = Arc::new(ProjectBindings::default());
+        let handler = super::workspace_handler(runtime.clone(), bindings.clone());
+        let outcomes = Arc::new(Mutex::new(Vec::<(Value, u16)>::new()));
+        let capture = outcomes.clone();
+        let bridge = BridgeServer::start(Arc::new(move |path, body| {
+            let reply = handler(path, body);
+            capture.lock().unwrap().push((serde_json::from_str(body).unwrap(), reply.status));
+            reply
+        })).unwrap();
+        let mut config = DshLaunchConfig::from_repo_root(&repo_root_for_tests());
+        config.bridge_url = bridge.origin(); config.bridge_token = bridge.token().into();
+        let log = Arc::new(EventLog::default());
+        let acp = stage2_runtime(&config, &log);
+        let id = if restart {
+            let reopened = SessionStore::open(&map_path).unwrap();
+            let saved = reopened.binding("real-front").unwrap().unwrap();
+            let id = reopened.get("real-front", &saved.cwd).unwrap().unwrap();
+            assert_eq!(Some(id.clone()), resumed);
+            acp.resume_session(&id, &saved.cwd).unwrap();
+            bindings.register(&id, saved).unwrap(); id
+        } else {
+            let id = acp.new_session(&binding.cwd).unwrap();
+            store.insert("real-front", &id, &binding.cwd).unwrap();
+            bindings.register(&id, binding.clone()).unwrap(); id
+        };
+        acp.set_model(&id, &config.provider, &config.model).unwrap();
+        let target = if restart { "deliberate-other-project" } else { &fx.project_id };
+        acp.prompt(&id, &format!("必须实际调用 run_benefit_calculation 工具一次，projectId 严格使用 {target}，scenario 为 post_selection。不要替换项目 id。失败时直接报告错误，不要重试，不要调用其他工具。")).unwrap();
+        await_stage2_end(&log);
+        let rows = outcomes.lock().unwrap();
+        assert!(rows.iter().any(|(request, status)| request["sessionId"] == id && request["projectId"] == target && *status == if restart {403} else {200}), "No expected tool outcome: {rows:?}");
+        if restart { assert!(rows.iter().all(|(_, status)| *status != 200), "cross-project must never succeed"); }
+        resumed = Some(id);
+        drop(acp);
+    }
+    drop(store); std::fs::remove_file(map_path).unwrap();
+}
+
+#[path = "query_tests.rs"]
+mod query_tests;
+
+#[test]
+fn bridge_contract_checks_version_routes_authentication_and_preserves_business_errors() {
+    use super::contract;
+    let server = BridgeServer::start(Arc::new(|_, _| BridgeReply::error(403, "此会话只能访问绑定项目"))).unwrap();
+    let manifest: Value = serde_json::from_str(contract::manifest()).unwrap();
+    // The advertised capabilities must match the implemented route constants.
+    let mut routes = vec![CALCULATE_ROUTE, super::project_bindings::AUTHORIZE_ROUTE,
+        super::project_query::QUERY_ROUTE, super::template_write::ROUTE, super::template_read::ROUTE, super::reviewed_arguments::ROUTE, super::streaming::STREAM_ROUTE, super::benefit_access::READ_ROUTE, super::benefit_simulation::ROUTE, super::selection_fee::FORWARD_ROUTE, super::selection_fee::REVERSE_ROUTE];
+    routes.sort();
+    assert_eq!(manifest["routes"], serde_json::json!(routes));
+    let post = |body: &Value| http_post(&server.origin(), contract::HANDSHAKE_ROUTE, server.token(), &body.to_string());
+    assert_eq!(post(&manifest).0, 200);
+    let mut mismatch = manifest.clone();
+    mismatch["version"] = serde_json::json!(manifest["version"].as_u64().unwrap() + 1);
+    assert_eq!(post(&mismatch), (409, serde_json::json!({"error":contract::MISMATCH_MESSAGE}).to_string()));
+    mismatch = manifest.clone();
+    mismatch["routes"].as_array_mut().unwrap().push(serde_json::json!("/future"));
+    assert_eq!(post(&mismatch).0, 409);
+    assert_eq!(http_post(&server.origin(), contract::HANDSHAKE_ROUTE, "bad", &manifest.to_string()).0, 401);
+    let business = http_post(&server.origin(), CALCULATE_ROUTE, server.token(), "{}");
+    assert_eq!(business.0, 403);
+    assert!(business.1.contains("此会话只能访问绑定项目"));
+    assert!(!business.1.contains("版本"));
+}
+
+#[test]
+#[ignore = "needs built plugin and provisioned dsh; no API key"]
+fn bridge_contract_runtime_startup_rejects_mismatch_and_unreachable() {
+    use super::contract;
+    // Deliberately hostile peers below use tiny_http directly: BridgeServer
+    // always hosts the real contract and cannot pretend to be an old binary.
+    for (status, expected) in [(404, contract::MISMATCH_MESSAGE), (409, contract::MISMATCH_MESSAGE), (401, contract::UNREACHABLE_MESSAGE)] {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let mut config = DshLaunchConfig::from_repo_root(&repo_root_for_tests());
+        config.bridge_url = format!("http://{}", server.server_addr());
+        config.bridge_token = "synthetic".into();
+        let peer = std::thread::spawn(move || {
+            let req = server.recv_timeout(Duration::from_secs(15)).unwrap().expect("startup handshake");
+            assert_eq!(req.url(), contract::HANDSHAKE_ROUTE);
+            req.respond(tiny_http::Response::from_string("{\"error\":\"未知的 AI 桥接路由\"}").with_status_code(status)).unwrap();
+        });
+        let result = AcpRuntime::start(&config, Arc::new(|_, _| {}), Arc::new(|_| panic!("startup cannot request approval")));
+        let error = result.err().expect("runtime must not become ready");
+        assert_eq!(error, expected);
+        peer.join().unwrap();
+    }
+    let config = DshLaunchConfig::from_repo_root(&repo_root_for_tests());
+    let error = AcpRuntime::start(&config, Arc::new(|_, _| {}), Arc::new(|_| panic!("no approval"))).err().unwrap();
+    assert_eq!(error, contract::UNREACHABLE_MESSAGE);
+}
+
+#[test]
+#[ignore = "needs built plugin and provisioned dsh; no API key"]
+fn bridge_contract_real_plugin_with_unknown_route_fails_before_session_creation() {
+    let repo = repo_root_for_tests();
+    let distribution = AgentDistribution::development(&repo).unwrap();
+    let temp = std::env::temp_dir().join(format!("lamber-contract-mismatch-{}", uuid::Uuid::new_v4()));
+    let (home, patch) = prepare_home_at(&temp, &distribution, &crate::config_manager::AiAgentSettings::default()).unwrap();
+    let compiled = home.join("profiles/acp/node_modules/dsh-tool-lamber/lib/contract.generated.js");
+    let mut changed: Value = serde_json::from_str(super::contract::manifest()).unwrap();
+    changed["routes"].as_array_mut().unwrap().push(serde_json::json!("/lamber-bridge/future-tool"));
+    std::fs::write(&compiled, format!("export const BRIDGE_CONTRACT = {};\n", changed)).unwrap();
+    let mut config = DshLaunchConfig::from_repo_root(&repo);
+    config.dsh_home = home;
+    config.extra_patch_path = Some(patch);
+    let _bridge = handshake_only_bridge(&mut config);
+    let result = AcpRuntime::start(&config, Arc::new(|_, _| {}), Arc::new(|_| panic!("no approval during startup")));
+    assert_eq!(result.err().expect("must refuse before session/new"), super::contract::MISMATCH_MESSAGE);
+    std::fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn approval_modified_arguments_are_audited_and_handed_off_once() {
+    let gate = Arc::new(ApprovalGate::new(Duration::from_secs(2)));
+    let records = Arc::new(Mutex::new(Vec::<ApprovalRecord>::new()));
+    let captured = records.clone();
+    gate.set_recorder(Arc::new(move |record| captured.lock().unwrap().push(record.clone())));
+    let mut question = approval_question("write_test_marker");
+    question.session_id = Some("session-A".into()); question.call_id = Some("call-A".into());
+    let original = question.args.clone();
+    let edited = serde_json::json!({"note":"用户修改\n保留换行"});
+    let resolver = gate.clone(); let final_args = edited.clone();
+    let decision = handle_approval(&gate, question, move |prompt| {
+        let id = prompt.request_id.clone();
+        std::thread::spawn(move || {
+            assert!(resolver.resolve_with_args(&id, true, Some(serde_json::json!({"note":"bad","projectId":"other"}))).is_err());
+            assert!(resolver.resolve_with_args(&id, true, Some(serde_json::json!({"note":42}))).is_err());
+            assert!(resolver.resolve_with_args(&id, false, Some(final_args.clone())).is_err());
+            resolver.resolve_with_args(&id, true, Some(final_args)).unwrap();
+        });
+    });
+    assert!(decision.approved); assert_eq!(decision.modified_args, Some(edited.clone()));
+    let record: Value = serde_json::from_str(&records.lock().unwrap()[0].args_json).unwrap();
+    assert_eq!(record["modelArgs"], original); assert_eq!(record["userArgs"], edited); assert_eq!(record["approvedArgs"], edited);
+    assert!(gate.reviewed.consume("session-B", "call-A", "write_test_marker", &original).is_err());
+    assert!(gate.reviewed.consume("session-A", "call-B", "write_test_marker", &original).is_err());
+    assert!(gate.reviewed.consume("session-A", "call-A", "future_tool", &original).is_err());
+    assert!(gate.reviewed.consume("session-A", "call-A", "write_test_marker", &edited).is_err());
+    assert_eq!(gate.reviewed.consume("session-A", "call-A", "write_test_marker", &original).unwrap(), edited);
+    assert!(gate.reviewed.consume("session-A", "call-A", "write_test_marker", &original).is_err());
+}
+
+#[test]
+fn approval_rehearsal_reads_previous_saves_edits_and_leaves_rejections_unchanged() {
+    let path = std::env::temp_dir().join(format!("lamber-review-{}.txt", uuid::Uuid::new_v4()));
+    let original = "已保存需求：保留客户现网，交付前完成逐项验收。\n".repeat(20);
+    std::fs::write(&path, &original).unwrap();
+    let gate = Arc::new(ApprovalGate::new(Duration::from_secs(2)));
+    let records = Arc::new(Mutex::new(Vec::<ApprovalRecord>::new())); let captured = records.clone();
+    gate.set_recorder(Arc::new(move |r| captured.lock().unwrap().push(r.clone())));
+    let proposed = "模型建议：整体切换网络，不保留现网。\n".repeat(25);
+    let edited = "人工批准：分区切换，保留回退与现网；验收按双方清单执行。\n".repeat(20);
+    for approved in [false, true] {
+        let resolver = gate.clone(); let edit = edited.clone(); let previous = original.clone();
+        let receipt = super::approval_rehearsal::run(&gate, &path, proposed.clone(), move |prompt| {
+            assert_eq!(prompt.intent.as_ref().unwrap().fields[0].previous_value.as_ref().unwrap(), &previous);
+            assert!(prompt.intent.as_ref().unwrap().fields[0].proposed_value.chars().count() > 300);
+            let id = prompt.request_id.clone();
+            std::thread::spawn(move || resolver.resolve_with_args(&id, approved, approved.then(|| serde_json::json!({"note":edit}))).unwrap());
+        }).unwrap();
+        assert_eq!(receipt.approved, approved);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), if approved { &edited } else { &original }.to_string());
+    }
+    let logged = records.lock().unwrap();
+    let audit: Value = serde_json::from_str(&logged[1].args_json).unwrap();
+    assert_eq!(audit["modelArgs"]["note"], proposed);
+    assert_eq!(audit["userArgs"]["note"], edited);
+    assert_eq!(audit["intent"]["fields"][0]["previousValue"], original);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[path = "template_write_tests.rs"]
+mod template_write_tests;
+
+#[path = "template_read_tests.rs"]
+mod template_read_tests;
+
+#[path = "benefit_access_tests.rs"]
+mod benefit_access_tests;

@@ -752,7 +752,7 @@ export const removeSubjectFundingPlan = (
  * Rules:
  * - amount > 0, plan exists:  proportionally scale annualInclValues, preserve mode
  * - amount > 0, plan missing: auto-create an upfront plan
- * - amount <= 0, plan exists: remove the plan so the subject returns to "unmaintained"
+ * - amount <= 0, plan exists: disable and zero the plan, retaining its last positive shape
  * - amount <= 0, plan missing: no-op
  *
  * All arithmetic uses integer-cents internally to avoid floating-point drift.
@@ -766,13 +766,29 @@ export const syncSubjectFundingPlanToAmount = (
   const id = createSubjectFundingPlanId(subjectRef);
   const existing = plans[id] ?? null;
   const newCents = toMoneyCents(newAmountIncl);
+  const existingTotalCents = existing?.annualInclValues.reduce((sum, val) => sum + toMoneyCents(val), 0) ?? 0;
+  const isRecoveringFromZero = existingTotalCents === 0;
 
   // amount <= 0
   if (newCents <= 0) {
     if (!existing) return plans;
-    const nextPlans = { ...plans };
-    delete nextPlans[id];
-    return nextPlans;
+    // Repeated empty/zero input must not overwrite the recoverable distribution.
+    if (existingTotalCents === 0 && !existing.enabled) return plans;
+    const now = new Date().toISOString();
+    return {
+      ...plans,
+      [id]: {
+        ...existing,
+        annualInclValues: Array(PLAN_YEARS).fill(0),
+        lastValidAnnualInclValues: existingTotalCents > 0
+          ? [...existing.annualInclValues]
+          : existing.lastValidAnnualInclValues,
+        enabled: false,
+        lastChangeReason: reason,
+        lastChangedAt: now,
+        updatedAt: now,
+      },
+    };
   }
 
   // amount > 0, plan missing → auto-create upfront
@@ -790,9 +806,11 @@ export const syncSubjectFundingPlanToAmount = (
       [id]: {
         ...existing,
         annualInclValues: buildProportionalAnnualInclValues(newCents / 100, existing.annualPercentages),
-        lastValidAnnualInclValues: existing.annualInclValues,
+        lastValidAnnualInclValues: isRecoveringFromZero
+          ? existing.lastValidAnnualInclValues
+          : existing.annualInclValues,
         enabled: true,
-        lastChangeReason: reason,
+        lastChangeReason: isRecoveringFromZero ? "restored_after_zero" : reason,
         lastChangedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -800,8 +818,6 @@ export const syncSubjectFundingPlanToAmount = (
   }
 
   // amount > 0, plan exists → proportional scale
-  const existingTotalCents = existing.annualInclValues.reduce((sum, val) => sum + Math.round(val * 100), 0);
-  const isRecoveringFromZero = existingTotalCents === 0;
   const baseValues = (isRecoveringFromZero && existing.lastValidAnnualInclValues)
     ? normalizeAnnualInclValues(existing.lastValidAnnualInclValues)
     : existing.annualInclValues;
@@ -815,7 +831,9 @@ export const syncSubjectFundingPlanToAmount = (
         ...existing,
         mode: "upfront",
         annualInclValues: buildUpfrontAnnualInclValues(newCents / 100),
-        lastValidAnnualInclValues: existing.annualInclValues,
+        lastValidAnnualInclValues: isRecoveringFromZero
+          ? existing.lastValidAnnualInclValues
+          : existing.annualInclValues,
         enabled: true,
         lastChangeReason: isRecoveringFromZero ? "restored_after_zero" : reason,
         lastChangedAt: new Date().toISOString(),
@@ -850,7 +868,9 @@ export const syncSubjectFundingPlanToAmount = (
     [id]: {
       ...existing,
       annualInclValues: scaledCents.map(c => c / 100),
-      lastValidAnnualInclValues: existing.annualInclValues,
+      lastValidAnnualInclValues: isRecoveringFromZero
+          ? existing.lastValidAnnualInclValues
+          : existing.annualInclValues,
       enabled: true,
       lastChangeReason: isRecoveringFromZero ? "restored_after_zero" : reason,
       lastChangedAt: new Date().toISOString(),

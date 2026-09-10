@@ -1,37 +1,6 @@
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
 const path = require("node:path");
-const vm = require("node:vm");
-const ts = require("typescript");
-
-const moduleCache = new Map();
-function loadTsFile(sourcePath) {
-  const normalizedPath = path.normalize(sourcePath);
-  if (moduleCache.has(normalizedPath)) return moduleCache.get(normalizedPath).exports;
-  const source = fs.readFileSync(normalizedPath, "utf8");
-  const transpiled = ts.transpileModule(source, {
-    compilerOptions: {
-      esModuleInterop: true,
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2020,
-    },
-  });
-  const moduleRef = { exports: {} };
-  moduleCache.set(normalizedPath, moduleRef);
-  const localRequire = request => {
-    if (request.startsWith(".")) {
-      const resolved = path.resolve(path.dirname(normalizedPath), request);
-      return loadTsFile(path.extname(resolved) ? resolved : `${resolved}.ts`);
-    }
-    return require(request);
-  };
-  vm.runInNewContext(transpiled.outputText, {
-    module: moduleRef,
-    exports: moduleRef.exports,
-    require: localRequire,
-  }, { filename: normalizedPath });
-  return moduleRef.exports;
-}
+const loadTsFile = require("./load_ts.cjs");
 
 function loadTs(relativePath) {
   return loadTsFile(path.join(__dirname, "../src/features/ai-compute-quote", relativePath));

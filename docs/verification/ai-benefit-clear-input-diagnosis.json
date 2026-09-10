@@ -1,0 +1,67 @@
+{
+  "baselineCommit": "3fc55b49d5f171c49c16b18924e1cfd79d6faccb",
+  "originalDesktopDirect": {
+    "id": "revenue:revIt:integration",
+    "subjectRef": {
+      "side": "revenue",
+      "groupId": "revIt",
+      "key": "integration"
+    },
+    "mode": "custom",
+    "annualInclValues": [
+      200000,
+      200000,
+      200000,
+      200000,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "enabled": true,
+    "source": "manual",
+    "lastChangeReason": "manual_amount_sync",
+    "lastChangedAt": "2026-09-09T06:56:08.824Z",
+    "updatedAt": "2026-09-09T06:56:08.824Z",
+    "lastValidAnnualInclValues": [
+      26500,
+      26500,
+      26500,
+      26500,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "originalDesktopAfterClear": null,
+  "originalDesktopClearThenReenter": {
+    "id": "revenue:revIt:integration",
+    "subjectRef": {
+      "side": "revenue",
+      "groupId": "revIt",
+      "key": "integration"
+    },
+    "mode": "upfront",
+    "annualInclValues": [
+      800000,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "enabled": true,
+    "source": "manual",
+    "updatedAt": "2026-09-09T06:56:08.830Z"
+  },
+  "inputHandler": "Number(e.target.value): empty string becomes 0"
+}

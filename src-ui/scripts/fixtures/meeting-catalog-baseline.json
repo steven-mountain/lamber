@@ -1,0 +1,3546 @@
+{
+  "baseline": [
+    {
+      "name": "需求导入表.docx",
+      "state": {},
+      "result": [
+        {
+          "key": "gen_demand_branch_name",
+          "label": "项目需求单位",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_it_business_mode",
+          "label": "业务模式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_service_content",
+          "label": "服务内容",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_device_list",
+          "label": "设备清单",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "techItems",
+          "label": "技术方案可行性清单",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_customer_confirm",
+          "label": "客户确认",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_env_require",
+          "label": "部署环境要求",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_public_url",
+          "label": "公示网址/招标文件",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_security_detail",
+          "label": "信息安全/密评",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "attach1",
+          "label": "附件1客户确认材料",
+          "filled": false,
+          "evaluated": true,
+          "kind": "image",
+          "templateName": "需求导入表.docx",
+          "usage": "attach1"
+        },
+        {
+          "key": "attach2",
+          "label": "附件2招标材料",
+          "filled": true,
+          "evaluated": true,
+          "kind": "image",
+          "templateName": "需求导入表.docx",
+          "usage": "attach2"
+        }
+      ]
+    },
+    {
+      "name": "立项签批表.docx",
+      "state": {},
+      "result": [
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_sign_it_content",
+          "label": "IT服务内容",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_sign_ct_content",
+          "label": "CT服务内容",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_is_advance",
+          "label": "是否涉及垫资",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_after_approval_selection",
+          "label": "是否立项后甄选",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        }
+      ]
+    },
+    {
+      "name": "甄选结果签批表.docx",
+      "state": {},
+      "result": [
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_winner_name",
+          "label": "中选合作伙伴",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_content_desc",
+          "label": "合作内容描述",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_scope",
+          "label": "甄选范围",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_industry",
+          "label": "行业",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_method",
+          "label": "甄选方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_rule",
+          "label": "甄选规则",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_std_plan",
+          "label": "标准方案",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_is_sme",
+          "label": "供应商是否中小企业",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "post_selection_scheme",
+          "label": "甄选后方案",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "public_fields_consistent",
+          "label": "公共字段一致",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "batch_overrides_acknowledged",
+          "label": "批次字段差异已确认",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "renewal_costs_confirmed",
+          "label": "续签成本归类已确认",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "approval_amount_below_500k",
+          "label": "立项金额低于50万元",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        }
+      ]
+    },
+    {
+      "name": "需求导入表.docx",
+      "state": {
+        "formData": {},
+        "techItems": [],
+        "hasPublicUrl": false,
+        "hasSecurity": false
+      },
+      "result": [
+        {
+          "key": "gen_demand_branch_name",
+          "label": "项目需求单位",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_it_business_mode",
+          "label": "业务模式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_service_content",
+          "label": "服务内容",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_device_list",
+          "label": "设备清单",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "techItems",
+          "label": "技术方案可行性清单",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_customer_confirm",
+          "label": "客户确认",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_env_require",
+          "label": "部署环境要求",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_public_url",
+          "label": "公示网址/招标文件",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_security_detail",
+          "label": "信息安全/密评",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "attach1",
+          "label": "附件1客户确认材料",
+          "filled": false,
+          "evaluated": true,
+          "kind": "image",
+          "templateName": "需求导入表.docx",
+          "usage": "attach1"
+        },
+        {
+          "key": "attach2",
+          "label": "附件2招标材料",
+          "filled": true,
+          "evaluated": true,
+          "kind": "image",
+          "templateName": "需求导入表.docx",
+          "usage": "attach2"
+        }
+      ]
+    },
+    {
+      "name": "立项签批表.docx",
+      "state": {
+        "formData": {},
+        "techItems": [],
+        "hasPublicUrl": false,
+        "hasSecurity": false
+      },
+      "result": [
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_sign_it_content",
+          "label": "IT服务内容",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_sign_ct_content",
+          "label": "CT服务内容",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_is_advance",
+          "label": "是否涉及垫资",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_after_approval_selection",
+          "label": "是否立项后甄选",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        }
+      ]
+    },
+    {
+      "name": "甄选结果签批表.docx",
+      "state": {
+        "formData": {},
+        "techItems": [],
+        "hasPublicUrl": false,
+        "hasSecurity": false
+      },
+      "result": [
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_winner_name",
+          "label": "中选合作伙伴",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_content_desc",
+          "label": "合作内容描述",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_scope",
+          "label": "甄选范围",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_industry",
+          "label": "行业",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_method",
+          "label": "甄选方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_rule",
+          "label": "甄选规则",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_std_plan",
+          "label": "标准方案",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_is_sme",
+          "label": "供应商是否中小企业",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "post_selection_scheme",
+          "label": "甄选后方案",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "public_fields_consistent",
+          "label": "公共字段一致",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "batch_overrides_acknowledged",
+          "label": "批次字段差异已确认",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "renewal_costs_confirmed",
+          "label": "续签成本归类已确认",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "approval_amount_below_500k",
+          "label": "立项金额低于50万元",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        }
+      ]
+    },
+    {
+      "name": "需求导入表.docx",
+      "state": {
+        "formData": {
+          "gen_sign_it_content": "",
+          "gen_sign_ct_content": "",
+          "gen_rev_collection": "影子值"
+        },
+        "revCollection": "",
+        "expPayment": "",
+        "hasPublicUrl": true,
+        "hasSecurity": true
+      },
+      "result": [
+        {
+          "key": "gen_demand_branch_name",
+          "label": "项目需求单位",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_it_business_mode",
+          "label": "业务模式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_service_content",
+          "label": "服务内容",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_device_list",
+          "label": "设备清单",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "techItems",
+          "label": "技术方案可行性清单",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_customer_confirm",
+          "label": "客户确认",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_env_require",
+          "label": "部署环境要求",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_public_url",
+          "label": "公示网址/招标文件",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_security_detail",
+          "label": "信息安全/密评",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "attach1",
+          "label": "附件1客户确认材料",
+          "filled": false,
+          "evaluated": true,
+          "kind": "image",
+          "templateName": "需求导入表.docx",
+          "usage": "attach1"
+        },
+        {
+          "key": "attach2",
+          "label": "附件2招标材料",
+          "filled": false,
+          "evaluated": true,
+          "kind": "image",
+          "templateName": "需求导入表.docx",
+          "usage": "attach2"
+        }
+      ]
+    },
+    {
+      "name": "立项签批表.docx",
+      "state": {
+        "formData": {
+          "gen_sign_it_content": "",
+          "gen_sign_ct_content": "",
+          "gen_rev_collection": "影子值"
+        },
+        "revCollection": "",
+        "expPayment": "",
+        "hasPublicUrl": true,
+        "hasSecurity": true
+      },
+      "result": [
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_sign_it_content",
+          "label": "IT服务内容",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_sign_ct_content",
+          "label": "CT服务内容",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_is_advance",
+          "label": "是否涉及垫资",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_after_approval_selection",
+          "label": "是否立项后甄选",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        }
+      ]
+    },
+    {
+      "name": "甄选结果签批表.docx",
+      "state": {
+        "formData": {
+          "gen_sign_it_content": "",
+          "gen_sign_ct_content": "",
+          "gen_rev_collection": "影子值"
+        },
+        "revCollection": "",
+        "expPayment": "",
+        "hasPublicUrl": true,
+        "hasSecurity": true
+      },
+      "result": [
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_winner_name",
+          "label": "中选合作伙伴",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_content_desc",
+          "label": "合作内容描述",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_scope",
+          "label": "甄选范围",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_industry",
+          "label": "行业",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_method",
+          "label": "甄选方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_rule",
+          "label": "甄选规则",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_std_plan",
+          "label": "标准方案",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_is_sme",
+          "label": "供应商是否中小企业",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "post_selection_scheme",
+          "label": "甄选后方案",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "public_fields_consistent",
+          "label": "公共字段一致",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "batch_overrides_acknowledged",
+          "label": "批次字段差异已确认",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "renewal_costs_confirmed",
+          "label": "续签成本归类已确认",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "approval_amount_below_500k",
+          "label": "立项金额低于50万元",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        }
+      ]
+    },
+    {
+      "name": "需求导入表.docx",
+      "state": {
+        "formData": {
+          "gen_sign_it_content": "甲",
+          "gen_sign_ct_content": "乙",
+          "gen_demand_env_require": "",
+          "gen_demand_public_url": "https://example.test",
+          "gen_demand_security_detail": "已评估"
+        },
+        "revCollection": "验收收款",
+        "expPayment": "到账付款",
+        "techItems": [
+          {}
+        ],
+        "attach1Images": [
+          {}
+        ],
+        "attach2Images": [
+          {}
+        ],
+        "hasPublicUrl": true,
+        "hasSecurity": true
+      },
+      "result": [
+        {
+          "key": "gen_demand_branch_name",
+          "label": "项目需求单位",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_it_business_mode",
+          "label": "业务模式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_service_content",
+          "label": "服务内容",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_device_list",
+          "label": "设备清单",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "techItems",
+          "label": "技术方案可行性清单",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_customer_confirm",
+          "label": "客户确认",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_env_require",
+          "label": "部署环境要求",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_public_url",
+          "label": "公示网址/招标文件",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "gen_demand_security_detail",
+          "label": "信息安全/密评",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "需求导入表.docx"
+        },
+        {
+          "key": "attach1",
+          "label": "附件1客户确认材料",
+          "filled": true,
+          "evaluated": true,
+          "kind": "image",
+          "templateName": "需求导入表.docx",
+          "usage": "attach1"
+        },
+        {
+          "key": "attach2",
+          "label": "附件2招标材料",
+          "filled": true,
+          "evaluated": true,
+          "kind": "image",
+          "templateName": "需求导入表.docx",
+          "usage": "attach2"
+        }
+      ]
+    },
+    {
+      "name": "立项签批表.docx",
+      "state": {
+        "formData": {
+          "gen_sign_it_content": "甲",
+          "gen_sign_ct_content": "乙",
+          "gen_demand_env_require": "",
+          "gen_demand_public_url": "https://example.test",
+          "gen_demand_security_detail": "已评估"
+        },
+        "revCollection": "验收收款",
+        "expPayment": "到账付款",
+        "techItems": [
+          {}
+        ],
+        "attach1Images": [
+          {}
+        ],
+        "attach2Images": [
+          {}
+        ],
+        "hasPublicUrl": true,
+        "hasSecurity": true
+      },
+      "result": [
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_sign_it_content",
+          "label": "IT服务内容",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_sign_ct_content",
+          "label": "CT服务内容",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_is_advance",
+          "label": "是否涉及垫资",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_after_approval_selection",
+          "label": "是否立项后甄选",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "立项签批表.docx"
+        }
+      ]
+    },
+    {
+      "name": "甄选结果签批表.docx",
+      "state": {
+        "formData": {
+          "gen_sign_it_content": "甲",
+          "gen_sign_ct_content": "乙",
+          "gen_demand_env_require": "",
+          "gen_demand_public_url": "https://example.test",
+          "gen_demand_security_detail": "已评估"
+        },
+        "revCollection": "验收收款",
+        "expPayment": "到账付款",
+        "techItems": [
+          {}
+        ],
+        "attach1Images": [
+          {}
+        ],
+        "attach2Images": [
+          {}
+        ],
+        "hasPublicUrl": true,
+        "hasSecurity": true
+      },
+      "result": [
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_winner_name",
+          "label": "中选合作伙伴",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_content_desc",
+          "label": "合作内容描述",
+          "filled": false,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_scope",
+          "label": "甄选范围",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_industry",
+          "label": "行业",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_method",
+          "label": "甄选方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_rule",
+          "label": "甄选规则",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_std_plan",
+          "label": "标准方案",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_zx_is_sme",
+          "label": "供应商是否中小企业",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "filled": true,
+          "evaluated": true,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "post_selection_scheme",
+          "label": "甄选后方案",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "public_fields_consistent",
+          "label": "公共字段一致",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "batch_overrides_acknowledged",
+          "label": "批次字段差异已确认",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "renewal_costs_confirmed",
+          "label": "续签成本归类已确认",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        },
+        {
+          "key": "approval_amount_below_500k",
+          "label": "立项金额低于50万元",
+          "filled": false,
+          "evaluated": false,
+          "kind": "field",
+          "templateName": "甄选结果签批表.docx"
+        }
+      ]
+    }
+  ],
+  "meeting": [
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "large",
+        "procurementMethod": "短名单甄选",
+        "hasMidThree": false,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": []
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "large",
+        "procurementMethod": "短名单甄选",
+        "hasMidThree": false,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {}
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "large",
+        "procurementMethod": "短名单甄选",
+        "hasMidThree": false,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {
+            "vendorName": "",
+            "amount": 1
+          }
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "large",
+        "procurementMethod": "短名单甄选",
+        "hasMidThree": true,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": []
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "large",
+        "procurementMethod": "短名单甄选",
+        "hasMidThree": true,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {}
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "large",
+        "procurementMethod": "短名单甄选",
+        "hasMidThree": true,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {
+            "vendorName": "",
+            "amount": 1
+          }
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "large",
+        "procurementMethod": "其他",
+        "hasMidThree": false,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": []
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "large",
+        "procurementMethod": "其他",
+        "hasMidThree": false,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {}
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "large",
+        "procurementMethod": "其他",
+        "hasMidThree": false,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {
+            "vendorName": "",
+            "amount": 1
+          }
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "large",
+        "procurementMethod": "其他",
+        "hasMidThree": true,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": []
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "large",
+        "procurementMethod": "其他",
+        "hasMidThree": true,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {}
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "large",
+        "procurementMethod": "其他",
+        "hasMidThree": true,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {
+            "vendorName": "",
+            "amount": 1
+          }
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "small",
+        "procurementMethod": "短名单甄选",
+        "hasMidThree": false,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": []
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "small",
+        "procurementMethod": "短名单甄选",
+        "hasMidThree": false,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {}
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "small",
+        "procurementMethod": "短名单甄选",
+        "hasMidThree": false,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {
+            "vendorName": "",
+            "amount": 1
+          }
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "small",
+        "procurementMethod": "短名单甄选",
+        "hasMidThree": true,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": []
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "small",
+        "procurementMethod": "短名单甄选",
+        "hasMidThree": true,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {}
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "small",
+        "procurementMethod": "短名单甄选",
+        "hasMidThree": true,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {
+            "vendorName": "",
+            "amount": 1
+          }
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "small",
+        "procurementMethod": "其他",
+        "hasMidThree": false,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": []
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "small",
+        "procurementMethod": "其他",
+        "hasMidThree": false,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {}
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "small",
+        "procurementMethod": "其他",
+        "hasMidThree": false,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {
+            "vendorName": "",
+            "amount": 1
+          }
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "small",
+        "procurementMethod": "其他",
+        "hasMidThree": true,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": []
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "small",
+        "procurementMethod": "其他",
+        "hasMidThree": true,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {}
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    },
+    {
+      "state": {
+        "formData": {
+          "gen_meet_start": "2026-09-08",
+          "gen_meet_end": "2026-09-08",
+          "gen_procurement_method_other": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "人员甲"
+        },
+        "projectScale": "small",
+        "procurementMethod": "其他",
+        "hasMidThree": true,
+        "hasSingleSource": true,
+        "projectBackground": "项目背景",
+        "itContent": "IT",
+        "ctContent": "CT",
+        "midThreeCode": "",
+        "midThreeName": "名称",
+        "selfThreeValue": "自主",
+        "revCollection": "条款",
+        "expPayment": "条款",
+        "itBusMode": "服务购销",
+        "itFundSrc": "分公司成本开支",
+        "techItems": [
+          {}
+        ],
+        "inqVendors": [
+          {
+            "vendorName": "",
+            "amount": 1
+          }
+        ]
+      },
+      "filled": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "labels": [
+        "会议开始日期",
+        "会议结束日期",
+        "会议方式",
+        "项目规模",
+        "市公司参会人员",
+        "分公司参会人员",
+        "驻点支撑人员",
+        "项目背景",
+        "IT建设内容",
+        "CT建设内容",
+        "技术方案",
+        "技术方案可行性清单",
+        "涉及中台能力调用",
+        "自主三问",
+        "三化方案",
+        "战略价值",
+        "综论",
+        "收入付款方式",
+        "支出付款方式",
+        "IT服务模式/商务模式",
+        "资金来源",
+        "询价情况/询价过程",
+        "时间要求",
+        "风险点及其他责任人",
+        "是否联合体投标",
+        "项目评审清单准确完整",
+        "是否涉及单一来源",
+        "采购方式",
+        "售中建设及施工界面"
+      ]
+    }
+  ]
+}

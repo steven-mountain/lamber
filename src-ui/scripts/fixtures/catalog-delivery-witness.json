@@ -1,0 +1,13 @@
+{
+  "id":"delivery_witness",
+  "name":"交付交接记录（契约复验）",
+  "suffix":".docx",
+  "fields":[
+    {"key":"gen_delivery_team","label":"交接责任人","kind":"text","completionGroup":"delivery_owner"},
+    {"key":"gen_delivery_owner","label":"交接责任人","kind":"text","completionGroup":"delivery_owner"},
+    {"key":"gen_delivery_address","label":"异地交付地址","kind":"text","requiredWhen":{"field":"deliveryScope","equals":"remote"}},
+    {"key":"gen_delivery_note","label":"补充说明","kind":"text","requiredWhen":"hasDeliveryNote"},
+    {"key":"deliveryReview","label":"交接确认","kind":"derived","reason":"既有业务状态提供","completionSources":[{"field":"reviewer"},{"field":"reviewDate"}]},
+    {"key":"deliveryTasks","label":"交付任务","kind":"list","columns":["description","quantity"],"listType":"editable","reason":"仅用户编辑，不开放AI直接写入","validRow":{"nonEmpty":["description"],"positive":["quantity"]}}
+  ]
+}

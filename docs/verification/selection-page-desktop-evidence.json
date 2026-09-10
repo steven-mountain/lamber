@@ -1,0 +1,105 @@
+{
+  "date": "2026-09-10",
+  "method": "Rebuilt macOS Scope Test, native accessibility UI interaction, actual model read/write tools and product approval; SQLite read-only corroboration. No pixel screenshot claim.",
+  "projectId": "1283a3e9-fc87-41d6-8504-86ee8e61dfc3",
+  "uiObservations": [
+    {
+      "industry": "/",
+      "filled": 13,
+      "total": 17
+    },
+    {
+      "industry": "",
+      "filled": 12,
+      "total": 17
+    },
+    {
+      "industry": "软件和信息技术服务业",
+      "filled": 13,
+      "total": 17
+    },
+    {
+      "industry": "/",
+      "filled": 13,
+      "total": 17,
+      "restored": true
+    }
+  ],
+  "approval": {
+    "tool_name": "fill_template_fields",
+    "approved": 1,
+    "decided_by": "user",
+    "decided_at": "2026-09-09T16:18:47.048052+00:00",
+    "args": {
+      "auditVersion": 2,
+      "modelArgs": {
+        "projectId": "1283a3e9-fc87-41d6-8504-86ee8e61dfc3",
+        "templateId": "【2025版】ICT项目甄选结果签批表（仅适用50万以下项目）模板.docx",
+        "fields": {
+          "gen_zx_industry": "软件和信息技术服务业"
+        }
+      },
+      "userArgs": null,
+      "approvedArgs": {
+        "projectId": "1283a3e9-fc87-41d6-8504-86ee8e61dfc3",
+        "templateId": "【2025版】ICT项目甄选结果签批表（仅适用50万以下项目）模板.docx",
+        "fields": {
+          "gen_zx_industry": "软件和信息技术服务业"
+        }
+      },
+      "intent": {
+        "workspaceId": "f5103f16-932e-4280-800b-e2f975f50c62",
+        "stateVersion": 2,
+        "projectName": "桥接测试项目-28科目桌面对照",
+        "templateName": "【2025版】ICT项目甄选结果签批表（仅适用50万以下项目）模板.docx",
+        "targetDescription": "模板已保存正文 · 【2025版】ICT项目甄选结果签批表（仅适用50万以下项目）模板.docx",
+        "fields": [
+          {
+            "key": "gen_zx_industry",
+            "label": "行业",
+            "previousValue": "",
+            "proposedValue": "软件和信息技术服务业"
+          }
+        ]
+      }
+    }
+  },
+  "modelRead": {
+    "filledCount": 9,
+    "total": 17,
+    "missingFields": [
+      "gen_zx_winner_name",
+      "gen_zx_content_desc"
+    ],
+    "unknownCount": 6,
+    "unknown": [
+      "post_selection_scheme",
+      "gen_proj_bg",
+      "public_fields_consistent",
+      "batch_overrides_acknowledged",
+      "renewal_costs_confirmed",
+      "approval_amount_below_500k"
+    ],
+    "visibleStatement": "上述 6 项为 unknown，不代表已完成或未完成，需在甄选结果签批表页面查看判定结果。"
+  },
+  "financialSnapshots": [
+    {
+      "scheme_id": "17138aff-e474-4fe7-ae5e-602f518810bb",
+      "version": 1,
+      "count": 1
+    },
+    {
+      "scheme_id": "e0bf0716-e0cc-4bef-8810-d5e5b33d830f",
+      "version": 11,
+      "count": 11
+    }
+  ],
+  "templateAfterRestore": {
+    "template_name": "【2025版】ICT项目甄选结果签批表（仅适用50万以下项目）模板.docx",
+    "template_version": 5
+  },
+  "temporaryAiConfigRestored": true,
+  "financialEditorSaved": false,
+  "generatedFiles": false,
+  "entryGate": "Synthetic fixture had three existing 0.01 tax tail differences. Used original ignore-small-tail confirmation to enter template; did not save financial editor."
+}

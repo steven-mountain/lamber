@@ -163,11 +163,11 @@ export default function ProjectPresetProjectActions({ bindings }: Props) {
 
   return (
     <>
-      <Button type="button" size="sm" variant="outline" onClick={() => { setError(""); setMode("save"); }}>
+      <Button type="button" size="sm" variant="outline" className="h-9" onClick={() => { setError(""); setMode("save"); }}>
         <AppIcon name="presets" size={14} />
         保存为项目预设
       </Button>
-      <Button type="button" size="sm" variant="outline" onClick={() => { setError(""); setMode("apply"); }}>
+      <Button type="button" size="sm" variant="outline" className="h-9" onClick={() => { setError(""); setMode("apply"); }}>
         <AppIcon name="presetLibrary" size={14} />
         应用项目预设
       </Button>

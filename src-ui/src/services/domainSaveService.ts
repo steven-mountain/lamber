@@ -1,3 +1,4 @@
+import type { SharedTechTarget } from './templateListTypes';
 import { invoke } from "@tauri-apps/api/core";
 import type {
   BenefitAnalysisScheme,
@@ -76,6 +77,7 @@ export interface TemplateAssetPayload {
 }
 
 export interface StoredTemplateState {
+  templateVersion: number;
   id: string;
   projectId: string;
   templateId: string;
@@ -171,8 +173,8 @@ export const domainSaveService = {
     return invoke<BenefitAnalysisScheme[]>("get_benefit_schemes", { projectId });
   },
 
-  saveTemplateState(projectId: string, templateId: string, templateState: TemplateStatePayload): Promise<StoredTemplateState> {
-    return invoke<StoredTemplateState>("save_template_state", { projectId, templateId, templateState });
+  saveTemplateState(projectId: string, templateId: string, templateState: TemplateStatePayload, expectedVersion?: number, sharedTechTemplates?: SharedTechTarget[]): Promise<StoredTemplateState> {
+    return invoke<StoredTemplateState>("save_template_state", { projectId, templateId, templateState, expectedVersion, sharedTechTemplates });
   },
 
   loadTemplateState(projectId: string, templateId: string): Promise<StoredTemplateState | null> {

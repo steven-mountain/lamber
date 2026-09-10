@@ -15,6 +15,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card, CardHeader, CardContent, CardTitle, CardDescription } from "../ui/card";
 import { Label } from "../ui/label";
+import AiAgentSettingsCard from "./AiAgentSettingsCard";
 
 interface SettingsViewProps {
   onBack: () => void;
@@ -141,7 +142,7 @@ export default function SettingsView({ onBack }: SettingsViewProps) {
         >
           <span>←</span> 返回
         </button>
-        <h2 className="m-0 text-lg font-bold text-foreground border-l-2 border-border pl-4">外观设置中心</h2>
+        <h2 className="m-0 text-lg font-bold text-foreground border-l-2 border-border pl-4">设置中心</h2>
       </header>
 
       {/* Main Settings Body */}
@@ -502,6 +503,8 @@ export default function SettingsView({ onBack }: SettingsViewProps) {
                 </div>
               </CardContent>
             </Card>
+
+            <AiAgentSettingsCard />
 
             {/* Section 8: 测算行为 */}
             <Card className="border border-border/40 shadow-sm">

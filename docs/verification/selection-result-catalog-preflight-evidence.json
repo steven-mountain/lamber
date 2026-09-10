@@ -1,0 +1,62 @@
+{
+  "method": "Read-only execution of production getCatalogCompletion and extracted unchanged production build guard; no catalog, UI, business state or build contract writes.",
+  "approvalBefore": {
+    "total": 7,
+    "filled": 7,
+    "unknown": [],
+    "background": {
+      "key": "gen_proj_bg",
+      "label": "项目背景",
+      "filled": true,
+      "evaluated": true,
+      "kind": "field",
+      "templateName": "立项签批表.docx"
+    }
+  },
+  "approvalAfterRemoval": {
+    "total": 7,
+    "filled": 6,
+    "unknown": [
+      "gen_proj_bg"
+    ],
+    "background": {
+      "key": "gen_proj_bg",
+      "label": "项目背景",
+      "filled": false,
+      "evaluated": false,
+      "kind": "field",
+      "templateName": "立项签批表.docx"
+    }
+  },
+  "selection": {
+    "total": 16,
+    "filled": 8,
+    "unknown": [
+      "gen_proj_bg",
+      "post_selection_scheme",
+      "public_fields_consistent",
+      "batch_overrides_acknowledged",
+      "renewal_costs_confirmed",
+      "approval_amount_below_500k"
+    ],
+    "background": {
+      "key": "gen_proj_bg",
+      "label": "项目背景",
+      "filled": false,
+      "evaluated": false,
+      "kind": "field",
+      "templateName": "甄选结果签批表.docx"
+    }
+  },
+  "derivedWithStateKeyRejected": true,
+  "derivedWithoutStateKeyAcceptedBySameGuard": true,
+  "sourceHashes": {
+    "src-ui/src/lib/templateCompletion/catalog.ts": "2e3ba000ce6413022a08371b824c0e847ee5adf1e5ddabc06dce2d7bbd1f37a9",
+    "src-tauri/src/agent_bridge/template_catalog.rs": "a4581a98de1a2cbde90d53bb521269da6629eaf0a1a18ae713c38c15dba85577",
+    "src-tauri/src/agent_bridge/template_read.rs": "960ee09e9fc4a5e77fe052386e6b46a1c7620388f55e8016daa945c21a50349c",
+    "agent-bridge/scripts/build-contract.mjs": "2206f23dea6b91ae329316bcb4909d98be759bd351369fe4ee48e94cc89d8ae3",
+    "agent-bridge/scripts/validate-template-catalog.mjs": "70e40cc23dd6ca27e9b5c23d6cf2898f8e28db0f03390bd82ab7ff736f7c160d",
+    "src-ui/src/views/TemplateForms.tsx": "a728b87a8a9dfa8d23faacad21cd210246c730e5c4cd1610217cb5d84af5815b",
+    "src-ui/src/lib/templateCompletion/catalog.json": "fab7fd8b28aa41518eecb356ebb1010924da49b12f0b44f332e1420f6f0d8754"
+  }
+}

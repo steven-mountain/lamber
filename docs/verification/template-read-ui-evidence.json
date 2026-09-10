@@ -1,0 +1,22 @@
+{
+  "method": "Computer Use; independent Lamber Scope Test; fresh bound chat; no template page opened",
+  "page": "project_board",
+  "project": "3A流式验收项目",
+  "prompt": "需求导入表填了什么？还有哪些没填？",
+  "tool": "read_template_fields",
+  "input": {
+    "templateId": "ICT项目需求导入表模板.docx"
+  },
+  "observed": {
+    "templateVersion": 12,
+    "completion": "11/11",
+    "missingFields": [],
+    "serviceContentCharacters": 337,
+    "environment": "客户提供机房、供电及布线条件，施工前完成联合勘察并书面确认",
+    "technicalItem": "回归服务（非默认技术描述，7 项）",
+    "attachment1": true,
+    "attachment2": true,
+    "approvalDialog": false
+  },
+  "humanGate": "pending"
+}

@@ -1,3 +1,5 @@
+import { prepareIctTaxItemsInclBatch, type TaxItemInclUpdate } from '../lib/ictTaxItemBatch';
+import { editIctTaxItem, type TaxItem } from "../lib/ictTaxItemEdit";
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -17,9 +19,7 @@ import {
   normalizeCashflowCalculationSource,
   normalizeSubjectFundingPlans,
   SUBJECT_FUNDING_PLAN_MIGRATION_VERSION,
-  initializeMissingSubjectFundingPlans,
   removeSubjectFundingPlan,
-  syncSubjectFundingPlansToAmounts,
   upsertSubjectFundingPlan as upsertSubjectFundingPlanRecord,
   type CashflowCalculationSource,
   type SubjectFundingPlan,
@@ -27,14 +27,14 @@ import {
   type SubjectFundingPlans,
   type SubjectFundingSubjectRef,
 } from "../lib/ictSubjectFundingPlan";
-import { exclFromIncl, inclFromExcl, normalizeTaxPairFromIncl, restoreTaxSplitParts, roundMoneyHalfUp, splitInclAmount, type TaxSplitPart } from "../lib/taxAmount";
+import { exclFromIncl, normalizeTaxPairFromIncl, restoreTaxSplitParts, roundMoneyHalfUp, splitInclAmount, type TaxSplitPart } from "../lib/taxAmount";
 import { isTaxInclAutoFixEnabled } from "../store/useCalcPreferencesStore";
 
 export { normalizeProjectYears };
 
-export interface TaxItem { incl: number; tax: number; excl: number; customSubjectName?: string; billingSubjectName?: string; splitParts?: TaxSplitPart[]; }
+export type { TaxItem } from "../lib/ictTaxItemEdit";
 
-export type TaxItemInclUpdate = { groupId: string; key: string; incl: number; reason?: SubjectFundingPlanLastChangeReason };
+export type { TaxItemInclUpdate } from "../lib/ictTaxItemBatch";
 export const defaultTaxItem = (tax = 6): TaxItem => ({ incl: 0, tax, excl: 0 });
 const defaultSubjectTaxItem = (groupId: IctSubjectGroupId, key: string) => {
   const subject = ICT_SUBJECT_GROUPS[groupId]?.find(item => item.key === key);
@@ -445,59 +445,6 @@ export function useIctState() {
     setSubjectFundingPlansState(prev => removeSubjectFundingPlan(prev, subjectRef));
   };
 
-  const collectPositiveFundingSubjects = (sources?: {
-    revItState?: typeof revIt;
-    revCtState?: typeof revCt;
-    revNonItCtState?: typeof revNonItCt;
-    costItState?: typeof costIt;
-    costCtState?: typeof costCt;
-    costMixState?: typeof costMix;
-  }) => {
-    const result: Array<{ subjectRef: SubjectFundingSubjectRef; amountIncl: number }> = [];
-    const addRecordItems = (
-      side: SubjectFundingSubjectRef["side"],
-      groupId: SubjectFundingSubjectRef["groupId"],
-      items: Record<string, TaxItem>,
-    ) => {
-      Object.entries(items).forEach(([itemKey, item]) => {
-        if (item.incl > 0) {
-          result.push({ subjectRef: { side, groupId, key: itemKey }, amountIncl: item.incl });
-        }
-      });
-    };
-
-    addRecordItems("revenue", "revIt", sources?.revItState ?? revIt);
-    addRecordItems("revenue", "revCt", sources?.revCtState ?? revCt);
-    const nonItCt = sources?.revNonItCtState ?? revNonItCt;
-    if (nonItCt.incl > 0) {
-      result.push({ subjectRef: { side: "revenue", groupId: "revNonItCt", key: "item" }, amountIncl: nonItCt.incl });
-    }
-    addRecordItems("cost", "costIt", sources?.costItState ?? costIt);
-    addRecordItems("cost", "costCt", sources?.costCtState ?? costCt);
-    addRecordItems("cost", "costMix", sources?.costMixState ?? costMix);
-    return result;
-  };
-
-  const syncFundingPlansAfterAmountChange = (
-    updates: Array<{ subjectRef: SubjectFundingSubjectRef; newAmountIncl: number; reason?: SubjectFundingPlanLastChangeReason }>,
-    positiveSubjects: Array<{ subjectRef: SubjectFundingSubjectRef; amountIncl: number }>,
-  ) => {
-    if (updates.length === 0) return;
-    const zeroedSubjectKeys = new Set(
-      updates
-        .filter(update => update.newAmountIncl <= 0)
-        .map(update => `${update.subjectRef.side}:${update.subjectRef.groupId}:${update.subjectRef.key}`),
-    );
-    const activePositiveSubjects = positiveSubjects.filter(subject =>
-      !zeroedSubjectKeys.has(`${subject.subjectRef.side}:${subject.subjectRef.groupId}:${subject.subjectRef.key}`),
-    );
-    setSubjectFundingPlansState(prev => {
-      const syncedPlans = syncSubjectFundingPlansToAmounts(prev, updates);
-      return initializeMissingSubjectFundingPlans(syncedPlans, activePositiveSubjects);
-    });
-    setCashflowCalculationSourceState("subject_funding_plans");
-  };
-
   const clearFinancialSubjects = () => {
     setRevIt(createDefaultRevIt());
     setRevCt(createDefaultRevCt());
@@ -546,214 +493,36 @@ export function useIctState() {
 
   const updateTaxItemsInclBatch = (updates: TaxItemInclUpdate[]) => {
     if (updates.length === 0) return;
-    if (ignoredDataHash !== null) {
-      setIgnoredDataHash(null);
-      setIgnoredTailValue(null);
-    }
-
-    let nextRevIt = revIt;
-    let nextRevCt = revCt;
-    let nextRevNonItCt = revNonItCt;
-    let nextCostIt = costIt;
-    let nextCostCt = costCt;
-    let nextCostMix = costMix;
-    const changed = {
-      revIt: false,
-      revCt: false,
-      revNonItCt: false,
-      costIt: false,
-      costCt: false,
-      costMix: false,
-    };
-
-    const itemFromIncl = (current: TaxItem | undefined, incl: number): TaxItem => {
-      const tax = Number(current?.tax ?? 0);
-      // 程序化写入（导入/差额承接等）：开启自动修正时归一到财务口径不动点，
-      // 否则保留写入值，由界面提示与生成前校验兜底。
-      const pair = normalizeTaxPairFromIncl(isNaN(incl) ? 0 : incl, tax);
-      return {
-        ...(current || defaultTaxItem(tax)),
-        incl: isTaxInclAutoFixEnabled() ? pair.incl : pair.enteredIncl,
-        tax,
-        excl: pair.excl,
-        splitParts: undefined,
-      };
-    };
-
-    const setRecordItem = <T extends Record<string, TaxItem>>(
-      group: T,
-      key: string,
-      incl: number,
-    ): T => ({
-      ...group,
-      [key]: itemFromIncl(group[key], incl),
-    } as T);
-
-    updates.forEach(update => {
-      if (update.groupId === "revIt") {
-        nextRevIt = setRecordItem(nextRevIt, update.key, update.incl);
-        changed.revIt = true;
-      } else if (update.groupId === "revCt") {
-        nextRevCt = setRecordItem(nextRevCt, update.key, update.incl);
-        changed.revCt = true;
-        if (update.key === "product") {
-          nextCostCt = setRecordItem(nextCostCt, "other", update.incl);
-          changed.costCt = true;
-        }
-        if (update.key === "line") {
-          nextCostCt = setRecordItem(nextCostCt, "bandwidth", update.incl);
-          changed.costCt = true;
-        }
-      } else if (update.groupId === "revNonItCt") {
-        nextRevNonItCt = itemFromIncl(nextRevNonItCt, update.incl);
-        changed.revNonItCt = true;
-      } else if (update.groupId === "costIt") {
-        nextCostIt = setRecordItem(nextCostIt, update.key, update.incl);
-        changed.costIt = true;
-      } else if (update.groupId === "costCt") {
-        nextCostCt = setRecordItem(nextCostCt, update.key, update.incl);
-        changed.costCt = true;
-      } else if (update.groupId === "costMix") {
-        nextCostMix = setRecordItem(nextCostMix, update.key, update.incl);
-        changed.costMix = true;
-      }
-    });
-
-    if (changed.revIt) setRevIt(nextRevIt);
-    if (changed.revCt) setRevCt(nextRevCt);
-    if (changed.revNonItCt) setRevNonItCt(nextRevNonItCt);
-    if (changed.costIt) setCostIt(nextCostIt);
-    if (changed.costCt) setCostCt(nextCostCt);
-    if (changed.costMix) setCostMix(nextCostMix);
-
-    const syncUpdates: Array<{ subjectRef: SubjectFundingSubjectRef; newAmountIncl: number; reason?: SubjectFundingPlanLastChangeReason }> = [];
-    // 计划同步金额取归一后的科目含税值，保证计划合计与科目金额逐分一致。
-    const normalizedIncl = (groupId: string, key: string, rawIncl: number): number => {
-      const groupState =
-        groupId === "revIt" ? nextRevIt
-        : groupId === "revCt" ? nextRevCt
-        : groupId === "costIt" ? nextCostIt
-        : groupId === "costCt" ? nextCostCt
-        : groupId === "costMix" ? nextCostMix
-        : null;
-      const item = groupId === "revNonItCt" ? nextRevNonItCt : (groupState as Record<string, TaxItem> | null)?.[key];
-      return Number(item?.incl ?? rawIncl) || 0;
-    };
-    updates.forEach(update => {
-      const side = (update.groupId === "revIt" || update.groupId === "revCt" || update.groupId === "revNonItCt")
-        ? "revenue" as const : "cost" as const;
-      syncUpdates.push({
-        subjectRef: { side, groupId: update.groupId as SubjectFundingSubjectRef["groupId"], key: update.key },
-        newAmountIncl: normalizedIncl(update.groupId, update.key, update.incl),
-        reason: update.reason,
-      });
-      // CT linkage: revCt.product → costCt.other, revCt.line → costCt.bandwidth
-      if (update.groupId === "revCt" && update.key === "product") {
-        syncUpdates.push({ subjectRef: { side: "cost", groupId: "costCt", key: "other" }, newAmountIncl: normalizedIncl("costCt", "other", update.incl), reason: "ct_linkage_sync" });
-      }
-      if (update.groupId === "revCt" && update.key === "line") {
-        syncUpdates.push({ subjectRef: { side: "cost", groupId: "costCt", key: "bandwidth" }, newAmountIncl: normalizedIncl("costCt", "bandwidth", update.incl), reason: "ct_linkage_sync" });
-      }
-    });
-    syncFundingPlansAfterAmountChange(
-      syncUpdates,
-      collectPositiveFundingSubjects({
-        revItState: nextRevIt,
-        revCtState: nextRevCt,
-        revNonItCtState: nextRevNonItCt,
-        costItState: nextCostIt,
-        costCtState: nextCostCt,
-        costMixState: nextCostMix,
-      }),
-    );
+    const prepared = prepareIctTaxItemsInclBatch({ revIt, revCt, revNonItCt, costIt, costCt, costMix }, updates, isTaxInclAutoFixEnabled());
+    if (ignoredDataHash !== null) { setIgnoredDataHash(null); setIgnoredTailValue(null); }
+    const next = prepared.state;
+    if (next.revIt !== revIt) setRevIt(next.revIt as typeof revIt);
+    if (next.revCt !== revCt) setRevCt(next.revCt as typeof revCt);
+    if (next.revNonItCt !== revNonItCt) setRevNonItCt(next.revNonItCt);
+    if (next.costIt !== costIt) setCostIt(next.costIt as typeof costIt);
+    if (next.costCt !== costCt) setCostCt(next.costCt as typeof costCt);
+    if (next.costMix !== costMix) setCostMix(next.costMix as typeof costMix);
+    setSubjectFundingPlansState(prepared.synchronizePlans);
+    setCashflowCalculationSourceState("subject_funding_plans");
   };
 
   const updateTaxItem = (
-    groupId: string,
-    key: string,
-    field: "incl" | "tax" | "excl",
-    val: number,
-    reason?: SubjectFundingPlanLastChangeReason,
-    options?: { normalizeIncl?: boolean },
+    groupId: string, key: string, field: "incl" | "tax" | "excl", val: number,
+    reason?: SubjectFundingPlanLastChangeReason, options?: { normalizeIncl?: boolean },
   ) => {
-    if (ignoredDataHash !== null) {
-      setIgnoredDataHash(null);
-      setIgnoredTailValue(null);
+    if (ignoredDataHash !== null) { setIgnoredDataHash(null); setIgnoredTailValue(null); }
+    const edited = editIctTaxItem({revIt,revCt,revNonItCt,costIt,costCt,costMix}, subjectFundingPlans,
+      groupId as IctSubjectGroupId, key, field, val, isTaxInclAutoFixEnabled(), reason, options);
+    if (edited.state.revIt !== revIt) setRevIt(edited.state.revIt as typeof revIt);
+    if (edited.state.revCt !== revCt) setRevCt(edited.state.revCt as typeof revCt);
+    if (edited.state.revNonItCt !== revNonItCt) setRevNonItCt(edited.state.revNonItCt);
+    if (edited.state.costIt !== costIt) setCostIt(edited.state.costIt as typeof costIt);
+    if (edited.state.costCt !== costCt) setCostCt(edited.state.costCt as typeof costCt);
+    if (edited.state.costMix !== costMix) setCostMix(edited.state.costMix as typeof costMix);
+    if (edited.plansChanged) {
+      setSubjectFundingPlansState(edited.synchronizePlans);
+      setCashflowCalculationSourceState("subject_funding_plans");
     }
-
-    // Collect effective incl amounts for funding plan sync.
-    // processItem returns the resolved incl value so we can sync plans afterwards.
-    // 财务口径（不含税为锚）：编辑不含税时含税取反推值；含税是否被改写
-    // 取决于「财务口径自动修正」开关（normalizeIncl 为显式请求，仅在开关开启时使用），
-    // 关闭时保留录入含税，由界面提示与生成前校验兜底。
-    const shouldNormalizeIncl = (explicit?: boolean) =>
-      (explicit || false) && isTaxInclAutoFixEnabled();
-    const processItem = (groupState: any, setGroupState: any, targetKey: string): number => {
-      // 金额/税率一经编辑，既有拆分明细即失效，回到普通单笔口径。
-      const item = { ...groupState[targetKey], [field]: isNaN(val) ? 0 : val, splitParts: undefined };
-      if (field === 'incl' || field === 'tax') {
-        item.excl = exclFromIncl(item.incl, item.tax);
-        if (shouldNormalizeIncl(field === 'tax' || options?.normalizeIncl)) {
-          item.incl = inclFromExcl(item.excl, item.tax);
-        }
-      } else if (field === 'excl') {
-        item.incl = inclFromExcl(item.excl, item.tax);
-      }
-      setGroupState({ ...groupState, [targetKey]: item });
-      return Number(item.incl) || 0;
-    };
-
-    // Track incl amounts for subjects that need plan sync
-    const syncUpdates: Array<{ subjectRef: SubjectFundingSubjectRef; newAmountIncl: number; reason?: SubjectFundingPlanLastChangeReason }> = [];
-    const needsSync = field !== "tax";
-
-    const sideForGroup = (gid: string) =>
-      (gid === "revIt" || gid === "revCt" || gid === "revNonItCt") ? "revenue" as const : "cost" as const;
-
-    const trackSync = (gid: string, k: string, effectiveIncl: number, overrideReason?: SubjectFundingPlanLastChangeReason) => {
-      if (!needsSync) return;
-      syncUpdates.push({
-        subjectRef: { side: sideForGroup(gid), groupId: gid as SubjectFundingSubjectRef["groupId"], key: k },
-        newAmountIncl: effectiveIncl,
-        reason: overrideReason || reason,
-      });
-    };
-
-    if (groupId === 'revIt') {
-      trackSync(groupId, key, processItem(revIt, setRevIt, key));
-    } else if (groupId === 'revCt') {
-      const effectiveIncl = processItem(revCt, setRevCt, key);
-      trackSync(groupId, key, effectiveIncl);
-      if (key === 'product') {
-        processItem(costCt, setCostCt, 'other');
-        trackSync('costCt', 'other', effectiveIncl, "ct_linkage_sync");
-      }
-      if (key === 'line') {
-        processItem(costCt, setCostCt, 'bandwidth');
-        trackSync('costCt', 'bandwidth', effectiveIncl, "ct_linkage_sync");
-      }
-    } else if (groupId === 'revNonItCt') {
-      const item = { ...revNonItCt, [field]: isNaN(val) ? 0 : val, splitParts: undefined };
-      if (field === 'incl' || field === 'tax') {
-        item.excl = exclFromIncl(item.incl, item.tax);
-        if (shouldNormalizeIncl(field === 'tax' || options?.normalizeIncl)) {
-          item.incl = inclFromExcl(item.excl, item.tax);
-        }
-      } else if (field === 'excl') {
-        item.incl = inclFromExcl(item.excl, item.tax);
-      }
-      setRevNonItCt(item);
-      trackSync(groupId, key, Number(item.incl) || 0);
-    } else if (groupId === 'costIt') {
-      trackSync(groupId, key, processItem(costIt, setCostIt, key));
-    } else if (groupId === 'costCt') {
-      trackSync(groupId, key, processItem(costCt, setCostCt, key));
-    } else if (groupId === 'costMix') {
-      trackSync(groupId, key, processItem(costMix, setCostMix, key));
-    }
-
-    // Apply funding plan sync in the same React batch
-    syncFundingPlansAfterAmountChange(syncUpdates, collectPositiveFundingSubjects());
   };
 
   // 含税输入框失焦时调用：仅在开启「财务口径自动修正」时把含税价归一到反推不动点。

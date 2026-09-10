@@ -33,7 +33,7 @@ pub const APPROVAL_EVENT: &str = "ai://approval-request";
 /// dsh imposes no deadline of its own on a `session/requestPermission`: it
 /// waits for whatever the client answers. So this bound is the only thing that
 /// keeps an unattended turn from parking forever, and it must always fire.
-pub const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_secs(90);
+pub const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// Overrides the wait, in seconds. Tests use it to exercise the timeout path
 /// without stalling for a minute and a half.
@@ -62,7 +62,7 @@ pub fn approval_timeout() -> Duration {
 ///
 /// The two tables are kept honest by `gated_tool_names_match_the_plugin`, which
 /// reads the plugin source and fails if either side gains or loses a tool.
-const GATED_TOOLS: &[(&str, &str)] = &[(
+const GATED_TOOLS: &[(&str, &str)] = &[("fill_template_fields", "将写入绑定项目的需求导入表文本，请核对表单、字段及新旧内容后批准。"), (
     "write_test_marker",
     "该工具会写入文件（测试标记文件，位于系统临时目录），需要你确认后才执行。",
 )];
@@ -90,6 +90,8 @@ pub fn gated_tool_names() -> Vec<&'static str> {
 /// from the `session/update` that announced the call (see `tool_calls.rs`).
 #[derive(Debug, Clone)]
 pub struct ApprovalQuestion {
+    pub session_id: Option<String>,
+    pub intent: Option<super::reviewed_arguments::WriteIntent>,
     pub tool_name: String,
     pub call_id: Option<String>,
     pub reason: Option<String>,
@@ -101,6 +103,7 @@ pub struct ApprovalQuestion {
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApprovalDecision {
+    pub modified_args: Option<serde_json::Value>,
     pub approved: bool,
     pub reason: String,
 }
@@ -108,6 +111,7 @@ pub struct ApprovalDecision {
 impl ApprovalDecision {
     fn denied(reason: impl Into<String>) -> Self {
         Self {
+            modified_args: None,
             approved: false,
             reason: reason.into(),
         }
@@ -118,6 +122,9 @@ impl ApprovalDecision {
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApprovalPrompt {
+    pub session_id: Option<String>,
+    pub intent: Option<super::reviewed_arguments::WriteIntent>,
+    pub expires_at: String,
     /// lamber-issued id the frontend echoes back through `ai_resolve_approval`.
     pub request_id: String,
     pub tool_name: String,
@@ -183,10 +190,12 @@ struct Slot {
     decided_by: DecidedBy,
     prompt: ApprovalPrompt,
     requested_at: String,
+    deadline: Instant,
 }
 
 /// Registry of questions currently awaiting a human.
 pub struct ApprovalGate {
+    pub reviewed: Arc<super::reviewed_arguments::ReviewedArguments>,
     slots: Mutex<GateState>,
     signal: Condvar,
     /// How long each question waits. Held per gate rather than read from the
@@ -214,6 +223,7 @@ impl ApprovalGate {
     /// Build a gate with an explicit wait.
     pub fn new(timeout: Duration) -> Self {
         Self {
+            reviewed: Arc::new(super::reviewed_arguments::ReviewedArguments::default()),
             slots: Mutex::new(GateState::default()),
             signal: Condvar::new(),
             timeout,
@@ -285,6 +295,7 @@ impl ApprovalGate {
                 decided_by: DecidedBy::Internal,
                 prompt: prompt.clone(),
                 requested_at: requested_at.clone(),
+                deadline,
             },
         );
         announce(prompt);
@@ -345,9 +356,18 @@ impl ApprovalGate {
         &self,
         prompt: &ApprovalPrompt,
         requested_at: &str,
-        decision: ApprovalDecision,
+        mut decision: ApprovalDecision,
         decided_by: DecidedBy,
     ) -> ApprovalDecision {
+        if decision.approved {
+            let final_args = decision
+                .modified_args
+                .clone()
+                .unwrap_or_else(|| prompt.args.clone());
+            if let Err(error) = self.reviewed.publish(prompt, final_args) {
+                decision = ApprovalDecision::denied(error);
+            }
+        }
         let recorder = self.recorder.lock().ok().and_then(|r| r.clone());
         if let Some(recorder) = recorder {
             recorder(&ApprovalRecord {
@@ -355,7 +375,12 @@ impl ApprovalGate {
                 tool_name: prompt.tool_name.clone(),
                 call_id: prompt.call_id.clone(),
                 reason: prompt.reason.clone(),
-                args_json: prompt.args.to_string(),
+                args_json: serde_json::json!({
+                    "auditVersion": 2, "modelArgs": prompt.args,
+                    "userArgs": decision.modified_args,
+                    "approvedArgs": if decision.approved { Some(decision.modified_args.as_ref().unwrap_or(&prompt.args)) } else { None },
+                    "intent": prompt.intent,
+                }).to_string(),
                 approved: decision.approved,
                 decided_by,
                 decision_reason: decision.reason.clone(),
@@ -372,6 +397,14 @@ impl ApprovalGate {
     /// @param approved - whether the user granted this one call.
     /// @returns an error when the question already timed out or was answered.
     pub fn resolve(&self, request_id: &str, approved: bool) -> Result<(), String> {
+        self.resolve_with_args(request_id, approved, None)
+    }
+    pub fn resolve_with_args(
+        &self,
+        request_id: &str,
+        approved: bool,
+        modified_args: Option<serde_json::Value>,
+    ) -> Result<(), String> {
         let mut state = self
             .slots
             .lock()
@@ -379,10 +412,24 @@ impl ApprovalGate {
         let Some(slot) = state.slots.get_mut(request_id) else {
             return Err("该审批请求不存在或已超时".to_string());
         };
+        if Instant::now() >= slot.deadline {
+            return Err("该审批请求已超时，按拒绝处理".into());
+        }
         if slot.decision.is_some() {
             return Err("该审批请求已被响应".to_string());
         }
+        if modified_args.is_some() && !approved {
+            return Err("拒绝操作不能携带修改参数".into());
+        }
+        if let Some(args) = &modified_args {
+            super::reviewed_arguments::validate_edit(
+                &slot.prompt.tool_name,
+                &slot.prompt.args,
+                args,
+            )?;
+        }
         slot.decision = Some(ApprovalDecision {
+            modified_args,
             approved,
             reason: if approved {
                 "用户已确认".to_string()
@@ -407,6 +454,7 @@ impl ApprovalGate {
             return 0;
         };
         state.closed = true;
+        self.reviewed.clear();
         let mut denied = 0;
         for slot in state.slots.values_mut() {
             if slot.decision.is_none() {
@@ -453,7 +501,15 @@ pub fn handle_request(
     announce: impl FnOnce(&ApprovalPrompt),
 ) -> ApprovalDecision {
     let request_id = uuid::Uuid::new_v4().to_string();
+    let intent = question.intent.or_else(|| {
+        (question.tool_name == "write_test_marker")
+            .then(|| super::reviewed_arguments::marker_intent(&question.args))
+    });
     let prompt = ApprovalPrompt {
+        session_id: question.session_id,
+        intent,
+        expires_at: (chrono::Utc::now() + chrono::Duration::from_std(gate.timeout()).unwrap())
+            .to_rfc3339(),
         request_id: request_id.clone(),
         tool_name: question.tool_name,
         call_id: question.call_id,

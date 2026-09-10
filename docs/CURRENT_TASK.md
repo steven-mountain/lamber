@@ -1,376 +1,612 @@
-# 分支整合与单主线收口
+# 仓库提交前隐私清理（2026-09-10）
 
-- **Status:** Done
-- **Objective:** 将项目预设、甄选结果签批和 AI 多会话 / Agent Bridge 开发线完整整合到 `master`，完成冲突消解和统一验证后只保留主分支。
+用户授权提交并推送累计代码。清理文档中的个人目录；外部运行位置使用占位符，验证输出只记录文件名；补齐密钥、数据库和本地工作区忽略规则，已跟踪编译产物从索引移除、本机保留。完整文件及 Git 历史进行密钥扫描，提交使用 GitHub noreply 邮箱。不改写已发布历史，不发布安装包；此前 A/B/C 与 D 的验收仍独立保留。
 
-## Result
+提交回归同时修复两处测试衔接：智算测试复用支持 JSON 科目目录的共享加载器；模板事务测试按原桌面规则扣除已满足的可选字段，并逐项断言文本完成及非文本项不变。业务公式、容差及用户目标不变。长期规则见[仓库提交与隐私边界](./modules/repository-publication.md)。
 
-1. [x] `master` 已同步远端既有签批表提交，并合入 `codex/project-presets-v1.1.0`、`feat/zhenxuan-result-signoff`、`codex/ai-multi-session-ui`；后者已覆盖两个 Agent Bridge 子分支。
-2. [x] 项目类型与项目预设创建参数并存；数据库保留主线生命周期迁移并升级到 schema v10，同时初始化业务字典、项目预设和 Agent 审批审计表。
-3. [x] 模板页保留新版分栏布局、甄选签批字段与项目预设绑定，动态业务字典继续通过原字段 setter 和统一保存链路生效。
-4. [x] 应用版本统一为 1.1.1；保留 `protocol-asset`、主窗口配置和 Windows 自动打包脚本。
-5. [x] 全部分支 tip 均已验证为 `master` 祖先；合并前完整 Git 引用已保存为仓库外 bundle。
+前端 lint/build、插件 build/typecheck、30 组前端回归、7 组桥接测试、6 项打包检查和 Rust 104 项通过（23 项显式 ignored 未运行）。密钥扫描中的业务字段名及五个源码摘要经逐项核实，以精确值配置例外，不排除整个文件。
 
-## Validation
+# ✅ 聊天查看及确认替换需求表图片（2026-09-10）
 
-- `cargo test`：67 passed，6 ignored（需要真实 API key / 已 provision 的 dsh 环境），0 failed。
-- `npm run lint --prefix src-ui`、`npm run build --prefix src-ui`：通过。
-- 智算、税额拆分、甄选批量、常用资料、业务字典、项目预设、Windows 打包专项测试：全部通过。
-- `dsh-tool-lamber` build 与 typecheck：通过。
+用户同意的图片流程已完成：自然语言或“项目图片”入口展示已有附件，逐张选择，新旧并排预览，确认才替换；可将已存图片加入输入框交给视觉模型。范围为需求导入表attach1/attach2。用户于2026-09-10明确排除AI修图：不增加AI裁剪、改字或生成式图像编辑，也不列为后续待办。
+
+- 专用用户操作IPC复用资产保存，后端核对会话/工作区/项目/模板/旧资产；插入新图与软删除旧图同事务。失败回滚、旧图保留，陈旧目标保存0调用；未开放文件系统或AI图片写工具。
+- 真实红→蓝预览、取消零写、确认前后回执、重新读取与模板页蓝图、视觉模型“蓝色/无文字”均通过。修复大图时自动滚动外层窗口；模型误称空卡片可新增的解释已修正并复验。
+- 前端lint/build、插件build/typecheck、相关回归及Rust104通过（23显式ignored未运行）。合成附件已清理，财务快照哈希不变；应用退出、临时AI配置恢复。未提交、未发布。
+- [完整验收与边界](./verification/chat-template-images.md)。此前甄选目录与D结论独立保留。
+
+以下保留此前独立轮次记录。
+
+# ✅ 甄选结果签批表接入目录：开发及工程验证完成（2026-09-10）
+
+修订后的[任务书](./tasks/TASK_BOOK_selection_result_page_catalog.md)已执行。立项背景原判定保留，甄选页面提供原6项外部事实，合并名称只读derived且无stateKey；此前三项开工阻塞已解除。
+
+- 原14项判定和相对顺序经2048组状态逐项对照保持一致；新增合作内容描述、行业、标准方案，共17项。原14/14可能因内容描述未填变为16/17，属于补齐漏计数。
+- 其他三表目录与页面块不变、逐项回归通过；立项7/7。16组生产保存读取投影与实际读工具逐项一致。5个通用契约/构建源文件哈希不变。
+- 真实AI经原审批只写行业，实际页面12/17→13/17；真实模型逐项列出6个unknown并明确需到页面查看，不算已完成或未完成。
+- 前端lint/build、插件build/typecheck、Rust101通过（23显式ignored未运行）及相关回归通过。合成行业已恢复、财务快照仍前v11/后v1；测试应用退出，临时AI配置恢复。正式项目未写，未提交、未发布。
+- [独立验收及边界](./verification/selection-result-page-catalog.md)。本轮不改变此前D独立验收结论。
+
+以下保留开工暂停记录，最新状态以上节为准。
+
+# ⏸ 甄选结果签批表接入目录：开工核查发现任务书事实不符（2026-09-09）
+
+最新任务：[TASK_BOOK_selection_result_page_catalog.md](./tasks/TASK_BOOK_selection_result_page_catalog.md)。按用户“任务书与代码对不上先停报”暂停，本轮未改业务源码或数据。
+
+- 任务书标为死代码的立项 `completionValues.gen_proj_bg` 仍生效；原纯函数见证删除后 **7/7→6/7**，背景变unknown，违反三表不变要求。
+- 甄选背景也无completionSources；聊天实际 **6项unknown**（背景+5个check），页面只传5项会丢失原背景判定。
+- 默认建议的derived+stateKey被原构建guard拒绝。可仅用derived+completionSources引用根值，无需更改契约。
+- 建议任务书明确：保留立项现有背景supplied；甄选页面供6项事实、聊天报6unknown；合并名称省略stateKey并保持只读。尚未自行实施这些修订。
+- [暂停报告及修订建议](./verification/selection-result-catalog-preflight.md)；[原函数见证与源码哈希](./verification/selection-result-catalog-preflight-evidence.json)。此前D工程验证结论不变。
+
+# ✅ D 卡片：开发及独立工程验证完成（2026-09-09）
+
+提交归一前置修复已通过，D按用户要求单独验证，不与A/B/C打包。
+
+- 先选科目→读取原函数范围→用户确认目标；目标不持久化，缺值留空，否定/历史/税率数字不预填。
+- 目标/实际并排四位百分数，真实桌面及模型保留 **20.0050% / 20.0000%**，原目标0.20005及原METRIC_EPSILON=0.0001未改。
+- 真实卡片20%反算保存v8，与同基准原桌面入口保存v10的完整输入/输出一致，仅计划时间戳不同；28科目、全部计划、四组现金流逐项精确对照。第四年 **3885.57 / 9629.43** 在卡片及模型中保留。
+- 四条原范围错误经聊天/appReceipt完整转述；两种设置各35失败逐条批量写入spy=0；672原批量对照及相关回归通过。
+- Rust常规100通过；真实集成首跑22通过/1既有模板审批失败，原样单独复跑通过。前端lint/build、插件typecheck、打包检查通过。详细边界（故障注入、像素截图、真人/Windows gate）见[独立报告](./verification/ai-structure-reverse-card.md)。
+- 合成基准最终恢复至v11；Scope Test已退出，临时AI配置已恢复核对。正式数据未写，未提交、未发布。
+
+以下保留分轮记录，最新状态以上节为准。
+
+# ▶ 提交一致性前置修复通过，恢复 D 独立验收（2026-09-09）
+
+更新后的 [任务书](./tasks/TASK_BOOK_validated_value_vs_written_value.md) 已执行：候选与批量入口共用有效金额、拆分清除、CT联动和资金计划变换，先归一、承接补差再归一；仍不闭合或实际指标未达标时零写入。甄选限价回填若归一改变已确认金额，也在写入前拒绝。
+
+- 原100.01见证保留冻结源码可复跑；修复后原候选可闭合41.34＋58.66，原搜索未找到达标点时明确拒绝且spy为0，不改搜索或容差。
+- 两种开关的35条失败场景逐条spy为0；672组原桌面批量对照（28科目、4计划模式、清零/正值）通过。前端lint/build、反算/计划/税额/甄选及相关回归通过。[独立验证](./verification/structure-commit-normalization.md)。
+- 正在继续 D 卡片真实桌面和模型验收，尚未标记 D 通过。独立 Scope Test 临时AI配置已重新备份到 `/tmp/lamber-d-card-config-before-normalization-retest.json`，本轮收尾需恢复。
+
+# ⏸ D 暂停：候选校验通过后，真实批量提交仍会改变金额（2026-09-09）
+
+更新后的 D14a–d 已解除目标来源缺口，卡片、原函数范围预览、原错误回执、目标/达成并排及逐科目计划对照已实现，但 **D 未验收**。按用户“任务书与代码不一致先停报”要求，发现以下原桌面契约问题后暂停。
+
+- 生产候选41.33元（13%税率）＋承接58.67元通过锁定总额100.00校验；自动修正开启时，真实 `updateTaxItemsInclBatch` 写为41.34＋58.67＝**100.01元**，spy调用**1次**，仍返回success。原 `MONEY_EPSILON=0.004`、`METRIC_EPSILON=0.0001` 未改。实际科目年度计划也随之变化。
+- 新见证将生产反算控制流与真实批量更新/税额/计划同步接通，指标引擎为受控桩；仅合成内存数据。此前35条失败零调用测试仍有效，但不能证明实际提交与已校验候选相同。写后卡片警告不能代替写前拒绝。
+- 需先明确并修复候选/真实提交的一致性，再继续 D 独立验收。不自行修改税额、搜索、承接规则、容差或用户目标。详见[暂停报告](./verification/ai-structure-reverse-commit-blocker.md)及[可复跑证据](./verification/ai-structure-reverse-commit-witness.json)。
+- 实际桌面已验证从聊天进入绑定方案，保存合成对照前置状态v6/v7，28/28科目与v5完全相同；尚未完成卡片成功写入与桌面逐项对照。前端及常规Rust100项此前通过；最新真实集成20通过/3失败，细节见报告，不能记整组通过。
+- 独立测试应用已退出，临时AI配置已恢复并核对。正式配置与真实业务项目未改；未提交、未发布。
+
+# ✅ D 前置独立修复：结构反算达标后才写金额（2026-09-09）
+
+更新后的 [独立任务书](./tasks/TASK_BOOK_structure_reverse_success_check.md) 已授权先修桌面成功判定，并明确实际同步科目收付款计划。原开工暂停事项已按此处理；D 卡片仍未开工，不与 A/B/C 或本修复打包验收。
+
+- 仅达标候选进入解集，再按原金额改动最小原则选择；最终复算再次校验达标后才进入金额提交。塌缩不再丢弃最佳候选，中点命中及原二分策略保持。
+- 不敏感/超范围/无稳定解/最终复算未达标均显示目标、最接近实测值及采样范围；最终复算不一致时另列实际复算值。保留 `METRIC_EPSILON=0.0001`、`MONEY_EPSILON=0.004`，不改用户目标、公式、计划同步或停用的 model_e 分支。
+- **35 个失败场景逐个断言 `updateTaxItemsInclBatch` spy 调用次数为 0**，同时校验原金额、目标及结果上下文不变。13 个成功场景中 12 个与修复前冻结生产函数逐项一致，另 1 个验证未达标近邻不能挤掉远处达标解；边界及塌缩专项通过。
+- 前端 lint/build、既有反算、7 份资金计划、原批量入口、168 组桌面差分及税额/甄选/文档回归通过；Rust 100 通过、22 个显式 ignored 未运行。本轮为生产函数控制流与回归验证，未声称真实桌面交互或真实模型端到端验收，未发布或写真实项目。
+- [本轮独立验收与逐条调用次数](./verification/structure-reverse-success-check.md)。下一轮 D 仍须逐科目“变更前 → 变更后”和 14b 范围回执；任务书与代码再有不一致仍先停报。
+
+# ✅ AI 测算 A/B/C：清零缺陷修复、桌面对照与年度尾差复验完成（2026-09-09）
+
+用户顺序：**A/B 先做、C 随后；D 单独一轮、单独验收**。本轮未开始 D。
+
+- 按更新后的 [清零任务书](./tasks/TASK_BOOK_funding_plan_zero_delete.md) 采用“清零保留并禁用”：连续清空保留有效年度结构，保存/重载后仍可恢复，三种模式记录 `restored_after_zero`；正式零值不产生现金流。不做历史计划迁移，不改补建策略或费率/效益公式。
+- A 的 **28/28 科目**桌面逐项金额、税率、名称及拆分证据保留。B 重新实操“取消拆分→清空→800000”：四年各 200000，全部八项指标与真实 AI 试算一致；NPV **591259.19**、NPV率 **800.42%**、利润率 **88.89%**、回收期 **1**。不是只做函数级测试。
+- 真正设为 0 后通过产品保存合成项目 v3，退出重载仍停用，再赋正数恢复。最终合成项目基准 106000 已恢复并保存到 v5，NPV **17538.87**，旧 v2 拆分快照保留。真实项目未写入。
+- 逐年转述改为共享结果渲染及年度联动前后表，禁止省略末年尾差或自行补算金额。实际发现“表正确、附注编出金额”后进一步收紧；最终桌面及真实模型测试均通过，第四年 **189757.35 / 21074.37 / 168682.98** 原样列示。新增模型小数来源核验覆盖附注。
+- C 真实模型 30万元报价、不含税费 **2292.41** / 含税费 **2429.95**、无解限价106600、多解51834（51409.87、51410.00）复验通过。
+- 前端 lint/build、7份资金计划、168组差分、两个生产批量入口、相关回归、插件构建/权限/契约/打包检查通过。Rust 100通过；既有20项集成首跑19通过、1项模型等待超时，单独原样复跑通过；新增真实模型严格金额来源测试通过。独立 macOS 应用已重建，临时 AI 配置已恢复并退出。
+- [完整验收与边界](./verification/ai-benefit-calculation-access.md)、[清零专项](./verification/funding-plan-zero-delete.md)、[桌面最终证据](./verification/ai-benefit-desktop-retest-evidence.json)。A/B/C 本轮工程验证完成；D、既有真人及 Windows 发版 gate 独立保留，未发布。
+
+以下为此前进展，执行顺序以上节为准。
+
+# ▶ 最新进展（2026-09-09）：甄选费纠错完成，下一步 AI 测算 A → B → C → D
+
+任务书：[甄选费费率纠错](./tasks/TASK_BOOK_selection_fee_rate_correction.md)。已按更新口径执行：报价/限价/浮动含税，固定6%除税查档，实际非6%目标明确拦截且保持可见。
+
+- 正反算共用十进制档位表及派生边界，修复费率、上界、定额档及临界归档；返回含税/不含税服务费。反算仅返回逐分精确闭合解，空档报错，多解列候选并说明采用较低报价。
+- 新增默认拆分/可选合并开关，随方案持久化；合并只提交目标科目，原单列服务费保持。两模式保留原税额归一、批量科目更新和付款计划同步。
+- 辅助面板统一管理输入与派生结果，失败/等待禁用旧金额写入；恢复方案用最新算法重算面板，正式科目仅由用户点击修改，无历史迁移。
+- 任务书30万算例和10万跳变上界各有算术笔误：确定费率与逐步舍入下，含税30万元/浮动0的限价是 **302429.95**；106000.01报价的限价是 **106858.60**。独立Decimal及Rust核对一致，已在原书就地更正。
+- Rust **97通过/20既有真实模型测试未运行**；前端lint/build、新甄选费测试及税额/甄选批量/聊天文档/清单回归通过。独立macOS测试应用已重建。
+- Computer Use验证无解错误可见、13%与手改9%拒绝、拆分/合并实际写入及保存后重载开关。只读真实历史快照88500报价/1000浮动：服务费400→424、限价89900→89924；真实项目未写入。
+- 详细证据：[selection-fee-rate-correction.md](./verification/selection-fee-rate-correction.md)。**下一步**：[AI接入测算任务书](./tasks/TASK_BOOK_ai_calculation_access.md)的A（读取已保存输入），再B/C/D；本轮未开始AI扩工具。既有真人及Windows发版gate保留。
+
+下方为此前工作记录，最新施工顺序以上节为准。
+
+# ▶ 当前唯一进行项：dsh 完全融合（全面替换 AI 层）
+
+- **Status:** In progress（阶段 0 / 1 / 2 / 3A 已完成；3A 模板确认页既有问题已修复；3B 默认切换与临时回退开发及核心聊天界面验证完成；旧实现已下线；查询阶段标签及审批A开发完成；阶段B及主动读模板工具开发/自动/产品联调完成，Gate A/B真人与发版剩余gate待完成）
+- **任务书:** [docs/tasks/TASK_BOOK_dsh_full_integration.md](./tasks/TASK_BOOK_dsh_full_integration.md)
+- **阶段 0 记录:** [dsh-stage0-distribution-validation.md](./verification/dsh-stage0-distribution-validation.md)
+- **阶段 1 记录:** [dsh-stage1-local-packaging-validation.md](./verification/dsh-stage1-local-packaging-validation.md)
+- **Gate 1A 记录:** [dsh-stage1a-gate-validation.md](./verification/dsh-stage1a-gate-validation.md)
+- **阶段 2 记录:** [dsh-stage2-product-integration.md](./verification/dsh-stage2-product-integration.md)
+- **阶段 3A 记录 / 接替表:** [dsh-stage3a-streaming-and-handover.md](./verification/dsh-stage3a-streaming-and-handover.md)
+- **阶段 3B 默认切换记录:** [dsh-stage3b-default-transition.md](./verification/dsh-stage3b-default-transition.md)
+
+## 🔴 当前收尾（2026-09-08）：会审纪要进目录 + 两张清单卡片化
+
+任务书：[TASK_BOOK_meeting_review_and_list_fields.md](./tasks/TASK_BOOK_meeting_review_and_list_fields.md)。用户已批准核查提出的通用目录契约扩展；此前暂停已解除。
+
+- **开发完成**：等值条件、共同完成项、复合来源、有效清单行与清单子类已纳入通用契约；UI/读工具仍共用完成度函数。会审新增18个可写文本key，占17项，加10个只读/复合项和2个清单项，保持29项原顺序。
+- **技术清单**：AI只提议，用户采用、增删改、保存；顶部明示同时用于两张表。实际存储按模板分开，因此保存经原事务主体原子更新两张表，冲突整体拒绝，保留各自其他字段和资产。
+- **询价卡片**：用户确认后调用原autoGenerateInquiry，展示实际结果；手工金额仍走原封顶处理，截图走既有资产命令。AI没有清单写工具，不提议询价厂商/金额/税率。
+- **已验证**：旧三表12组精确快照、会审24组29项基线、Rust投影37组逐项一致；Rust常规91通过、20个真实key测试通过；前端lint/build、插件及打包检查通过。独立第五张合成交付表纯数据读写/审批/完成度验证通过，233份源码哈希不变；没有激活为正式模板。
+- **桌面已验证**：未打开模板页的技术建议→采用/修改/增删→两表保存；需求11/11、会审29/29；两张实际DOCX的清单正确，会审五个Tab的产物一致。询价三行实际结果、改厂商名、999999封顶至106000、截图入Word、成本超收入拒绝及原错误回执通过。
+- **收尾发现并修复**：应用回执原只存本地聊天，dsh下一轮看不到；新增来源标记与本会话最近8条只读回执上下文，测试及应用重建通过。锁屏后已补做真实模型复测：仅问询价错误即可引用最近原错误，无绕过建议；临时收入已恢复。未绑定选择页及通用会话明确请求两张清单时均不出现写卡片，模型正确说明权限。
+- **不能勾选整体验收**：任务书的真人会审文本审批修改→完成度+1→DOCX核对、共享提示真人确认仍待用户执行；旧版本五Tab实际DOCX留样未取得，本轮证明的是生成函数源码不变及当前五Tab产物一致。既有Windows发版gate仍待。
+
+完整范围、命令、证据与接续步骤：[meeting-review-and-list-fields.md](./verification/meeting-review-and-list-fields.md)。
+
+## ✅ 聊天生成文档卡片（2026-09-08）：开发与产品联调完成
+
+- 已实现方案B：本轮具名生成请求＋可信会话绑定显示卡片，不依赖模板页；完成度复用目录函数，缺项仍能生成，unknownCount如实说明。
+- 点击经主窗口原项目加载、财务核验及handleGenerate，成功回执实际目录，失败回执原错误。没有AI生成工具、第二条变量构造或新审批。
+- Computer Use实测未打开模板页生成；完整11/11和缺项10/11两组实际DOCX正文逐字段、表格结构及按文档位置解析的图片一致。物理附件缺失原错误已回到聊天，未知项、通用/未绑定及真实模型话术通过。
+- 前端lint/build、相关回归、新卡片/测算时序测试及插件typecheck/读取/限权通过。独立macOS测试应用更新，正式安装应用未覆盖。
+- 下一步恢复原Gate A/B与立项文本的用户真人验收、Windows发版gate；本轮Computer Use不替代真人。
+- [验证与DOCX证据](./verification/chat-generate-document.md)。
+
+### 已完成任务的方案约束（2026-09-07 用户拍板方案 B）
+
+任务书：[TASK_BOOK_chat_generate_document_card.md](./tasks/TASK_BOOK_chat_generate_document_card.md)
+
+**现象**：AI 能写字段了，但**无法生成 docx**；产品界面点"立即生成文件"正常。
+**这不是 bug，是缺一个入口。**
+
+**核心事实：`generate_lifecycle_docs` 不是自包含接口。**
+它的 `variables` 要调用方先算好，而算它的是前端 `handleGenerate`——
+**719 行（`TemplateForms.tsx:1362-2081`），构造 121 个变量键**，
+涵盖保存态字段、测算指标、科目明细、税额口径、图片资产、动态表格 JSON、甄选批量校验。
+
+→ **给 AI 一个直接调后端的工具，它调得到，但会产出空壳文档而且不报错**——
+与已修的模板 FormData 缺陷同一种形状（读不到就用默认值，静默出错）。
+
+**已定方案 B**：AI 判断"可生成" → 聊天挂卡片 → **用户点击** → 走产品原有 `handleGenerate`。
+照搬图片上传卡片的模式，**不新增第二条生成链路**。
+
+**四条写死的**：
+
+1. **不给 AI 直接调 `generate_lifecycle_docs` 的工具**，也不把变量构造搬后端（那是方案 A）。
+2. **卡片触发按绑定项目判断**，**不要绑在 `templateDetail` / 页面上下文上**
+   ——这正是图片卡片刚踩过的坑。
+3. **"是否可生成"复用 `getCatalogCompletion`**，不在前端另写一套；
+   `evaluated=false` 的项计入 `unknownCount`，**有未知项时不得声称"已齐备"**。
+4. **缺项时仍允许生成**（与产品界面行为一致），只是如实标注还缺什么——
+   不要自作主张地禁止。
+
+**最重要的验证**：同一状态下，**卡片生成的 docx 与界面生成的 docx 正文逐字段一致**。
+这是"没有第二条链路"的唯一证据，必须实际比对，不能只看两边都成功。
+
+⚠ 生成**不需要审批弹窗**——它不写业务数据，用户点击卡片本身就是确认。
+
+## ✅ 触发口径修正（2026-09-07）：绑定项目不再催传需求表图片
+
+- 用户明确修正此前“绑定项目 + 缺项”规则：还必须有本轮明确填写/输入或生成需求导入表的请求。已在挂载卡片及读取模板前加上独立意图条件；刚绑定、普通聊天、只读查询、普通附图、引用/否定均不触发。
+- 以当前会话最后一条用户消息为准，助手回复不会触发；历史请求不永久开启卡片，换话题、清空或切到新会话后保持安静。界面和本轮模型提示使用同一判定，读工具同步条件说明。
+- 仍按可信绑定和共享缺项规则提供卡片，无需打开模板页；上传及审批边界不变。前端 lint/build、卡片触发与原上传/模板/会话/流式/审批回归、插件 typecheck/读取/限权测试通过。
+- 本节覆盖下方旧验收中“刚绑定即出现”“裸问附件就出现”的触发口径；旧上传入库和 DOCX 证据仍保留。本轮未重复桌面/真实模型/DOCX端到端验收。[规则及验证](./verification/demand-upload-decoupling.md)。
+
+## ✅ 插队修复（2026-09-07）：AI 按钮点击后窗口不可见
+
+- 用户报告开发版 AI 入口点击无新窗口。只读检查发现旧位置 `y=-802` / `y=-957`，当前只有内置显示器；原新建流程直接恢复旧坐标，已有窗口只show/focus、不核对屏幕范围，失败只输出控制台。
+- 新建与复用统一走窗口打开服务：等待原生创建事件、合并重复点击、恢复最小化，再按当前显示器工作区校验并调整位置/过大尺寸，最后显示和聚焦。正常可见位置（包括仍连接的负坐标显示器）保留。
+- 位置偏好升级为v2物理坐标；旧逻辑坐标兼容转换后校验。位置仅为UI偏好，不修改会话或项目数据。错误在入口旁显示并可重试。
+- 前端lint/build、`test:ai-window`通过，独立macOS构建通过。Computer Use保留测试应用旧`y=-911`后点击恢复可见窗口；关闭后存为v2 `{x:690,y:152}`。真实多显示器拔插/Windows尚未实测；用户当前开发版已热更新，用户复验待回复。
+- 设计与证据：[ai-window-recovery.md](./verification/ai-window-recovery.md)。
+
+## ✅ 插队项完成（2026-09-07）：图片上传卡片与页面上下文解耦
+
+已执行 [TASK_BOOK_ai_write_template_fields.md](./tasks/TASK_BOOK_ai_write_template_fields.md) **文件末尾“补充二”**。
+
+- 卡片按可信会话绑定直接读取模板保存态和资产存在状态；使用 `getCatalogCompletion` 的缺失 image 条目生成目标，`usage` 原样取自条目。删除入口与卡片内部的 AI 上下文依赖，不增加模板 prompt 注入。
+- 按会话/工作区/模板/槽位隔离卡片；附件变化、文本批准、窗口聚焦及新消息时刷新。读取迟到响应丢弃，上传前重新核对绑定与工作区；通用/未绑定不展示卡片。
+- 系统提示及读工具说明明确：用户可在聊天卡片选择/粘贴图片，模型不能直接写图，普通聊天附图不会自动入库。
+- Computer Use 在独立合成工作区验证：**未开模板页** → 绑定会话裸问“附件1 还没传吧” → 真实模型引导卡片 → 点击上传进入 attach1；模板页打开时回归 **10/11→11/11**，未绑定/通用无卡片，切回绑定恢复。
+- 实际 DOCX 附件1紧跟客户确认材料标题，嵌图 SHA256 与本轮上传的独立图片完全一致；前端 lint/build、五组相关回归、插件 typecheck/读取/限权及打包6项通过。
+- 独立 macOS 测试应用已重建；正式安装应用未覆盖。系统剪贴板图片粘贴端到端本轮未测，不替代原 Gate A/B 真人及 Windows 发版验收。
+- [验证记录与证据](./verification/demand-upload-decoupling.md)。此插队项完成后恢复原真人/发版待办。
+
+## ▶ 字段目录泛化（2026-09-07 已实现，真人立项 DOCX 验收待完成）
+
+任务书：[TASK_BOOK_template_field_catalog.md](./tasks/TASK_BOOK_template_field_catalog.md)
+
+- 走已定中间路线：不动模板分片存储、原保存事务或 presetFieldKeys。统一 `catalog.json` 按模板声明 text/derived/check/list/image 与排除原因。
+- 立项签批表实现 4 个可写文本（2 个 gen_sign_* + 收付款条款）；收付款使用原根状态，项目背景来自项目基本信息，标为派生只读。
+- **第三模板判据通过**：只向 JSON 加甄选结果签批表（8 个 gen_zx_* + 收付款条款），同一工具即处理 10 个文本；240 个源码哈希不变，包含生成的 TypeScript。校验结论在服务端拒绝；三张零字段模板显式排除。甄选业务页面和会审纪要未扩展。
+- 完成度复用一个 UI 纯函数；外部校验与未保存动态默认值明确为未知，不伪造整表完成。需求表保持原 8 文本/11项规则。
+- Rust89常规、20真实Key集成、前端lint/build及四组回归、插件typecheck/限权/契约/读取/目录、打包6项通过。开发/staging插件同步契约v5。
+- **待完成：真人立项审批修改 → 页面完成度+1 → 实际DOCX核对。** 本轮自动验证已覆盖真实模型、实际保存事务、页面同步及生产生成变量，不冒充真人或桌面 DOCX 验收。正式安装应用未更新，Windows发版gate仍保留。
+- [验证与数据扩展证据](./verification/template-field-catalog.md)、[目录契约](../src-ui/src/lib/templateCompletion/README.md)。
+
+## ▶ 最新进展（2026-09-07）：`read_template_fields` 已补齐
+
+- 已完整执行任务书**末尾“补充（2026-09-07）”**。主动只读工具不收 projectId，由可信会话绑定取得项目；无需审批，通用聊天拒绝，bash/glob仍拒绝。
+- 复用现有模板读取函数和需求表11项完成度纯函数；返回保存值/默认值来源、技术清单、附件存在状态及缺项。24000字总上限、100行清单上限，超限明确截断；不返回本机路径。
+- 不改页面相关被动注入、不改模板结构或保存链路。契约v4，开发/staging插件与独立macOS应用已同步构建。
+- Rust88常规、19真实Key集成、前端lint/build及四组回归、插件typecheck/限权/纯函数复用/契约、打包6项通过。
+- 真实新会话无页面上下文裸问，读到SQLite专有测试正文并正确报告8/11；Computer Use从项目看板新建绑定会话，未开模板页裸问也通过，实际工具返回既有保存态v12和11/11。
+- **下一步：恢复 Gate A/B 真人辅助填表验收。** 先只在AI面板询问现状，再补缺项→读旧值/改后批准→模板完成度+1→生成DOCX核对；真人与Windows发版gate仍未完成。
+- [验证、证据及限制](./verification/template-read.md)。下方为此前阶段记录，以本节为准。
+
+## 插队修复完成（2026-09-07）：ICT 项目方案栏错位
+
+- 项目信息与操作栏改为纵向分区；预设按钮与保存按钮各自成组，按容器可用宽度换行，去除固定四列与操作区最小宽度耦合。
+- 阶段入口、更多方案和长名称支持受控换行/截断；项目操作控件统一高度，自由测算同步采用相同布局规则。
+- 前端 build、lint 通过；实际 JSX + 生产 CSS 的 Chrome 布局检查覆盖 320/480/700/1000px 容器及默认、超长名称、拟新建、双阶段、自由测算共 20 组，无控件重叠或可见内容越界。仅验证显示层，不代表桌面保存业务验收。
+- 未修改测算、方案切换和保存回调；设计规则见 [appearance.md](./modules/appearance.md)。
+
+## ▶ 最新进展（2026-09-07）：阶段 B 模板文本写入
+
+- 用户明确允许“开始阶段B”，已据此继续实施；未把此前演练冒充 Gate A 真人证据。
+- `fill_template_fields` 已接入 dsh，登记两端审批白名单；共享需求表目录派生 8 个文本字段，服务端拒绝财务、未知字段与非文本，通用聊天及跨项目写入拒绝。
+- 工具和 UI 复用原模板保存事务；审批绑定旧值/版本，执行消费实际批准值；版本校验及三方合并避免旧 autosave 覆盖批准正文，无新增表/迁移/写 SQL。
+- Computer Use 完成真实聊天327字→审批改337字→模板10/11到11/11→实际DOCX包含改文；第二次改部署环境要求也保存并生成一致。修复浮窗批准后主窗残留审批事件问题。
+- Rust87项常规、18项真实模型，前端lint/build及四类回归、插件typecheck/限权/契约、6项打包检查通过；独立macOS测试app与实际二进制契约v3通过。
+- **下一步：用户完成 Gate B 真人全链路验收。** Windows安装及此前发版真人gate仍保留；不进入建项目/改测算参数。
+- [阶段B验证与真人步骤](./verification/template-write-b.md)、[模块设计](./modules/ai-template-write.md)。
+
+下方为之前阶段记录，以本节最新进展为准。
+
+## ▶ 最新进展（2026-09-07）：旧 AI 下线 + 阶段标签 + 审批 A
+
+- 3B-5 已执行：删除 AiRuntime、解析器、旧配置 UI、临时回退入口与状态。发送/停止/历史/模板图片接线均统一由 dsh 接替；启动删除旧四个配置键，不迁移凭据。
+- ③补充已实现：按 default_scheme_id 读取阶段/方案名/保存时间；混合口径按阶段合计与财务排序，统一 totals 返回 null；未标注不猜测；不改存储与汇总保存语义。
+- ④阶段 A 已实现：长文新旧对照、修改后批准、审计两版、10分钟超时拒绝；一次性参数交接确保插件执行实际批准值，桥接契约升至2。
+- 独立联调台新增只写演练文件的可操作入口。Computer Use 完成389字样例→覆盖对照→改成399字→实际文件与审计一致；不是用户真人验收。
+- Rust86项常规、17项真实模型、前端 lint/build及四类回归、插件契约/限权与6项打包检查通过。真实流1451次提交前更新，最终ACP一致。
+- ③真实模型裸问复验返回当前甲13%、甄选前/限价口径、方案名与保存日期；真人核对仍待用户。
+- **阶段 A 当时状态：真人长文验收未记录；后续用户已明确放行阶段 B，见顶部最新进展。** 独立 Lamber Scope Test 已打开联调台；换入300字以上真实需求，修改后批准并核对文件回执/两版审计。
+- [验证与接替表](./verification/ai-runtime-retirement-stage-query-approval-a.md)、[审批设计](./modules/ai-approval-review.md)、[两版审计证据](./verification/approval-a-review-evidence.json)。
+
+下方记录为先前阶段背景；关于临时回退“待删除”和“下一步开始A”的描述，以本节最新状态为准。Windows/真人发版阻塞项仍保留。
+
+## 本轮完成：路线图①模板状态生成 + 聊天附件补齐（2026-09-06）
+
+- 四类模板生成统一读取保存源，删除DOM FormData及回填DOM定时器；输入丢失/退回默认值时阻断。
+- 需求表11项规则共享给完成度、AI上下文和聊天卡片；用户明确选择附件1/2槽位后调用既有资产命令，回执报告实际路径。
+- 需求表资产列表统一为槽位图片权威源，跨窗口刷新及生成快照读取已接通；孤儿清理保护无表单引用的新上传。
+- Computer Use验证四类模板跨页Word正文XML一致，会审五页一致；聊天补两张图片→9/11、10/11、11/11→docx实际嵌图。未绑定目录分支、写库失败物理回滚已实测。
+- lint/build、全部相关前端测试通过；Rust79项通过/13项ignored。真实握手普通模型image=false。
+- **真实模型口述尚未验收**：本轮独立测试配置无可用key，请勿将确定性卡片当成模型回答通过；图片粘贴端到端未测。
+- 设计：[template-state-and-assets.md](./modules/template-state-and-assets.md)；证据：[验证记录](./verification/template-state-and-chat-assets.md)。
+- 此项的后续路线图②已完成，见下一节。
+
+## ▶ 路线图 ②：会话绑定 + 硬性限权（2026-09-06 已实现并验证）
+
+任务书：[TASK_BOOK_cowork_session_project_binding.md](./tasks/TASK_BOOK_cowork_session_project_binding.md)。
+
+- 新建会话显式选择已有项目或通用聊天；通用聊天禁用全部工具。没有后端绑定的历史保留记录，继续时创建新会话，禁止原会话改绑。
+- `ai-sessions.sqlite` 同时持久化 ACP 映射与项目绑定；`ProjectBindings` 按 ACP id 登记会话权限，生命周期独立于 `Turns`，prompt 前恢复，清空/删除时撤销。
+- 工具从 `exec.agent.session.id` 取可信身份；Rust 在业务读取前核对工作区、绑定和请求项目。无 agent、无绑定、无项目、跨项目、未知工具及已删除项目均拒绝。
+- 页面自动上下文也限定绑定项目；通用会话不读取业务上下文。审批与临时 `AiRuntime` 执行链路保持原实现。
+- 80 项常规 Rust 测试及带真实 Key 的 14 项集成测试通过；包含真实允许/越权拒绝、进程重启并 resume、并发交替隔离及原审批回归。前端 lint/build、dsh、模板和新增上下文隔离测试、插件 typecheck/限权测试通过。
+- 独立 macOS 应用已验证项目选择、真实工具返回 NPV 37914.69、通用聊天标记、退出重启后历史与绑定恢复；未冒充正式工作区或 Windows 验收。
+- 设计与证据：[ai-session-workspace.md](./modules/ai-session-workspace.md)、[session-project-binding.md](./verification/session-project-binding.md)。
+- ③已按更新任务书实现，见下节；②原“通用聊天禁用全部工具”在③修订为仅允许聚合只读。
+
+## ▶ 下一步（2026-09-06 用户拍板，两件事）
+
+### 一、删除旧回退链路 `AiRuntime`（dsh 融合任务书 3B 第 5 步）
+
+执行清单已写进
+[TASK_BOOK_dsh_full_integration.md](./tasks/TASK_BOOK_dsh_full_integration.md) 的 **3B-5** 一节。
+要点：按 3A **接替表**逐条核验（最容易漏的是模板图片那条间接链路——它不 import
+`AiRuntime`，却走同一个面板）、**同时删掉临时回退入口本身**（不能留可点击但无实现的选项）、
+连带删 `useStreamingParser`、旧 endpoint/model/apiKey 的 UI 与 localStorage、
+`invokeToolIsolated` 占位。`AgentLabView` 保留为排障入口。
+
+⚠ 删完就没有回退路径了。9-06 那次桥接错配与 `AiRuntime` 无关（它挡不住桥接问题），
+不构成推迟理由；但之后再遇 dsh 侧故障，只能靠回滚版本恢复。
+
+### 二、开始做写工具
+
+任务书：[TASK_BOOK_ai_write_template_fields.md](./tasks/TASK_BOOK_ai_write_template_fields.md)
+**分两阶段，A 不过不做 B。**
+
+**路线图已修订：原 ⑤（审批弹窗能读能改）提到了 ④ 前面，并入 ④ 作为阶段 A。**
+原先以为它只是 ⑥ 的前置（数字抽错要能改），**这个判断不对**：
+
+- ④ 要写的是几百字中文散文，而弹窗现在是 `JSON.stringify`
+  （`AgentApprovalDialog.tsx:99-102`）——转义换行的一坨，旁边还有倒计时在跑。
+- **看不懂的东西点确认，不叫审核。** 用户只会盲批，
+  于是"任何写操作都需要人工审核"这条要求名义成立、实质落空。
+- 散文比数字更需要"改后再批"：只能批准/拒绝会逼用户反复拒绝重说，最后干脆自己手打。
+
+阶段 A 另有一条容易漏的：**必须显示新旧对照**——字段原本有值时要能看出
+这是覆盖还是填空，那是两个完全不同的决定。审计要**同时记模型原值与用户改后值**，
+否则事后无法判断签批材料里某段字是模型写的还是人改的。
+
+> 本次是对审批机制**唯一一次有意扩展**，范围严格限定在展示层、决定内容
+> （bool → bool + 可选的修改后参数）、审计字段。
+> `ApprovalGate` 的超时与失败关闭语义、守卫、"未决即拒绝"的默认方向一律不动。
+
+阶段 B 的硬边界：**只写文本字段**；金额/税率/测算结果**在服务端拒绝**
+（不能只靠工具 schema 描述）；走 ② 的绑定校验；**通用聊天一律拒绝写**
+（③ 只给聚合只读开了口子，不含写）。
+
+## ▶ 插队项：桥接契约握手（2026-09-06 已实现；旧版显示限制保留）
+
+- 单一契约源、插件注册前握手、Rust 等待明确就绪回执已实现；错误沿现有启动失败链路返回。
+- 版本错配/服务不可达/业务拒绝分别表达；业务错误正文保留，去掉传输路径和状态码包装。
+- Cargo 检查开发及 staging 插件编译输出；Windows 在生成安装包前比对实际二进制契约。
+- Rust 常规 82 项、真实 Key ignored 17 项通过；插件 typecheck/契约/限权、前端 lint/build/dsh/session-scope、打包 6 项及流式回归通过。
+- 独立 macOS 新版应用实际显示版本不匹配及完整重建/重装提示；实际 Cargo 不同代构建拒绝。
+- **严格旧版显示验收未通过**：旧 Rust + 新插件实测在启动中止、不进入模型工具轮次，但旧界面显示 ACP disposed；只换插件不能升级旧错误识别逻辑，必须完整重建/重装。
+- ③已按裸问题重新跑真实模型，当前甲项目回答13%；真人核对仍待用户，不能冒充通过。
+- [设计](../agent-bridge/README.md)、[验收证据](./verification/bridge-contract-handshake.md)。
+
+### 原始现场与排查结论（保留背景）
+
+任务书：[TASK_BOOK_bridge_contract_handshake.md](./tasks/TASK_BOOK_bridge_contract_handshake.md)
+
+用户测 ③ 时所有工具读取被 `/lamber-bridge/authorize → 404 未知的 AI 桥接路由` 拦住，
+模型转述成"数据访问通道返回错误"，用户无从判断是 bug / 没连上 / 版本不匹配。
+
+**排查结论：源码路由是对的**——`mod.rs:151-153` 三条路由都放行，
+`streaming::handler(fallback = workspace_handler(...))` 的组合也正确。
+所以 404 只可能是**运行中的 Rust 二进制比插件旧**。
+
+而 `distribution.rs:160-162` 写明插件"每次 dsh 启动都刷新"，
+所以插件相对**应用资源**永远是新的，但**没有任何机制保证 Rust 二进制与之同代**。
+漂移窗口在开发模式：插件 `lib/` 重新构建了，而 Rust 二进制没有。
+
+**这是本项目第三次踩同一族的坑**（模板 FormData 静默用默认值、
+装机版模板目录不存在时静默返回空数组、本条）——共同点是**失败没有信号，
+或信号只对开发者可读**。修法一致：**在最早的时刻大声失败**。
+
+⚠ **它同时挡住了 ③ 的真人防混淆核对。**
+
+## ▶ 路线图 ③：跨项目查询与汇总（实现及自动验证完成，待真人核对）
+
+> **🔴 新增缺口（2026-09-06 用户实测触发）：返回值缺少甄选阶段口径。**
+> 用户看到同一项目两组指标（65.64/8.63% 与 61.71/8.12%）。
+> **排查结论：不是数据漂移，两份都对**——分属甄选前/甄选后两个方案，业务上前后都需要，
+> `benefit_schemes.stage` 与按方案分行的 `project_cashflow_states` 结构是正确的。
+>
+> **缺口在③的返回值**：`projects.summary_metrics` 只有一份，语义是"最后保存的那个方案"
+> （`project_state/mod.rs:1418` 同时改写它与 `default_scheme_id`），
+> 而 `ProjectRow`（`project_query.rs:121-135`）**没有 stage、没有方案名、没有保存时间**。
+> 于是 AI 报出的财务数字**没有口径**——甄选前是限价口径、甄选后是中标口径，
+> 进的是不同的签批文件。跨项目汇总更会**静默失真**：把 A 的甄选前和 B 的甄选后放一起
+> 排序合计，结果看着完全正常。
+>
+> 对照：② 的 `run_benefit_calculation` **是**阶段感知的（`scenario` 收
+> `pre_selection`/`post_selection`）——同一套工具面，②认识阶段而③不认识，要消除这个不一致。
+>
+> 修法不大：把标签补进返回值即可，**不要改存储结构**。
+> 详见 [③任务书末尾的"补充"一节](./tasks/TASK_BOOK_cross_project_query.md)。
+
+> **新版独立应用已重建，裸问题真实模型自动复验已通过；真人核对仍未完成。** 复验要求：
+> 先跨项目查一次（确保其他项目的毛利率进了上下文），再直接问
+> "我这个项目毛利率多少"，**不加**"只引用已保存汇总/请明确项目名"这类引导。
+> 上次的样本带了这两句引导，等于把难点先替模型解决了。
+
+② 会话绑定 + 硬性限权**已完成**（[验证记录](./verification/session-project-binding.md)）。
+③ 任务书：[TASK_BOOK_cross_project_query.md](./tasks/TASK_BOOK_cross_project_query.md)
+
+2026-09-06 进展：新增 `query_projects`，复用现有项目读取服务，不新增 SQL/明细 JOIN。绑定/通用会话按聚合工具白名单放行；其余工具保持原限权。支持客户、状态、时间、金额/指标区间、稳定排序，默认20/最多50条，明示截断并返回全部命中的数量及金额合计。
+独立 DTO 和插件封闭输出 schema 排除路径/note/logs/明细；结果带跨项目说明和绑定标记，前端通用会话文案与提示词已同步。
+81项常规 Rust、15项真实 Key 集成、前端 lint/build 及相关回归、插件 typecheck/限权测试通过。真实模型先看到乙87%/甲13%，追问当前项目时正确回答甲13%。
+**第5条真人查看仍待用户确认**，实际样本已发送，不能冒充真人验收。[验收记录](./verification/cross-project-query.md)、[设计](./modules/ai-project-query.md)、[真人核对样本](./verification/cross-project-query-human-review.md)。
+
+
+**口径已定（2026-09-06 确认），可直接开工。**
+
+**四条已经定死、不要重新讨论的：**
+
+0. **通用聊天允许调用聚合只读工具，且只允许这一类**；其余工具、尤其所有写工具仍全部禁用。
+   此条**修订了 ② 的"通用聊天禁用全部工具"**，②的任务书已就地标注（保留原文 + 修订说明）。
+   理由：否则用户为问一句"今年整体情况"就得先随便绑个项目，会诱导乱绑，
+   而乱绑出来的会话后续再做别的事时，绑定就成了误导而非保护。
+   → 校验是二维的：`{绑定项目 / 通用聊天} × {聚合只读 / 其他工具}`，四格都要 fail closed。
+
+1. **风险模型是"控体积 + 防混淆"，不是"防泄露"。** 整个工作区是同一用户的数据，
+   模型已能看到当前项目全部成本；给它看别的项目**汇总值**不构成新泄露面。
+   真正高发的是"拿别的项目的数字回答当前项目的问题"——所以结果必须自带
+   "这不是当前项目"的标注，且当前绑定项目若命中要标出来。
+2. **实现规则是结构性的**：只读 `projects` 表的行 + 解析 `summary_metrics`，
+   **不 JOIN 任何明细表**。报价、供应商、科目明细都在别的表，不 JOIN 就天然进不来。
+3. **②的校验必须新增"聚合只读"分类，按工具名白名单 fail closed。**
+   绝不能写成"没有 projectId 就放行"——那等于给所有未来的工具开后门。
+
+
+## ▶ dsh 链路已通，下一条线：工具面（2026-09-05）
+
+链路打通 ≠ AI 能干活。当前工具面只有 `run_benefit_calculation`（只读 `benefit_schemes`）
+和 `write_test_marker`（无害测试），**没有任何工具能查或写业务数据**。
+
+路线图：[ROADMAP_ai_capabilities.md](./tasks/ROADMAP_ai_capabilities.md)
+—— 四项能力（跨项目查询 / 填模板字段 / 建项目改参数 / 图片入库）的顺序与前置。
+
+**架构决定（不要重新讨论）：不给 AI SQL 接口，只把选定的既有 Tauri 命令包成业务工具。**
+理由见路线图；核心是 `project_lifecycle_states` 等表是 `calculator.rs` 的产物，
+直接写会绕过测算引擎且**不报错**。
+
+**本轮已实现路线图第 ① 项**（图片入库 + 模板 FormData 缺陷，合并做）——
+不依赖会话绑定、审批或任何新机制。
+
+## 已修复：模板生成读 DOM，字段静默退回默认值（下方保留原问题描述）
+
+阶段 3A 试用时暴露的**既有** bug（与 dsh 无关），排查后确认波及面比初记大得多：
+
+- `handleGenerate` 用 `new FormData(formRef.current)` 只读**已挂载**控件；
+  而所有 tab 都是条件渲染（`TemplateForms.tsx` 共 11 处 `{xxxTab === "..." && ...}`），
+  切走即卸载。
+- **四个模板全中**：会审纪要从确认页生成会丢 basic / content / business / risk **四页**字段；
+  立项签批表、甄选结果签批表、需求导入表各丢一个 content 页。
+- **完全静默且信号相反**：完成度清单用 `getFormValue`（读保存态，`:1967`）→ 进度条 11/11，
+  生成的文档却是默认值。而「生成确认」这个 tab 名正在引导用户在那里点生成。
+- 这些是立项签批表、甄选结果签批表——**报上去的财务审批文件**。
+
+**建议插在阶段 3B 之前做**（3B 是翻开关 + 删代码，可以等；两者互不依赖）。
+任务书：[TASK_BOOK_template_form_state_generation.md](./tasks/TASK_BOOK_template_form_state_generation.md)
+
+## ▶ 本轮 3B（2026-09-05）
+
+- 用户明确指定最新模板工作区 `../workspace`；
+  已核对它就是应用 `modulePaths.ict_lifecycle` 的现有值，目录内有最新 Word/Excel/PPT 模板。
+  代码在 `.` 的原 `master` 工作目录继续开发。
+- 默认使用 dsh；模型设置提供临时回退，回退单独新建会话、仅在窗口内存生效。
+  旧聊天保留，无 ACP 映射的历史在提示后另建新版会话，不假装恢复旧上下文。
+- 前端 lint/build、会话过渡与适配器测试、插件 typecheck、5 项打包测试、
+  Rust 78 项常规及 13 项 ignored 集成测试全部通过；有真实 key、未跳过。
+  真实流 640 个增量、637 次提交前显示，最终 ACP 正文/思考一致。
+- **3B 尚未整体验收通过**：用户解锁后已完成默认问答、停止续聊、回退隔离、重开窗口与旧历史过渡的 Computer Use 验证；
+  回退快速响应末块丢失已修复并复测通过。Documents 授权后，指定最新模板目录及需求导入表页面已正常加载。
+  Gate 1A 保存 key 全链路及安装证据空项仍不能勾选；Windows 1B、用户真人验收仍阻塞发版。
+- 下一步：补齐剩余 gate 并完成实际稳定使用观察，再按接替表删除 `AiRuntime.ts`、
+  旧配置 UI 和解析器。当前旧实现只用于显式临时回退，不因此恢复长期双链路方案。
+
+## 阶段 3A 完成时的记录
+
+
+1. **3A-0 已完成**：先验证真实 dsh 的 session/event 能收到 assistant/chunk，再实现插件
+   → 鉴权桥接 → 前端实时显示。真实模型 590 个增量、587 次提交前显示，最终正文/思考等于 ACP。
+   请求绑定在模型执行前固定；按步骤替换、字节缓冲、迟到片段隔离、订阅失效硬失败测试均已落地。
+2. **3A 接替表和业务试用已完成**：AiRuntime 只有 AiChatPanel 一个直接调用方；
+   模板图片间接链路、快捷动作、取消、历史和设置逐项列出。Computer Use 手动打开开关，
+   完成测算、停止续聊、只读工具、需求信息页 Word 生成；不冒充用户真人验收。
+3. **试用新增待修项**：需求导入表从“生成确认”页生成时，未挂载控件的字段退回默认值；
+   从“需求信息”页直接生成正确。根因是生成读取当前 DOM FormData；本轮遵守范围约束未改
+   TemplateForms / 文档引擎。复现、留样和建议见 3A 记录，不能把该入口记为通过。
+4. **3B 流式开工条件已满足**。随后已进入默认切换开发，最新状态见上方“本轮 3B”；
+   Gate 1A 其余空项和稳定后下线保持待验收。
+5. **上游 issue 尚未提交**：草稿 [upstream-issue-acp-incremental-output.md](./tasks/upstream-issue-acp-incremental-output.md)
+   保留。本轮未对外发布；上游支持后可删除本地显示桥接。
+
+## 逐 token 流：二次排查后结论变了（2026-09-05）
+
+> **更正**：先前结论是"只能等上游或接受降级"，**那是不完整的**——当时只查了 `dsh-acp`
+> 及其 config，没查会话事件核心。二次排查发现**不必等上游，自己就能做**。
+
+**准确表述：token 增量不但存在，而且已经进了会话事件流；是 ACP 层收到后丢弃了它。**
+
+- `dsh-agent-loop/lib/index.js:626-633`：LLM 流的每个 chunk 都被实时
+  `session.append("assistant/chunk", ...)`，**在消息提交之前**。
+- `dsh-acp/lib/index.js:1105` 订阅的是 `ctx.on("session/event", ...)` ——**全量事件**，
+  所以它**收到了** `assistant/chunk`；但 `onSessionEvent`（`:880`）只处理
+  `assistant/message` 和 `tool/call`，其余静默丢弃。
+- `session/event` 是**公开 Cordis 事件**：`dsh-session/lib/types/index.d.ts:64` 有类型声明，
+  `:127` 称其为 "firehose"。
+- `dsh-tool-lamber` 的 `apply(ctx: Context)` 拿到的正是 Cordis `Context`，已在用它挂审批守卫。
+  **订阅这条 firehose 不需要改 dsh 源码。**
+
+→ 方案与四条风险见任务书**关键事实 11** 与**阶段 3A-0**；实现及验证已在上方 3A 记录落盘。
+上游 issue 仍要提，但理由变成"你们已经发了 `assistant/chunk`，只是没投影"——
+ask 更具体、更易被接受；上游一旦支持，本地 workaround 连同其风险即可删除。
+
+**同时作废一条旧结论**：之前说"UTF-8 拆字在这条路径上结构上不可能发生"——
+那个结论**绑定 commit 投影边界**。改吃真实 delta 后，拆字重新可能，
+适配器必须按字节缓冲处理。
+
+## 发版阻塞项（与开发进度分开记）
+
+以下两项**不阻塞 3A / 3B 的开发，但阻塞任何面向真实用户的发版**：
+
+- **Gate 1B · Windows NSIS 安装验收** —— 2026-09-05 决定推迟，待有 Windows 机器时再做。
+- **用户真人验收** —— 阶段 2 的产品界面验证是 Computer Use 点击，记录里已明确
+  "不冒充用户真人验收"。
+
+别让"推迟"悄悄变成"不做"：发版前逐条回来勾。
+- **Objective:** 把 dsh 从"只在开发机仓库里、靠隐藏路由 `#/agent-lab` 能跑的实验件"，
+  变成产品里唯一的 AI 链路：装机版能起来、能配 key/模型/服务商、接进聊天面板，
+  最终下线 `AiRuntime.ts`。
+
+## Gate 拆分决定（2026-09-05）
+
+开发机是 macOS，原"干净 Windows NSIS gate"按**是否真与 Windows 有关**拆成两半：
+
+- **1A（平台无关，阻塞阶段 2）**：workspace 未打开的拒绝路径、设置保存后生效、
+  缺件文案、确认用分发内 Node、**补跑 3 个真实 key 用例**。
+- **1B（真 Windows-only）**：NSIS 体积/SHA/安装、Windows 路径形态（空格/中文用户名/反斜杠）、
+  杀软对随包 `node.exe` 的拦截、spawn 行为、首启耗时。
+  ~~必须在阶段 3 之前补上~~ → **2026-09-05 改判：推迟到有 Windows 机器时做，
+  改为"发版阻塞项"**（见上方同名小节），不再阻塞阶段 3 的开发。
+
+阶段 2 是跨平台应用层逻辑，与 Windows 打包正交，1B 挂起不会让阶段 2 白做。
+但**真实 key 那 3 个用例不能跟着一起挂起**——它实为阶段 2 的前置：
+流式适配器和 cancel 的正确性只能靠真实 chunk 流验证。
+
+### ⚠ 进入阶段 2 时的未偿项（2026-09-05 项目决定，保留决策背景）
+
+1A 的 5 项中，**1A-2b（保存配置后旧 dsh 进程终止、新进程读到新值）未完成**，
+由项目负责人拍板带缺项进入阶段 2——它与阶段 2 的适配器工作正交，拦的是发版不是开发。
+
+**这不等于 Gate 1A 通过。** 连同 Gate 1B，两者都必须在**阶段 3 切换与下线之前**补完：
+阶段 3 第 1 步就是"默认切到 dsh 路径"，那一刻起"用户改设置改不动 dsh"就是线上故障。
+
+本轮补记：1A-2b 已完成模型保存与旧/新 PID 界面验证；保存 key 的完整 2a 仍未验证，因此 Gate 1A 不能整体勾选通过。
+
+记录见 [dsh-stage1a-gate-validation.md](./verification/dsh-stage1a-gate-validation.md)。
+
+也**不要用 mac 的 .app 构建冒充 1B**：`resource_dir()` 在 mac 是 `.app/Contents/Resources`、
+在 Windows NSIS 是安装目录，mac 上验过只能证明三级查找的逻辑成立。
+
+## 阶段 0 的两条结论（不要沿用旧假设）
+
+1. `promptCapabilities.image` 实测：`deepseek-v4-flash` = `false`，
+   `deepseek-v4-flash-vision-exp` = `true`。确认是模型选型问题，不是 dsh 缺能力。
+2. **"只改 baseURL 就能换服务商"已被证伪**：严格 OpenAI 端点用 HTTP 400 拒绝了
+   `thinking`、`reasoning_effort`、`dsh_plugin_packages` 三个 dsh 自有字段。
+   baseURL 配置项保留，但 UI 不得宣称支持 Ollama 或任意 OpenAI-compatible 服务；
+   通用服务商需按任务书另开 adapter 任务。
+
+## 为什么是它（立项时的现状记录）
+
+ACP 协议层重写做得很扎实，但当时**它在产品里不存在**——以下为立项时的状态，阶段 1 已处理前两条：
+
+- ~~打包安装版里根本没有 dsh~~（阶段 1 已加 `bundle.resources` + `distribution.rs` 三级查找）
+- `ai_send_prompt` 全项目唯一调用方仍是 `AgentLabView.tsx`，该文件自述 "not the product surface"。
+- dsh 的流式更新没有任何适配器，前端只有实验台把它打进日志。
+- Rust 侧没有 cancel，发出去停不掉。
+
+## 其他待办
+
+路线图①方案A和②项目限权已完成，以下能力仍未开工或尚有验收项：
+- [TASK_BOOK_create_intelligent_compute_project.md](./tasks/TASK_BOOK_create_intelligent_compute_project.md)
+- [TASK_BOOK_demand_analysis_image_completion.md](./tasks/TASK_BOOK_demand_analysis_image_completion.md)
+  —— 方案A本轮已实现；真实模型口述/系统粘贴待验收，方案B未开工。
+
+## 已决定的事（不要重新讨论）
+
+1. **dsh 全面替换 Chat 链路**，不做长期并存；`AiRuntime.ts` 在阶段 3 删除。
+2. **打包安装版必须能跑 dsh**，不是开发机跑通就算完。
+3. 换服务商、图片输入都**不是**替换的代价——前者是 dsh 的公开扩展点（baseURL 配置 / 自写 adapter），
+   后者是模型选型问题（dsh 默认目录里就有 `deepseek-v4-flash-vision-exp`）。
+   任务书里曾把这两条误列为净损失，已更正，不要沿用旧结论。
+
+## 当前进展
+
+1. [x] 阶段 0：普通 / 视觉模型的 `promptCapabilities.image` 实测为 `false / true`；握手能力已保留到 Rust 状态诊断。
+2. [x] 阶段 0：baseURL 能命中本地严格 OpenAI 端点，但 `thinking`、`reasoning_effort`、`dsh_plugin_packages` 被拒，当前不能宣称通用兼容。
+3. [x] 阶段 0：复制运行树和 Node 到无仓库临时目录，排除旧 lock 与绝对链接后，ACP 握手及 `session/new` 通过。
+4. [x] 阶段 0：完整依赖 308.6 MiB；production prune 287.1 MiB；SEA 113.1 MiB 但启动崩溃、不可用。阶段 1 采用 production tree + bundled Node。
+5. [x] 阶段 1（代码）：完成“安装资源 → `LAMBER_REPO_ROOT` → 开发仓库”分层定位，缺件统一给安装版错误文案。
+6. [x] 阶段 1（打包）：dsh 改为精确锁定的 production dependency；Windows 脚本用 `npm ci --omit=dev` 生成资源树，并复制内置 Node、清洁 home 模板、补丁和已构建插件。
+7. [x] 阶段 1（运行）：首次启动在 `app_data_dir/dsh-runtime` 初始化可写 home；插件升级时刷新，用户模型/baseURL 使用独立生成补丁，密钥不写入 dsh 文件。
+8. [x] 阶段 1（工作区）：`session/new` cwd 改为当前用户 workspace；未打开 workspace 时在启动子进程前明确拒绝，不再回退仓库根。
+9. [x] 阶段 1（设置）：设置中心新增 key、dsh 目录模型和 baseURL；不回显密钥，保存后停止旧 dsh，发布构建不继承环境 key；联调台可从设置页进入，干净机无需开发环境变量即可发验证消息。
+10. [ ] 阶段 1B：干净 Windows NSIS 安装与真实问答仍挂起；按最新决定阻塞发版，不阻塞 3A/3B 开发。
+11. [x] 阶段 2：默认关闭的聊天面板开关、ACP 事件适配、正文/思考/工具展示、固定 sessionId/requestId 路由。
+12. [x] 阶段 2：取消、上下文文本注入、独立持久化会话映射与 session/resume、inline 图片、普通模型提示均已实现。
+13. [x] 阶段 2：真实模型取消（11–18ms 确认）并续聊、重启恢复随机暗号、视觉模型识别红色 PNG 均通过。
+14. [x] 阶段 3A：通过插件火线事件补齐逐 token 显示；ACP 本身仍只投影提交消息。本地桥接的约束和验证见 [3A 记录](./verification/dsh-stage3a-streaming-and-handover.md)。
+15. [x] 阶段 3A：接替表、产品手动开关试用与模板文档生成已记录；生成确认页字段回退问题单独待修。
+
+详细证据见 [dsh-stage0-distribution-validation.md](./verification/dsh-stage0-distribution-validation.md) 与 [dsh-stage1-local-packaging-validation.md](./verification/dsh-stage1-local-packaging-validation.md)。
+
+## 当前验证
+
+- 三个阶段 1 真实模型用例已用用户提供的 key 实际执行，全部通过，无缺 key 跳过。凭据只进测试进程环境，不写入仓库/日志。
+- 常规 `cargo test`：78 passed，13 ignored，0 failed；新增三项真实模型测试：3 passed，0 failed（取消、恢复、识图）。
+- `npm run test:dsh --prefix src-ui`：真实 ACP fixture 回放、早到事件、会话隔离、工具稀疏更新、取消竞态、异常清理、持久化与上下文校验通过。
+- 全量真实 key ignored 测试 13 passed、0 failed、0 ignored；前端 lint/build、插件 typecheck 已通过。产品界面记录见 [阶段 2 验证](./verification/dsh-stage2-product-integration.md)。
+- 新增 `npm run test:dsh-stream`：真实 dsh + 受控 SSE + 生产适配器回放；订阅消失或最终文本不一致直接失败。真实模型通过，完整证据见 3A 记录。
+- `AiRuntime.ts`、财务计算、文档引擎及审批实现未改。阶段 1A-2b 的模型保存/PID 替换已由 Computer Use 验证；浮窗审批已接入并完成界面回归。用户真人验收、Gate 1A 其余空项和 Windows 1B 尚不能标为通过。
+
 
 ---
 
-# 采购甄选费 · 可选投入科目写入
+## 已完成任务的历史记录
 
-- **Status:** Done
-- **Objective:** 采购甄选测算不再固定写入集成服务，允许用户从投入科目中选择目标，并按供应商承担甄选服务费的业务口径写入。
+本文件只保留**进行中**的任务。已完成任务的原始记录（11 段，含各自的 Progress /
+Validation / Scope Boundary）已于 2026-09-05 逐字迁入
+[CHANGELOG_AI.md](./CHANGELOG_AI.md) 末尾的「归档」一节，未做删减。
 
-## Progress
-
-1. [x] 新增目标投入科目选择器，覆盖 IT/移动云、CT、非IT/CT和综合类投入；中标服务费作为系统自动写入科目不参与选择。
-2. [x] 写入口径统一为“目标科目 = 最高限价 - 甄选服务费（供应商报价 + 上浮）”“中标服务费 = 甄选服务费”，两项合计等于最高限价。
-3. [x] 两个科目改用统一批量更新入口，避免同一投入分组连续更新互相覆盖，并同步科目付款计划和既有税额校验。
-4. [x] 目标科目代码随方案工作副本和快照保存；旧方案、Excel 导入和无效代码默认回退集成服务。
-5. [x] 智能反算仅在反算当前甄选目标科目时刷新报价、服务费和最高限价；签批表 A 表使用保存的目标科目名称与税率。
-6. [x] 清理前端既有 lint 债务：修复 AI 上下文防抖实现，拆分组件文件中的非组件导出，并稳定项目加载、模板自动保存及 ICT 计算相关 Hook 生命周期。
-
-## Validation
-
-- `npm run test:selection-batch --prefix src-ui`：通过。
-- `npm run build --prefix src-ui`：通过。
-- `cargo test`：36 项全部通过（仅仓库既有 warnings）。
-- `npm run lint --prefix src-ui`：通过，0 错误、0 警告。
-- `npm run test:ai-compute-quote --prefix src-ui`、`npm run test:tax-split --prefix src-ui`：通过。
-
-## Scope Boundary
-
-- 未修改 Rust 甄选费阶梯公式、NPV、现金流公式、税额计算或 0 容差门槛。
-- Excel 模板仍只在 T26/T29 保存报价与上浮，因无目标科目坐标，导入时按兼容规则默认集成服务。
-
-
-# 多项目甄选结果签批表合并
-
-- **Status:** Done
-- **Objective:** 将多个已完成甄选的 ICT 项目按业务数据汇总为一份《ICT项目甄选结果签批表（50万以下）》，而不是拼接多个 Word 文件。
-
-## Progress
-
-1. [x] 在签批表专属配置中增加“当前项目 / 多项目合并”模式，可选择、排序项目并编辑默认批次名称。
-2. [x] 候选项目必须同时存在已保存的甄选前与甄选后方案；A 表限价优先取手填甄选限价，否则取甄选前 IT 投入，B-E 表取甄选后数据。
-3. [x] 立项金额按不含税口径重算为“全部 IT 投入 + CT 专线建设/维护/带宽”；“专线/其他产品续签成本”要求用户逐项目确认后决定是否计入。
-4. [x] 5 张明细表保持统一项目顺序并用 Decimal 重算合计；项目收入合计与项目投入合计各自独立，禁止复用错误总数。
-5. [x] 阻断中选合作伙伴、甄选方式、甄选规则和收付款方式冲突；甄选范围、行业/场景、标准方案差异经用户确认后可由批次字段覆盖。
-6. [x] 生成前执行项目级财务 0 容差、效益指标完整性和批次立项金额 `< 500000` 校验。
-7. [x] 新增前端汇总规则测试与后端 DOCX 五表增行回归；完成 3 页样张渲染检查。
-
-## Validation
-
-- `npm run test:selection-batch --prefix src-ui`：通过。
-- `npm run test:tax-split --prefix src-ui`：通过。
-- `npm run build --prefix src-ui`：通过。
-- `cargo test selection_result_docx_fills_batch_rows_and_approval_amount -- --nocapture`：通过。
-- `npm run lint --prefix src-ui`：本次文件无新增错误；仓库仍有既有 `useAiContextStore.ts` `no-this-alias` 错误及历史 warnings。
-
-## Scope Boundary
-
-- 合并只读取已保存方案和模板资料，不写入其他项目的核心数据，也不改变财务公式、现金流、NPV 或税额规则。
-- 不修改原 Word 模板结构；继续复用 `TABLE_*` 行克隆和变量替换引擎。
-- `>= 50 万元` 的批次不允许使用该模板，不自动切换到其他审批模板。
-
-
-# 甄选结果签批表 · 常用资料字段接入
-
-- **Status:** Done
-- **Objective:** 为《ICT项目甄选结果签批表》补齐与其他模板一致的“常用 / 存为常用”字段操作。
-
-## Progress
-
-1. [x] 复用 `CommonPresetFieldHeader` 和既有常用资料服务；未新增第二套弹窗、持久化或表单保存路径。
-2. [x] 项目背景、收入侧收款方式、支出侧付款方式接入既有稳定 FieldKey。
-3. [x] 新增甄选结果专属 FieldKey：中选合作伙伴、甄选内容说明、甄选范围、行业/场景、甄选方式、甄选规则、标准方案说明；每项字段绑定自身表单状态。
-4. [x] `npm run build --prefix src-ui` 通过；`npm run lint --prefix src-ui` 仅保留既有的 `useAiContextStore.ts` `no-this-alias` 错误及项目历史 warnings，本次未新增 lint 问题。
-5. [x] 发布前脱敏：项目索引中的本机绝对路径已改为仓库相对链接；`.claude/` 本地工具目录已忽略，避免未来误提交本机配置。
-
-## Scope Boundary
-
-- 未修改模板变量、文档生成、项目数据保存、财务计算、甄选限价或 0 容差校验。
-- 常用内容只在用户点击替换或保存时通过既有组件生效；不会自动写入项目核心数据。
-- 发布前须扫描已跟踪文件中的本机绝对路径与个人标识；项目文档只使用仓库相对链接。
-
-
-# 甄选后流程 · 第 2 阶段：ICT 测算表内"甄选前 / 甄选后"方案切换
-# AI 多 Session 会话工作区（前端阶段已完成）
-
-- **Status:** 已完成前端多 Session UI、消息隔离、项目归属元数据、localStorage 持久化和窄窗抽屉。
-- **模块文档:** [docs/modules/ai-session-workspace.md](./modules/ai-session-workspace.md)
-
-## 已完成
-
-- `AiChatPanel` 的单一本地 `messages` 状态迁移到 `useAiSessionStore`，每个 Session 独立保存 `AiChatMessage[]`。
-- 新增 Session Sidebar、当前项目 / 其他会话分组、最近更新时间排序和当前会话恢复。
-- Session 操作菜单已支持列表内重命名和确认后删除；删除当前会话自动选择最近会话，删除最后一个会话自动补建空白会话，删除生成中的会话会先停止流式请求。
-- 流式输出按发送时固定的 `sessionId` 写回，生成期间切换会话不会串消息；现有 AiRuntime、PromptRenderer、SSE、Abort、图片输入和项目上下文链路保持不变。
-- 默认 AI 窗口宽度调整为 `780px`；小于 `680px` 时侧栏变为覆盖式抽屉，输入区不被压缩。
-- localStorage 保存版本化 Session 快照；图片附件持久化时去除大体积 base64、保留元数据。
-
-## Validation
-
-- `npm run build --prefix src-ui`：通过。
-- 应用内浏览器实测：创建 3 个会话、消息隔离、切换恢复、刷新恢复均通过。
-- 应用内浏览器实测：会话重命名即时更新并持久化，确认删除后会话数量正确减少。
-- 本地 mock SSE 实测：生成期间切换会话只更新发起会话；停止生成后流立即中断且输入框恢复可用。
-- `900px` 双栏与 `420px` 抽屉两种布局均完成截图检查。
-- `npm run lint --prefix src-ui`：本次新增/修改文件无新错误；全仓仍被既有 `useAiContextStore.ts` 的 `@typescript-eslint/no-this-alias` 阻断。
-
-## Scope Boundary
-
-- 未修改 `AiRuntime.ts`、PromptRenderer、Rust、数据库 schema、效益测算、文档生成或项目管理逻辑。
-- 未接入 deepseek-harness，未新增 dsh、JSON-RPC、Agent Tool、Approval、Sub-Agent 或服务端 Session。
-- 按当前范围未新增项目创建入口、会话项目/通用归属移动，也未调整 AI 窗口背景配色。
-
----
-
-- 《甄选结果签批表》docx：等用户提供模板 → `TemplateForms.tsx` 加专属 Tab + 变量映射，默认取"甄选后"方案 + 采购甄选费面板数据，走现有 `generate_lifecycle_docs`。
-
-
-# 单科目含税金额拆分闭合
-
-- **Status:** Done
-- **Objective:** 对单笔含税金额无法按“不含税为锚点”双向闭合的科目，提供保持科目含税总额不变的两笔拆分能力。
-
-## Progress
-
-1. [x] 使用十进制半进位搜索两笔可独立闭合的含税金额，并保持两笔含税合计严格等于原科目金额。
-2. [x] 拆分明细随工作副本序列化和还原；金额或税率再次编辑时自动失效，避免沿用过期拆分。
-3. [x] 前端展示两笔含税/不含税明细并支持取消拆分；资金计划仍以原科目含税总额为锚点。
-4. [x] `npm run test:tax-split --prefix src-ui` 与 `npm run build --prefix src-ui` 通过。
-
-## Scope Boundary
-
-- 本阶段只处理单科目自身的两笔闭合，不包含税率组整体尾差的候选科目推荐。
-- 不改变原科目含税总额、税率或资金计划金额；拆分必须由用户主动确认。
-
-
-# 税率组整体尾差拆分建议与应用
-
-- **Status:** Done
-- **Objective:** 对税率组 `[汇总误差-公式C1]` 提供可审计的单科目两笔拆分建议，并在用户确认后应用、保存和继续原流程。
-
-## Progress
-
-1. [x] 按税率组实际尾差反向计算所需不含税调整，只接受能让尾差精确归零的候选。
-2. [x] 候选保持原科目含税总额和税率不变，两笔子金额分别通过双向闭合校验。
-3. [x] 拦截弹窗最多展示三个候选科目及两笔含税/不含税金额、拆分前后尾差；没有精确候选时明确说明。
-4. [x] 每个候选提供“应用并继续 / 应用此拆分”，通过统一状态入口再次校验子笔；唯一错误消除后继续原现金流或文档页。
-5. [x] 科目变更同时标记 lifecycle、cashflow、benefit-analysis；工作副本合并和方案快照均保留 `split_parts`。
-6. [x] Rust 计算引擎验证拆分后按子笔不含税之和计算，前后端口径一致。
-7. [x] `npm run test:tax-split --prefix src-ui`、`npm run test:selection-batch --prefix src-ui`、`npm run build --prefix src-ui` 与 `cargo test` 通过。
-
-## Scope Boundary
-
-- 不经用户点击不应用拆分；应用只改变科目内部含税/不含税舍入分配，不改变科目含税总额、税率或资金计划。
-- 仅处理一个科目拆成两笔即可归零的汇总尾差；不生成多科目组合或近似建议。
-
-
-# 立项决策汇报 PPT · 拆分科目展示方式
-
-- **Status:** Done
-- **Objective:** 允许用户在 PPT 投资收益页选择按科目合并展示或按测算拆分子笔展开，同一科目可生成多行且汇总口径不变。
-
-## Progress
-
-1. [x] 仅在当前 PPT 明细范围检测到有效拆分科目时展示选择，默认保持“合并展示”。
-2. [x] 选择通过既有模板表单状态按项目、模板持久化，不写入或修改测算核心数据。
-3. [x] 新增共享 PPT 拆分行规则；展开前重新校验子笔，损坏数据回退为汇总行。
-4. [x] IT/CT 收入与投入四组明细均支持同科目多行，并以备注标注拆分笔次。
-5. [x] 汇总、小计、现金流与效益指标继续使用原科目聚合值，不受展示选择影响。
-6. [x] PPT 动态明细在模板原行高预算内等分；成本表新增行时不缩小字号，只下移评分标题及合同期限/动态回收期说明，底部指标保持原位。
-7. [x] 税额专项测试、前端生产构建、真实 PPTX 行克隆测试与两页渲染检查通过。
-
-## Scope Boundary
-
-- 只处理现有投资收益页中的 IT收入、CT收入、IT投入、CT投入；非IT/CT与综合类科目不在当前 PPT 四张明细表范围。
-- 本功能是文档展示偏好，不改变拆分状态、税额、资金计划、NPV 或其他财务计算。
-# ACP 协议层重写（`--profile sdk` → `--profile acp`）
-
-- **Status:** ✅ 已完成。代码、带真实 key 的集成测试、四条审批路径的真人点击验证全部通过。
-- **真人点击验证记录:** [docs/verification/acp-approval-manual-check.md](./verification/acp-approval-manual-check.md)
-- **任务书:** [docs/TASK_BOOK_acp_protocol_rewrite.md](./TASK_BOOK_acp_protocol_rewrite.md)
-- **前置验证:** [docs/verification/acp-rust-crate-handshake.md](./verification/acp-rust-crate-handshake.md)
-- **模块文档:** [agent-bridge/README.md](../agent-bridge/README.md)
-
-## 为什么要重写
-
-ACP 是**双向**协议：agent 也会向客户端发请求。原来那个手写的 JSON-RPC 客户端是纯
-「发请求等回应」模型（`next_id` + `pending` 表），收到服务端主动发起的请求只会当日志丢掉。
-`session/requestPermission` 恰恰就是这样一条请求，所以传输层是整体换掉，不是打补丁。
-
-## 改了什么
-
-### 传输层
-
-- `agent-client-protocol 2.0.0` + `tokio` 从 `[dev-dependencies]` 转正为 `[dependencies]`。
-  实测解析到的 schema 是 **1.5.0**（crate 把它精确锁死在 `=1.5.0`），不是早期调研说的 1.7.0。
-- `dsh_session.rs` 重写：`DshSession`（手写 JSON-RPC）→ `AcpRuntime`（crate 的 client builder）。
-  握手、`session/new`、`session/prompt`，外加 `on_receive_request` 处理
-  `session/requestPermission`、`on_receive_notification` 强类型解析 `session/update`。
-- **协议版本显式断言**：dsh 的 `initialize` 不校验入参、无条件回自己的版本
-  （`dsh-acp/lib/index.js:1143-1146`），所以它升到 v2 的那天握手期不会报错。
-  客户端侧现在协商结果不等于 `EXPECTED_PROTOCOL_VERSION` 就直接启动失败。
-- tokio **只**出现在这一层：连接跑在自己的线程和 runtime 上，同步侧通过命令通道 +
-  `std::sync::mpsc` 回执与它交互，后端其余部分未引入异步。
-- `session/prompt` 做成**投递即返回**（ACP 那条请求要整轮结束才回），轮次结束另发
-  `session/turn-ended` 事件。ACP 会话 id 由 dsh 生成，`AgentRuntime` 负责把前端自己的
-  会话名映射到它。
-- 探针 `src-tauri/examples/acp_handshake_probe.rs` 已删除——验证代码不原地转正。
-
-### 审批链路
-
-- 触发入口从 `POST /lamber-bridge/approval` 换成 ACP 的 `session/requestPermission`。
-  `ApprovalGate`、`agent_approval_log` 落库、`ai://approval-request` 事件、
-  `ai_resolve_approval` 命令这些核心机制**原样复用**。
-- 新增 `tool_calls.rs`：`session/requestPermission` 只带 `toolCallId`，工具名与参数来自
-  更早那条 `tool_call` 通知，这个索引负责按 id 关联。它是插件里 `pendingCalls.ts` 的继任者。
-- 新增 `approval.rs` 里的展示文案镜像表：`dsh-acp` 把守卫写的 `reason` 丢掉了，弹窗文案
-  只能存在 Rust 侧。`gated_tool_names_match_the_plugin` 读插件源码守住两边不漂移。
-- **顺带修掉一个真实的时序缺口**：`handle_request` 原先先公告、后登记槽位，中间有个窗口，
-  在此期间到达的答复会被判成「请求不存在」，用户的点击会被丢掉、问题继续挂到超时。改成
-  登记后在锁内公告，`an_answer_racing_the_announcement_is_not_lost` 守这条。
-
-### 删除的东西（不留双通道）
-
-- `dsh-tool-lamber/src/approval.ts` 里的 `approval/request` 答复器与 `askLamber()`
-- `dsh-tool-lamber/src/pendingCalls.ts`
-- Rust `mod.rs` 的 `APPROVAL_ROUTE` 分支（桥接现在只剩一条只读路由）
-- `agent-bridge/scripts/check-approval.mjs`
-- `examples/acp_handshake_probe.rs`
-- 依赖 `@deepseek-ai/dsh-user-approval`（插件已不再引用其类型）
-
-`tools/pre-execute` 守卫（`GATED_TOOLS` / `isGatedTool`）按任务书要求**保留未动**。
-
-### profile
-
-- `dsh-tool-lamber` 已有意识地链进 `.dsh-home/profiles/acp/`，`patch.yml` 与
-  `provision-profile.mjs` 的默认 profile 都改成 `acp`。
-- `.dsh-home/profiles/sdk/` 目录保留未删，但生产代码已不再引用它。
-
-## Validation
-
-- `cargo test`：**57 passed, 0 failed**。
-- `cargo test agent_bridge -- --ignored`（**带真实 `DEEPSEEK_API_KEY`**）：**6 passed, 0 failed**。
-  覆盖 `initialize`（含版本断言）→ `session/new` → `session/prompt` → 真实模型响应 →
-  真实 gated 工具触发 `session/requestPermission` 全链路。
-- `npm run build --prefix src-ui`：通过。
-- `npm run typecheck --prefix agent-bridge/dsh-tool-lamber`：通过。
-
-### 集成测试的旁证（不只看「测试变绿」）
-
-真实模型跑完后，系统临时目录下每次运行**恰好**多出一个标记文件，内容是
-`备注: ACP 联调`——正是测试提示词里要求模型填的 `note` 参数。这同时证明了三件事：
-
-1. 模型真的解析了指令并发出 `write_test_marker` 的工具调用（不是桩）；
-2. 审批真的经由 ACP 的 `session/requestPermission` 走通，确认后工具才执行；
-3. 用例内部循环了「确认」与「拒绝」两种立场，而每次运行只产出**一个**文件——
-   拒绝那一轮确实没有执行，不是"执行了但断言没看见"。
-
-`dsh_tool_call_reaches_the_calculator_and_returns_real_numbers` 另外断言了桥接**恰好**
-被打一次、`projectId` 正确、工具结果里出现 `calculator.rs` 算出的真实 NPV，且只读工具
-全程**没有**触发任何审批弹窗。
-
-### 真人点击验证（四条路径全通过）
-
-2026-09-04，经应用内 `#/agent-lab` 联调台操作，触发入口为 ACP 的
-`session/requestPermission`。完整记录与原始报文见
-[acp-approval-manual-check.md](./verification/acp-approval-manual-check.md)。
-
-| 路径 | 结果 | 证据 |
-| --- | --- | --- |
-| 点「确认执行」 | ✅ `decided_by=user`、已批准 | 审计表 + 标记文件（决定后 10ms 写出，顺序正确） |
-| 点「拒绝」 | ✅ `decided_by=user`、已拒绝 | 审计表；无新标记文件 |
-| 不操作等 90 秒 | ✅ `decided_by=timeout` | 审计表；无新标记文件；随后可继续正常发指令 |
-| 无工作区时审批 | ✅ 决定照常生效，缓冲后回填 | `agent-approval-spool.jsonl` → 打开工作区后入库、缓冲文件被删 |
-
-事件流同时证实了本次改动最关键的结构性判断：弹窗里的工具名与参数确实取自更早那条
-`tool_call` 通知的 `title` / `rawInput`——权限请求本身只带 `toolCallId`。
-
-旧的 [approval-channel-manual-check.md](./verification/approval-channel-manual-check.md)
-是 SDK 协议时期、完全不同触发机制下测的，**未被援引为本次的结论**；该文件按要求保留未动。
-
-## 本次未覆盖的部分（照实记录）
-
-1. 审批只覆盖了 `write_test_marker` 一个工具——`GATED_TOOLS` 目前也只有它。
-2. dsh 自带工具（bash、文件编辑等）触发权限请求时的表现未验证。ACP 下 lamber 是唯一的
-   权限应答方，那条路径存在但没走过。
-3. 并发审批（同时挂起两个问题）未验证。
-
----
-
-# agent-bridge：deepseek-harness 接入（闭环 A + 闭环 B 已完成）
-
-- **Status:** 闭环 A、闭环 B 均已完成，并通过真实点击验证。
-- **分支:** `feat/agent-bridge-approval-loop-b`（基于 `feat/agent-bridge-dsh-loop-a`）
-- **模块文档:** [agent-bridge/README.md](../agent-bridge/README.md)
-- **验证记录:** [docs/verification/approval-channel-manual-check.md](./verification/approval-channel-manual-check.md)
-
-## 背景与架构原则
-
-lamber 原有的 AI copilot 只是一个裸的 OpenAI 兼容流式客户端，`invokeToolIsolated()` 是空壳，没有真正的工具执行能力。本次用 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）补上，而不是自己再造一遍 agent loop。
-
-**原则：lamber 保留全部 Rust 业务逻辑（`calculator.rs`、`docfill.rs` 等）不变；dsh 只负责 agent loop / 工具编排 / 审批，通过本地回环 HTTP 桥接回调 Rust。**
-
-```
-React 前端  →  Tauri 命令  →  Rust 后端
-                                 │ spawn 子进程 + newline-delimited JSON-RPC 2.0 over stdio
-                              dsh 子进程（--profile sdk；已由 ACP 重写取代，见本文首节）
-                                 │ 自定义插件工具 execute() 内 fetch
-                              127.0.0.1 桥接服务（tiny_http，令牌鉴权）
-                                 └─ benefit::calculator / 审批网关
-```
-
-## 闭环 A：Agent 工具执行 ✅
-
-`React → Rust → dsh → run_benefit_calculation → Rust calculator → dsh → UI`。
-
-- `agent-bridge/dsh-tool-lamber/`：独立 npm 包形态的 dsh 工具插件。工具体只把参数 POST 给桥接服务，不含任何业务数学。
-- `src-tauri/src/agent_bridge/`：桥接服务（`tiny_http`，仅监听 127.0.0.1，一次性随机令牌鉴权）、dsh 子进程管理、手写 JSON-RPC 2.0 客户端。
-- 验证：模型真实发出 `tool/call`，桥接被打一次且 `projectId` 正确，`tool/result` 带回 `calculator.rs` 算出的真实 NPV。
-
-## 闭环 B：人工审批通道 ✅
-
-`dsh → answerer 插件 → Rust 桥接 → Tauri emit → React 弹窗 → 用户确认 → 原路返回`。
-
-dsh 的审批是进程内 Cordis 事件（`approval/request`，waterfall），**不会**经 SDK 的 JSON-RPC 自动转发给外部客户端，因此在 dsh 侧写了 answerer 插件做转发。
-
-- 无害测试工具 `write_test_marker`（只写系统临时目录的标记文件），挂审批钩子。
-- 超时分层、失败关闭（`unavailable` 一律判拒）、令牌鉴权、`Debug` 脱敏、挂起槽位清理均已实现并验证。
-- 审批审计落 `agent_approval_log` 表（schema v9 → v10）；无工作区时先进 `agent-approval-spool.jsonl` 缓冲，工作区打开时单事务回填。
-
-### 真实点击验证（四条路径全通过）
-
-| 路径 | 结果 | 证据 |
-| --- | --- | --- |
-| 弹窗渲染 | ✅ 工具名 / 参数 JSON / 倒计时 / 双按钮 / 未被遮罩挡住 | 窗口截图 |
-| 点「确认执行」 | ✅ `approved=1, decided_by=user` | 审计表 + 标记文件（决定后 14ms 写出，顺序正确） |
-| 点「拒绝」 | ✅ `approved=0, decided_by=user` | 审计表；无新标记文件 |
-| 不操作等 90 秒 | ✅ `approved=0, decided_by=timeout` | 审计表；无新标记文件 |
-
-**限制（照实记录）：** 确认/拒绝两次点击由**人工完成**，不是自动化验证。本机对 `osascript` 的辅助功能授权始终未生效（-1719/-25211）。超时一路无需点击，是完全自动的。
-
-## Validation
-
-- `cargo test`：53 passed，无回归。
-- `cargo test agent_bridge -- --ignored`（带真实 `DEEPSEEK_API_KEY`）：9 passed。
-- `npm run build --prefix src-ui`：通过。
-
-## 尚未开始的部分
-
-1. **新建项目工具 `create_project`** —— 第一个真正写 lamber 业务数据的工具。审批通道已验证可用，是它的前置条件；现在可以做了。需要考虑：参数校验、与现有 `create_project_in_workspace` 命令的关系、审批文案要能让用户看清将写入什么。
-2. **多会话对应 Harness Session** —— `AiChatPanel` 的前端多 Session 工作区已经完成，但 `harnessSessionId` 仍只是预留字段；尚未把终端用户会话接入 dsh / Harness 执行链。
-3. **参数抽取二次确认** —— 模型从自然语言里抽出的参数（金额、项目名、年限等）在执行前让用户核对修正。当前审批弹窗只做"批准 / 拒绝"，不能改参数。
-
-## Scope Boundary
-
-- 未改动 `calculator.rs` / `docfill.rs` / 测算引擎 / NPV / 现金流 / 税额 / 甄选费 / 反算 / 0 容差校验。
-- 未改动 `AiRuntime.ts`；`AiChatPanel.tsx` 仅增加前端 Session 容器与响应式布局，仍使用既有 OpenAI-compatible SSE 调用链。
-- 插件包内除 `run_benefit_calculation` 与无害的 `write_test_marker` 外无其它工具；**没有**任何会写 lamber 业务数据的工具。
-- 未做 SEA 单文件打包 / 瘦身。
+按 AGENTS.md 的读取规则，那份文件默认不读，只在追溯历史或回归分析时才读。

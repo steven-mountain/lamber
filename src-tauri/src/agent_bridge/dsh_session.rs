@@ -29,9 +29,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use agent_client_protocol::schema::v1::{
-    ContentBlock, InitializeRequest, InitializeResponse, NewSessionRequest, PermissionOptionKind,
-    PromptRequest, RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SelectedPermissionOutcome, SessionId, SessionNotification, SessionUpdate, TextContent,
+    CancelNotification, CloseSessionRequest, ContentBlock, InitializeRequest, InitializeResponse,
+    NewSessionRequest, PermissionOptionKind, PromptRequest, RequestPermissionOutcome,
+    RequestPermissionRequest, RequestPermissionResponse, ResumeSessionRequest,
+    SelectedPermissionOutcome, SessionId, SessionNotification, SessionUpdate,
+    SetSessionConfigOptionRequest, TextContent,
 };
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::{AcpAgent, AcpAgentConfig, Agent, ConnectionTo};
@@ -66,12 +68,16 @@ pub const TURN_ENDED_METHOD: &str = "session/turn-ended";
 /// live credential.
 #[derive(Clone)]
 pub struct DshLaunchConfig {
-    /// Path to the `dsh` executable (usually `agent-bridge/node_modules/.bin/dsh`).
+    /// Node executable used to run dsh. A bare `node` is allowed for development.
     pub dsh_bin: PathBuf,
+    /// JavaScript CLI entry passed as Node's first argument.
+    pub dsh_entry: Option<PathBuf>,
     /// Profile to boot; the ACP server lives in the `acp` profile.
     pub profile: String,
     /// Absolute path to `agent-bridge/patch.yml`, which mounts `dsh-tool-lamber`.
     pub patch_path: PathBuf,
+    /// Per-user model/baseURL overlay, applied after the immutable base patch.
+    pub extra_patch_path: Option<PathBuf>,
     /// Writable `$DSH_HOME` holding profiles, sessions, and credentials.
     pub dsh_home: PathBuf,
     /// Working directory sent as `session/new`'s `cwd`.
@@ -83,6 +89,7 @@ pub struct DshLaunchConfig {
     /// DeepSeek API key. Absent means the runtime boots but every turn fails at the LLM call.
     pub api_key: Option<String>,
     /// Origin of this instance's bridge server.
+    pub stream_display: bool,
     pub bridge_url: String,
     /// Per-launch bridge token the plugin must present.
     pub bridge_token: String,
@@ -92,8 +99,10 @@ impl std::fmt::Debug for DshLaunchConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DshLaunchConfig")
             .field("dsh_bin", &self.dsh_bin)
+            .field("dsh_entry", &self.dsh_entry)
             .field("profile", &self.profile)
             .field("patch_path", &self.patch_path)
+            .field("extra_patch_path", &self.extra_patch_path)
             .field("dsh_home", &self.dsh_home)
             .field("cwd", &self.cwd)
             .field("provider", &self.provider)
@@ -121,9 +130,13 @@ impl DshLaunchConfig {
     pub fn from_repo_root(repo_root: &Path) -> Self {
         let agent_bridge = repo_root.join("agent-bridge");
         Self {
-            dsh_bin: agent_bridge.join("node_modules/.bin/dsh"),
+            dsh_bin: std::env::var_os("LAMBER_NODE_BIN")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("node")),
+            dsh_entry: Some(agent_bridge.join("node_modules/@deepseek-ai/dsh/lib/bin.js")),
             profile: "acp".to_string(),
             patch_path: agent_bridge.join("patch.yml"),
+            extra_patch_path: None,
             dsh_home: agent_bridge.join(".dsh-home"),
             cwd: repo_root.to_path_buf(),
             provider: "deepseek-official".to_string(),
@@ -131,6 +144,7 @@ impl DshLaunchConfig {
             api_key: std::env::var("DEEPSEEK_API_KEY")
                 .ok()
                 .filter(|k| !k.is_empty()),
+            stream_display: false,
             bridge_url: String::new(),
             bridge_token: String::new(),
         }
@@ -138,7 +152,11 @@ impl DshLaunchConfig {
 
     /// Describe the child process to launch.
     fn to_agent_config(&self) -> AcpAgentConfig {
-        let config = AcpAgentConfig::new(&self.dsh_bin)
+        let mut config = AcpAgentConfig::new(&self.dsh_bin);
+        if let Some(entry) = &self.dsh_entry {
+            config = config.arg(entry.to_string_lossy().to_string());
+        }
+        config = config
             .arg("--profile")
             .arg(&self.profile)
             .arg("--patch")
@@ -147,9 +165,15 @@ impl DshLaunchConfig {
             // dsh ships telemetry to an external host by default; lamber handles
             // customer financial data, so it stays off.
             .env("DSH_TELEMETRY_MODE", "DISABLED")
+            .env("LAMBER_STREAM_DISPLAY", if self.stream_display { "1" } else { "0" })
             .env("LAMBER_BRIDGE_URL", &self.bridge_url)
             .env("LAMBER_BRIDGE_TOKEN", &self.bridge_token)
             .env("LAMBER_BRIDGE_TOKEN_HEADER", BRIDGE_TOKEN_HEADER);
+        if let Some(extra_patch) = &self.extra_patch_path {
+            config = config
+                .arg("--patch")
+                .arg(extra_patch.to_string_lossy().to_string());
+        }
 
         // The child inherits lamber's environment and `AcpAgentConfig` offers no
         // way to unset a variable, so an absent key is passed as an empty one.
@@ -176,6 +200,8 @@ pub struct AgentHandshake {
     pub protocol_version: ProtocolVersion,
     pub agent_name: Option<String>,
     pub agent_version: Option<String>,
+    /// Whether the selected model route can accept ACP inline image blocks.
+    pub supports_image_prompts: bool,
 }
 
 impl AgentHandshake {
@@ -187,19 +213,38 @@ impl AgentHandshake {
                 .agent_info
                 .as_ref()
                 .map(|info| info.version.clone()),
+            supports_image_prompts: response.agent_capabilities.prompt_capabilities.image,
         }
     }
 }
 
 /// One instruction for the connection thread.
 enum Command {
+    Close {
+        session_id: String,
+        reply: sync_mpsc::Sender<Result<(), String>>,
+    },
+    SetModel {
+        session_id: String,
+        value: String,
+        reply: sync_mpsc::Sender<Result<(), String>>,
+    },
+    Resume {
+        session_id: String,
+        cwd: PathBuf,
+        reply: sync_mpsc::Sender<Result<(), String>>,
+    },
+    Cancel {
+        session_id: String,
+        reply: sync_mpsc::Sender<Result<(), String>>,
+    },
     NewSession {
         cwd: PathBuf,
         reply: sync_mpsc::Sender<Result<String, String>>,
     },
     Prompt {
         session_id: String,
-        text: String,
+        content: Vec<ContentBlock>,
         reply: sync_mpsc::Sender<Result<(), String>>,
     },
 }
@@ -227,11 +272,30 @@ impl AcpRuntime {
         on_update: SessionUpdateSink,
         on_permission: PermissionResponder,
     ) -> Result<Self, String> {
-        if !config.dsh_bin.exists() {
+        if config.dsh_bin.components().count() > 1 && !config.dsh_bin.is_file() {
             return Err(format!(
-                "未找到 dsh 可执行文件：{}。请先在 agent-bridge/ 目录运行 `npm install` 与 `npm run provision -- --profile acp`。",
+                "AI 运行组件缺少 Node 可执行文件：{}。请重新安装 Lamber。",
                 config.dsh_bin.display()
             ));
+        }
+        if let Some(entry) = &config.dsh_entry {
+            if !entry.is_file() {
+                return Err(format!(
+                    "AI 运行组件缺少 dsh 入口：{}。请重新安装 Lamber。",
+                    entry.display()
+                ));
+            }
+        }
+        if !config.patch_path.is_file() {
+            return Err(format!(
+                "AI 运行组件缺少基础配置：{}。请重新安装 Lamber。",
+                config.patch_path.display()
+            ));
+        }
+        if let Some(extra_patch) = &config.extra_patch_path {
+            if !extra_patch.is_file() {
+                return Err(format!("AI 用户配置不存在：{}", extra_patch.display()));
+            }
         }
 
         let agent_config = config.to_agent_config();
@@ -268,6 +332,10 @@ impl AcpRuntime {
     }
 
     /// What the agent reported during `initialize`.
+    pub fn is_alive(&self) -> bool {
+        !self.commands.is_closed()
+    }
+
     pub fn handshake(&self) -> &AgentHandshake {
         &self.handshake
     }
@@ -299,13 +367,66 @@ impl AcpRuntime {
     /// @param session_id - an agent-issued id from `new_session`.
     /// @param text - the user's prompt text.
     pub fn prompt(&self, session_id: &str, text: &str) -> Result<(), String> {
+        self.prompt_blocks(session_id, vec![ContentBlock::Text(TextContent::new(text))])
+    }
+
+    pub fn prompt_blocks(
+        &self,
+        session_id: &str,
+        content: Vec<ContentBlock>,
+    ) -> Result<(), String> {
+        if content
+            .iter()
+            .any(|block| matches!(block, ContentBlock::Image(_)))
+            && !self.handshake.supports_image_prompts
+        {
+            return Err("当前模型不支持图片，请在 AI 模型与服务中选择视觉模型".into());
+        }
         let (reply, answer) = sync_mpsc::channel();
         self.dispatch(Command::Prompt {
-            session_id: session_id.to_string(),
-            text: text.to_string(),
+            session_id: session_id.into(),
+            content,
             reply,
         })?;
         Self::collect(answer, "session/prompt")
+    }
+
+    pub fn close_session(&self, session_id: &str) -> Result<(), String> {
+        let (reply, answer) = sync_mpsc::channel();
+        self.dispatch(Command::Close {
+            session_id: session_id.into(),
+            reply,
+        })?;
+        Self::collect(answer, "session/close")
+    }
+
+    pub fn set_model(&self, session_id: &str, provider: &str, model: &str) -> Result<(), String> {
+        let (reply, answer) = sync_mpsc::channel();
+        self.dispatch(Command::SetModel {
+            session_id: session_id.into(),
+            value: serde_json::json!([provider, model]).to_string(),
+            reply,
+        })?;
+        Self::collect(answer, "session/set_config_option")
+    }
+
+    pub fn resume_session(&self, session_id: &str, cwd: &Path) -> Result<(), String> {
+        let (reply, answer) = sync_mpsc::channel();
+        self.dispatch(Command::Resume {
+            session_id: session_id.into(),
+            cwd: cwd.into(),
+            reply,
+        })?;
+        Self::collect(answer, "session/resume")
+    }
+
+    pub fn cancel(&self, session_id: &str) -> Result<(), String> {
+        let (reply, answer) = sync_mpsc::channel();
+        self.dispatch(Command::Cancel {
+            session_id: session_id.into(),
+            reply,
+        })?;
+        Self::collect(answer, "session/cancel")
     }
 
     fn dispatch(&self, command: Command) -> Result<(), String> {
@@ -372,14 +493,38 @@ fn run_connection(
     };
 
     let index = Arc::new(ToolCallIndex::default());
-    let agent = AcpAgent::new(agent_config).with_debug(|line: &str, direction| {
+    // ACP may accept initialize while another Cordis plugin is still loading.
+    // Wait for the plugin's explicit post-registration receipt, not a delay or
+    // a successful ACP response, before exposing a usable runtime.
+    let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
+    let startup_tx = std::sync::Mutex::new(Some(startup_tx));
+    let startup_error_tx = ready_tx.clone();
+    let agent = AcpAgent::new(agent_config).with_debug(move |line: &str, direction| {
         // Only the child's own diagnostics; protocol frames are handled above.
         if matches!(direction, agent_client_protocol::LineDirection::Stderr) {
-            eprintln!("[dsh] {line}");
+            if let Some(outcome) = line.trim().strip_prefix(super::contract::STARTUP_PREFIX) {
+                let result = match outcome {
+                    "ready" => Ok(()),
+                    "mismatch" => Err(super::contract::MISMATCH_MESSAGE.to_string()),
+                    "unreachable" => Err(super::contract::UNREACHABLE_MESSAGE.to_string()),
+                    _ => return,
+                };
+                if let Err(message) = &result {
+                    // Preserve the readable cause even if the child exits before
+                    // connect_with gets scheduled to consume the receipt.
+                    let _ = startup_error_tx.send(Err(message.clone()));
+                }
+                if let Some(sender) = startup_tx.lock().unwrap().take() {
+                    let _ = sender.send(result);
+                }
+            } else {
+                eprintln!("[dsh] {line}");
+            }
         }
     });
 
     let ready_for_main = ready_tx.clone();
+    let closed_sink = Arc::clone(&on_update);
     let result = runtime.block_on(async move {
         agent_client_protocol::Client
             .builder()
@@ -406,6 +551,16 @@ fn run_connection(
                 agent_client_protocol::on_receive_request!(),
             )
             .connect_with(agent, move |connection: ConnectionTo<Agent>| async move {
+                let startup = match tokio::time::timeout(Duration::from_secs(15), startup_rx).await {
+                    Ok(Ok(result)) => result,
+                    // No receipt means this plugin does not implement our startup
+                    // contract. Never permit a session with an unverified plugin.
+                    _ => Err(super::contract::MISMATCH_MESSAGE.to_string()),
+                };
+                if let Err(message) = startup {
+                    let _ = ready_for_main.send(Err(message));
+                    return Ok(());
+                }
                 let handshake = match initialize(&connection).await {
                     Ok(handshake) => handshake,
                     Err(message) => {
@@ -421,6 +576,7 @@ fn run_connection(
             .await
     });
 
+    closed_sink("connection/closed", &serde_json::json!({}));
     if let Err(e) = result {
         // `start` has usually already reported; a send to a hung-up channel is
         // the normal case and means the failure arrived after the handshake.
@@ -457,6 +613,51 @@ async fn serve_commands(
 ) {
     while let Some(command) = command_rx.recv().await {
         match command {
+            Command::Close { session_id, reply } => {
+                let outcome = connection
+                    .send_request(CloseSessionRequest::new(SessionId::new(session_id)))
+                    .block_task()
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| format!("关闭 AI 会话失败: {e}"));
+                let _ = reply.send(outcome);
+            }
+            Command::SetModel {
+                session_id,
+                value,
+                reply,
+            } => {
+                let outcome = connection
+                    .send_request(SetSessionConfigOptionRequest::new(
+                        SessionId::new(session_id),
+                        "model",
+                        value.as_str(),
+                    ))
+                    .block_task()
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| format!("同步会话模型失败: {e}"));
+                let _ = reply.send(outcome);
+            }
+            Command::Resume {
+                session_id,
+                cwd,
+                reply,
+            } => {
+                let outcome = connection
+                    .send_request(ResumeSessionRequest::new(SessionId::new(session_id), cwd))
+                    .block_task()
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| format!("无法恢复原 AI 会话，请保留记录并新建会话: {e}"));
+                let _ = reply.send(outcome);
+            }
+            Command::Cancel { session_id, reply } => {
+                let outcome = connection
+                    .send_notification(CancelNotification::new(SessionId::new(session_id)))
+                    .map_err(|e| format!("ACP session/cancel 失败: {e}"));
+                let _ = reply.send(outcome);
+            }
             Command::NewSession { cwd, reply } => {
                 let outcome = connection
                     .send_request(NewSessionRequest::new(cwd))
@@ -468,13 +669,10 @@ async fn serve_commands(
             }
             Command::Prompt {
                 session_id,
-                text,
+                content,
                 reply,
             } => {
-                let request = PromptRequest::new(
-                    SessionId::new(session_id.clone()),
-                    vec![ContentBlock::Text(TextContent::new(text))],
-                );
+                let request = PromptRequest::new(SessionId::new(session_id.clone()), content);
                 // Fire-and-forget: the turn's result is announced as an event so
                 // the caller is not held for the length of a model turn.
                 let sink = Arc::clone(&on_update);
@@ -544,6 +742,8 @@ fn handle_permission(
 
     cx.spawn(async move {
         let question = ApprovalQuestion {
+            session_id: Some(request.session_id.0.to_string()),
+            intent: None,
             // An unannounced call is still a call: name it by its id and ask
             // anyway. Answering "no" without asking would be safe but wrong —
             // it would deny work the user never got to see.
@@ -567,6 +767,7 @@ fn handle_permission(
         let decision = tokio::task::spawn_blocking(move || on_permission(question))
             .await
             .unwrap_or_else(|e| ApprovalDecision {
+                modified_args: None,
                 approved: false,
                 reason: format!("审批任务异常终止，按拒绝处理: {e}"),
             });

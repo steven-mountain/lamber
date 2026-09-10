@@ -1,3 +1,7 @@
+import { invoke } from '@tauri-apps/api/core';
+import { assertStructureBinding, consumeStructurePreview, issueStructurePreview, finishStructureRequest, useStructureRequest, type ReverseRequest } from '../services/chatStructureReverse';
+import { structureSubjectChanges, type StructureReverseResult } from '../lib/structureReverseResult';
+import { assertDocumentBinding, finishDocumentRequest, useDocumentRequest, type DocumentRequest } from '../services/chatDocumentGeneration';
 import { useEffect, useState, useCallback, useMemo } from "react";
 import WorkspaceHeader from "../components/WorkspaceHeader";
 import { useRef } from "react";
@@ -219,11 +223,19 @@ export default function IctLifecycle() {
   const { confirmOrSave } = useUnsavedChangesGuard();
   const isHydratingRef = useRef(false);
   const projectLoadRequestRef = useRef(0);
+  const [loadedDocumentProject, setLoadedDocumentProject] = useState<string | null>(null);
+  const [projectLoadError, setProjectLoadError] = useState('');
+  const documentRequest = useDocumentRequest(value => value.request);
+  const documentPhase = useDocumentRequest(value => value.phase);
+  const openingDocumentRef = useRef<string | null>(null);
+  const documentSchemeRef = useRef<string | null>(null);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [schemes, setSchemes] = useState<BenefitAnalysisScheme[]>([]);
   const [activeScheme, setActiveScheme] = useState<BenefitAnalysisScheme | null>(null);
+  const documentContextRef = useRef('');
+  documentContextRef.current = JSON.stringify([workspaceId, activeProject?.id, activeScheme?.id]);
   const [activeSnapshot, setActiveSnapshot] = useState<BenefitAnalysisSnapshot | null>(null);
   const [pendingNewSchemeName, setPendingNewSchemeName] = useState<string | null>(null);
 
@@ -470,6 +482,8 @@ export default function IctLifecycle() {
 
   const loadProjectContext = useLatestCallback(async (pId: string | null, sId?: string | null) => {
     const requestId = ++projectLoadRequestRef.current;
+    setLoadedDocumentProject(null);
+    setProjectLoadError('');
     const targetProjectId = pId || null;
     const targetSchemeId = sId || null;
 
@@ -511,6 +525,7 @@ export default function IctLifecycle() {
       const project = await projectService.getProject(targetProjectId);
       if (requestId !== projectLoadRequestRef.current) return;
       if (!project) {
+        setProjectLoadError('未找到会话绑定项目。');
         localStorage.removeItem("lamber_active_project_id");
         localStorage.removeItem("lamber_active_scheme_id");
         setActiveProject(null);
@@ -660,8 +675,11 @@ export default function IctLifecycle() {
     } catch (err) {
       if (requestId === projectLoadRequestRef.current) {
         isHydratingRef.current = false;
+        setProjectLoadError(String(err));
       }
       console.error("Failed to load project context:", err);
+    } finally {
+      if (requestId === projectLoadRequestRef.current) setLoadedDocumentProject(targetProjectId);
     }
   });
 
@@ -1046,6 +1064,8 @@ export default function IctLifecycle() {
     selLimit,
     selectionFeeAnchor, setSelectionFeeAnchor,
     selectionFeeTargetSubjectCode, setSelectionFeeTargetSubjectCode,
+    selectionFeeMergeService, setSelectionFeeMergeService,
+    selFeeExcl, selectionFeeError, selectionFeePending, selectionFeeReady, selectionFeeNotice,
     revMode, setRevMode,
     revTargetType, setRevTargetType,
     revTargetValue, setRevTargetValue,
@@ -1249,6 +1269,97 @@ export default function IctLifecycle() {
     performReverseCalculation(selectedReverseSubject, reverseCalculationContext);
   };
 
+  const structureRequest = useStructureRequest(value => value.request);
+  const structurePhase = useStructureRequest(value => value.phase);
+  const openingStructureRef = useRef('');
+  const structureEditorRef = useRef('');
+  structureEditorRef.current = JSON.stringify([workspaceId, activeProject?.id, activeScheme?.id,
+    projectLoadRequestRef.current, taxInclAutoFix, calculations.buildInputDataPayload()]);
+  const [appliedStructure, setAppliedStructure] = useState<{
+    request: ReverseRequest; before: Record<string, any>; result: Extract<StructureReverseResult, { status: 'success' }>;
+    schemeName: string; stage: string | null; snapshotVersion: number | null;
+  } | null>(null);
+  const runStructureRequest = useLatestCallback(async (request: ReverseRequest) => {
+    const stamp = structureEditorRef.current;
+    const assertCurrent = () => {
+      const navigation = useNavigationStore.getState();
+      if (structureEditorRef.current !== stamp || navigation.currentView !== 'ict_lifecycle'
+        || navigation.activeProjectId !== request.projectId || navigation.activeSchemeId !== request.schemeId
+        || useStructureRequest.getState().request?.requestId !== request.requestId) {
+        throw new Error('项目、方案或输入已变化，请重新选择科目并读取范围。');
+      }
+    };
+    try {
+      await assertStructureBinding(request);
+      assertCurrent();
+      if (projectLoadError) throw new Error(projectLoadError);
+      if (!activeProject || activeProject.id !== request.projectId || activeScheme?.id !== request.schemeId) throw new Error('绑定项目或所选方案未能加载。');
+      if (pendingNewSchemeName) throw new Error('当前正在创建新方案，请先完成后再反算。');
+      const subject = ICT_SUBJECT_DEFINITIONS.find(item => item.subjectCode === request.subjectCode);
+      if (!subject) throw new Error('请选择需要反算的计费科目。');
+      const evaluation = subject.side === 'revenue' ? revenueBalanceEvaluation : investmentBalanceEvaluation;
+      const option = getReverseEligibleSubjects(subject.side, balanceSubjectItems, evaluation).find(item => item.subject.subjectCode === subject.subjectCode);
+      if (!option) throw new Error('请选择需要反算的计费科目。');
+      const context = resolveReverseCalculationContext({ option, subjects: balanceSubjectItems, sameSideBalanceEvaluation: evaluation });
+      if (blockingBalanceMessages.length) throw new Error(blockingBalanceMessages.join('\n'));
+      if (context.mode === 'blocked') throw new Error(context.message);
+      if (context.mode !== 'locked_total_structure') throw new Error('当前未启用同侧总额锁定与差额承接，请先在测算页完善结构反算前置条件。');
+      if (!['margin', 'npv_rate'].includes(request.metricType)) throw new Error('请选择目标指标类型。');
+      if (request.action === 'apply' && (!Number.isFinite(request.target) || !request.token)) throw new Error('请输入有效的目标值。');
+      if (request.action === 'apply') consumeStructurePreview(request, stamp);
+      const before = calculations.buildInputDataPayload();
+      useStructureRequest.setState({ phase: 'running' });
+      const result = await calculations.performReverseCalculation(option, context, {
+        target: request.target ?? 0,
+        silent: true, previewOnly: request.action === 'preview', metricType: request.metricType,
+        beforeCommit: async () => {
+          await assertStructureBinding(request);
+          assertCurrent();
+          // User-confirmed inputs only; no persistence or automatic target adjustment.
+          setRevSubjectRefKey(getReverseSubjectRefKey(option.ref));
+          setRevMode(subject.side); setRevTargetType(request.metricType); setRevTargetValue(String(request.target));
+        },
+      });
+      if (!result) throw new Error('结构反算没有返回执行结果。');
+      const scheme = { schemeName: activeScheme.name, stage: activeScheme.stage ?? null, snapshotVersion: activeSnapshot?.version ?? null };
+      if (result.status === 'range') {
+        await assertStructureBinding(request);
+        assertCurrent();
+        await finishStructureRequest(request, { status: 'preview', token: issueStructurePreview(request, stamp), ...scheme,
+          subjectName: context.structure.targetDisplayName, balancingName: context.structure.balancingDisplayName,
+          side: subject.side, totalIncl: context.structure.totalInclAmount, minMetric: result.minMetric, maxMetric: result.maxMetric });
+      } else if (result.status === 'error') {
+        await finishStructureRequest(request, result);
+      } else {
+        setAppliedStructure({ request, before, result, ...scheme });
+      }
+    } catch (error) {
+      await finishStructureRequest(request, { status: 'error', message: error instanceof Error ? error.message : String(error) });
+    }
+  });
+  useEffect(() => {
+    if (!structureRequest || structurePhase !== 'opening' || loadedDocumentProject !== structureRequest.projectId
+      || !calculations.calculationReady || openingStructureRef.current === structureRequest.requestId) return;
+    openingStructureRef.current = structureRequest.requestId;
+    void runStructureRequest(structureRequest);
+  }, [structureRequest, structurePhase, loadedDocumentProject, calculations.calculationReady, runStructureRequest]);
+  useEffect(() => {
+    if (!appliedStructure || !calculations.calculationReady) return;
+    const { request, before, result, ...scheme } = appliedStructure;
+    const actual: Record<string, any> = calculations.buildInputDataPayload();
+    const achieved = Number(calculations.metrics[result.metricType === 'margin' ? 'margin_rate' : 'npv_rate']);
+    const matches = ICT_SUBJECT_DEFINITIONS.every(subject =>
+      JSON.stringify(actual[subject.subjectCode]) === JSON.stringify(result.expectedInput[subject.subjectCode]));
+    const cashflowMatches = ['rev_cashflow_excl', 'cost_cashflow_excl', 'it_rev_cashflow_excl', 'it_cost_cashflow_excl'].every(key =>
+      JSON.stringify(actual[key]) === JSON.stringify(result.expectedInput[key]));
+    const verified = matches && cashflowMatches && !calculations.calculationError && achieved === result.achieved && result.targetReached;
+    setAppliedStructure(null);
+    void finishStructureRequest(request, { status: verified ? 'success' : 'applied_warning',
+      ...scheme, target: result.target, achieved, metricType: result.metricType, targetReached: verified,
+      message: verified ? result.message : `金额已更新，但实际编辑器结果与反算候选不一致，请核对后再保存。\n${result.message}`,
+      changes: structureSubjectChanges(before, actual) }).catch(console.error);
+  }, [appliedStructure, calculations]);
+
   useEffect(() => {
     if (!activeProject?.id || !workspaceId) return;
 
@@ -1434,7 +1545,7 @@ export default function IctLifecycle() {
     selFee,
     selLimit,
     selectionFeeAnchor,
-    selectionFeeTargetSubjectCode,
+    selectionFeeTargetSubjectCode, selectionFeeMergeService,
   ]);
 
   const completeTabSwitch = (tab: string, templateName?: string) => {
@@ -1448,14 +1559,15 @@ export default function IctLifecycle() {
     setPendingTab(null);
   };
 
-  const handleTabSwitch = async (tab: string, templateName?: string, forceIgnore = false) => {
+  const handleTabSwitch = async (tab: string, templateName?: string, forceIgnore = false, report?: (message: string) => void) => {
     if (templateName && templateName !== selectedTemplate && dirtyScopes.includes("template-forms")) {
       const canProceed = await confirmOrSave();
-      if (!canProceed) return;
+      if (!canProceed) { report?.('已取消切换模板。'); return; }
     }
 
     if ((tab === 'cashflow' || tab === 'generate') && blockingBalanceMessages.length > 0) {
       alert(blockingBalanceMessages.join("\n"));
+      report?.(blockingBalanceMessages.join("\n"));
       return;
     }
 
@@ -1463,6 +1575,7 @@ export default function IctLifecycle() {
       const blockingMessage = getSubjectFundingBlockingMessage("进入文档生成");
       if (blockingMessage) {
         alert(blockingMessage);
+        report?.(blockingMessage);
         return;
       }
 
@@ -1478,7 +1591,7 @@ export default function IctLifecycle() {
             `“${templateName.replace(/\.(docx|xlsx)$/i, "")}”通常应基于甄选后方案生成，\n` +
             `建议先切换到“甄选后”方案再生成。\n\n确定：仍然继续生成\n取消：返回切换方案`
         );
-        if (!proceed) return;
+        if (!proceed) { report?.('已取消当前方案的文档生成，请切换方案后重试。'); return; }
       }
     }
 
@@ -1495,6 +1608,7 @@ export default function IctLifecycle() {
           setCurrentTotalDifference(totalDifference);
           setPendingTab({ tab, template: templateName });
           setShowReconciliationModal(true);
+          report?.("财务尾差核验未通过，请在主窗口完成原有核验后重新点击生成卡片。\n" + JSON.stringify(errors));
           return;
         }
       }
@@ -1506,7 +1620,47 @@ export default function IctLifecycle() {
     }
 
     completeTabSwitch(tab, templateName);
+    return true;
   };
+
+  const openDocumentTemplate = useLatestCallback(async (request: DocumentRequest) => {
+    const identity = documentContextRef.current;
+    const assertContext = () => {
+      if (documentContextRef.current !== identity || useDocumentRequest.getState().request?.requestId !== request.requestId) throw new Error('项目或方案已切换，请重新发起生成。');
+    };
+    try {
+      await assertDocumentBinding(request);
+      if (projectLoadError) throw new Error(projectLoadError);
+      if (calculations.calculationError) throw new Error(calculations.calculationError);
+      if (!activeProject || activeProject.id !== request.projectId) throw new Error('绑定项目未能加载。');
+      const available = await invoke<string[]>('get_available_templates', { moduleId: 'ict_lifecycle' });
+      if (!available.includes(request.templateName)) throw new Error('当前模板目录中没有找到目标模板。');
+      assertContext();
+      let blocked = '';
+      const opened = await handleTabSwitch('generate', request.templateName, false, message => { blocked = message; });
+      if (!opened) throw new Error(blocked || '已取消进入文档生成。');
+      await assertDocumentBinding(request);
+      assertContext();
+      documentSchemeRef.current = activeScheme?.id ?? null;
+      useDocumentRequest.setState({ phase: 'generating' });
+    } catch (error) {
+      await finishDocumentRequest(request, { status: 'error', message: String(error) });
+    }
+  });
+  useEffect(() => {
+    if (!documentRequest || documentPhase !== 'opening' || !calculations.calculationReady || loadedDocumentProject !== documentRequest.projectId
+      || activeProjectId !== documentRequest.projectId || openingDocumentRef.current === documentRequest.requestId) return;
+    openingDocumentRef.current = documentRequest.requestId;
+    void openDocumentTemplate(documentRequest);
+  }, [documentRequest, documentPhase, loadedDocumentProject, activeProjectId, calculations.calculationReady, openDocumentTemplate]);
+
+  useEffect(() => {
+    if (!documentRequest || documentPhase !== 'generating') return;
+    if (activeTab !== 'generate' || selectedTemplate !== documentRequest.templateName || !loadedDocumentProject
+      || (activeScheme?.id ?? null) !== documentSchemeRef.current) {
+      void finishDocumentRequest(documentRequest, { status: 'cancelled', message: '项目、方案或模板已切换，请重新点击生成卡片。' }).catch(console.error);
+    }
+  }, [documentRequest, documentPhase, activeTab, selectedTemplate, loadedDocumentProject, activeScheme?.id]);
 
   const handleApplyReconciliationSplit = (
     errorIndex: number,
@@ -2041,7 +2195,7 @@ export default function IctLifecycle() {
               {reverseCalculationContext.mode === "locked_total_structure" && (
                 <span className="text-[11px] leading-relaxed text-primary bg-primary-soft rounded-md px-2 py-1 font-semibold">
                   当前为结构反算模式：{reverseCalculationContext.structure.sideLabel}含税总金额保持 {formatReverseCurrency(reverseCalculationContext.structure.totalInclAmount)} 不变。调整“{reverseCalculationContext.structure.targetDisplayName}”时，“{reverseCalculationContext.structure.balancingDisplayName}”将自动反向补差。
-                  {state.cashflowModel === "model_e" && state.segmentValueMode === "amount" ? " 分板块现金流金额计划将同步更新。" : ""}
+                  {" 科目收付款计划将同步更新。"}
                 </span>
               )}
               {reverseCalculationContext.mode === "normal" && (
@@ -2069,10 +2223,10 @@ export default function IctLifecycle() {
         </button>
       </div>
       <h3 className="font-bold text-foreground mb-4">采购甄选费测算</h3>
-      <div className="bg-card border border-border p-4 rounded-xl flex flex-col gap-3">
+      <div className="bg-card shadow-sm p-4 rounded-xl flex flex-col gap-3">
         <div className="flex flex-col gap-1">
            <div className="flex items-center gap-1.5">
-             <label className="text-xs font-semibold text-secondary-foreground">供应商报价 (元)</label>
+             <label className="text-xs font-semibold text-secondary-foreground">供应商报价（含税，元）</label>
              <button
                type="button"
                aria-label="固定供应商报价"
@@ -2084,22 +2238,22 @@ export default function IctLifecycle() {
                <span className={`h-2.5 w-2.5 rounded-full ${selectionFeeAnchor === 'quote' ? 'bg-primary' : 'bg-secondary-foreground/35'}`} />
              </button>
            </div>
-           <input type="number" aria-label="供应商报价" value={selQuote} onChange={e => handleSelFeeChange('quote', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none" />
+           <input type="number" aria-label="供应商报价" value={selQuote} onChange={e => handleSelFeeChange('quote', e.target.value)} className="bg-muted/50 numeric-value px-3 py-2 rounded-md text-sm outline-none" />
         </div>
         <div className="flex flex-col gap-1">
-           <label className="text-xs font-semibold text-secondary-foreground">代理服务费浮动 (+)</label>
-           <input type="number" aria-label="代理服务费浮动" value={selMarkup} onChange={e => handleSelFeeChange('markup', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none" />
+           <label className="text-xs font-semibold text-secondary-foreground">代理服务费浮动（含税，元）</label>
+           <input type="number" aria-label="代理服务费浮动" value={selMarkup} onChange={e => handleSelFeeChange('markup', e.target.value)} className="bg-muted/50 numeric-value px-3 py-2 rounded-md text-sm outline-none" />
         </div>
         <div className="flex flex-col gap-1">
-           <label className="text-xs font-semibold text-secondary-foreground">测算甄选费 / 实际测算成本</label>
+           <label className="text-xs font-semibold text-secondary-foreground">甄选费 / 实际测算成本（含税）</label>
            <div className="flex gap-2">
-             <input type="text" aria-label="测算甄选费" disabled value={selFee} className="bg-muted/50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
-             <input type="text" aria-label="实际测算成本" disabled value={selActualCost} className="bg-muted/50 border border-input px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
+             <input type="text" aria-label="测算甄选费" disabled value={selFee} className="bg-muted/50 numeric-value px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
+             <input type="text" aria-label="实际测算成本" disabled value={selActualCost} className="bg-muted/50 numeric-value px-3 py-2 rounded-md text-sm w-full text-secondary-foreground" />
            </div>
         </div>
-        <div className="flex flex-col gap-1 mt-2 border-t border-border pt-3">
+        <div className="flex flex-col gap-1 mt-2 rounded-lg bg-muted/25 p-2.5">
            <div className="flex items-center gap-1.5">
-             <label className="text-xs font-semibold text-primary">甄选最高限价 (反向测算入口)</label>
+             <label className="text-xs font-semibold text-primary">甄选最高限价（含税，反算）</label>
              <button
                type="button"
                aria-label="固定甄选最高限价"
@@ -2111,7 +2265,7 @@ export default function IctLifecycle() {
                <span className={`h-2.5 w-2.5 rounded-full ${selectionFeeAnchor === 'limit' ? 'bg-primary' : 'bg-secondary-foreground/35'}`} />
              </button>
            </div>
-           <input type="number" aria-label="甄选最高限价" value={selLimit} onChange={e => handleSelFeeChange('limit', e.target.value)} className="bg-card border border-input px-3 py-2 rounded-md text-sm outline-none text-foreground font-bold" />
+           <input type="number" aria-label="甄选最高限价" value={selLimit} onChange={e => handleSelFeeChange('limit', e.target.value)} className="bg-muted/50 numeric-value px-3 py-2 rounded-md text-sm outline-none text-foreground font-bold" />
         </div>
         <div className="flex flex-col gap-1.5 rounded-lg bg-muted/35 p-2.5">
           <label className="text-xs font-semibold text-secondary-foreground" htmlFor="selection-fee-target-subject">
@@ -2122,7 +2276,7 @@ export default function IctLifecycle() {
             aria-label="甄选限价写入投入科目"
             value={selectionFeeTargetSubjectCode}
             onChange={event => setSelectionFeeTargetSubjectCode(event.target.value)}
-            className="bg-card border border-input px-3 py-2 rounded-md text-xs font-semibold text-foreground outline-none"
+            className="bg-muted/50 numeric-value px-3 py-2 rounded-md text-xs font-semibold text-foreground outline-none"
           >
             {SELECTION_FEE_TARGET_GROUPS.map(group => (
               <optgroup key={group.groupId} label={group.label}>
@@ -2134,12 +2288,24 @@ export default function IctLifecycle() {
             ))}
           </select>
           <span className="text-[11px] leading-relaxed text-secondary-foreground">
-            目标科目写入“最高限价－甄选服务费”，甄选服务费由供应商承担并单独写入“中标服务费”。
+            {selectionFeeMergeService
+              ? '目标科目写入全额含税限价；中标服务费科目保持原值。如已有单列金额，请自行核对，避免重复计入。'
+              : '目标科目写入“含税限价－含税服务费”，含税服务费单独写入“中标服务费”。'}
           </span>
         </div>
+        <label className="flex items-center gap-2 rounded-lg bg-muted/40 p-2.5 text-xs text-foreground">
+          <input type="checkbox" checked={selectionFeeMergeService} onChange={event => setSelectionFeeMergeService(event.target.checked)} />
+          合并写入目标科目（不单列中标服务费）
+        </label>
+        <p className="text-xs leading-relaxed text-secondary-foreground numeric-value">
+          报价按固定 6% 除税查档；目标科目当前税率须为 6%。{selFeeExcl && `服务费不含税 ${selFeeExcl} 元。`}
+        </p>
+        {selectionFeePending && <p role="status" className="text-xs text-secondary-foreground">正在计算甄选费…</p>}
+        {selectionFeeError && <p role="alert" className="rounded-lg bg-destructive-soft p-2.5 text-xs text-destructive">{selectionFeeError}</p>}
+        {selectionFeeNotice && <p role="status" className="rounded-lg bg-warning-soft p-2.5 text-xs text-warning">{selectionFeeNotice}</p>}
         <button
           onClick={applySelectionLimit}
-          disabled={!selLimit}
+          disabled={!selectionFeeReady}
           className="mt-2 bg-primary hover:bg-primary/95 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed font-bold py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all active:scale-[0.98] w-full text-xs flex items-center justify-center gap-1.5"
         >
           <AppIcon name="download" size={14} /> 填入{selectedSelectionFeeTarget
@@ -2261,35 +2427,35 @@ export default function IctLifecycle() {
 
         <div className="min-w-0 p-4 sm:p-6 overflow-y-auto bg-background flex flex-col">
           {activeProject ? (
-            <div className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center gap-4 shadow-sm animate-in slide-in-from-top duration-300">
-              <div className="flex min-w-0 items-start sm:items-center gap-3">
+            <div className="bg-card rounded-xl p-4 mb-6 flex flex-col gap-4 shadow-sm animate-in slide-in-from-top duration-300">
+              <div className="flex min-w-0 items-start gap-3">
                 <div className="bg-primary/10 p-2.5 rounded-lg text-primary shrink-0">
                   <AppIcon name="project" size={20} />
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-extrabold text-foreground text-sm break-words">{activeProject.name}</span>
-                    <span className="text-xs text-secondary-foreground">({activeProject.customer_name})</span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                    <span className="font-extrabold text-foreground text-sm min-w-0 break-words [overflow-wrap:anywhere]">{activeProject.name}</span>
+                    <span className="text-xs min-w-0 text-secondary-foreground [overflow-wrap:anywhere]">({activeProject.customer_name})</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0 whitespace-nowrap ${
                       activeProject.benefit_status === 'normal'
-                        ? 'bg-success-soft text-success-foreground border-success-soft/80'
+                        ? 'bg-success-soft text-success-foreground'
                         : activeProject.benefit_status === 'outdated'
-                        ? 'bg-warning-soft text-warning-foreground border-warning-soft/80'
-                        : 'bg-muted text-muted-foreground border-border'
+                        ? 'bg-warning-soft text-warning-foreground'
+                        : 'bg-muted text-muted-foreground'
                     }`}>
                       效益状态: {activeProject.benefit_status === 'normal' ? '最新' : activeProject.benefit_status === 'outdated' ? '已失效' : '未测算'}
                     </span>
                   </div>
-                  <div className="text-xs text-secondary-foreground mt-0.5 flex items-center gap-2 min-w-0">
+                  <div className="text-xs text-secondary-foreground mt-2 flex flex-wrap items-center gap-2 min-w-0">
                     {pendingNewSchemeName ? (
                       <span className="truncate">拟新建方案: <span className="font-semibold text-primary">{pendingNewSchemeName}</span> (未保存)</span>
                     ) : (
                       <>
-                        {/* 阶段切换控件放在固定的最左侧，位置不随方案名长短变化；方案名放其右侧并按需截断。 */}
+                        {/* 阶段入口优先显示；空间不足时整组换行，当前方案名保留可读宽度。 */}
                         {activeScheme && (
-                          <span className="inline-flex items-center gap-1.5 shrink-0">
-                            <span className="inline-flex overflow-hidden rounded-md border border-border">
-                              {SCHEME_STAGE_OPTIONS.map((option, idx) => {
+                          <span className="inline-flex max-w-full flex-wrap items-center gap-1.5">
+                            <span className="inline-flex flex-wrap gap-0.5 rounded-md bg-muted/50 p-0.5">
+                              {SCHEME_STAGE_OPTIONS.map((option) => {
                                 const stageScheme = option.value === "pre_selection" ? preScheme : postScheme;
                                 const exists = Boolean(stageScheme);
                                 const isActive = exists && activeScheme.id === stageScheme!.id;
@@ -2305,7 +2471,7 @@ export default function IctLifecycle() {
                                     key={option.value}
                                     type="button"
                                     onClick={() => handleStageButtonClick(option.value)}
-                                    className={`px-2 py-0.5 text-[10px] font-semibold transition-all ${idx > 0 ? "border-l border-border" : ""} ${
+                                    className={`min-h-8 shrink-0 whitespace-nowrap rounded-sm px-2 py-0.5 text-[10px] font-semibold transition-all ${
                                       isActive
                                         ? option.chipClass
                                         : exists
@@ -2327,7 +2493,7 @@ export default function IctLifecycle() {
                                   e.target.value = "";
                                   if (sid) await switchToScheme(sid);
                                 }}
-                                className="bg-card border border-border rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-secondary-foreground outline-none focus:border-ring cursor-pointer"
+                                className="h-8 w-32 max-w-full min-w-0 bg-muted/50 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-secondary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/20 cursor-pointer"
                                 title="其他方案（未标注阶段 / 同阶段历史方案）"
                               >
                                 <option value="" disabled>更多方案 ▾</option>
@@ -2342,14 +2508,16 @@ export default function IctLifecycle() {
                             )}
                           </span>
                         )}
-                        <span className="truncate min-w-0">当前方案: <span className="font-semibold text-primary">{activeScheme?.name || "默认方案"}</span> {activeSnapshot ? `(v${activeSnapshot.version})` : ''}</span>
+                        <span className="min-w-0 basis-48 flex-1 truncate" title={activeScheme?.name || "默认方案"}>当前方案: <span className="font-semibold text-primary">{activeScheme?.name || "默认方案"}</span> {activeSnapshot ? `(v${activeSnapshot.version})` : ''}</span>
                       </>
                     )}
                   </div>
                 </div>
               </div>
-              <div className="grid w-full min-w-0 grid-cols-1 gap-2 md:grid-cols-[auto_minmax(0,1fr)_auto_auto] lg:w-auto lg:min-w-[520px] lg:max-w-[680px]">
-                <ProjectPresetProjectActions bindings={projectPresetBindings} />
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <div className="flex max-w-full flex-wrap items-center gap-2">
+                  <ProjectPresetProjectActions bindings={projectPresetBindings} />
+                </div>
                 <select
                   onChange={async (e) => {
                     const pid = e.target.value;
@@ -2362,7 +2530,8 @@ export default function IctLifecycle() {
                     }
                   }}
                   value={activeProject.id}
-                  className="w-full min-w-0 bg-card border border-input px-3 py-1.5 rounded-lg text-xs outline-none focus:border-ring font-semibold text-foreground cursor-pointer"
+                  aria-label="关联项目"
+                  className="h-9 min-w-0 max-w-full flex-[1_1_14rem] bg-card border border-input px-3 py-1.5 rounded-lg text-xs outline-none focus:border-ring font-semibold text-foreground cursor-pointer"
                 >
                   <option value="free">断开关联 (进入自由测算)</option>
                   {projects.map(p => (
@@ -2370,41 +2539,43 @@ export default function IctLifecycle() {
                   ))}
                 </select>
 
-                <button
-                  id="save_benefit_btn"
-                  onClick={handleSaveToCurrent}
-                  className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-lg text-xs hover:bg-primary/90 transition-all shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] whitespace-nowrap"
-                >
-                  <AppIcon name="save" size={14} /> 保存到当前项目
-                </button>
-                <button
-                  id="save_as_new_benefit_btn"
-                  onClick={() => {
-                    setSaveAsSchemeStage(null);
-                    setSaveAsSchemeName(activeScheme?.name ? `${activeScheme.name}_复本` : "新方案");
-                    setShowSaveAsModal(true);
-                  }}
-                  className="bg-card border border-border text-foreground hover:bg-secondary font-bold px-4 py-2 rounded-lg text-xs transition-all shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] whitespace-nowrap"
-                >
-                  <AppIcon name="copy" size={14} /> 另存为新方案
-                </button>
+                <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">
+                  <button
+                    id="save_benefit_btn"
+                    onClick={handleSaveToCurrent}
+                    className="h-9 shrink-0 bg-primary text-primary-foreground font-bold px-4 py-2 rounded-lg text-xs hover:bg-primary/90 transition-all shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] whitespace-nowrap"
+                  >
+                    <AppIcon name="save" size={14} /> 保存到当前项目
+                  </button>
+                  <button
+                    id="save_as_new_benefit_btn"
+                    onClick={() => {
+                      setSaveAsSchemeStage(null);
+                      setSaveAsSchemeName(activeScheme?.name ? `${activeScheme.name}_复本` : "新方案");
+                      setShowSaveAsModal(true);
+                    }}
+                    className="h-9 shrink-0 bg-muted/50 text-foreground hover:bg-secondary font-bold px-4 py-2 rounded-lg text-xs transition-all shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] whitespace-nowrap"
+                  >
+                    <AppIcon name="copy" size={14} /> 另存为新方案
+                  </button>
+                </div>
               </div>
             </div>
           ) : (
-            <div className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center gap-4 shadow-sm">
-              <div className="flex min-w-0 items-start sm:items-center gap-3">
+            <div className="bg-card rounded-xl p-4 mb-6 flex flex-col gap-4 shadow-sm">
+              <div className="flex min-w-0 items-start gap-3">
                 <div className="bg-secondary p-2.5 rounded-lg text-primary shrink-0">
                   <AppIcon name="project" size={20} />
                 </div>
-                <div className="min-w-0">
-                  <div className="font-extrabold text-foreground text-sm flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="font-extrabold text-foreground text-sm flex flex-wrap items-center gap-2">
                     <span className="whitespace-nowrap">自由测算模式</span>
                     <span className="text-[10px] bg-secondary text-secondary-foreground font-bold px-2 py-0.5 rounded-full">未绑定项目</span>
                   </div>
-                  <div className="text-xs leading-relaxed text-secondary-foreground mt-0.5">你可以输入参数进行效益测算。如需保存，请在右侧选择关联一个项目：</div>
+                  <div className="text-xs leading-relaxed text-secondary-foreground mt-0.5">你可以输入参数进行效益测算。如需保存，请选择关联一个项目：</div>
                 </div>
               </div>
-              <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] lg:w-auto lg:min-w-[360px] lg:max-w-[520px]">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <select
                   onChange={async (e) => {
                     const pid = e.target.value;
@@ -2415,7 +2586,8 @@ export default function IctLifecycle() {
                     }
                   }}
                   value=""
-                  className="w-full min-w-0 bg-card border border-input px-3 py-1.5 rounded-lg text-xs outline-none focus:border-ring font-semibold text-foreground cursor-pointer"
+                  aria-label="关联已有项目"
+                  className="h-9 min-w-0 max-w-full flex-[1_1_14rem] bg-card border border-input px-3 py-1.5 rounded-lg text-xs outline-none focus:border-ring font-semibold text-foreground cursor-pointer"
                 >
                   <option value="" disabled>-- 关联已有项目 --</option>
                   {projects.map(p => (
@@ -2425,7 +2597,7 @@ export default function IctLifecycle() {
                 <button
                   id="save_free_benefit_btn"
                   onClick={() => setShowSelectProjectModal(true)}
-                  className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-lg text-xs hover:bg-primary/90 transition-all shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] whitespace-nowrap"
+                  className="h-9 shrink-0 bg-primary text-primary-foreground font-bold px-4 py-2 rounded-lg text-xs hover:bg-primary/90 transition-all shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] whitespace-nowrap"
                 >
                   <AppIcon name="save" size={14} /> 保存当前测算
                 </button>
@@ -2481,6 +2653,7 @@ export default function IctLifecycle() {
           <div className={`flex-col gap-6 ${activeTab === "generate" ? "flex" : "hidden"} ${isTabbedDocumentTemplate ? "" : "bg-card border border-border rounded-xl p-8 shadow-sm"}`}>
             {!isTabbedDocumentTemplate && <h3 className="text-lg font-bold text-foreground">即将生成：{selectedTemplate}</h3>}
             <TemplateForms
+              documentRequest={(documentPhase === 'generating' || documentPhase === 'running') && calculations.calculationReady && activeTab === 'generate' && documentRequest?.projectId === activeProject?.id && documentRequest?.templateName === selectedTemplate ? documentRequest : null}
               selectedTemplate={selectedTemplate}
               projectData={{
                 basic: {proj_name: projName, customer_name: customerName, project_years: projectYears},
@@ -2494,6 +2667,7 @@ export default function IctLifecycle() {
                   limit: selLimit,
                   anchor: selectionFeeAnchor,
                   targetSubjectCode: selectionFeeTargetSubjectCode,
+                  mergeService: selectionFeeMergeService,
                 },
               }}
               metrics={metrics}

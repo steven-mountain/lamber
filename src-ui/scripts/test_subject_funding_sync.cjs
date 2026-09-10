@@ -1,27 +1,12 @@
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
 const path = require("node:path");
-const vm = require("node:vm");
-const ts = require("typescript");
-
-const sourcePath = path.join(__dirname, "../src/lib/ictSubjectFundingPlan.ts");
-const source = fs.readFileSync(sourcePath, "utf8");
-const transpiled = ts.transpileModule(source, {
-  compilerOptions: {
-    module: ts.ModuleKind.CommonJS,
-    target: ts.ScriptTarget.ES2020,
-  },
-});
-
-const moduleRef = { exports: {} };
-vm.runInNewContext(transpiled.outputText, {
-  module: moduleRef,
-  exports: moduleRef.exports,
-  require,
-}, { filename: sourcePath });
+const moduleRef = {exports:require("./load_ts.cjs")(path.join(__dirname,"../src/lib/ictSubjectFundingPlan.ts"))};
 
 const {
   buildUpfrontAnnualInclValues,
+  buildAnnualCashflowFromSubjectFundingPlans,
+  initializeMissingSubjectFundingPlans,
+  normalizeSubjectFundingPlans,
   createDefaultSubjectFundingPlan,
   createSubjectFundingPlanId,
   normalizeAnnualInclValues,
@@ -99,7 +84,7 @@ const roundCents = (v) => Math.round(v * 100) / 100;
 }
 
 // ─────────────────────────────────────────────────────────
-// Test 4: Clear to zero removes plan
+// Test 4: Clear to zero retains disabled plan
 // ─────────────────────────────────────────────────────────
 {
   const plan = createDefaultSubjectFundingPlan(revRef, 1000);
@@ -107,8 +92,10 @@ const roundCents = (v) => Math.round(v * 100) / 100;
 
   const result = syncSubjectFundingPlanToAmount(plans, revRef, 0);
   const synced = result[plan.id];
-  assert.equal(synced, undefined, "Plan should be removed");
-  console.log("  ✓ Test 4: Clear to zero removes plan");
+  assert.equal(synced.enabled, false);
+  assert.equal(sumAnnual(synced.annualInclValues), 0);
+  assert.equal(synced.lastValidAnnualInclValues[0], 1000);
+  console.log("  ✓ Test 4: Clear to zero retains disabled plan");
 }
 
 // ─────────────────────────────────────────────────────────
@@ -234,7 +221,7 @@ const roundCents = (v) => Math.round(v * 100) / 100;
 }
 
 // ─────────────────────────────────────────────────────────
-// Test 11: Negative amount removes plan
+// Test 11: Negative amount disables plan
 // ─────────────────────────────────────────────────────────
 {
   const plan = createDefaultSubjectFundingPlan(revRef, 1000);
@@ -242,8 +229,9 @@ const roundCents = (v) => Math.round(v * 100) / 100;
 
   const result = syncSubjectFundingPlanToAmount(plans, revRef, -500);
   const synced = result[plan.id];
-  assert.equal(synced, undefined, "Plan should be removed for negative amount");
-  console.log("  ✓ Test 11: Negative amount removes plan");
+  assert.equal(synced.enabled, false);
+  assert.equal(sumAnnual(synced.annualInclValues), 0);
+  console.log("  ✓ Test 11: Negative amount disables plan");
 }
 
 // ─────────────────────────────────────────────────────────
@@ -260,3 +248,30 @@ const roundCents = (v) => Math.round(v * 100) / 100;
 }
 
 console.log("\nAll subject funding sync tests passed.");
+
+// Persisted zero, repeated clear and restore use the production normalization/cashflow path.
+for (const mode of ["proportional", "upfront", "custom"]) {
+  const values = mode === "upfront" ? [106000, ...Array(9).fill(0)] : [26500,26500,26500,26500,...Array(6).fill(0)];
+  const plan = {...createDefaultSubjectFundingPlan(revRef,106000), mode, annualInclValues:values,
+    ...(mode === "proportional" ? {annualPercentages:[25,25,25,25,...Array(6).fill(0)]} : {})};
+  const before = JSON.stringify(plan);
+  const direct = syncSubjectFundingPlanToAmount({[plan.id]:plan},revRef,800000)[plan.id];
+  let zero = syncSubjectFundingPlanToAmount({[plan.id]:plan},revRef,0);
+  zero = syncSubjectFundingPlanToAmount(zero,revRef,0);
+  assert.equal(JSON.stringify(zero[plan.id].lastValidAnnualInclValues),JSON.stringify(values));
+  zero = normalizeSubjectFundingPlans(JSON.parse(JSON.stringify(zero)));
+  assert.equal(initializeMissingSubjectFundingPlans(zero,[]),zero);
+  assert.equal(initializeMissingSubjectFundingPlans(zero,[{subjectRef:revRef,amountIncl:800000}]),zero);
+  for (const fallbackUnmaintainedToUpfront of [false,true]) {
+    const cash=buildAnnualCashflowFromSubjectFundingPlans([{subjectRef:revRef,subjectAmountIncl:0,taxRate:6,isItScope:true}],zero,{fallbackUnmaintainedToUpfront});
+    assert.equal(sumAnnual(cash.annualRevenueIncl),0);
+    assert.equal(sumAnnual(cash.annualRevenueExcl),0);
+  }
+  const restored=syncSubjectFundingPlanToAmount(zero,revRef,800000)[plan.id];
+  assert.equal(restored.lastChangeReason,"restored_after_zero");
+  assert.equal(restored.mode,mode);
+  assert.equal(restored.enabled,true);
+  assert.equal(JSON.stringify(restored.annualInclValues),JSON.stringify(direct.annualInclValues));
+  assert.equal(JSON.stringify(plan),before);
+  console.log(`  ✓ ${mode}: repeated zero → serialize/reload → no cashflow → restored_after_zero, direct-edit distribution retained`);
+}

@@ -1,3 +1,5 @@
+import { reviewedArguments } from './reviewedArguments.js';
+import { authorizeTool } from './projectScope.js';
 /**
  * `write_test_marker` — a deliberately harmless write used to exercise the
  * human-approval channel end to end.
@@ -50,7 +52,9 @@ export const writeTestMarker = defineTool({
   },
   timeoutMs: 15_000,
   isConcurrencySafe: () => false,
-  async execute(args, exec) {
+  async execute(_args, exec) {
+    await authorizeTool(exec);
+    const args = await reviewedArguments(exec);
     exec.signal.throwIfAborted();
     const writtenAt = new Date().toISOString();
     // A fresh directory per call keeps concurrent runs from clobbering each other

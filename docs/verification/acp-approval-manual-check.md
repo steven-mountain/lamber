@@ -78,7 +78,7 @@ session/update · tool_call {"sessionId":"70e58328-…","update":{"sessionUpdate
   "status":"in_progress","rawInput":{"note":"真实点击联调"}}}
 session/update · tool_call_update {…,"toolCallId":"call_00_yyVXrY1hv9kEamuJC47y2124",
   "status":"completed","content":[{"type":"content","content":{"type":"text",
-  "text":"已写入测试标记文件: /var/folders/…/lamber-agent-marker-N8Q6mT/
+  "text":"已写入测试标记文件: <temp>/lamber-agent-marker-fixture/
   marker-2026-09-04T08-57-40-743Z.txt (212 字节, 2026-09-04T08:57:40.743Z)"}}]}
 ```
 

@@ -222,7 +222,7 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 ### 4.3.1 Subject-level funding plan cashflow source flow
 
 1. Each subject-row funding plan is keyed by `side + groupId + key` and stored in `useIctState.subjectFundingPlans`.
-2. Opening a plan editor creates a default manual upfront plan whose first-year tax-inclusive value equals the current subject inclusive amount. Later amount changes synchronize through `updateTaxItem` / `updateTaxItemsInclBatch`, preserving existing plan shape where possible.
+2. Opening a plan editor creates a default manual upfront plan whose first-year tax-inclusive value equals the current subject inclusive amount. Later amount changes synchronize through `updateTaxItem` / `updateTaxItemsInclBatch`, preserving existing plan shape where possible. A zero amount disables and zeroes the plan while retaining its last positive annual distribution; repeated zero does not overwrite that backup. A later positive amount restores the original mode/distribution with `restored_after_zero`, including after persistence/reload. Historical missing plans are not reconstructed.
 3. `IctSubjectFundingPlanEditor.tsx` updates plan mode, equal-year duration, custom annual values, and enabled state through pure helpers in `ictSubjectFundingPlan.ts`.
 4. Loading a project without `subjectFundingPlanMigrationVersion = 1` runs `migrateLegacySubjectFundingPlans()` after tax-item hydration. Missing non-zero subjects receive first-year upfront migration plans; existing valid plans are preserved; invalid plans are not overwritten and remain coverage blockers.
 5. `validateSubjectFundingPlanCoverage()` checks every non-zero revenue/cost subject before formal calculation/save/document generation. Required checks are: plan exists, enabled, exactly 10 annual values, no negative values, and tax-inclusive annual total equals the subject tax-inclusive amount. Zero-amount subjects do not require plans, but a non-zero plan on a zero subject is blocking.
@@ -231,6 +231,7 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 8. If coverage becomes invalid, `performCalculation()` refuses to call `calculate_ict_benefit`; the UI keeps the last valid cashflow/metrics visible with a stale warning. It does not fall back to legacy. Benefit-metric saves and document generation are blocked until coverage is valid.
 9. Current-state persistence stores plans, the fixed calculation source, and migration version in `project_cashflow_states.assumptions_json`; lifecycle/snapshot payloads carry `subject_funding_plans`, `cashflow_calculation_source`, and `subject_funding_plan_migration_version`. Rust `IctInput` accepts these fields for serialization compatibility; formal annual cashflow still enters through the existing override arrays.
 10. Smart reverse, balance allocation, and CT linkage remain available because final writes flow through subject amount update paths that synchronize subject funding plans.
+11. Locked-total structure reverse admits only metric-qualified solutions and rechecks the final recomputation before amount writes. Sample min/max bounds do not establish attainability between them. Rejections report target, closest observed metric and sampled range; the target and tolerances stay unchanged. See [the structure reverse contract](./modules/ict-structure-reverse.md).
 
 ### 4.3.2 Intelligent-compute amount sources and explicit ICT synchronization
 
@@ -311,6 +312,8 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 
 ### 4.8.3 ICT locked-total structure reverse flow
 
+Chat D uses `StructureReverseCard` → `chatStructureReverse` main-window IPC → the original `IctLifecycle` / `useIctCalculations` entry. A single-use preview binds the exact session, workspace, project, scheme, subject, metric and editor inputs. User selection precedes range sampling and target confirmation. There is no AI reverse/write tool. The settled editor result supplies the four-decimal target/actual pair and all affected subject funding-plan deltas to both the card and persistent `appReceipt` context.
+
 1. `IctLifecycle.tsx` resolves the reverse mode through `resolveReverseCalculationContext`. With no valid same-side balance rule, the existing normal reverse path is used. With a valid same-side balance rule and a non-balancing selected subject, the panel displays the locked-total structure hint and passes the structure context into `useIctCalculations`.
 2. `ictReverseCalculation.ts` builds the structure context from the locked total `T`, selected target subject `X`, balancing subject `B`, and fixed same-side subjects `F`. The reallocatable pool is `P = T - F`; candidates satisfy `X in [0, P]` and `B = P - X`, so neither amount is negative and the same-side inclusive total remains unchanged.
 3. `useIctCalculations.ts` evaluates structure candidates through the same `calculate_ict_benefit` IPC path as normal reverse. It samples `[0, P]` including 0%, 10%, ..., 100% plus the current target amount, detects metric-insensitive ranges and unreachable target metric ranges, then binary-searches only a crossing interval. If multiple intervals cross the target, it writes the solution closest to the current target amount.
@@ -318,6 +321,7 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 5. Structure reverse candidates synchronize target and balancing subject funding plans for candidate evaluation; the accepted final amounts are written through `updateTaxItemsInclBatch`.
 6. `CashflowSegment` amount-mode synchronization from earlier phases is retired as a formal calculation path. Stored segment fields are preserved only for old data compatibility.
 7. CT product revenue and CT line revenue retain their paired cost-subject behavior: product revenue mirrors to CT other-product cost, and line revenue mirrors to CT bandwidth cost. The paired changes also synchronize subject funding plans through the shared amount-update path.
+8. `ictTaxItemBatch.prepareIctTaxItemsInclBatch` is the shared pure transformation for candidate evaluation and the batch setter: normalization preference, split invalidation, CT linkage and funding synchronization are identical. Structure candidates normalize first, allocate any total difference to the balancing subject and normalize once again; unresolved totals are rejected before evaluation/write. Candidate CT items are rebuilt from the exact final setter arguments, since linked tax rates may differ. Final metric validation uses this effective payload. A preference change during solving rejects the operation before commit.
 
 ### 4.8.4 ICT tax-split reconciliation and persistence flow
 

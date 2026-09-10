@@ -35,6 +35,8 @@ When a bug exposes fragile architecture, duplicated state, inconsistent data flo
 * **Explain repair tradeoffs**: For meaningful fixes, briefly explain the root cause, why a minimal patch would be fragile, what technical debt is being reduced, and why the chosen scope is safe.
 * **Preserve business logic**: Keep existing formulas, rules, and logic unless explicitly requested.
 * **Financial logic alignment**: When editing calculation math, make sure not to break cashflow, NPV, tax separation, selection fee, or reverse-calculation logic.
+* **Validate the effective write**: Candidate evaluation and validation must use the exact state that the commit will write, including normalization, linked subjects, split invalidation, and funding plans. Share the transformation with the writer; a post-write warning cannot replace a pre-write rejection.
+* **Discrete target reachability**: Being within a sampled minimum/maximum does not prove that a target is reachable. Validate the final metric against the unchanged tolerance before writing; never rewrite the user's target to make a result pass.
 * **0-tolerance reconciliation check**: Respect the 0-tolerance financial check before transitions to cashflow tables or document generation.
 * **AI features control**: Ensure the AI copilot only reads serialized business states and never writes core project data directly without user action, such as manual clicking or confirmations.
 * **UI Design System**: Follow "The Architectural Ledger" guidelines in [DESIGN.md](./DESIGN.md). Adhere to the "No-Line Rule" using tonal surface changes instead of borders, rounded corners (`ROUND_FOUR`), the `Inter` font family, and tabular numbers for numerical displays.

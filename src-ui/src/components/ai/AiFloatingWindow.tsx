@@ -4,7 +4,7 @@ import AiChatPanel from './AiChatPanel';
 import { useAiContextStore } from '../../store/useAiContextStore';
 import AppIcon from '../icons/AppIcon';
 
-const AI_WINDOW_POSITION_KEY = 'lamber_ai_window_position';
+import { AI_WINDOW_POSITION_KEY } from '../../lib/aiWindowPlacement';
 const AI_CURRENT_VIEW_KEY = 'lamber_ai_current_view';
 
 interface AiFloatingWindowProps {
@@ -28,11 +28,10 @@ export default function AiFloatingWindow({ currentView }: AiFloatingWindowProps)
 
     try {
       const position = await appWindow.outerPosition();
-      const scaleFactor = await appWindow.scaleFactor();
-      const logicalPosition = position.toLogical(scaleFactor);
       localStorage.setItem(AI_WINDOW_POSITION_KEY, JSON.stringify({
-        x: logicalPosition.x,
-        y: logicalPosition.y,
+        version: 2,
+        x: position.x,
+        y: position.y,
       }));
     } catch (error) {
       console.warn('Failed to save AI window position:', error);

@@ -1,0 +1,57 @@
+{
+  "complete": {
+    "card": {
+      "path": "/private/tmp/lamber-chat-document-evidence/card-complete.docx",
+      "fileSHA256": "5c57d1be5f9c99e722e120c8b172398eba2785cb64c6dea43297e67719ac4cf4",
+      "bodySHA256": "cd301d8a902e640ccf41cd36b714376292be8c03e054d0cfa92477c8b6228a34"
+    },
+    "page": {
+      "path": "/private/tmp/lamber-chat-document-evidence/page-complete.docx",
+      "fileSHA256": "fe81892176348b3dfd9beffb9f10a7da720a4ea20f6b515326f2080350a47884",
+      "bodySHA256": "cd301d8a902e640ccf41cd36b714376292be8c03e054d0cfa92477c8b6228a34"
+    },
+    "textNodeCount": 50,
+    "textNodesIdentical": true,
+    "imagesInDocumentOrderIdentical": true,
+    "imageSHA256InDocumentOrder": [
+      "e16c42b64f622be99d67d81c692e81c6aefe30f591a5b1878e514b2ac32cb3ad",
+      "f3ec9e14b9c085b55edc96155f7bd26b6fdeda2462f02af4e0279d8319b365e3"
+    ],
+    "normalizedBodyIdentical": true
+  },
+  "missing": {
+    "card": {
+      "path": "/private/tmp/lamber-chat-document-evidence/card-missing.docx",
+      "fileSHA256": "66568ee6fca28938f5ee6128b423825cfb4b4ece710ec7bc9d485f25a2d72f2e",
+      "bodySHA256": "0f44384c3bbdd666b60007e64955620fec0d2c2cf613b049a591c3e9313cc006"
+    },
+    "page": {
+      "path": "/private/tmp/lamber-chat-document-evidence/page-missing.docx",
+      "fileSHA256": "48c4ad51ac8160aab27eb4923e26fac16c0a9c62c08c11cb22ad03d788204a48",
+      "bodySHA256": "0f44384c3bbdd666b60007e64955620fec0d2c2cf613b049a591c3e9313cc006"
+    },
+    "textNodeCount": 50,
+    "textNodesIdentical": true,
+    "imagesInDocumentOrderIdentical": true,
+    "imageSHA256InDocumentOrder": [
+      "e16c42b64f622be99d67d81c692e81c6aefe30f591a5b1878e514b2ac32cb3ad",
+      "f3ec9e14b9c085b55edc96155f7bd26b6fdeda2462f02af4e0279d8319b365e3"
+    ],
+    "normalizedBodyIdentical": true
+  },
+  "productVerification": {
+    "date": "2026-09-08",
+    "app": "com.cmcc.benefitcalc.scope-test",
+    "projectId": "id_79962ba708eb402dbb198e9d770d6ab3",
+    "workspace": "/private/tmp/lamber-template-20260906-workspace",
+    "template": "ICT项目需求导入表模板.docx",
+    "withoutOpeningTemplatePage": true,
+    "missingAllowed": "部署环境要求为空，10/11，仍生成成功",
+    "unknownCard": "立项签批表6/7，项目背景unknownCount=1，不声称已齐备",
+    "originalErrorReceipt": "Error: 附件图片文件缺失，请重新上传后生成。",
+    "generalAndUnboundNoCard": true,
+    "finalBuildSingleClickGeneration": true,
+    "syntheticFieldAndAssetRestored": true,
+    "humanGate": "仍待用户真人验收；本记录为Computer Use"
+  }
+}

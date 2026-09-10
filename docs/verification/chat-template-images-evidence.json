@@ -1,0 +1,71 @@
+{
+  "beforeReplacement": [
+    {
+      "id": "asset_68523e6daa84300e",
+      "template_name": "ICT项目需求导入表模板.docx",
+      "usage": "attach1",
+      "original_file_name": "lamber-old-red.png",
+      "relative_path": ".projects/1283a3e9-fc87-41d6-8504-86ee8e61dfc3/assets/asset_68523e6daa84300e.png",
+      "width": 320,
+      "height": 200,
+      "deleted_at": null
+    }
+  ],
+  "financialSnapshotHash": "6921d8fe79f97cc3867382ecb6541990b2e09714d2c3fa4bfff567c0c2aa03f1",
+  "afterReplacement": [
+    {
+      "id": "asset_b57ac291341e8de3",
+      "template_name": "ICT项目需求导入表模板.docx",
+      "usage": "attach1",
+      "original_file_name": "lamber-new-blue.png",
+      "relative_path": ".projects/1283a3e9-fc87-41d6-8504-86ee8e61dfc3/assets/asset_b57ac291341e8de3.png",
+      "width": 320,
+      "height": 200,
+      "created_at": "2026-09-10T01:02:56.246865+00:00",
+      "deleted_at": null
+    },
+    {
+      "id": "asset_68523e6daa84300e",
+      "template_name": "ICT项目需求导入表模板.docx",
+      "usage": "attach1",
+      "original_file_name": "lamber-old-red.png",
+      "relative_path": ".projects/1283a3e9-fc87-41d6-8504-86ee8e61dfc3/assets/asset_68523e6daa84300e.png",
+      "width": 320,
+      "height": 200,
+      "created_at": "2026-09-10T01:02:56.246865+00:00",
+      "deleted_at": "2026-09-10T01:12:17.947071+00:00"
+    }
+  ],
+  "financialSnapshotsUnchanged": true,
+  "previewAndCancelCreatedZeroAssets": true,
+  "replacementBytesMatchSelectedFile": true,
+  "oldBytesRetained": true,
+  "date": "2026-09-10",
+  "cleanupLiveAssets": 0,
+  "temporaryAiConfigRestored": true,
+  "desktopPreview": [
+    "red original visible",
+    "red/blue before-after preview",
+    "cancel removes candidate without writes",
+    "confirmed before-after images visible",
+    "template reloaded blue; count 10/11",
+    "test image removed via UI; count restored 9/11"
+  ],
+  "realModelVision": "主要颜色：整体为蓝色；文字：没有看到文字。",
+  "realModelCapability": "没有旧图时卡片不能新增；只有确认替换才保存；普通上传为追加。",
+  "validation": {
+    "rustPassed": 104,
+    "rustIgnored": 23,
+    "frontendLint": true,
+    "frontendBuild": true,
+    "pluginBuild": true,
+    "nativeMacBundle": true,
+    "pluginTypecheck": true
+  },
+  "limits": [
+    "Only demand attach1/attach2 replacement, not generated inquiry screenshots",
+    "No generative image editing service",
+    "Windows and all ignored integration tests not run",
+    "Backend validates signature/size/dimensions; full decode occurs in the user preview UI."
+  ]
+}

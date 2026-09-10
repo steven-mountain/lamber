@@ -1,0 +1,55 @@
+{
+  "date": "2026-09-06",
+  "platform": "macOS arm64",
+  "contract": {
+    "version": 1,
+    "routes": [
+      "/lamber-bridge/authorize",
+      "/lamber-bridge/calculate",
+      "/lamber-bridge/query-projects",
+      "/lamber-bridge/stream"
+    ]
+  },
+  "tests": {
+    "cargo": {
+      "passed": 82,
+      "ignored": 17,
+      "failed": 0
+    },
+    "realKeyIgnored": {
+      "passed": 17,
+      "ignored": 0,
+      "failed": 0
+    },
+    "packaging": {
+      "passed": 6,
+      "failed": 0
+    },
+    "pluginContract": "passed",
+    "pluginScope": "passed",
+    "frontendLintBuild": "passed",
+    "frontendDshAndScope": "passed",
+    "stream": {
+      "preCommitDeltas": 6,
+      "finalMatchesAcp": true
+    }
+  },
+  "build": {
+    "actualStagingMismatchRejected": true,
+    "actualOldBinaryRejected": true,
+    "actualNewBinaryMatched": true,
+    "testAppSha256": "85ef51f43ea875a1eb654748f46bf5c2ab08b14be7910548ff60251da42981b4"
+  },
+  "computerUse": {
+    "newMismatchReadableMessage": true,
+    "newHealthyQueryToolCompleted": true,
+    "legacyStartupStopped": true,
+    "legacyReadableMessage": false,
+    "legacyVisibleError": "ACP session/new 失败: Internal error: the ACP bridge has been disposed"
+  },
+  "pending": [
+    "legacy readable-error requirement requires full binary upgrade; not passed by plugin replacement alone",
+    "cross-project human review",
+    "Windows NSIS installation gate"
+  ]
+}

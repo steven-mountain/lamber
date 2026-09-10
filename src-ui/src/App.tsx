@@ -1,3 +1,8 @@
+import { listenBenefitSimulations } from "./services/benefitSimulation";
+import { assertStructureBinding, finishStructureRequest, listenStructureRequests, useStructureRequest, type ReverseRequest } from './services/chatStructureReverse';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { assertDocumentBinding, finishDocumentRequest, useDocumentRequest, listenDocumentRequests } from './services/chatDocumentGeneration';
+import { useLatestCallback } from './hooks/useLatestCallback';
 import { useEffect } from "react";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import IctLifecycle from "./views/IctLifecycle";
@@ -42,14 +47,78 @@ function getAiAssistantView() {
 }
 
 export default function App() {
+  useEffect(() => {
+    if (!isTauriRuntime() || getCurrentWindow().label !== "main") return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listenBenefitSimulations().then(stop => { if (disposed) stop(); else unlisten = stop; });
+    return () => { disposed = true; unlisten?.(); };
+  }, []);
   const { currentView, settingsReturnView, navigateTo } = useNavigationStore();
   const aiLauncherVisible = useAppearanceStore(state => state.settings.aiLauncherVisible);
   const setActiveModule = useAiContextStore(state => state.setActiveModule);
   const { isWorkspaceReady, refreshWorkspaceState } = useWorkspaceStore();
   const aiAssistantView = getAiAssistantView();
+  const pendingDocument = useDocumentRequest(value => value.request);
+  const pendingDocumentPhase = useDocumentRequest(value => value.phase);
+  const pendingStructure = useStructureRequest(value => value.request);
+  const pendingStructurePhase = useStructureRequest(value => value.phase);
+  const activeDocumentProjectId = useNavigationStore(value => value.activeProjectId);
+  const documentWorkspaceId = useWorkspaceStore(value => value.workspaceId);
   const agentLab = isAgentLabRoute();
   useGlobalSaveShortcut();
-  useUnsavedChangesGuard();
+  const { confirmOrSave } = useUnsavedChangesGuard();
+  const openChatDocument = useLatestCallback(async (request: import('./services/chatDocumentGeneration').DocumentRequest) => {
+    await getCurrentWindow().unminimize();
+    await getCurrentWindow().show();
+    await getCurrentWindow().setFocus();
+    const navigation = useNavigationStore.getState();
+    if (navigation.currentView !== 'ict_lifecycle' || navigation.activeProjectId !== request.projectId) {
+      if (!await confirmOrSave()) throw new Error('已取消切换项目，未生成文档。');
+      await assertDocumentBinding(request);
+      navigateTo('ict_lifecycle', request.projectId);
+    }
+  });
+  const openStructureEditor = useLatestCallback(async (request: ReverseRequest) => {
+    if (useDocumentRequest.getState().request) throw new Error('主窗口正在处理文档操作，请完成后再反算。');
+    const navigation = useNavigationStore.getState();
+    const same = navigation.currentView === 'ict_lifecycle' && navigation.activeProjectId === request.projectId && navigation.activeSchemeId === request.schemeId;
+    if (request.action === 'apply' && !same) throw new Error('项目、方案或页面已变化，请重新选择科目并读取范围。');
+    if (!same) {
+      await getCurrentWindow().unminimize();
+      await getCurrentWindow().show();
+      if (!await confirmOrSave()) throw new Error('已取消切换项目，未执行结构反算。');
+      await assertStructureBinding(request);
+      navigateTo('ict_lifecycle', request.projectId, request.schemeId);
+    }
+  });
+  useEffect(() => {
+    if (aiAssistantView || agentLab || !isTauriRuntime()) return;
+    let disposed = false;
+    let stop: (() => void) | undefined;
+    void listenStructureRequests(openStructureEditor).then(unlisten => { if (disposed) unlisten(); else stop = unlisten; }).catch(console.error);
+    return () => { disposed = true; stop?.(); };
+  }, [aiAssistantView, agentLab, openStructureEditor]);
+  useEffect(() => {
+    if (aiAssistantView || agentLab || !isTauriRuntime()) return;
+    let disposed = false;
+    let stop: (() => void) | undefined;
+    void listenDocumentRequests(openChatDocument).then(unlisten => { if (disposed) unlisten(); else stop = unlisten; }).catch(console.error);
+    return () => { disposed = true; stop?.(); };
+  }, [aiAssistantView, agentLab, openChatDocument]);
+
+  useEffect(() => {
+    if (aiAssistantView || agentLab || !pendingDocument || (pendingDocumentPhase === 'loading' || pendingDocumentPhase === 'running')) return;
+    if (currentView !== 'ict_lifecycle' || activeDocumentProjectId !== pendingDocument.projectId || documentWorkspaceId !== pendingDocument.workspaceId) {
+      void finishDocumentRequest(pendingDocument, { status: 'cancelled', message: '项目、工作区或页面已切换；已停止尚未执行的生成。' }).catch(console.error);
+    }
+  }, [aiAssistantView, agentLab, pendingDocument, pendingDocumentPhase, currentView, activeDocumentProjectId, documentWorkspaceId]);
+  useEffect(() => {
+    if (aiAssistantView || agentLab || !pendingStructure || pendingStructurePhase !== 'opening') return;
+    if (currentView !== 'ict_lifecycle' || activeDocumentProjectId !== pendingStructure.projectId || documentWorkspaceId !== pendingStructure.workspaceId) {
+      void finishStructureRequest(pendingStructure, { status: 'error', message: '项目、工作区或页面已切换，已停止尚未执行的结构反算。' }).catch(console.error);
+    }
+  }, [aiAssistantView, agentLab, pendingStructure, pendingStructurePhase, currentView, activeDocumentProjectId, documentWorkspaceId]);
 
   useEffect(() => {
     if (aiAssistantView || agentLab) return;
@@ -112,7 +181,12 @@ export default function App() {
   }
 
   if (aiAssistantView) {
-    return <AiFloatingWindow currentView={aiAssistantView} />;
+    return (
+      <>
+        <AiFloatingWindow currentView={aiAssistantView} />
+        <AgentApprovalDialog />
+      </>
+    );
   }
 
   return (

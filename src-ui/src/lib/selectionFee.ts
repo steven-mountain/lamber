@@ -44,11 +44,12 @@ export interface SelectionFeeWriteAmounts {
 /**
  * 甄选服务费由供应商承担且已包含在最高限价中：
  * 目标投入科目 = 最高限价 - 甄选服务费（等价于供应商报价 + 上浮）；
- * 中标服务费 = 甄选服务费。
+ * 中标服务费 = 含税甄选服务费。合并时目标为全额限价，调用方不提交服务费科目。
  */
 export const calculateSelectionFeeWriteAmounts = (
   limitValue: unknown,
   serviceFeeValue: unknown,
+  mergeService = false,
 ): SelectionFeeWriteAmounts => {
   const limit = parseMoney(limitValue);
   const serviceFee = parseMoney(serviceFeeValue);
@@ -77,9 +78,16 @@ export const calculateSelectionFeeWriteAmounts = (
 
   return {
     valid: true,
-    targetIncl: Number(target.toFixed(2)),
+    targetIncl: Number((mergeService ? roundedLimit : target).toFixed(2)),
     serviceFeeIncl: Number(roundedServiceFee.toFixed(2)),
     limitIncl: Number(roundedLimit.toFixed(2)),
     message: null,
   };
+};
+
+/** Keep every target visible; validate the current item rate, never the catalog default. */
+export const getSelectionFeeTargetTaxError = (label: string, tax: unknown): string | null => {
+  const rate = parseMoney(tax);
+  return rate?.eq(6) ? null
+    : `甄选限价目标科目须为 6% 税率，${label}当前为 ${rate?.toString() ?? '未知'}%。如为已保存方案，这是既有科目选择或税率与新口径不符，请核对后选择 6% 科目。`;
 };

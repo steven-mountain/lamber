@@ -1,0 +1,16 @@
+{
+  "version": 6,
+  "routes": [
+    "/lamber-bridge/authorize",
+    "/lamber-bridge/calculate",
+    "/lamber-bridge/calculate-selection-fee",
+    "/lamber-bridge/fill-template-fields",
+    "/lamber-bridge/query-projects",
+    "/lamber-bridge/read-benefit-inputs",
+    "/lamber-bridge/read-template-fields",
+    "/lamber-bridge/reverse-calculate-selection-fee",
+    "/lamber-bridge/reviewed-arguments",
+    "/lamber-bridge/simulate-benefit-calculation",
+    "/lamber-bridge/stream"
+  ]
+}

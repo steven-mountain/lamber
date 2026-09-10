@@ -1,0 +1,502 @@
+{
+  "kind": "Production function control-flow tests with synthetic candidates/engine; no real project writes",
+  "failures": [
+    {
+      "name": "invalid target",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "请输入有效的目标值。"
+    },
+    {
+      "name": "missing subject",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "请选择需要反算的计费科目。"
+    },
+    {
+      "name": "blocked reverse context",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "测试：承接规则阻止反算"
+    },
+    {
+      "name": "same target and balancing subject",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "结构反算目标科目不能与差额承接科目相同。"
+    },
+    {
+      "name": "negative reallocatable pool",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "当前锁定总额小于固定科目合计，无法执行结构反算。"
+    },
+    {
+      "name": "all candidates invalid with reason",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "候选校验失败"
+    },
+    {
+      "name": "all candidates invalid fallback",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "当前分板块金额计划无法支持任何结构反算候选点，请调整板块金额计划后再试。"
+    },
+    {
+      "name": "all candidate payloads missing",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "当前分板块金额计划无法支持任何结构反算候选点，请调整板块金额计划后再试。"
+    },
+    {
+      "name": "all engine results empty",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "当前分板块金额计划无法支持任何结构反算候选点，请调整板块金额计划后再试。"
+    },
+    {
+      "name": "candidate preparation exception",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "结构反算失败: Error: candidate preparation failure"
+    },
+    {
+      "name": "sample engine exception",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "结构反算失败: Error: engine failure"
+    },
+    {
+      "name": "insensitive range",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "当前结构调整对目标毛利润率不敏感：可重分配池在 ¥100.00 内变化时，指标仅从 9.40% 到 9.40%。目标毛利润率：目标 10.00%，本次搜索最接近值 9.40%；当前结构下可达范围约为 9.40% - 9.40%（采样范围不代表其中每个值都能达到）。请调整现金流、税率或目标科目后再试。"
+    },
+    {
+      "name": "target below sample range",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "当前锁定总额结构下无法达到目标值。目标毛利润率：目标 9.00%，本次搜索最接近值 9.40%；当前结构下可达范围约为 9.40% - 10.80%（采样范围不代表其中每个值都能达到）。"
+    },
+    {
+      "name": "target above sample range",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "当前锁定总额结构下无法达到目标值。目标毛利润率：目标 12.00%，本次搜索最接近值 10.80%；当前结构下可达范围约为 9.40% - 10.80%（采样范围不代表其中每个值都能达到）。"
+    },
+    {
+      "name": "margin discontinuous increasing",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "已采样当前可重分配区间，但没有找到可稳定收敛到目标值的区间。目标毛利润率：目标 10.00%，本次搜索最接近值 9.40%；当前结构下可达范围约为 9.40% - 10.80%（采样范围不代表其中每个值都能达到）。"
+    },
+    {
+      "name": "margin discontinuous decreasing",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "已采样当前可重分配区间，但没有找到可稳定收敛到目标值的区间。目标毛利润率：目标 10.00%，本次搜索最接近值 9.40%；当前结构下可达范围约为 9.40% - 10.80%（采样范围不代表其中每个值都能达到）。"
+    },
+    {
+      "name": "npv_rate discontinuous increasing",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "已采样当前可重分配区间，但没有找到可稳定收敛到目标值的区间。目标净现值率：目标 10.00%，本次搜索最接近值 9.40%；当前结构下可达范围约为 9.40% - 10.80%（采样范围不代表其中每个值都能达到）。"
+    },
+    {
+      "name": "npv_rate discontinuous decreasing",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "已采样当前可重分配区间，但没有找到可稳定收敛到目标值的区间。目标净现值率：目标 10.00%，本次搜索最接近值 9.40%；当前结构下可达范围约为 9.40% - 10.80%（采样范围不代表其中每个值都能达到）。"
+    },
+    {
+      "name": "search engine exception",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "结构反算失败: Error: engine failure"
+    },
+    {
+      "name": "search candidate invalid",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "已采样当前可重分配区间，但没有找到可稳定收敛到目标值的区间。目标毛利润率：目标 10.00%，本次搜索最接近值 9.40%；当前结构下可达范围约为 9.40% - 10.80%（采样范围不代表其中每个值都能达到）。"
+    },
+    {
+      "name": "search candidate payload missing",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "已采样当前可重分配区间，但没有找到可稳定收敛到目标值的区间。目标毛利润率：目标 10.00%，本次搜索最接近值 9.40%；当前结构下可达范围约为 9.40% - 10.80%（采样范围不代表其中每个值都能达到）。"
+    },
+    {
+      "name": "search engine result empty",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "已采样当前可重分配区间，但没有找到可稳定收敛到目标值的区间。目标毛利润率：目标 10.00%，本次搜索最接近值 9.40%；当前结构下可达范围约为 9.40% - 10.80%（采样范围不代表其中每个值都能达到）。"
+    },
+    {
+      "name": "final candidate invalid",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "最终候选拒绝"
+    },
+    {
+      "name": "final candidate invalid fallback",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "最终结构反算候选无法同步到分板块金额计划，已停止写入。"
+    },
+    {
+      "name": "final candidate missing payload",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "最终结构反算候选无法同步到分板块金额计划，已停止写入。"
+    },
+    {
+      "name": "final candidate wrong total",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "结构反算结果未能保持同侧含税总金额不变，已停止写入。"
+    },
+    {
+      "name": "final candidate negative target",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "结构反算结果出现负金额，已停止写入。"
+    },
+    {
+      "name": "final candidate negative balancing",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "结构反算结果出现负金额，已停止写入。"
+    },
+    {
+      "name": "final engine exception",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "结构反算失败: Error: engine failure"
+    },
+    {
+      "name": "final engine result empty",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "最终结构反算候选无法同步到分板块金额计划，已停止写入。"
+    },
+    {
+      "name": "final recomputation off target",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "最终结构反算复算值 10.80% 未达到目标，已停止写入。目标毛利润率：目标 10.00%，本次搜索最接近值 10.00%；当前结构下可达范围约为 0.00% - 25.00%（采样范围不代表其中每个值都能达到）。"
+    },
+    {
+      "name": "NPV final recomputation just outside tolerance",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "最终结构反算复算值 10.01% 未达到目标，已停止写入。目标净现值率：目标 10.00%，本次搜索最接近值 10.00%；当前结构下可达范围约为 0.00% - 25.00%（采样范围不代表其中每个值都能达到）。"
+    },
+    {
+      "name": "result context preparation exception",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "结构反算失败: Error: context preparation failure"
+    },
+    {
+      "name": "metric tolerance cannot be widened",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "已采样当前可重分配区间，但没有找到可稳定收敛到目标值的区间。目标毛利润率：目标 10.00%，本次搜索最接近值 9.99%；当前结构下可达范围约为 9.99% - 10.02%（采样范围不代表其中每个值都能达到）。"
+    },
+    {
+      "name": "collapsed candidate interval keeps nearest metric",
+      "updateTaxItemsInclBatchCalls": 0,
+      "targetUnchanged": true,
+      "message": "已采样当前可重分配区间，但没有找到可稳定收敛到目标值的区间。目标毛利润率：目标 10.00%，本次搜索最接近值 9.40%；当前结构下可达范围约为 9.40% - 10.80%（采样范围不代表其中每个值都能达到）。"
+    }
+  ],
+  "successes": [
+    {
+      "name": "linear increasing exact sample",
+      "updateTaxItemsInclBatchCalls": 1,
+      "comparedWithPreFix": true,
+      "writes": [
+        {
+          "groupId": "revIt",
+          "key": "integration",
+          "incl": 40,
+          "reason": "reverse_calculation_sync"
+        },
+        {
+          "groupId": "revIt",
+          "key": "maintenance",
+          "incl": 60,
+          "reason": "balance_allocation_sync"
+        }
+      ],
+      "message": "结构反算完成：收入含税总金额保持 ¥100.00 不变。\n目标毛利润率：目标 10.00%，当前 10.00%\n目标科目：“IT集成收入” ¥40.00 -> ¥40.00\n承接科目：“IT维护收入” ¥60.00 -> ¥60.00\n固定同侧科目合计：¥0.00；可重分配池：¥100.00"
+    },
+    {
+      "name": "linear decreasing exact sample",
+      "updateTaxItemsInclBatchCalls": 1,
+      "comparedWithPreFix": true,
+      "writes": [
+        {
+          "groupId": "revIt",
+          "key": "integration",
+          "incl": 60,
+          "reason": "reverse_calculation_sync"
+        },
+        {
+          "groupId": "revIt",
+          "key": "maintenance",
+          "incl": 40,
+          "reason": "balance_allocation_sync"
+        }
+      ],
+      "message": "结构反算完成：收入含税总金额保持 ¥100.00 不变。\n目标毛利润率：目标 10.00%，当前 10.00%\n目标科目：“IT集成收入” ¥40.00 -> ¥60.00\n承接科目：“IT维护收入” ¥60.00 -> ¥40.00\n固定同侧科目合计：¥0.00；可重分配池：¥100.00"
+    },
+    {
+      "name": "linear interior search",
+      "updateTaxItemsInclBatchCalls": 1,
+      "comparedWithPreFix": true,
+      "writes": [
+        {
+          "groupId": "revIt",
+          "key": "integration",
+          "incl": 41.33,
+          "reason": "reverse_calculation_sync"
+        },
+        {
+          "groupId": "revIt",
+          "key": "maintenance",
+          "incl": 58.67,
+          "reason": "balance_allocation_sync"
+        }
+      ],
+      "message": "结构反算完成：收入含税总金额保持 ¥100.00 不变。\n目标毛利润率：目标 10.32%，当前 10.33%\n目标科目：“IT集成收入” ¥40.00 -> ¥41.33\n承接科目：“IT维护收入” ¥60.00 -> ¥58.67\n固定同侧科目合计：¥0.00；可重分配池：¥100.00"
+    },
+    {
+      "name": "NPV rate interior search",
+      "updateTaxItemsInclBatchCalls": 1,
+      "comparedWithPreFix": true,
+      "writes": [
+        {
+          "groupId": "revIt",
+          "key": "integration",
+          "incl": 41.33,
+          "reason": "reverse_calculation_sync"
+        },
+        {
+          "groupId": "revIt",
+          "key": "maintenance",
+          "incl": 58.67,
+          "reason": "balance_allocation_sync"
+        }
+      ],
+      "message": "结构反算完成：收入含税总金额保持 ¥100.00 不变。\n目标净现值率：目标 10.32%，当前 10.33%\n目标科目：“IT集成收入” ¥40.00 -> ¥41.33\n承接科目：“IT维护收入” ¥60.00 -> ¥58.67\n固定同侧科目合计：¥0.00；可重分配池：¥100.00"
+    },
+    {
+      "name": "minimum amount change among multiple roots",
+      "updateTaxItemsInclBatchCalls": 1,
+      "comparedWithPreFix": true,
+      "writes": [
+        {
+          "groupId": "revIt",
+          "key": "integration",
+          "incl": 30,
+          "reason": "reverse_calculation_sync"
+        },
+        {
+          "groupId": "revIt",
+          "key": "maintenance",
+          "incl": 70,
+          "reason": "balance_allocation_sync"
+        }
+      ],
+      "message": "结构反算完成：收入含税总金额保持 ¥100.00 不变。\n目标毛利润率：目标 20.00%，当前 20.00%\n目标科目：“IT集成收入” ¥40.00 -> ¥30.00\n承接科目：“IT维护收入” ¥60.00 -> ¥70.00\n固定同侧科目合计：¥0.00；可重分配池：¥100.00"
+    },
+    {
+      "name": "minimum sample endpoint",
+      "updateTaxItemsInclBatchCalls": 1,
+      "comparedWithPreFix": true,
+      "writes": [
+        {
+          "groupId": "revIt",
+          "key": "integration",
+          "incl": 40,
+          "reason": "reverse_calculation_sync"
+        },
+        {
+          "groupId": "revIt",
+          "key": "maintenance",
+          "incl": 60,
+          "reason": "balance_allocation_sync"
+        }
+      ],
+      "message": "结构反算完成：收入含税总金额保持 ¥100.00 不变。\n目标毛利润率：目标 9.40%，当前 9.40%\n目标科目：“IT集成收入” ¥40.00 -> ¥40.00\n承接科目：“IT维护收入” ¥60.00 -> ¥60.00\n固定同侧科目合计：¥0.00；可重分配池：¥100.00"
+    },
+    {
+      "name": "maximum sample endpoint",
+      "updateTaxItemsInclBatchCalls": 1,
+      "comparedWithPreFix": true,
+      "writes": [
+        {
+          "groupId": "revIt",
+          "key": "integration",
+          "incl": 50,
+          "reason": "reverse_calculation_sync"
+        },
+        {
+          "groupId": "revIt",
+          "key": "maintenance",
+          "incl": 50,
+          "reason": "balance_allocation_sync"
+        }
+      ],
+      "message": "结构反算完成：收入含税总金额保持 ¥100.00 不变。\n目标毛利润率：目标 10.80%，当前 10.80%\n目标科目：“IT集成收入” ¥40.00 -> ¥50.00\n承接科目：“IT维护收入” ¥60.00 -> ¥50.00\n固定同侧科目合计：¥0.00；可重分配池：¥100.00"
+    },
+    {
+      "name": "zero amount endpoint",
+      "updateTaxItemsInclBatchCalls": 1,
+      "comparedWithPreFix": true,
+      "writes": [
+        {
+          "groupId": "revIt",
+          "key": "integration",
+          "incl": 0,
+          "reason": "reverse_calculation_sync"
+        },
+        {
+          "groupId": "revIt",
+          "key": "maintenance",
+          "incl": 100,
+          "reason": "balance_allocation_sync"
+        }
+      ],
+      "message": "结构反算完成：收入含税总金额保持 ¥100.00 不变。\n目标毛利润率：目标 0.00%，当前 0.00%\n目标科目：“IT集成收入” ¥40.00 -> ¥0.00\n承接科目：“IT维护收入” ¥60.00 -> ¥100.00\n固定同侧科目合计：¥0.00；可重分配池：¥100.00"
+    },
+    {
+      "name": "whole pool endpoint",
+      "updateTaxItemsInclBatchCalls": 1,
+      "comparedWithPreFix": true,
+      "writes": [
+        {
+          "groupId": "revIt",
+          "key": "integration",
+          "incl": 100,
+          "reason": "reverse_calculation_sync"
+        },
+        {
+          "groupId": "revIt",
+          "key": "maintenance",
+          "incl": 0,
+          "reason": "balance_allocation_sync"
+        }
+      ],
+      "message": "结构反算完成：收入含税总金额保持 ¥100.00 不变。\n目标毛利润率：目标 25.00%，当前 25.00%\n目标科目：“IT集成收入” ¥40.00 -> ¥100.00\n承接科目：“IT维护收入” ¥60.00 -> ¥0.00\n固定同侧科目合计：¥0.00；可重分配池：¥100.00"
+    },
+    {
+      "name": "nonzero fixed same-side amount",
+      "updateTaxItemsInclBatchCalls": 1,
+      "comparedWithPreFix": true,
+      "writes": [
+        {
+          "groupId": "revIt",
+          "key": "integration",
+          "incl": 40,
+          "reason": "reverse_calculation_sync"
+        },
+        {
+          "groupId": "revIt",
+          "key": "maintenance",
+          "incl": 60,
+          "reason": "balance_allocation_sync"
+        }
+      ],
+      "message": "结构反算完成：收入含税总金额保持 ¥125.00 不变。\n目标毛利润率：目标 10.00%，当前 10.00%\n目标科目：“IT集成收入” ¥40.00 -> ¥40.00\n承接科目：“IT维护收入” ¥60.00 -> ¥60.00\n固定同侧科目合计：¥25.00；可重分配池：¥100.00"
+    },
+    {
+      "name": "cost-side amount and context",
+      "updateTaxItemsInclBatchCalls": 1,
+      "comparedWithPreFix": true,
+      "writes": [
+        {
+          "groupId": "costIt",
+          "key": "integration",
+          "incl": 40,
+          "reason": "reverse_calculation_sync"
+        },
+        {
+          "groupId": "costIt",
+          "key": "maintenance",
+          "incl": 60,
+          "reason": "balance_allocation_sync"
+        }
+      ],
+      "message": "结构反算完成：投入含税总金额保持 ¥100.00 不变。\n目标毛利润率：目标 10.00%，当前 10.00%\n目标科目：“IT集成投入” ¥40.00 -> ¥40.00\n承接科目：“IT维护投入” ¥60.00 -> ¥60.00\n固定同侧科目合计：¥0.00；可重分配池：¥100.00"
+    },
+    {
+      "name": "within unchanged metric tolerance",
+      "updateTaxItemsInclBatchCalls": 1,
+      "comparedWithPreFix": true,
+      "writes": [
+        {
+          "groupId": "revIt",
+          "key": "integration",
+          "incl": 40,
+          "reason": "reverse_calculation_sync"
+        },
+        {
+          "groupId": "revIt",
+          "key": "maintenance",
+          "incl": 60,
+          "reason": "balance_allocation_sync"
+        }
+      ],
+      "message": "结构反算完成：收入含税总金额保持 ¥100.00 不变。\n目标毛利润率：目标 10.00%，当前 9.99%\n目标科目：“IT集成收入” ¥40.00 -> ¥40.00\n承接科目：“IT维护收入” ¥60.00 -> ¥60.00\n固定同侧科目合计：¥0.00；可重分配池：¥100.00"
+    },
+    {
+      "name": "qualify before minimum amount preference",
+      "updateTaxItemsInclBatchCalls": 1,
+      "comparedWithPreFix": false,
+      "writes": [
+        {
+          "groupId": "revIt",
+          "key": "integration",
+          "incl": 90,
+          "reason": "reverse_calculation_sync"
+        },
+        {
+          "groupId": "revIt",
+          "key": "maintenance",
+          "incl": 10,
+          "reason": "balance_allocation_sync"
+        }
+      ],
+      "message": "结构反算完成：收入含税总金额保持 ¥100.00 不变。\n目标毛利润率：目标 10.00%，当前 10.00%\n目标科目：“IT集成收入” ¥40.00 -> ¥90.00\n承接科目：“IT维护收入” ¥60.00 -> ¥10.00\n固定同侧科目合计：¥0.00；可重分配池：¥100.00"
+    }
+  ],
+  "preFixWitness": {
+    "updateTaxItemsInclBatchCalls": 1,
+    "message": "结构反算完成：收入含税总金额保持 ¥100.00 不变。\n目标毛利润率：目标 10.00%，当前 9.40%\n目标科目：“IT集成收入” ¥30.00 -> ¥40.00\n承接科目：“IT维护收入” ¥70.00 -> ¥60.00\n固定同侧科目合计：¥0.00；可重分配池：¥100.00",
+    "writes": [
+      {
+        "groupId": "revIt",
+        "key": "integration",
+        "incl": 40,
+        "reason": "reverse_calculation_sync"
+      },
+      {
+        "groupId": "revIt",
+        "key": "maintenance",
+        "incl": 60,
+        "reason": "balance_allocation_sync"
+      }
+    ]
+  },
+  "collapseBest": 0.094,
+  "cardAdapter": {
+    "nativeErrorsReturnedVerbatim": 35,
+    "previewWrites": 0,
+    "staleWrites": 0,
+    "successWrites": 1
+  }
+}

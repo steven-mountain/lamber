@@ -19,15 +19,17 @@ const PERSIST_DEBOUNCE_MS = 160;
 interface AiSessionState {
   sessions: AiSession[];
   currentSessionId: string | null;
-  createSession: (projectId?: string) => string;
+  createSession: (projectId?: string, sessionId?: string) => string;
   ensureActiveSession: (projectId?: string) => string;
   selectSession: (sessionId: string) => void;
   deleteSession: (sessionId: string) => void;
   appendMessages: (sessionId: string, messages: AiChatMessage[]) => void;
   updateLastAssistantMessage: (
     sessionId: string,
-    patch: Pick<AiChatMessage, 'content' | 'think'>,
+    patch: Pick<AiChatMessage, 'content' | 'think' | 'toolCalls'>,
   ) => void;
+  setSessionProject: (sessionId: string, projectId?: string) => void;
+  setHarnessSessionId: (sessionId: string, harnessSessionId: string) => void;
   resetSessionMessages: (sessionId: string, message?: AiChatMessage) => void;
   setSessionTitle: (
     sessionId: string,
@@ -92,7 +94,11 @@ function normalizeMessage(value: unknown): AiChatMessage | null {
   return {
     role: value.role,
     content: typeof value.content === 'string' ? value.content : '',
+    appReceipt: value.role === 'assistant' && value.appReceipt === true ? true : undefined,
     think: typeof value.think === 'string' ? value.think : undefined,
+    toolCalls: Array.isArray(value.toolCalls) ? value.toolCalls.filter(isRecord)
+      .filter(call => typeof call.id === 'string' && typeof call.title === 'string' && typeof call.status === 'string')
+      .map(call => ({ id: call.id as string, title: call.title as string, status: call.status as string, input: call.input, output: call.output })) : undefined,
     images: Array.isArray(value.images)
       ? value.images.map(normalizeAttachment).filter((image): image is AiImageAttachment => Boolean(image))
       : undefined,
@@ -227,8 +233,9 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   sessions: initialSnapshot.sessions,
   currentSessionId: initialSnapshot.currentSessionId,
 
-  createSession: (projectId) => {
+  createSession: (projectId, sessionId) => {
     const session = createSessionRecord(projectId);
+    if (sessionId) session.id = sessionId;
     set(state => ({
       sessions: [session, ...state.sessions],
       currentSessionId: session.id,
@@ -290,7 +297,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
         const lastIndex = session.messages.length - 1;
         const lastMessage = session.messages[lastIndex];
         if (lastMessage.role !== 'assistant') return session;
-        if (lastMessage.content === patch.content && lastMessage.think === patch.think) return session;
+        if (lastMessage.content === patch.content && lastMessage.think === patch.think && lastMessage.toolCalls === patch.toolCalls) return session;
 
         const messages = [...session.messages];
         messages[lastIndex] = { ...lastMessage, ...patch };
@@ -300,11 +307,24 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     schedulePersistence(toSnapshot(get()));
   },
 
+  // Display metadata only. Rust ai-sessions.sqlite remains the permission source.
+  setSessionProject: (sessionId, projectId) => {
+    set(state => ({ sessions: state.sessions.map(session => session.id === sessionId
+      ? { ...session, projectId } : session) }));
+    persistImmediately(toSnapshot(get()));
+  },
+
+  setHarnessSessionId: (sessionId, harnessSessionId) => {
+    set(state => ({ sessions: state.sessions.map(session => session.id === sessionId
+      ? { ...session, harnessSessionId } : session) }));
+    persistImmediately(toSnapshot(get()));
+  },
+
   resetSessionMessages: (sessionId, message = DEFAULT_WELCOME_MESSAGE) => {
     const now = Date.now();
     set(state => ({
       sessions: state.sessions.map(session => session.id === sessionId
-        ? { ...session, messages: [{ ...message }], updatedAt: now }
+        ? { ...session, harnessSessionId: undefined, messages: [{ ...message }], updatedAt: now }
         : session),
     }));
     persistImmediately(toSnapshot(get()));

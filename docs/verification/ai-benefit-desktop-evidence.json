@@ -1,0 +1,356 @@
+{
+  "method": "Computer Use native desktop app: all 28 subject fields inspected in income/cost pages; compared against actual read_benefit_inputs response for identical synthetic financial snapshot",
+  "subjectRows": [
+    {
+      "key": "rev_it_integration",
+      "name": "系统集成服务收入",
+      "desktopIncl": 106000,
+      "desktopTaxRate": 6,
+      "readIncl": "106000",
+      "readTaxRate": "6",
+      "match": true
+    },
+    {
+      "key": "rev_it_maintenance",
+      "name": "维保收入",
+      "desktopIncl": 212,
+      "desktopTaxRate": 6,
+      "readIncl": "212",
+      "readTaxRate": "6",
+      "match": true
+    },
+    {
+      "key": "rev_it_device_sales",
+      "name": "设备销售收入",
+      "desktopIncl": 318,
+      "desktopTaxRate": 13,
+      "readIncl": "318",
+      "readTaxRate": "13",
+      "match": true
+    },
+    {
+      "key": "rev_it_device_lease",
+      "name": "设备租赁收入",
+      "desktopIncl": 424,
+      "desktopTaxRate": 13,
+      "readIncl": "424",
+      "readTaxRate": "13",
+      "match": true
+    },
+    {
+      "key": "rev_it_other",
+      "name": "其他收入",
+      "desktopIncl": 530,
+      "desktopTaxRate": 6,
+      "readIncl": "530",
+      "readTaxRate": "6",
+      "match": true
+    },
+    {
+      "key": "rev_it_cloud",
+      "name": "移动云-定制化收入",
+      "desktopIncl": 636,
+      "desktopTaxRate": 6,
+      "readIncl": "636",
+      "readTaxRate": "6",
+      "match": true
+    },
+    {
+      "key": "rev_ct_line",
+      "name": "专线收入",
+      "desktopIncl": 742,
+      "desktopTaxRate": 9,
+      "readIncl": "742",
+      "readTaxRate": "9",
+      "match": true
+    },
+    {
+      "key": "rev_ct_product",
+      "name": "产品收入",
+      "desktopIncl": 848,
+      "desktopTaxRate": 6,
+      "readIncl": "848",
+      "readTaxRate": "6",
+      "match": true
+    },
+    {
+      "key": "rev_non_it_ct",
+      "name": "工程施工收入等",
+      "desktopIncl": 954,
+      "desktopTaxRate": 9,
+      "readIncl": "954",
+      "readTaxRate": "9",
+      "match": true
+    },
+    {
+      "key": "cost_it_device",
+      "name": "主要设备/甲供材料",
+      "desktopIncl": 1060,
+      "desktopTaxRate": 13,
+      "readIncl": "1060",
+      "readTaxRate": "13",
+      "match": true
+    },
+    {
+      "key": "cost_it_construction",
+      "name": "施工",
+      "desktopIncl": 1166,
+      "desktopTaxRate": 9,
+      "readIncl": "1166",
+      "readTaxRate": "9",
+      "match": true
+    },
+    {
+      "key": "cost_it_survey",
+      "name": "勘察设计/预备费",
+      "desktopIncl": 1272,
+      "desktopTaxRate": 6,
+      "readIncl": "1272",
+      "readTaxRate": "6",
+      "match": true
+    },
+    {
+      "key": "cost_it_integration",
+      "name": "集成服务",
+      "desktopIncl": 53000,
+      "desktopTaxRate": 6,
+      "readIncl": "53000",
+      "readTaxRate": "6",
+      "match": true
+    },
+    {
+      "key": "cost_it_other",
+      "name": "其他投入",
+      "desktopIncl": 1484,
+      "desktopTaxRate": 6,
+      "readIncl": "1484",
+      "readTaxRate": "6",
+      "match": true
+    },
+    {
+      "key": "cost_it_maintenance",
+      "name": "维护费用",
+      "desktopIncl": 1590,
+      "desktopTaxRate": 6,
+      "readIncl": "1590",
+      "readTaxRate": "6",
+      "match": true
+    },
+    {
+      "key": "cost_it_running",
+      "name": "其他运行支出（电费等）",
+      "desktopIncl": 1696,
+      "desktopTaxRate": 13,
+      "readIncl": "1696",
+      "readTaxRate": "13",
+      "match": true
+    },
+    {
+      "key": "cost_it_bidding",
+      "name": "中标服务费",
+      "desktopIncl": 1802,
+      "desktopTaxRate": 6,
+      "readIncl": "1802",
+      "readTaxRate": "6",
+      "match": true
+    },
+    {
+      "key": "cost_it_design_eval",
+      "name": "设计院成本评估费",
+      "desktopIncl": 1908,
+      "desktopTaxRate": 6,
+      "readIncl": "1908",
+      "readTaxRate": "6",
+      "match": true
+    },
+    {
+      "key": "cost_it_audit",
+      "name": "第三方审计评估费",
+      "desktopIncl": 2014,
+      "desktopTaxRate": 6,
+      "readIncl": "2014",
+      "readTaxRate": "6",
+      "match": true
+    },
+    {
+      "key": "cost_ct_construction",
+      "name": "专线建设",
+      "desktopIncl": 2120,
+      "desktopTaxRate": 9,
+      "readIncl": "2120",
+      "readTaxRate": "9",
+      "match": true
+    },
+    {
+      "key": "cost_ct_maintenance",
+      "name": "专线维护",
+      "desktopIncl": 2226,
+      "desktopTaxRate": 9,
+      "readIncl": "2226",
+      "readTaxRate": "9",
+      "match": true
+    },
+    {
+      "key": "cost_ct_other",
+      "name": "其他产品成本",
+      "desktopIncl": 2332,
+      "desktopTaxRate": 6,
+      "readIncl": "2332",
+      "readTaxRate": "6",
+      "match": true
+    },
+    {
+      "key": "cost_ct_bandwidth",
+      "name": "专线带宽成本",
+      "desktopIncl": 2438,
+      "desktopTaxRate": 9,
+      "readIncl": "2438",
+      "readTaxRate": "9",
+      "match": true
+    },
+    {
+      "key": "cost_ct_renewal",
+      "name": "专线/其他产品续签成本",
+      "desktopIncl": 2544,
+      "desktopTaxRate": 9,
+      "readIncl": "2544",
+      "readTaxRate": "9",
+      "match": true
+    },
+    {
+      "key": "cost_non_it_ct",
+      "name": "工程施工投入等",
+      "desktopIncl": 2650,
+      "desktopTaxRate": 9,
+      "readIncl": "2650",
+      "readTaxRate": "9",
+      "match": true
+    },
+    {
+      "key": "cost_mix_marketing",
+      "name": "融合营销成本",
+      "desktopIncl": 2756,
+      "desktopTaxRate": 6,
+      "readIncl": "2756",
+      "readTaxRate": "6",
+      "match": true
+    },
+    {
+      "key": "cost_mix_channel",
+      "name": "渠道酬金",
+      "desktopIncl": 2862,
+      "desktopTaxRate": 6,
+      "readIncl": "2862",
+      "readTaxRate": "6",
+      "match": true
+    },
+    {
+      "key": "cost_mix_other",
+      "name": "其他管理费用等",
+      "desktopIncl": 2968,
+      "desktopTaxRate": 6,
+      "readIncl": "2968",
+      "readTaxRate": "6",
+      "match": true
+    }
+  ],
+  "split": {
+    "subject": "rev_it_integration",
+    "incl": "106000",
+    "parts": [
+      {
+        "incl": "53000",
+        "excl": "50000"
+      },
+      {
+        "incl": "53000",
+        "excl": "50000"
+      }
+    ],
+    "desktopMarked": true,
+    "toolMarked": true
+  },
+  "savedDesktopMetrics": {
+    "npv": "17538.87",
+    "npvRate": "23.74%",
+    "marginRate": "19.19%",
+    "dynamicPayback": "1",
+    "irr": "--",
+    "itNpv": "34129.64",
+    "itNpvRate": "61.81%",
+    "itMarginRate": "38.20%"
+  },
+  "mainWindowSimulation": {
+    "status": "passed_after_IPC_type_fix",
+    "mainWindowPage": "hub",
+    "npv": "591259.19",
+    "npvRate": "8.0042",
+    "marginRate": "0.8889",
+    "dynamicPayback": "1",
+    "irr": "--",
+    "itNpv": "607849.97",
+    "itNpvRate": "11.0090",
+    "itMarginRate": "0.9167",
+    "note": "Actual desktop dsh tool completed; main window stayed on hub. Earlier run failed explicitly because State<AgentRuntime> did not match registered Arc<AgentRuntime>; fixed and rerun."
+  },
+  "manualOverride": {
+    "status": "FAILED_ACCEPTANCE",
+    "method": "Computer Use: cancel existing split, replace inclusive integration revenue with 800000, blur; no save",
+    "npv": "645281.66",
+    "npvRate": "873.55%",
+    "marginRate": "88.89%",
+    "dynamicPayback": "1",
+    "irr": "--",
+    "itNpv": "661872.43",
+    "itNpvRate": "1198.75%",
+    "itMarginRate": "91.67%",
+    "observedFundingMode": "upfront",
+    "observedAnnualInclValues": [
+      800000,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "hypotheticalAnnualInclValues": [
+      200000,
+      200000,
+      200000,
+      200000,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "modelSummaryCaveat": "The tool returns all yearly values exactly, but one actual desktop model answer abbreviated near-equal amounts as x4, losing the fourth-year cent adjustment. Presentation/prompt hardening and exact-quote verification remain pending.",
+  "snapshotAfterAllTests": {
+    "version": 2,
+    "incl": "106000",
+    "splitPartsUnchanged": true,
+    "annualInclValues": [
+      26500,
+      26500,
+      26500,
+      26500,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "unchanged": true
+  },
+  "cleanup": {
+    "appClosedWithoutSaving": true,
+    "temporaryAiSettingsRestored": true
+  }
+}

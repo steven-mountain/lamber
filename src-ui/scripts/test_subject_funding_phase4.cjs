@@ -1,36 +1,6 @@
-const assert = require("assert/strict");
-const fs = require("fs");
-const path = require("path");
-const ts = require("typescript");
-
-const subjectPlanPath = path.resolve(__dirname, "../src/lib/ictSubjectFundingPlan.ts");
-const code = fs.readFileSync(subjectPlanPath, "utf-8");
-
-const jsCode = ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
-
-const fakeModule = `
-${jsCode}
-
-Object.assign(exports, {
-  syncSubjectFundingPlanToAmount,
-  syncSubjectFundingPlansToAmounts,
-  initializeMissingSubjectFundingPlans,
-  buildAnnualCashflowSubjectContributions,
-  updateSubjectFundingPlanMode,
-  updateSubjectFundingPlanAnnualValue,
-  createDefaultSubjectFundingPlan: (ref, amount) => ({
-    id: exports.createSubjectFundingPlanId(ref),
-    subjectRef: ref,
-    mode: "upfront",
-    annualInclValues: exports.buildUpfrontAnnualInclValues(amount),
-    enabled: true,
-    source: "manual"
-  })
-});
-`;
-
-const exportsObj = {};
-require("vm").runInNewContext(fakeModule, { exports: exportsObj, Math, Number, Array, Date, console, require });
+const assert = require("node:assert/strict");
+const path = require("node:path");
+const exportsObj = require("./load_ts.cjs")(path.join(__dirname,"../src/lib/ictSubjectFundingPlan.ts"));
 
 const {
   syncSubjectFundingPlanToAmount,
@@ -55,15 +25,17 @@ console.log("=== Running Phase 4 Tests ===");
 
   const zeroResult = syncSubjectFundingPlanToAmount(plans, revRef, 0);
   const zeroPlan = zeroResult[p2.id];
-  assert.equal(zeroPlan, undefined);
+  assert.equal(zeroPlan.enabled, false);
+  assert.equal(zeroPlan.annualInclValues.reduce((a,b)=>a+b,0), 0);
 
   const restoredResult = syncSubjectFundingPlanToAmount(zeroResult, revRef, 1200);
   const restoredPlan = restoredResult[p2.id];
   assert.equal(restoredPlan.enabled, true);
-  assert.equal(restoredPlan.mode, "upfront");
-  assert.equal(restoredPlan.annualInclValues[0], 1200);
-  assert.equal(restoredPlan.annualInclValues[1], 0);
-  console.log("  ✓ Zero amount reset (returns to unmaintained, restores as upfront)");
+  assert.equal(restoredPlan.mode, p2.mode);
+  assert.equal(restoredPlan.lastChangeReason,"restored_after_zero");
+  assert.equal(restoredPlan.annualInclValues[0], 360);
+  assert.equal(restoredPlan.annualInclValues[1], 840);
+  console.log("  ✓ Zero amount disables plan and restores original 30/70 distribution");
 }
 
 // 2. Sync reasons tracking

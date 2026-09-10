@@ -1,3 +1,8 @@
+import type { StructureReverseOptions, StructureReverseResult } from "../lib/structureReverseResult";
+import { prepareStructureCandidate } from '../lib/ictStructureCandidate';
+import { prepareIctTaxItemsInclBatch } from '../lib/ictTaxItemBatch';
+import { serializeTaxItemForPayload } from "../lib/ictTaxItemEdit";
+import { useSelectionFeeCalculator } from './useSelectionFeeCalculator';
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAiContextStore } from "../store/useAiContextStore";
@@ -16,13 +21,11 @@ import {
 import {
   ICT_SUBJECT_DEFINITIONS,
   getSubjectExcelDisplayName,
-  normalizeCustomSubjectName,
   type IctSubjectDefinition,
 } from "../lib/ictSubjectCatalog";
 import {
   calculateSelectionFeeWriteAmounts,
-  DEFAULT_SELECTION_FEE_TARGET_SUBJECT_CODE,
-  normalizeSelectionFeeTargetSubjectCode,
+  getSelectionFeeTargetTaxError,
   resolveSelectionFeeTargetSubject,
   SELECTION_FEE_SERVICE_SUBJECT_CODE,
 } from "../lib/selectionFee";
@@ -30,7 +33,6 @@ import {
   serializeBalanceAllocationRule,
 } from "../lib/ictBalanceAllocation";
 import {
-  applyLockedTotalStructureAmountsToState,
   applySubjectInclAmountToState,
   buildLockedTotalStructureSamplePoints,
   readSubjectInclAmount,
@@ -46,7 +48,7 @@ import {
 } from "../lib/ictSubjectFundingPlan";
 import { buildIctFundingCashflowFields } from "../lib/ictCalculationInput";
 import { useLatestCallback } from "./useLatestCallback";
-import { normalizeTaxPairFromIncl, serializeTaxSplitParts } from "../lib/taxAmount";
+import { normalizeTaxPairFromIncl } from "../lib/taxAmount";
 import { isTaxInclAutoFixEnabled } from "../store/useCalcPreferencesStore";
 import {
   buildCostReverseFeasibilityProbeAmounts,
@@ -55,7 +57,7 @@ import {
 
 const formatCurrency = (v: number) => new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(v);
 const formatPercent = (v: number) => (v * 100).toFixed(2) + "%";
-const METRIC_EPSILON = 0.0001;
+export const METRIC_EPSILON = 0.0001;
 const MONEY_EPSILON = 0.004;
 const roundMoney = (value: number) => Number((Number.isFinite(value) ? value : 0).toFixed(2));
 
@@ -78,12 +80,6 @@ type ModelEStructureSyncResult = {
   message?: string;
   transfers: ModelEStructureTransfer[];
 };
-
-type SelectionFeeAnchor = "quote" | "limit";
-type SelectionFeeChangeType = SelectionFeeAnchor | "markup";
-
-const normalizeSelectionFeeText = (value: unknown) =>
-  value === undefined || value === null ? "" : String(value).trim();
 
 const getModelEAmountBucketForSubject = (subject: IctSubjectDefinition): ModelEAmountBucket | null => {
   if (subject.groupId === "revIt") return { side: "revenue", scope: "it", label: "收入 IT 板块" };
@@ -110,92 +106,27 @@ const getPairedCostSubjectForRevenueSubject = (subject: IctSubjectDefinition) =>
 const isBalanceRuleConfigured = (rule: ReturnType<typeof useIctState>["balanceAllocation"]["investment"]) =>
   Boolean(rule.enabled && rule.totalInclAmount !== null && rule.balancingSubject);
 
-const serializeTaxItemForPayload = (item: TaxItem) => {
-  const customSubjectName = normalizeCustomSubjectName(item.customSubjectName);
-  const billingSubjectName = normalizeCustomSubjectName(item.billingSubjectName);
-  return {
-    incl_tax: String(item.incl),
-    tax_rate: String(item.tax),
-    ...(customSubjectName ? { custom_subject_name: customSubjectName } : {}),
-    ...(billingSubjectName ? { billing_subject_name: billingSubjectName } : {}),
-    ...(item.splitParts?.length
-      ? {
-          split_parts: serializeTaxSplitParts(item.splitParts),
-        }
-      : {}),
-  };
-};
+
 
 export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   const updateData = useAiContextStore(stateStore => stateStore.updateBusinessData);
   const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const selectionFeeRequestSeqRef = useRef(0);
 
   // --- Calculation Results ---
+  const calculationSequence = useRef(0);
+  const [calculationState, setCalculationState] = useState({ key: '', error: '' });
   const [cashflowTable, setCashflowTable] = useState<any[]>([]);
   const [metrics, setMetrics] = useState<any>({
     npv: 0, npv_rate: 0, margin_rate: 0, dynamic_payback: "--", irr: "--",
     it_npv: 0, it_npv_rate: 0, it_margin_rate: 0
   });
 
-  // --- Selection Fee Calc State ---
-  const [selQuote, setSelQuote] = useState<string>("");
-  const [selMarkup, setSelMarkup] = useState<string>("50");
-  const [selActualCost, setSelActualCost] = useState<string>("");
-  const [selFee, setSelFee] = useState<string>("");
-  const [selLimit, setSelLimit] = useState<string>("");
-  const [selectionFeeAnchor, setSelectionFeeAnchorState] = useState<SelectionFeeAnchor>("quote");
-  const [selectionFeeTargetSubjectCode, setSelectionFeeTargetSubjectCodeState] = useState<string>(
-    DEFAULT_SELECTION_FEE_TARGET_SUBJECT_CODE,
-  );
-
-  const buildSelectionFeePayload = () => {
-    const quote = normalizeSelectionFeeText(selQuote);
-    const markup = normalizeSelectionFeeText(selMarkup);
-    const actualCost = normalizeSelectionFeeText(selActualCost);
-    const fee = normalizeSelectionFeeText(selFee);
-    const limit = normalizeSelectionFeeText(selLimit);
-    const targetSubjectCode = normalizeSelectionFeeTargetSubjectCode(selectionFeeTargetSubjectCode);
-    const hasSelectionFeeData = [quote, actualCost, fee, limit].some(value => value.length > 0)
-      || targetSubjectCode !== DEFAULT_SELECTION_FEE_TARGET_SUBJECT_CODE;
-
-    return hasSelectionFeeData
-      ? {
-          selection_fee_quote: quote,
-          selection_fee_markup: markup,
-          selection_fee_actual_cost: actualCost,
-          selection_fee_amount: fee,
-          selection_fee_limit: limit,
-          selection_fee_anchor: selectionFeeAnchor,
-          selection_fee_target_subject_code: targetSubjectCode,
-        }
-      : {};
-  };
-
-  const restoreSelectionFeeState = useCallback((payload?: Record<string, unknown> | null) => {
-    selectionFeeRequestSeqRef.current += 1;
-    const hasMarkupField = Boolean(
-      payload && Object.prototype.hasOwnProperty.call(payload, "selection_fee_markup")
-    );
-    setSelQuote(normalizeSelectionFeeText(payload?.selection_fee_quote));
-    setSelMarkup(hasMarkupField ? normalizeSelectionFeeText(payload?.selection_fee_markup) : "50");
-    setSelActualCost(normalizeSelectionFeeText(payload?.selection_fee_actual_cost));
-    setSelFee(normalizeSelectionFeeText(payload?.selection_fee_amount));
-    setSelLimit(normalizeSelectionFeeText(payload?.selection_fee_limit));
-    setSelectionFeeAnchorState(payload?.selection_fee_anchor === "limit" ? "limit" : "quote");
-    setSelectionFeeTargetSubjectCodeState(
-      normalizeSelectionFeeTargetSubjectCode(payload?.selection_fee_target_subject_code),
-    );
-  }, []);
-
-  const setSelectionFeeAnchor = (anchor: SelectionFeeAnchor) => {
-    selectionFeeRequestSeqRef.current += 1;
-    setSelectionFeeAnchorState(anchor);
-  };
-
-  const setSelectionFeeTargetSubjectCode = (subjectCode: string) => {
-    setSelectionFeeTargetSubjectCodeState(normalizeSelectionFeeTargetSubjectCode(subjectCode));
-  };
+  const selection = useSelectionFeeCalculator();
+  const {
+    selQuote, selMarkup, selActualCost, selFee, selLimit,
+    selectionFeeAnchor, selectionFeeTargetSubjectCode, selectionFeeMergeService,
+    buildSelectionFeePayload, handleSelFeeChange,
+  } = selection;
 
   // --- Smart Reverse State ---
   const [revMode, setRevMode] = useState<"cost" | "revenue">("cost");
@@ -356,7 +287,11 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
 
   const getInputDataPayload = useLatestCallback(() => buildInputDataPayload());
 
+  const currentCalculationKey = JSON.stringify(buildInputDataPayload());
   const performCalculation = useCallback(async () => {
+    const sequence = ++calculationSequence.current;
+    const input = getInputDataPayload();
+    const key = JSON.stringify(input);
     // Note: we no longer block the whole calculation when coverage is invalid.
     // buildIctFundingCashflowFields now falls back to a first-year payment for
     // un-maintained subjects, so maintained multi-year / proportional plans
@@ -364,12 +299,15 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     // still surfaced in the UI via subjectFundingCoverage so the user can fix
     // any mismatches, but they don't silently revert cashflow to "all year 1".
     try {
-      const res: any = await invoke('calculate_ict_benefit', { input: getInputDataPayload() });
+      const res: any = await invoke('calculate_ict_benefit', { input });
+      if (sequence !== calculationSequence.current) return;
       if (res) {
+        setCalculationState({ key, error: '' });
         setCashflowTable(res.cashflow);
         setMetrics(res);
       }
     } catch (e) {
+      if (sequence === calculationSequence.current) setCalculationState({ key, error: String(e) });
       console.error(e);
     }
   }, [getInputDataPayload]);
@@ -383,7 +321,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     state.projectYears, state.discountRate, state.cashflowModel,
     state.distRev, state.distCost, state.segmentValueMode, state.cashflowSegments,
     state.cashflowCalculationSource, state.subjectFundingPlans,
-    performCalculation
+    currentCalculationKey, performCalculation
   ]);
 
   // --- AI Context Sync ---
@@ -412,7 +350,7 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     state.discountRate, state.projectYears, state.cashflowModel,
     state.distRev, state.distCost, state.segmentValueMode, state.cashflowSegments,
     state.ignoredTailValue, state.balanceAllocation, state.cashflowCalculationSource, state.subjectFundingPlans,
-    selQuote, selMarkup, selActualCost, selFee, selLimit, selectionFeeAnchor, selectionFeeTargetSubjectCode,
+    selQuote, selMarkup, selActualCost, selFee, selLimit, selectionFeeAnchor, selectionFeeTargetSubjectCode, selectionFeeMergeService,
     updateData, buildAiContextPayload
   ]);
 
@@ -436,45 +374,12 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     state.propertyRights, state.discountRate, state.projectYears, state.cashflowModel,
     state.distRev, state.distCost, state.segmentValueMode, state.cashflowSegments,
     state.ignoredTailValue, state.balanceAllocation, state.cashflowCalculationSource, state.subjectFundingPlans,
-    selQuote, selMarkup, selActualCost, selFee, selLimit, selectionFeeAnchor, selectionFeeTargetSubjectCode,
+    selQuote, selMarkup, selActualCost, selFee, selLimit, selectionFeeAnchor, selectionFeeTargetSubjectCode, selectionFeeMergeService,
     updateData, buildAiContextPayload
   ]);
 
-  const handleSelFeeChange = async (type: SelectionFeeChangeType, val: string) => {
-    if (type === 'quote') setSelQuote(val);
-    if (type === 'markup') setSelMarkup(val);
-    if (type === 'limit') setSelLimit(val);
-    if (type !== 'markup') setSelectionFeeAnchorState(type);
-
-    const currentQuote = type === 'quote' ? val : selQuote;
-    const currentMarkup = type === 'markup' ? val : selMarkup;
-    const currentLimit = type === 'limit' ? val : selLimit;
-    const currentAnchor = type === 'markup' ? selectionFeeAnchor : type;
-    const requestSeq = ++selectionFeeRequestSeqRef.current;
-
-    try {
-      if (currentAnchor === 'quote') {
-        const res: any = await invoke('calculate_selection_fee', { quote: currentQuote || "0", markup: currentMarkup || "0" });
-        if (requestSeq !== selectionFeeRequestSeqRef.current) return;
-        setSelLimit(res.final_limit);
-        setSelActualCost(res.actual_cost);
-        setSelFee(res.selection_fee);
-      } else {
-        const res: any = await invoke('reverse_calculate_selection_fee', { limit: currentLimit || "0", markup: currentMarkup || "0" });
-        if (requestSeq !== selectionFeeRequestSeqRef.current) return;
-        setSelQuote(res.quote);
-        setSelActualCost(res.actual_cost);
-        setSelFee(res.selection_fee);
-      }
-    } catch(e) {
-      if (requestSeq === selectionFeeRequestSeqRef.current) {
-        console.error("甄选限价计算失败:", e);
-      }
-    }
-  };
-
   const applySelectionLimit = () => {
-    if (!selLimit) return;
+    if (!selection.selectionFeeReady) return alert(selection.selectionFeeError || "请等待甄选费计算成功后再写入。");
 
     const targetSubject = resolveSelectionFeeTargetSubject(selectionFeeTargetSubjectCode);
     const serviceFeeSubject = ICT_SUBJECT_DEFINITIONS.find(
@@ -492,12 +397,26 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     };
     const targetItem = resolveCostItem(targetSubject);
     const serviceFeeItem = resolveCostItem(serviceFeeSubject);
-    const writeAmounts = calculateSelectionFeeWriteAmounts(selLimit, selFee);
+    const targetError = getSelectionFeeTargetTaxError(getSubjectExcelDisplayName(targetSubject, targetItem), targetItem?.tax);
+    if (targetError) return alert(targetError);
+    const writeAmounts = calculateSelectionFeeWriteAmounts(selLimit, selFee, selectionFeeMergeService);
     if (!writeAmounts.valid) {
       return alert(writeAmounts.message || "甄选测算金额无法写入。");
     }
 
-    // 财务口径检查：未开启自动修正时，不可精确表示的含税金额明确拒绝写入。
+    // Fee and limit are confirmed calculation results, not a balancing pool.
+    // Reject any normalization that would silently change either written amount.
+    const feeUpdates = [
+      { groupId: targetSubject.groupId, key: targetSubject.key, incl: writeAmounts.targetIncl },
+      ...(!selectionFeeMergeService ? [{ groupId: serviceFeeSubject.groupId, key: serviceFeeSubject.key, incl: writeAmounts.serviceFeeIncl }] : []),
+    ];
+    const effectiveFee = prepareIctTaxItemsInclBatch(state, feeUpdates, isTaxInclAutoFixEnabled());
+    for (const update of feeUpdates) {
+      const group = effectiveFee.state[update.groupId as 'costIt' | 'costCt' | 'costMix'];
+      if (Math.abs(group[update.key].incl - update.incl) > MONEY_EPSILON) {
+        return alert(`甄选限价回填经财务口径归一后，科目含税 ${update.incl.toFixed(2)} 元将变为 ${group[update.key].incl.toFixed(2)} 元，与已确认的限价或服务费不一致，已停止写入。请调整报价或限价后重新测算。`);
+      }
+    }
     if (!isTaxInclAutoFixEnabled()) {
       const checks = [
         {
@@ -505,11 +424,11 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
           amount: writeAmounts.targetIncl,
           tax: Number(targetItem?.tax ?? targetSubject.defaultTaxRate),
         },
-        {
+        ...(!selectionFeeMergeService ? [{
           label: "甄选服务费",
           amount: writeAmounts.serviceFeeIncl,
           tax: Number(serviceFeeItem?.tax ?? serviceFeeSubject.defaultTaxRate),
-        },
+        }] : []),
       ];
       for (const check of checks) {
         const pair = normalizeTaxPairFromIncl(check.amount, check.tax);
@@ -517,15 +436,13 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
           return alert(
             `${check.label}含税 ${pair.enteredIncl.toFixed(2)} 元在 ${check.tax}% 税率下不可精确表示：` +
             `业务系统按不含税 ${pair.excl.toFixed(2)} 元反推为 ${pair.incl.toFixed(2)} 元。已停止写入。\n` +
-            `请调整金额后重试，或在「设置 → 测算行为」中开启财务口径自动修正。`
+            `请调整报价或限价后重新测算。`
           );
         }
       }
     }
 
-    // 最高限价已经包含由供应商承担的甄选服务费，因此目标科目只写入
-    // “最高限价 - 甄选服务费”（等价于供应商报价 + 上浮）。两个科目一次批量提交，
-    // 避免同属 costIt 时后一次 React 更新覆盖前一次，并统一同步科目付款计划。
+    // 合并仅提交目标科目；拆分同时提交目标与服务费。沿用批量更新和付款计划同步。
     state.updateTaxItemsInclBatch([
       {
         groupId: targetSubject.groupId,
@@ -533,12 +450,12 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
         incl: writeAmounts.targetIncl,
         reason: "manual_amount_sync",
       },
-      {
+      ...(!selectionFeeMergeService ? [{
         groupId: serviceFeeSubject.groupId,
         key: serviceFeeSubject.key,
         incl: writeAmounts.serviceFeeIncl,
-        reason: "manual_amount_sync",
-      },
+        reason: "manual_amount_sync" as const,
+      }] : []),
     ]);
   };
 
@@ -879,9 +796,13 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   const buildLockedTotalStructureCandidate = (
     structure: LockedTotalStructureContext,
     targetAmount: number,
+    autoFix = isTaxInclAutoFixEnabled(),
   ) => {
-    const safeTargetAmount = roundMoney(Math.max(0, Math.min(structure.reallocatablePoolInclAmount, targetAmount)));
-    const balancingAmount = roundMoney(structure.reallocatablePoolInclAmount - safeTargetAmount);
+    const requestedTarget = roundMoney(Math.max(0, Math.min(structure.reallocatablePoolInclAmount, targetAmount)));
+    const prepared = prepareStructureCandidate(state, structure, requestedTarget,
+      roundMoney(structure.reallocatablePoolInclAmount - requestedTarget), autoFix, MONEY_EPSILON);
+    const safeTargetAmount = prepared.targetAmount;
+    const balancingAmount = prepared.balancingAmount;
     const modelEAmountMode = false;
     const modelESync = modelEAmountMode
       ? applyModelEStructureTransfer({
@@ -891,10 +812,10 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
           candidateBalancingIncl: balancingAmount,
         })
       : { valid: true, segments: state.cashflowSegments, transfers: [] };
-    if (!modelESync.valid) {
+    if (!prepared.valid || !modelESync.valid) {
       return {
         valid: false,
-        message: modelESync.message || "当前 model_e 分板块金额计划无法同步本次结构候选。",
+        message: prepared.message || modelESync.message || "当前 model_e 分板块金额计划无法同步本次结构候选。",
         targetAmount: safeTargetAmount,
         balancingAmount,
         nextSubjectState: getCurrentReverseSubjectState(),
@@ -903,20 +824,8 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
         modelETransfers: modelESync.transfers,
       };
     }
-    const nextSubjectState = applyLockedTotalStructureAmountsToState(
-      getCurrentReverseSubjectState(),
-      structure.targetSubject,
-      safeTargetAmount,
-      structure.balancingSubject,
-      balancingAmount,
-    );
-
-    // Simulate synced funding plans for candidate evaluation
-    const candidateSyncUpdates: Array<{ subjectRef: SubjectFundingSubjectRef; newAmountIncl: number }> = [
-      ...buildCandidateSyncUpdates(structure.targetSubject, safeTargetAmount),
-      ...buildCandidateSyncUpdates(structure.balancingSubject, balancingAmount),
-    ];
-    const syncedPlans = syncSubjectFundingPlansToAmounts(state.subjectFundingPlans, candidateSyncUpdates);
+    const nextSubjectState = prepared.state;
+    const syncedPlans = prepared.synchronizePlans(state.subjectFundingPlans);
 
     const payload = buildInputDataPayload({
       segments: modelESync.segments,
@@ -940,8 +849,8 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     };
   };
 
-  const getMetricValue = (result: any) => {
-    const metricValue = Number(revTargetType === "margin" ? result.margin_rate : result.npv_rate);
+  const getMetricValue = (result: any, metricType = revTargetType) => {
+    const metricValue = Number(metricType === "margin" ? result.margin_rate : result.npv_rate);
     return Number.isFinite(metricValue) ? metricValue : 0;
   };
 
@@ -949,7 +858,14 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     selectedSubject: ReverseSubjectOption,
     structure: LockedTotalStructureContext,
     target: number,
-  ) => {
+    options?: StructureReverseOptions,
+  ): Promise<StructureReverseResult> => {
+    const metricType = options?.metricType ?? revTargetType;
+    const autoFix = isTaxInclAutoFixEnabled();
+    const fail = (message: string): StructureReverseResult => {
+      if (!options?.silent) alert(message);
+      return { status: "error", message };
+    };
     const modelEAmountMode = false;
     if (
       modelEAmountMode
@@ -957,18 +873,19 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       && structureHasRevenueToCostLink(structure)
       && isBalanceRuleConfigured(state.balanceAllocation.investment)
     ) {
-      return alert("当前反算科目会联动调整投入金额，但投入侧同时启用了总额锁定与差额承接。该组合涉及双侧联动结构调整，当前暂不支持，请先清空一侧承接规则或选择其他反算科目。");
+      return fail("当前反算科目会联动调整投入金额，但投入侧同时启用了总额锁定与差额承接。该组合涉及双侧联动结构调整，当前暂不支持，请先清空一侧承接规则或选择其他反算科目。");
     }
 
     if (structure.targetSubject.subjectCode === structure.balancingSubject.subjectCode) {
-      return alert("结构反算目标科目不能与差额承接科目相同。");
+      return fail("结构反算目标科目不能与差额承接科目相同。");
     }
     if (structure.reallocatablePoolInclAmount < 0) {
-      return alert("当前锁定总额小于固定科目合计，无法执行结构反算。");
+      return fail("当前锁定总额小于固定科目合计，无法执行结构反算。");
     }
 
+    let closestMetricValue: number | undefined;
     const evaluate = async (targetAmount: number) => {
-      const candidate = buildLockedTotalStructureCandidate(structure, targetAmount);
+      const candidate = buildLockedTotalStructureCandidate(structure, targetAmount, autoFix);
       if (!candidate.valid || !candidate.payload) {
         return {
           ...candidate,
@@ -977,19 +894,20 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
         };
       }
       const result: any = await invoke("calculate_ict_benefit", { input: candidate.payload });
+      const metricValue = getMetricValue(result, metricType);
+      if (result && (closestMetricValue === undefined || Math.abs(metricValue - target) < Math.abs(closestMetricValue - target))) {
+        closestMetricValue = metricValue;
+      }
       return {
         ...candidate,
         result,
-        metricValue: getMetricValue(result),
+        metricValue,
       };
     };
 
+    // Prepare and validate everything before entering the amount-writing phase.
+    let applyResult: () => StructureReverseResult;
     try {
-      if (state.ignoredDataHash !== null) {
-        state.setIgnoredDataHash(null);
-        state.setIgnoredTailValue(null);
-      }
-
       const sampleAmounts = buildLockedTotalStructureSamplePoints(
         structure.reallocatablePoolInclAmount,
         structure.beforeTargetInclAmount,
@@ -1002,20 +920,22 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       const validSamplePoints = samplePoints.filter(point => point.valid && point.payload && point.result);
       if (validSamplePoints.length === 0) {
         const firstInvalid = samplePoints.find(point => !point.valid);
-        return alert(firstInvalid?.message || "当前分板块金额计划无法支持任何结构反算候选点，请调整板块金额计划后再试。");
+        return fail(firstInvalid?.message || "当前分板块金额计划无法支持任何结构反算候选点，请调整板块金额计划后再试。");
       }
 
       const metricValues = validSamplePoints.map(point => point.metricValue);
       const minMetric = Math.min(...metricValues);
       const maxMetric = Math.max(...metricValues);
-      const targetName = revTargetType === "margin" ? "目标毛利润率" : "目标净现值率";
+      const targetName = metricType === "margin" ? "目标毛利润率" : "目标净现值率";
+      if (options?.previewOnly) return { status: "range", minMetric, maxMetric };
+      const reachabilityDetails = () => `${targetName}：目标 ${formatPercent(target)}，本次搜索最接近值 ${formatPercent(closestMetricValue!)}；当前结构下可达范围约为 ${formatPercent(minMetric)} - ${formatPercent(maxMetric)}（采样范围不代表其中每个值都能达到）。`;
 
       if (maxMetric - minMetric < METRIC_EPSILON) {
-        return alert(`当前结构调整对${targetName}不敏感：可重分配池在 ${formatCurrency(structure.reallocatablePoolInclAmount)} 内变化时，指标仅从 ${formatPercent(minMetric)} 到 ${formatPercent(maxMetric)}。请调整现金流、税率或目标科目后再试。`);
+        return fail(`当前结构调整对${targetName}不敏感：可重分配池在 ${formatCurrency(structure.reallocatablePoolInclAmount)} 内变化时，指标仅从 ${formatPercent(minMetric)} 到 ${formatPercent(maxMetric)}。${reachabilityDetails()}请调整现金流、税率或目标科目后再试。`);
       }
 
       if (target < minMetric - METRIC_EPSILON || target > maxMetric + METRIC_EPSILON) {
-        return alert(`当前锁定总额结构下无法达到目标值。${targetName}可达范围约为 ${formatPercent(minMetric)} - ${formatPercent(maxMetric)}，当前目标为 ${formatPercent(target)}。`);
+        return fail(`当前锁定总额结构下无法达到目标值。${reachabilityDetails()}`);
       }
 
       const solutions: Array<{ targetAmount: number; point: Awaited<ReturnType<typeof evaluate>> }> = [];
@@ -1046,8 +966,11 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
           if (Math.abs(mid.metricValue - target) < Math.abs(best.metricValue - target)) {
             best = mid;
           }
-          if (Math.abs(mid.metricValue - target) <= METRIC_EPSILON || Math.abs(high.targetAmount - low.targetAmount) <= MONEY_EPSILON) {
+          if (Math.abs(mid.metricValue - target) <= METRIC_EPSILON) {
             best = mid;
+            break;
+          }
+          if (Math.abs(high.targetAmount - low.targetAmount) <= MONEY_EPSILON) {
             break;
           }
           if (increasing) {
@@ -1059,11 +982,13 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
             high = mid;
           }
         }
-        solutions.push({ targetAmount: best.targetAmount, point: best });
+        if (Math.abs(best.metricValue - target) <= METRIC_EPSILON) {
+          solutions.push({ targetAmount: best.targetAmount, point: best });
+        }
       }
 
       if (solutions.length === 0) {
-        return alert(`已采样当前可重分配区间，但没有找到可稳定收敛到目标值的区间。${targetName}可达范围约为 ${formatPercent(minMetric)} - ${formatPercent(maxMetric)}。`);
+        return fail(`已采样当前可重分配区间，但没有找到可稳定收敛到目标值的区间。${reachabilityDetails()}`);
       }
 
       const bestSolution = solutions.reduce((best, current) => (
@@ -1074,28 +999,20 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
 
       const finalPoint = await evaluate(bestSolution.targetAmount);
       if (!finalPoint.valid || !finalPoint.payload || !finalPoint.result) {
-        return alert(finalPoint.message || "最终结构反算候选无法同步到分板块金额计划，已停止写入。");
+        return fail(finalPoint.message || "最终结构反算候选无法同步到分板块金额计划，已停止写入。");
       }
       const totalCheck = roundMoney(structure.fixedOtherInclAmount + finalPoint.targetAmount + finalPoint.balancingAmount);
       if (Math.abs(totalCheck - structure.totalInclAmount) > MONEY_EPSILON) {
-        return alert("结构反算结果未能保持同侧含税总金额不变，已停止写入。");
+        return fail("结构反算结果未能保持同侧含税总金额不变，已停止写入。");
       }
       if (finalPoint.targetAmount < -MONEY_EPSILON || finalPoint.balancingAmount < -MONEY_EPSILON) {
-        return alert("结构反算结果出现负金额，已停止写入。");
+        return fail("结构反算结果出现负金额，已停止写入。");
+      }
+      if (Math.abs(finalPoint.metricValue - target) > METRIC_EPSILON) {
+        return fail(`最终结构反算复算值 ${formatPercent(finalPoint.metricValue)} 未达到目标，已停止写入。${reachabilityDetails()}`);
       }
 
-      state.updateTaxItemsInclBatch([
-        { groupId: structure.targetSubject.groupId, key: structure.targetSubject.key, incl: finalPoint.targetAmount, reason: "reverse_calculation_sync" },
-        { groupId: structure.balancingSubject.groupId, key: structure.balancingSubject.key, incl: finalPoint.balancingAmount, reason: "balance_allocation_sync" },
-      ]);
-      if (modelEAmountMode) {
-        state.setCashflowSegments(finalPoint.nextSegments);
-      }
-      state.setActiveTab(structure.side === "revenue" ? "revenue" : "cost");
-
-      setCashflowTable(finalPoint.result.cashflow);
-      setMetrics(finalPoint.result);
-      updateData(AI_CONTEXT_KEY.ICT_CORE, buildAiContextPayload(true, {
+      const contextPayload = buildAiContextPayload(true, {
         metrics: finalPoint.result,
         cashflow: finalPoint.result.cashflow,
         extra: {
@@ -1103,8 +1020,8 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
           reverse_calculation: {
             mode: "locked_total_structure",
             side: structure.side,
-            target_type: revTargetType,
-            target_value: revTargetValue,
+            target_type: metricType,
+            target_value: options ? String(target) : revTargetValue,
             target_subject_ref: selectedSubject.ref,
             target_subject_name: structure.targetDisplayName,
             target_before_amount: structure.beforeTargetInclAmount,
@@ -1130,36 +1047,65 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
               : [],
           },
         },
-      }));
+      });
 
       const modelESuccessText = modelEAmountMode
         ? "\n本次结构调整已同步更新分板块现金流金额计划。"
         : "";
 
-      alert(
+      const successMessage =
         modelESuccessText +
         `结构反算完成：${structure.sideLabel}含税总金额保持 ${formatCurrency(structure.totalInclAmount)} 不变。\n` +
         `${targetName}：目标 ${formatPercent(target)}，当前 ${formatPercent(finalPoint.metricValue)}\n` +
         `目标科目：“${structure.targetDisplayName}” ${formatCurrency(structure.beforeTargetInclAmount)} -> ${formatCurrency(finalPoint.targetAmount)}\n` +
         `承接科目：“${structure.balancingDisplayName}” ${formatCurrency(structure.beforeBalancingInclAmount)} -> ${formatCurrency(finalPoint.balancingAmount)}\n` +
-        `固定同侧科目合计：${formatCurrency(structure.fixedOtherInclAmount)}；可重分配池：${formatCurrency(structure.reallocatablePoolInclAmount)}`
-      );
+        `固定同侧科目合计：${formatCurrency(structure.fixedOtherInclAmount)}；可重分配池：${formatCurrency(structure.reallocatablePoolInclAmount)}`;
+
+      if (options?.beforeCommit) await options.beforeCommit();
+      if (isTaxInclAutoFixEnabled() !== autoFix) return fail('财务口径自动修正设置已变化，请重新执行结构反算。');
+      applyResult = () => {
+        if (state.ignoredDataHash !== null) {
+          state.setIgnoredDataHash(null);
+          state.setIgnoredTailValue(null);
+        }
+        state.updateTaxItemsInclBatch([
+          { groupId: structure.targetSubject.groupId, key: structure.targetSubject.key, incl: finalPoint.targetAmount, reason: "reverse_calculation_sync" },
+          { groupId: structure.balancingSubject.groupId, key: structure.balancingSubject.key, incl: finalPoint.balancingAmount, reason: "balance_allocation_sync" },
+        ]);
+        if (modelEAmountMode) {
+          state.setCashflowSegments(finalPoint.nextSegments);
+        }
+        state.setActiveTab(structure.side === "revenue" ? "revenue" : "cost");
+        setCashflowTable(finalPoint.result.cashflow);
+        setMetrics(finalPoint.result);
+        updateData(AI_CONTEXT_KEY.ICT_CORE, contextPayload);
+        if (!options?.silent) alert(successMessage);
+        return { status: "success", message: successMessage, target, achieved: finalPoint.metricValue,
+          metricType, targetReached: Math.abs(finalPoint.metricValue - target) <= METRIC_EPSILON,
+          expectedInput: finalPoint.payload };
+      };
     } catch (e) {
-      alert("结构反算失败: " + e);
+      return fail("结构反算失败: " + e);
     }
+    return applyResult();
   };
 
   const performReverseCalculation = async (
     selectedSubject: ReverseSubjectOption | null,
     reverseContext?: ResolvedReverseCalculationContext,
+    options?: StructureReverseOptions,
   ) => {
-    const target = Number(revTargetValue);
-    if (!Number.isFinite(target)) return alert("请输入有效的目标值。");
-    if (!selectedSubject) return alert("请选择需要反算的计费科目。");
+    const target = options?.target ?? Number(revTargetValue);
+    const fail = (message: string): StructureReverseResult => {
+      if (!options?.silent) alert(message);
+      return { status: "error", message };
+    };
+    if (!Number.isFinite(target)) return fail("请输入有效的目标值。");
+    if (!selectedSubject) return fail("请选择需要反算的计费科目。");
 
-    if (reverseContext?.mode === "blocked") return alert(reverseContext.message);
+    if (reverseContext?.mode === "blocked") return fail(reverseContext.message);
     if (reverseContext?.mode === "locked_total_structure") {
-      return performLockedTotalStructureReverseCalculation(selectedSubject, reverseContext.structure, target);
+      return performLockedTotalStructureReverseCalculation(selectedSubject, reverseContext.structure, target, options);
     }
 
     const modelEAmountMode = false;
@@ -1259,9 +1205,9 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
       } else {
         if (selectedSubject.subject.subjectCode === selectionFeeTargetSubjectCode) {
           const markup = Number(selMarkup || 0);
-          // 反算得到的是目标投入科目含税额。按“目标科目 = 报价 + 上浮”回推报价，
-          // 再由甄选费公式正向刷新服务费与最高限价。
-          handleSelFeeChange('quote', String(roundMoney(Math.max(0, finalAmount - markup))));
+          // 合并模式的目标金额即限价；拆分模式的目标金额为报价 + 浮动。
+          // 两种模式都交给同一甄选费引擎刷新，不在反算侧复制费率。
+          handleSelFeeChange(selectionFeeMergeService ? 'limit' : 'quote', String(selectionFeeMergeService ? finalAmount : roundMoney(Math.max(0, finalAmount - markup))));
         }
         state.setActiveTab("cost");
       }
@@ -1308,13 +1254,9 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
   return {
     cashflowTable,
     metrics,
-    selQuote, setSelQuote,
-    selMarkup, setSelMarkup,
-    selActualCost,
-    selFee,
-    selLimit, setSelLimit,
-    selectionFeeAnchor, setSelectionFeeAnchor,
-    selectionFeeTargetSubjectCode, setSelectionFeeTargetSubjectCode,
+    calculationReady: calculationState.key === currentCalculationKey,
+    calculationError: calculationState.key === currentCalculationKey ? calculationState.error : '',
+    ...selection,
     revMode, setRevMode,
     revTargetType, setRevTargetType,
     revTargetValue, setRevTargetValue,
@@ -1330,8 +1272,8 @@ export function useIctCalculations(state: ReturnType<typeof useIctState>) {
     performCalculation,
     handleSelFeeChange,
     applySelectionLimit,
-    restoreSelectionFeeState,
     performReverseCalculation,
+    performLockedTotalStructureReverseCalculation,
     buildInputDataPayload,
   };
 }

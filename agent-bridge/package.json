@@ -6,8 +6,10 @@
   "scripts": {
     "provision": "node scripts/provision-profile.mjs --profile acp"
   },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.2-alpha.5"
+  },
   "devDependencies": {
-    "@deepseek-ai/dsh": "0.1.2-alpha.5",
     "pnpm": "^10.0.0"
   }
 }

@@ -1,0 +1,673 @@
+{
+  "before": {
+    "sources": {
+      "agent-bridge/dsh-tool-lamber/src/approval.ts": "9e35f171029bd4be421342cb90610b4cea42e108e7402f2b2173a155060fcb70",
+      "agent-bridge/dsh-tool-lamber/src/bridge.ts": "e79f09854ce00aa57415f647d9b008adf9523074f48227b8922028178ecf4029",
+      "agent-bridge/dsh-tool-lamber/src/catalogCompletion.generated.ts": "159459237638eb40acc2d2e2a567e9bce6aaf33128374e649cff55b1cc03a324",
+      "agent-bridge/dsh-tool-lamber/src/contract.generated.ts": "9efa15c5529758e5504859650c9f9e3f382ef53478a028d90587fc0d8f9e1ea1",
+      "agent-bridge/dsh-tool-lamber/src/contract.ts": "54bc8cd38d129cb035a4e77a3a5269912f9a35eb3da5b9f724c0e085d81deea3",
+      "agent-bridge/dsh-tool-lamber/src/fillTemplateFields.ts": "2993e7a81bf2b2a8eeb0e523317dba26adeb1d615943f0a77353175146ecf551",
+      "agent-bridge/dsh-tool-lamber/src/index.ts": "9cf3af4ab5e806fd1e21f1919136762a188d44a4f0407979f2900e7cc1931fbc",
+      "agent-bridge/dsh-tool-lamber/src/projectScope.ts": "9ff36a63e092924f8dda157b3d009cceed76579f2e578a486120253e21939398",
+      "agent-bridge/dsh-tool-lamber/src/queryProjects.ts": "925d324be5562c7f161833ce85aad59e320163d50d5a5309456d01229c891995",
+      "agent-bridge/dsh-tool-lamber/src/readTemplateFields.ts": "f3ed7fd0fe455ab1687b9f2c899274a53de16854916aa75ab29c181c9460efbe",
+      "agent-bridge/dsh-tool-lamber/src/reviewedArguments.ts": "5ad3c7964b694971cb932e653589013681e7b4e979bd8f16bf6fe16536dddb13",
+      "agent-bridge/dsh-tool-lamber/src/runBenefitCalculation.ts": "0f44755aead342c3d425daf06f04eed3531500a41421cd2eccfb0da79b631e65",
+      "agent-bridge/dsh-tool-lamber/src/stream.ts": "03b62fb89e5e48af50e18bed71c5a458d7ef12cd1e6977b9a0b06d45d0fdf840",
+      "agent-bridge/dsh-tool-lamber/src/templateFields.generated.ts": "d9c3a8498ff7f0d9e66a3fb15ed0703dd427e473f0d3512510e5129b3fc4b66e",
+      "agent-bridge/dsh-tool-lamber/src/writeTestMarker.ts": "d2969a68ae34738445e8f83c0657b5feecc661742c5fa082beb275515162341c",
+      "agent-bridge/scripts/build-contract.mjs": "c093b218e7c63e51464ea718ccc11b4c659c750b487777f4faad002dd842062a",
+      "agent-bridge/scripts/check-bridge.mjs": "384f742c9e342542433e923528cbdae4df098482ffe06da91f0ad9403bd96f2b",
+      "agent-bridge/scripts/check-gating.mjs": "37398f2327ff98e1bc7eea70822d1c3300f8f4f2539bc2252e329fe983000ba4",
+      "agent-bridge/scripts/provision-profile.mjs": "3f8e0e694370c7c26b730f4d11cd96bb53ccfc8ba99df0a6e3aac38b01ff223c",
+      "agent-bridge/scripts/test-contract.mjs": "69b027ad7c0be039d5716ce57ae9c4b3c5fc13a7f70d9a3076aafbd5d7aa19fe",
+      "agent-bridge/scripts/test-project-scope.mjs": "18de69e8d3e0cb502fee8dea9b14743723ab207cee14bb08982ec8570181771a",
+      "agent-bridge/scripts/test-template-catalog.mjs": "a4bb79bd7724f776a7d6e362bfa5f98b611ba9311e4b847ca66aded2326c2a86",
+      "agent-bridge/scripts/test-template-read.mjs": "63e3873280181ed5a7c652ebab2a0e7d0e4cd790afed11e8e34c35d936d90e21",
+      "scripts/bridge-contract.mjs": "876021d0d08d34eddd0cd508cccc7c7aee2cf118e3fcdf5fb1d3482266e3b12d",
+      "scripts/package-windows.mjs": "6031d2ded248e194bfee570bbd9779b49a0d666e483142c6a742ffa752feb947",
+      "scripts/package-windows.test.mjs": "942635dd36becd45384ab736a121a8d0ce2b680921fdf810dd6867f3eb3b623d",
+      "scripts/verify-template-catalog-extension.mjs": "52399fe53d90557578858eab0d095167ec83452bef62b2cf7b6beb24490c6b4a",
+      "src-tauri/build.rs": "44bfc391e20b848db4400147bca9e686009501764795759650b33c237da4a28a",
+      "src-tauri/src/agent_bridge/approval.rs": "60a7c82278dc5c95f89b17f43b6428363b67dae9ddf4f14dfc982b2b9e303137",
+      "src-tauri/src/agent_bridge/approval_log.rs": "7ab2e5b02ebb1d77004226805f9aea051c09ced9da6b338dd03ec798dc46575b",
+      "src-tauri/src/agent_bridge/approval_rehearsal.rs": "d879ec514cd9566437f19cbc2a64ef7fb4d71b8b9d3de800cd8979718fe6a327",
+      "src-tauri/src/agent_bridge/bridge_server.rs": "7f7754973db9c9ca6b46a704bc04983012b2b0df1369474d205c35b55202a6a6",
+      "src-tauri/src/agent_bridge/calculation.rs": "3bc491d966ea019ba52d7ca6ee53ac3020063299ab004f0bed9e2b6269bdef1c",
+      "src-tauri/src/agent_bridge/contract.rs": "bfcbe238921935231107def1dd63abfc55f6b1f3ef92c26cc730ea803cbadd7d",
+      "src-tauri/src/agent_bridge/distribution.rs": "e9648f1c60e8380871871c88c6f57f6a6f1f210f704736778c3a42ca2a39367f",
+      "src-tauri/src/agent_bridge/dsh_session.rs": "bddd7ace1b152d088003020c6d13fce2a89aadefe837df07cbb9803a13a6fa41",
+      "src-tauri/src/agent_bridge/mod.rs": "a53f447b30ec0dfd2b969d3dc25b49198faf05dd359bbb756d6578b064d525bb",
+      "src-tauri/src/agent_bridge/project_bindings.rs": "a4db3031695f84a62675bdf55511ef023e06d4ab6f75ed97eae20706d05d972a",
+      "src-tauri/src/agent_bridge/project_query.rs": "7d05fb9a1915d3d080c7630a4704da56e1a4dc4a815867ea1f9a90a67c03ff21",
+      "src-tauri/src/agent_bridge/prompt.rs": "1131a8ebcbe140b411a38b4e0a50353c9785f41e369a31c43eee6c6b72058032",
+      "src-tauri/src/agent_bridge/query_tests.rs": "50f6cf66ea700189be4e11b9d78a025c8dc48e6ce88cc846216562f95e78cbcd",
+      "src-tauri/src/agent_bridge/reviewed_arguments.rs": "0248a04f33a874724231bb48fcb49079ddf56b5dcf8dd0480dc4b6777901e502",
+      "src-tauri/src/agent_bridge/session_store.rs": "3cee477ac845d9f48e3c6594fc7486de0b00e83a35b80bcaa98c1b3b2f19f203",
+      "src-tauri/src/agent_bridge/streaming.rs": "cd3c97b5fc769cddb6050129e8ae0f2d591725a44a323be6132a73a7c17380ed",
+      "src-tauri/src/agent_bridge/template_catalog.rs": "b4ac5cfc5d247dd31d42057874a18f1aa83b7ebb4f685a9cd381d4c20f73f556",
+      "src-tauri/src/agent_bridge/template_read.rs": "5391074016cd274681592eff5d7a9f2cfe8c2fa4294aa061f5562baff3b197b6",
+      "src-tauri/src/agent_bridge/template_read_tests.rs": "700ee707b6271b3dfc024e25c49f55b45ccdafd9d6b43a5687e4c9fc5e59991a",
+      "src-tauri/src/agent_bridge/template_write.rs": "5601832e98c0b72d6722780d6ab108012d2dfd490d3a39c3eaac1413ceb93ddc",
+      "src-tauri/src/agent_bridge/template_write_tests.rs": "da8e385bb1739848e28e5fe10a70abb13e7dcc01d1c6114158b504164119eefa",
+      "src-tauri/src/agent_bridge/tests.rs": "a19871f5f7d1d63339c1d460224139b7ecfe21bb636c6c50cbb798743e769339",
+      "src-tauri/src/agent_bridge/tool_calls.rs": "366b065ca16054469ac2a3d974fdd1c75eeebb02938aa0c9d6b21f731ba50fa5",
+      "src-tauri/src/agent_bridge/turns.rs": "5e46844ca89b6f02a6f0d28bb4835232b1d03afced0a5257eaa7cd3563a62588",
+      "src-tauri/src/ai_context/commands.rs": "0361fb5f9e9725107e523cdd4268a85ee9995ffef0879b3723e2fd624186fb13",
+      "src-tauri/src/ai_context/dto.rs": "b4d2342dc07db9c4f26778b31acf23b55a5c8bba4aa74e0ea18214edb47ce89e",
+      "src-tauri/src/ai_context/mod.rs": "c404e5a4f8fedda31c71b03b1fa4c862cf05bf2d7f783538454ced7b1ec40807",
+      "src-tauri/src/ai_context/service.rs": "a81039b996ac80f7b1981d06fce212aa1de704717e53a944e59f138f00777af2",
+      "src-tauri/src/benefit/calculator.rs": "7fb5204faafbeffeb0132488a10b4859c7be74145f3e68343e19ae49393c7dbe",
+      "src-tauri/src/benefit/commands.rs": "a14b468c853c07daf55d783291837e691316187d21ece0596fc8d5c7ebe01f42",
+      "src-tauri/src/benefit/excel.rs": "7cbfcbcb93841df8eec08a727f3fc87b16fd245e7500a676ce6ef0f80b2832da",
+      "src-tauri/src/benefit/mod.rs": "814e26a746f3c017e1b78423d14627e5578b087f7098799f2fb3d99f9cfdbe9c",
+      "src-tauri/src/benefit/models.rs": "60154107afb2fb5156db14f2ea4df77335eaf8cf280a2cb303ef91b83feeaceb",
+      "src-tauri/src/benefit/repository.rs": "cd3d935469a2e7043a34565d352a48b65a9d45f5850d5620d53eb9ad3e7a5ea1",
+      "src-tauri/src/benefit/service.rs": "144373a924161844e25eb7c5172a60b2b93b253cf062d8b8942ba1ba00c0d8e8",
+      "src-tauri/src/business_dictionaries.rs": "191d6b87913b1fe6c3d7f1dd11d51633a4a5bd37d5306d68266a832d9393b314",
+      "src-tauri/src/common_presets.rs": "195b7d832ded09c3518688fa0098086125e0cb447c37df92bbccd84525ea2ffb",
+      "src-tauri/src/config_manager.rs": "59679ddcd6cdc7504373325325ba9c841cde7df05fa1bb6aa47789f0574655c2",
+      "src-tauri/src/db.rs": "95fe4f77db2e2271a46576b0e3e014fb4503688f8b020fdb27ff7b5240144b29",
+      "src-tauri/src/docfill.rs": "216675152a1c594e18bbd8a278e617a9d3ec4d3c3d25a916a8dc984939b155d9",
+      "src-tauri/src/intelligent_compute.rs": "face468bbd7a8889bf9309347343b4e97c42c07908ac61284feee0ae98a2ccbc",
+      "src-tauri/src/main.rs": "fb6a14d323f1c83ab0926db03ed2210ef61c9bd5e34e2cdf36a612a0c9a57599",
+      "src-tauri/src/migration.rs": "4bd7e29dc45defb67eb1e965ae5dca945357d4c188706304f51d4edf9a139b10",
+      "src-tauri/src/project_files/assets.rs": "20dd269c538810e0e8f61b877a095bd0eb1efdd084a35b875fc58b598dbf0163",
+      "src-tauri/src/project_files/commands.rs": "6a39dfbf137a9548dd257d9a39dfa3c7e4299887c4307e4d9734896a88c6d0fd",
+      "src-tauri/src/project_files/health.rs": "b85ded626d59336e2b9ca8bc7b607da6860de8436eeace875eb7358441be7085",
+      "src-tauri/src/project_files/import_scanner.rs": "1d9e9ed80b17ee36c3b3bcc886147e31bef577d1e1b73d59e852e045ead6d103",
+      "src-tauri/src/project_files/mod.rs": "e7d85661e96aa17fd369f34ef274a5e2fc7422668d0de95508971922a466e3c3",
+      "src-tauri/src/project_files/models.rs": "9a092b18a83850d9f959a6e783969b6a5d61e755f97dacfa51c464b4835cc874",
+      "src-tauri/src/project_files/relocation.rs": "1a193973e99740280411cf95debe07e1f2d9cda44a1343a703224c3d3404cd40",
+      "src-tauri/src/project_files/repository.rs": "df6b007130343142c1f16120f018be2ad2a9649f7dbeeebe49ace58d931423a4",
+      "src-tauri/src/project_files/roots.rs": "826a1f0177c52f45fadb451babe28abb2008b753abb96aa4d80759adb8b3626a",
+      "src-tauri/src/project_files/scanner.rs": "c6999543d7d1df89d5d36c74dcf9c37c94ad49a9e743b62e82f9c79f5d5bf2d5",
+      "src-tauri/src/project_files/service.rs": "9878cb6ede05d7b0de49e0ce6310603fd7a9ee3a4fb1ea4b193610a84011a61b",
+      "src-tauri/src/project_presets.rs": "0c23ff8af80370434dd0b2d6f0d3f821e5e39135aeb599d5e44a78eeb56991eb",
+      "src-tauri/src/project_state/mod.rs": "0d0791beed241bb85e9926511c5a170aaa4f4201af123180872490cb7cc78369",
+      "src-tauri/src/workspace.rs": "d724f9e663c9d76498c464bc2ebb7e7a23d8403075ea63bc3230e4605264fe29",
+      "src-tauri/src/workspace_maintenance.rs": "0cc0d39e65f1e417de60ed751c52e01854af7bf5dcd6c4f9495908dc49c6b568",
+      "src-ui/scripts/test_ai_compute_quote.cjs": "f98909e5c02814d5fed37252948864575ae552fd5c4d02f18bc6b0d000fc7ca2",
+      "src-ui/scripts/test_approval_review.cjs": "7ff3143758fb0d66eef968ce9c9d6bba487b8465ec593120bd0acc55947a286a",
+      "src-ui/scripts/test_business_dictionaries.cjs": "2702b429ad64704861fc61563dc7b319e691f645d38168e1ab3940281addacca",
+      "src-ui/scripts/test_common_presets.cjs": "06910f48fc9cb162a2273c1e968adfc939a20b50aa6b754b62dbe5180dc76492",
+      "src-ui/scripts/test_dsh_runtime.cjs": "7ef857c8c86f4567525be72f63dc86dc9e1be96b982d4067ee965a9a122abe58",
+      "src-ui/scripts/test_ict_reverse_search.cjs": "3d29defb3f5f21ee5b23ce47306e559219b9208ea8e073b712f28d3f69435ccb",
+      "src-ui/scripts/test_project_presets.cjs": "b1ba8272457a3be7be3caa0d384844e30813710c52ebbe4e3852a433701d82e7",
+      "src-ui/scripts/test_selection_result_batch.cjs": "bdea8f20a3a577c2269302ae77d827d32e2daa56f0a6e4db074f782675447271",
+      "src-ui/scripts/test_session_scope.cjs": "ed7d4a04496d1b28ee617043202f997dfe8783961ae46dd3a9c47745b570cc39",
+      "src-ui/scripts/test_subject_funding_cashflow.cjs": "71c7b845454780ab042db875e20e92a058ea58a0616d2badb4a74075538cb026",
+      "src-ui/scripts/test_subject_funding_final.cjs": "c13e429844dc15c3f2bbf20e56b3ca436db7d909a9bdaa77190f4f453df9f4bf",
+      "src-ui/scripts/test_subject_funding_migration.cjs": "76f1b08244f4ed9a9aa04fbe060a693ac8ffa053221ec7bc778cd566c4b90d57",
+      "src-ui/scripts/test_subject_funding_phase4.cjs": "850de355f5bc28bd34a49d95aa5c13f2a5d6381bb5419051a7bc3d3b9bf27b36",
+      "src-ui/scripts/test_subject_funding_plan.cjs": "4fdf385aa5390abefd5bdd922e7810e08d67e81c89a8e4b874e9bf16020d0556",
+      "src-ui/scripts/test_subject_funding_proportional.cjs": "74110bf93f91161184fa763f395b4e0ca1c044d1fc00ea8461671f94a9df8e0f",
+      "src-ui/scripts/test_subject_funding_sync.cjs": "4ec0873e78043559cec485078d660b47dccbf4ae87c2d0b28add83effde3c5f9",
+      "src-ui/scripts/test_tax_split.cjs": "a771cadb3bfda57615fea5b59c061efbf9b0fed98089ed023a3b9d3fa882da80",
+      "src-ui/scripts/test_template_state.cjs": "d4d2f30619aa78db11165f54db161469816c67d68961a69331b969eab72f3791",
+      "src-ui/src/App.tsx": "af1da866f4b5e5ed3cc32d280f5628add4b43c8c15d51efb3f433480ba762336",
+      "src-ui/src/ai/DshMessageProjection.ts": "62c7f0a8faa7d7bf2d1ac691e7ed7c24032b7235424895deeff1969e48944cc2",
+      "src-ui/src/ai/DshRuntime.ts": "57af111cc61819d987ab698bf23d58f65efc17eed7c52100f7ed2a7c7fe211d2",
+      "src-ui/src/ai/PromptRenderer.ts": "abeaff09395750f77c1028b867eb6f0928c4a06a079338ac380be8f6ae16bd8a",
+      "src-ui/src/ai/agentSettings.ts": "1eea22596ee97ddd6de8e7f0925c486864b854084c2758aea2b66abb010fd5c7",
+      "src-ui/src/ai/approvalReview.ts": "832973134a636d769a22edf20d0636e91b603e9aa8cb1ce2bcfb21a9271d878f",
+      "src-ui/src/ai/context/buildAiChatContext.ts": "75c91c59500e2ee8fb8b4eac084a253c14acefb22950026c07ab18aae230087d",
+      "src-ui/src/ai/context/buildDraftOverlay.ts": "db5867f11e017912f32414e048dffe8263c3d23a1e2e42bbf0ee667f56d26200",
+      "src-ui/src/ai/context/types.ts": "a2f1fee9445ea61a421161a8fc7d95b1587639999cc33f698f1f8dc43de17438",
+      "src-ui/src/ai/context/workspaceProjectRouter.ts": "0b19c038de4f0943ee2396ec670b003a2597dfada49f5177372cf695b19dfb21",
+      "src-ui/src/ai/sessionScopePolicy.ts": "8ce16daa612f3fbc1533bb1cbcdaf300d002a720461d28311f6acb436bfb1994",
+      "src-ui/src/ai/sessionTypes.ts": "68e7f62736f9918e7d2a77ae7d99986e1a679eaf594fdd332805bb9e77ac9f40",
+      "src-ui/src/ai/templateAssetSelection.ts": "9f8422f2f29befd38ba21a5dd0aca8f2cdd22315844e93a776e04872da36e112",
+      "src-ui/src/ai/types.ts": "61ca31daa1a53203d31a0bd00408a705427260da83594d63e1304ac39afeb16a",
+      "src-ui/src/components/GlobalSaveButton.tsx": "ec3e5fa65019377de5e5c76d30744b7824f1c5fd195c3e8c6b482ea46d34ca19",
+      "src-ui/src/components/IctBasicInfo.tsx": "00dc1648a0725dbb244bf712c8b30fc7d2faa29e92147e04087feb0d34ab46d0",
+      "src-ui/src/components/IctCashflowTable.tsx": "4ca7b72345d6f3385fb6f59abf748627fae78555e696c2e289a6a4e8f8141288",
+      "src-ui/src/components/IctMetricsDashboard.tsx": "e6e03ede5a0f9cb5885447b8a2aeadbf25f3453ef7f2e483c4e30c1e750de806",
+      "src-ui/src/components/IctProposalCashflowSummary.tsx": "46a8dda40f7729daf8f76e0c62481dfc629914d51ea35c5d4f8ca61c19b58f44",
+      "src-ui/src/components/IctSubjectFundingPlanEditor.tsx": "3ec1e06fccbd2988e905c5bbb1482858f1cc9d890dce646ce21299e3e047de73",
+      "src-ui/src/components/IctSubjectRoleComponents.tsx": "46aec9c653c2d528f242d110e4eae35a2003c33691263e26673190ed6781058d",
+      "src-ui/src/components/MessageBubble.tsx": "912189b83e50560cdae33619c16ac17859e6cea942a172ae83656800ca4a91a7",
+      "src-ui/src/components/WorkspaceHeader.tsx": "23542273c129a1080990d895bfca3df6416c182da9a26ccf65c5b992f3d2165f",
+      "src-ui/src/components/ai/AgentApprovalDialog.tsx": "663371afd7066bc5709d42a5d3685a7215bc653e5184965bc6a82b8e22d9b140",
+      "src-ui/src/components/ai/AgentLabView.tsx": "82fdbfd2dda344bab20d0a1940b5680f1b7beedbc95cdafc26b5aa347735815c",
+      "src-ui/src/components/ai/AiChatPanel.tsx": "5c061d3edccf0feb090c76a2d0fbd6b57a4817285ed47455581d8cb339140dbd",
+      "src-ui/src/components/ai/AiFloatingLauncher.tsx": "620ca215348090a42d4d8e94d34192b3897642267ff57c84b4b8293be8d30820",
+      "src-ui/src/components/ai/AiFloatingWindow.tsx": "d58f798dfaecb9e89382b71192c8eb2f6e41981a8db4076ea14b9f39f4f1b0ab",
+      "src-ui/src/components/ai/AiInputBox.tsx": "265a25377d8cb522e74027d3d09fbf6198af6491474d3d865b1c168d155e94b7",
+      "src-ui/src/components/ai/AiSessionItem.tsx": "da34871ecc42dcd094747a68e4f902dea1eb92b816c31079d183542ef21a563d",
+      "src-ui/src/components/ai/AiSessionProjectPicker.tsx": "b083cb8d361ab8e698f8ac5dcab59e3d3cdd937ad59f724249c42547022d4348",
+      "src-ui/src/components/ai/AiSessionSidebar.tsx": "785f4ee1922503e272fc9e45e186da90b97c477c1b5a26a5643694973addb187",
+      "src-ui/src/components/ai/DemandImageCompletionCard.tsx": "cacb1f22a7903fa8b86f41ff43b99957ff15fa3c62cbfc65e06be9229012217a",
+      "src-ui/src/components/ai/ImageAttachmentPreview.tsx": "37ce8dff649ed2c0905d586bdd6f36bbf89f3e5e53fd11d83c0dbfdafe70be46",
+      "src-ui/src/components/business-dictionaries/BusinessDictionaryManager.tsx": "1600b1f5d13f37283a75b78c7839ea2bc773d677fc83ec6720f69dee56b60a87",
+      "src-ui/src/components/business-dictionaries/BusinessDictionarySelect.tsx": "b510d3bf06d2581f31250d7a7582e8af030f1d2dca8bae53449cfec15a9d0014",
+      "src-ui/src/components/common-presets/CommonPresetQuickFill.tsx": "15eb784c19bd0fb7ccae312f7f20cb0d79fe01fa6660eca478f981e0e3c377c6",
+      "src-ui/src/components/icons/AppIcon.tsx": "e58df1622961f71dead2978bd4f9987595fac035b32d0d8fc000dabc7da3afac",
+      "src-ui/src/components/icons/iconMap.ts": "fde9345dd60d65e97a31b24e24cc5958bcbde4c728c549c0d4e8be254619fe0b",
+      "src-ui/src/components/project-presets/ProjectPresetManager.tsx": "47a4c1347a817af8d765cd9e1689feccc9eefbdde274b41f4bdd311e498e4a57",
+      "src-ui/src/components/project-presets/ProjectPresetProjectActions.tsx": "417ea6f020e8616d0ec2b7bfe73980043c52d75434bd20b0729f4ef47295198f",
+      "src-ui/src/components/project/ProjectFilesTab.tsx": "cecf15cb6c7d0054632efbcec003855cac7c1545775108754793e44bf1c1919b",
+      "src-ui/src/components/settings/AiAgentSettingsCard.tsx": "a8f3a4db521e630ee1900d38a11d43126e585656e98949de0ea96e2287d810a4",
+      "src-ui/src/components/settings/SettingsView.tsx": "7ce7f23ea8acbfd0324732ceb683189a8168ba429bc69ae10679546d534a5ab9",
+      "src-ui/src/components/templates/TemplateDocumentLayout.tsx": "d9fb94a27234ca7d8ef80b143ee91a6c75f860de47d6feef6f8daa3e8e77417d",
+      "src-ui/src/components/ui/button.tsx": "d734dfc4474f18d3a389da566eefca5315d5a24c4350d741f2d11ce4cfa1e056",
+      "src-ui/src/components/ui/card.tsx": "8e5c600723d4a81308b8cffc663cf860e2b08004c33d8e6716f9ed05479c468d",
+      "src-ui/src/components/ui/input.tsx": "edb37183990493447544731238d56cbfd66ab104f352845db3e3d0ed37151225",
+      "src-ui/src/components/ui/label.tsx": "80af2d04f7ddaa047d496c20ac7254496b02f6bc851db23133c205a844feafbe",
+      "src-ui/src/components/workspace/WorkspaceGate.tsx": "e0954d13214a992176b7fcd77c1ba44c73beade64b5c69159df106d404d2cd74",
+      "src-ui/src/features/ai-compute-quote/AiComputeFundingPlanEditor.tsx": "c8472b46bc52ea641b2179138b4c48b707f997af4c09fdf1d0814fa9e37fbc8d",
+      "src-ui/src/features/ai-compute-quote/AiComputeQuoteView.tsx": "0068af97ac6a38e61b007f2d0045761051b55e33464c512d29f30cf90d93d5fe",
+      "src-ui/src/features/ai-compute-quote/BenefitConclusionSidebar.tsx": "5af274b08c8b7a849d41452ff0fce75ce52fe15e907c26f2d9e633425fa2edb8",
+      "src-ui/src/features/ai-compute-quote/CalculationItemCard.tsx": "8dd6091a89737203d557bcafac1e8f0d9848dbd9c4019ab56d23c5f390000591",
+      "src-ui/src/features/ai-compute-quote/CalculationItemDetailTabs.tsx": "3c16edf2ad76e9d4fa53d417f370224780e747789d596fe955d81e86c35beab5",
+      "src-ui/src/features/ai-compute-quote/QuoteFormulaCalculator.tsx": "4d36412498dd00f02d6ef50518e86e612199f02766fcebb2ea8a84a00f9f1641",
+      "src-ui/src/features/ai-compute-quote/amountSourceExchange.ts": "b0652948df46edab2e3c1bb3c464a0437ffb4ce0447ed1519dc784639cd86c5e",
+      "src-ui/src/features/ai-compute-quote/amountSources.ts": "daafc2214ffb57374132983e5561f605b48d7b0d0845a857c60e757913e0d153",
+      "src-ui/src/features/ai-compute-quote/calculations.ts": "b6fc52b4488590f8626e071e22e444b4c5515c5d9599fa2724d6c6fe0a34eac2",
+      "src-ui/src/features/ai-compute-quote/formulaEngine.ts": "b27d02aec61be64c9e277a3196702c023141df3488ac7d0ae41725d4abc49a38",
+      "src-ui/src/features/ai-compute-quote/formulaTokenEditing.ts": "5f842cfbb994342d726556b957b595acbda7febf70b41cdef33da56b2fb508df",
+      "src-ui/src/features/ai-compute-quote/fundingPlans.ts": "20d9c5c5a7af341519f2d1e10561f352ea090e9eb906d31db92a2458f1a14d8f",
+      "src-ui/src/features/ai-compute-quote/ictExport.ts": "837d422374d3808a0ff75e589e16c533680e7f1b479495624ce6d7ae9cebf457",
+      "src-ui/src/features/ai-compute-quote/ictSync.ts": "9f8df47286cd40e305b1f95f5e857090d6486547e6dd6cebce299fb844a66f7e",
+      "src-ui/src/features/ai-compute-quote/parameterLayout.ts": "fcf608b4527d178275d3179919130f6754740f7243c0811dbe41ef263a0065d4",
+      "src-ui/src/features/ai-compute-quote/presets.ts": "2b43d9fbc21043ab3ba56d9e44f27bc3e92c263cd976a955e6746837a9e71ce4",
+      "src-ui/src/features/ai-compute-quote/quoteNarrative.ts": "e79659cb4435692f9d78cca4710aed12438b7666ec2a3f7be8d9b7b8a1052d27",
+      "src-ui/src/features/ai-compute-quote/store.ts": "469200971344328afb1d43567ab4788ffe9b239509555e70a0f360399496c185",
+      "src-ui/src/features/ai-compute-quote/types.ts": "7616d70e0ce04d7826c3042e2efa5eed03995acbf57f8b68c4d38a13cd571eaf",
+      "src-ui/src/hooks/useGlobalSaveShortcut.ts": "04d74aa174ca45f72c642eb4d3714eb831ea6c5841c4593af3008a45d37f80a8",
+      "src-ui/src/hooks/useIctCalculations.ts": "5ee04b1f1906fcd2324c53feab4832836f704324c331e7431794c372ac5ff0ad",
+      "src-ui/src/hooks/useIctState.ts": "8c8fad62cc2195e60bfa164a143408fb52c590e960d8f2d113dadf8cf49052ac",
+      "src-ui/src/hooks/useLatestCallback.ts": "432c726974c847296d5ed842244fddab0b6af7ce6ba76eab27788c88105d09b0",
+      "src-ui/src/hooks/useModulePath.ts": "44acfc741e56015a9fbb5a49e1064d8f649eb94a1443844e4b58396e46d89aae",
+      "src-ui/src/hooks/useUnsavedChangesGuard.ts": "d8bce4683bcb2d2fcb5d3530a529511dd9255861407202540b76e59ed188d834",
+      "src-ui/src/lib/cashflowDistribution.ts": "cea11f508279409e3883a9b421a7b0709c33e84f52d4b99642e4e5012c792c16",
+      "src-ui/src/lib/financeValidator.ts": "0478d3577748433631cc6902d64feae2a5cc81592b2c9f27da54507d7060877a",
+      "src-ui/src/lib/ictBalanceAllocation.ts": "6ff58953ca1962d2ba7fd49701497fce5ed77f8264f00bb5e83290487520bce1",
+      "src-ui/src/lib/ictCalculationInput.ts": "c3f42d92bdf95d4d773453bd0bb29248ad12e3ebf463359811226089434a4f78",
+      "src-ui/src/lib/ictMetrics.ts": "16beac92d85901b0b5c2d8e6b9d267c3c95e3019a02f1b180725a5257838f4d7",
+      "src-ui/src/lib/ictReverseCalculation.ts": "716e37b3a64f5f560d5dcb933de52a8ff91b992be6350cc0dcc4ada1a635f1e7",
+      "src-ui/src/lib/ictReverseSearch.ts": "44b386351a95d274afd4e6e8bd0e812b2dbc46723c715df9759bd387c71bc888",
+      "src-ui/src/lib/ictSubjectCatalog.ts": "f340488d3945f9a5765f25e6c1fd76d1bacd09081e0c624fef829a3734444532",
+      "src-ui/src/lib/ictSubjectFundingPlan.ts": "84ea1d7019a945e95b5eaa3bd224ae719094393375096d42e7d798340cf7b96f",
+      "src-ui/src/lib/ictSubjectNavigation.ts": "dfe671c95e7baf1fcade49426200c7eb3997c0c82e3aa16de51b4ec346d3b2e9",
+      "src-ui/src/lib/knowledgeBase.ts": "bbaccead9e3bc368afb9372d8bab96971f30f171a079bab9a3a40c5c27c86f7b",
+      "src-ui/src/lib/midThreeConstants.ts": "7bccbc1b19d516c0db212bc93d74cdc16bb6a860bbfb3cbe720e1fc6eda45d17",
+      "src-ui/src/lib/pptTaxRows.ts": "4d694aa0f59e3ab242eaf10bd7502fbf5bc2f8194a4f51c1d73a2ce21e21226f",
+      "src-ui/src/lib/presetFieldKeys.ts": "8d0ef2a32276df4ffb6e79c90f7907fa9c12833c0258bb9e8a265922aeae911f",
+      "src-ui/src/lib/projectPresetFields.ts": "91cdf00fb267793d4723d98ebb23d5779f78bac71eaf124e4cbe2a08aa556d07",
+      "src-ui/src/lib/schemeStage.ts": "37b245064c1789750a51425a031427974fb9385afded1b657aac7cc03fac0b6e",
+      "src-ui/src/lib/selectionFee.ts": "6926049e7ccb2927b535a75d3bf90f2fabb739ff25ca48736cf0917499e30405",
+      "src-ui/src/lib/selectionResultBatch.ts": "df35af8b27f4b3d4ca6a6b2c09c24102e0cf1d28db8215c6df4569510d6f0a22",
+      "src-ui/src/lib/taxAmount.ts": "fe22d1b127c42be9ef570f36e714e4b8bdf498ac13ae2a3932fe7795cc08f5f2",
+      "src-ui/src/lib/templateCompletion.ts": "18833f4620bb0d97cccd8a79fca878641318c8179febe79ff1a8343db6c84929",
+      "src-ui/src/lib/templateCompletion/catalog.ts": "ac05023ae9eeab846b1f5eee2cf47d21cbc5da1df2d2b65b6028500359e49d7c",
+      "src-ui/src/lib/templateCompletion/demand.ts": "74cac1219d86fcf57990b504fe92fe68e075bbc77e4ab31b2964b0708b8bc33c",
+      "src-ui/src/lib/templateGenerationState.ts": "2e6b3ccf436f3c94800f320a9defac010789b72174d0a5d2ab506a10f11c986e",
+      "src-ui/src/lib/templateTextSync.ts": "c105aefc384aeefafbd842cc1c0fcbfac2d8e55639bed1c804fdd8a96e6720cb",
+      "src-ui/src/lib/utils.ts": "51bbf14cd1f84f49aab2e0dbee420137015d56b6677bb439e83a908cd292cce1",
+      "src-ui/src/main.tsx": "1b5fe724e485e3c14e0456a3459aac1b265c72a4136fcbb976622b90a28bd2ca",
+      "src-ui/src/services/aiProjectContextService.ts": "0da6d680e6a8046716f0a72d6dcfd025b42301e9a6e6663ef919d3cc210e1610",
+      "src-ui/src/services/businessDictionaryService.ts": "4524c52ab69a189efeab33761ca5bbb08c6beb8527d38b981e581e721fee18fc",
+      "src-ui/src/services/commonPresetService.ts": "37939c5f4eea1020d738a9b1965afb0f0fb31ead68f89d66ed082befd2d16a9c",
+      "src-ui/src/services/demandTemplateAssets.ts": "917954c593ebbf661efbe3969391cf96831581f669afd47c3f96ed85821b7557",
+      "src-ui/src/services/domainSaveService.ts": "5ff7576ec764e13779ebf4315571ab7b0a277b3adfef9039518af093c317f9c1",
+      "src-ui/src/services/intelligentComputeService.ts": "8dbcc38fc833a0c49fd4e67ef6a721384311bfb6c2317dec917c2c90c9770806",
+      "src-ui/src/services/projectFileService.ts": "17035409b896d2efb38f869cf5080b22f3f9f81e31738b3d46baf48369b6056b",
+      "src-ui/src/services/projectPresetService.ts": "01f4959fb704409c062ec3b5afd2f5f92228ceef1bb321b8cb4ec05e53e4ea30",
+      "src-ui/src/services/selectionResultBatchService.ts": "7eba5d692dbc86b4eb783a171aa27f5a54e6b38585dfa7248cbbf493a7cd80bf",
+      "src-ui/src/services/workspaceMaintenanceService.ts": "4a09bc1894a4a4d513a0b379ba97a1116fad5189b47070dd168b7054e45b1ca9",
+      "src-ui/src/store/useAiContextStore.ts": "e8b0e76d8f45af1c90df57e646494541215d7ccfa69dc60432a5eb9f2232dc5b",
+      "src-ui/src/store/useAiSessionStore.ts": "93ee6e88a841ed45e0eb79bd78568b75b5cf253f9f04408f5a3faa9b3e8a87e4",
+      "src-ui/src/store/useAppearanceStore.ts": "667d2b274955b39ee6f200d5e0894dc00d9e83c6dd20011f5fd98a553c1e929a",
+      "src-ui/src/store/useCalcPreferencesStore.ts": "5893d005618374dfc6e313a99dbf6db464cef69d95d9992f74bdde2852f45d1a",
+      "src-ui/src/store/useNavigationStore.ts": "c5fa621a5fc2e7a4527189f25eb63466990f878dbcb8fe750c9ffba432846ca8",
+      "src-ui/src/store/useProjectStore.ts": "2460b598996a061ea1f1ba1538150a1b49101b7c56802028d63045c7ce79a6da",
+      "src-ui/src/store/useSaveStore.ts": "2a9d22f5d8850352be65e3cabea84b4c6417894fc4ec9c2033853e5b30862b9d",
+      "src-ui/src/store/useWorkspaceStore.ts": "ed0f695ec078701e6d9fe4a228b80ee7fcc9b123f05710e3121a3a4ed7a90e51",
+      "src-ui/src/theme/appearance.ts": "00d0e89be4986f00f5ee8cb8e020eb1dd2abf3c21939c355aeb210d6301cc0f2",
+      "src-ui/src/theme/applyAppearance.ts": "b9f31063243b7adaab4f9ab79ba2ad1e9a925abec10103fe7631ebb3a0972db0",
+      "src-ui/src/theme/colorUtils.ts": "516fdd57f539fa60b59f57cbc2a24777c352ba6d91dfb6302c6b260cd7f22c4c",
+      "src-ui/src/theme/deriveAccentTokens.ts": "ee6e77e125f0b1b52ed7ef16910048a971da08479aa58839f6940671f8dc2a6e",
+      "src-ui/src/theme/index.ts": "27efcc83ee0b99defd16ceb636ec8dd6efd3769a921eb248cb598cabf08bdd1b",
+      "src-ui/src/theme/presets.ts": "030c66791ea1192e61eec6d372e03930da8198c3d3758d46b0733178082c02e5",
+      "src-ui/src/theme/tokens.ts": "e22baed3a728859ac9d96c610f7a7bc5f3eb9f5a53dbb4a4085fb817fe0722b2",
+      "src-ui/src/theme/typography.ts": "0763190a3f4169f7c22241a050a3182b6b9fe29787151f7590a5782bb0207fc0",
+      "src-ui/src/utils/aiContextKeys.ts": "e9dbf268d25297aab8337bcd229d48fd6f3e0c28a6b400dd589ff8c226b90526",
+      "src-ui/src/utils/aiContextSerializer.ts": "878436512f7883217c2f4c724348be77f9e87e520f00a62b2390d665ecc208f9",
+      "src-ui/src/utils/projectService.ts": "bf0ff7c6d522c32914040187992a4eeb97a3482e1bbc1468fd48942d88a6371b",
+      "src-ui/src/utils/workspaceService.ts": "2cc7d6f15afb7c65ff0354d69cba8f0e25e43945c7e08d8f3886b21a3cb61b07",
+      "src-ui/src/views/DataManagement.tsx": "0ceaca75c7931807da96823e3fd8796686e7770d13088e3822aa6853cb63c7f7",
+      "src-ui/src/views/IctLifecycle.tsx": "68151c5758d26007aa67ebe9b13248652e380c6c9f6e839d4d9c32dc57ffde09",
+      "src-ui/src/views/PresetCenterView.tsx": "7afeb0822400c1f27e5a8d5a4c9243b6e1ff2b5ac344c775da62034d8ee8e04e",
+      "src-ui/src/views/ProjectBoard.tsx": "71c21fd00e55e43d5e2d22e3e626ab12a129372dd9a132082a7e6a007eb54b97",
+      "src-ui/src/views/TemplateForms.tsx": "dc509be4ef6c830cbbe97bc383f089e3f9458089d108dae0133959a7b1a0692a"
+    },
+    "catalog": {
+      "templates": [
+        {
+          "id": "demand",
+          "name": "需求导入表",
+          "suffix": ".docx",
+          "fields": [
+            {
+              "key": "gen_demand_branch_name",
+              "label": "项目需求单位",
+              "kind": "text",
+              "defaultValue": "XXX分公司"
+            },
+            {
+              "key": "gen_demand_it_business_mode",
+              "label": "业务模式",
+              "kind": "text",
+              "defaultValue": "服务模式"
+            },
+            {
+              "key": "gen_demand_service_content",
+              "label": "服务内容",
+              "kind": "text",
+              "defaultValue": "IT；CT"
+            },
+            {
+              "key": "gen_demand_device_list",
+              "label": "设备清单",
+              "kind": "text",
+              "defaultValue": "不涉及"
+            },
+            {
+              "key": "techItems",
+              "label": "技术方案可行性清单",
+              "kind": "list",
+              "columns": [
+                "serviceName",
+                "serviceDesc",
+                "amount",
+                "unit"
+              ]
+            },
+            {
+              "key": "gen_demand_customer_confirm",
+              "label": "客户确认",
+              "kind": "text",
+              "defaultValue": "微信截图"
+            },
+            {
+              "key": "gen_demand_env_require",
+              "label": "部署环境要求",
+              "kind": "text",
+              "defaultValue": "客户提供部署环境，不包含在本次项目范围内"
+            },
+            {
+              "key": "gen_demand_public_url",
+              "label": "公示网址/招标文件",
+              "kind": "text",
+              "requiredWhen": "hasPublicUrl"
+            },
+            {
+              "key": "gen_demand_security_detail",
+              "label": "信息安全/密评",
+              "kind": "text",
+              "requiredWhen": "hasSecurity"
+            },
+            {
+              "key": "attach1",
+              "label": "附件1客户确认材料",
+              "kind": "image"
+            },
+            {
+              "key": "attach2",
+              "label": "附件2招标材料",
+              "kind": "image",
+              "requiredWhen": "hasPublicUrl"
+            }
+          ]
+        },
+        {
+          "id": "approval",
+          "name": "立项签批表",
+          "suffix": ".docx",
+          "fields": [
+            {
+              "key": "gen_proj_bg",
+              "label": "项目背景",
+              "kind": "derived",
+              "reason": "由项目基本信息提供；不属于模板保存态，须在项目页修改"
+            },
+            {
+              "key": "gen_sign_it_content",
+              "label": "IT服务内容",
+              "kind": "text",
+              "dynamicDefault": true
+            },
+            {
+              "key": "gen_sign_ct_content",
+              "label": "CT服务内容",
+              "kind": "text",
+              "dynamicDefault": true
+            },
+            {
+              "key": "gen_is_advance",
+              "label": "是否涉及垫资",
+              "kind": "derived",
+              "completionAlways": true,
+              "reason": "布尔选项，不开放文本写入"
+            },
+            {
+              "key": "gen_after_approval_selection",
+              "label": "是否立项后甄选",
+              "kind": "derived",
+              "completionAlways": true,
+              "reason": "布尔选项，不开放文本写入"
+            },
+            {
+              "key": "gen_rev_collection",
+              "label": "收入侧收款方式",
+              "kind": "text",
+              "stateKey": "revCollection",
+              "defaultValue": "项目验收完成后30天内客户单位支付100%"
+            },
+            {
+              "key": "gen_exp_payment",
+              "label": "支出侧付款方式",
+              "kind": "text",
+              "stateKey": "expPayment",
+              "defaultValue": "项目验收完成且收到款项后30天内支付100%"
+            }
+          ]
+        },
+        {
+          "id": "presales",
+          "name": "售前预算表",
+          "suffix": ".xlsx",
+          "excludedReason": "零占位符；数字由测算科目生成，无人工文本字段",
+          "fields": []
+        },
+        {
+          "id": "benefit",
+          "name": "效益分析表",
+          "suffix": ".xlsx",
+          "excludedReason": "零占位符；数字由测算科目生成，无人工文本字段",
+          "fields": []
+        },
+        {
+          "id": "decision",
+          "name": "立项决策纪要",
+          "suffix": ".docx",
+          "excludedReason": "零占位符；固定文本，无人工填写字段",
+          "fields": []
+        }
+      ]
+    },
+    "templates": [
+      "demand",
+      "approval"
+    ]
+  },
+  "after": {
+    "templates": [
+      "demand",
+      "approval",
+      "selection"
+    ],
+    "catalog": {
+      "templates": [
+        {
+          "id": "demand",
+          "name": "需求导入表",
+          "suffix": ".docx",
+          "fields": [
+            {
+              "key": "gen_demand_branch_name",
+              "label": "项目需求单位",
+              "kind": "text",
+              "defaultValue": "XXX分公司"
+            },
+            {
+              "key": "gen_demand_it_business_mode",
+              "label": "业务模式",
+              "kind": "text",
+              "defaultValue": "服务模式"
+            },
+            {
+              "key": "gen_demand_service_content",
+              "label": "服务内容",
+              "kind": "text",
+              "defaultValue": "IT；CT"
+            },
+            {
+              "key": "gen_demand_device_list",
+              "label": "设备清单",
+              "kind": "text",
+              "defaultValue": "不涉及"
+            },
+            {
+              "key": "techItems",
+              "label": "技术方案可行性清单",
+              "kind": "list",
+              "columns": [
+                "serviceName",
+                "serviceDesc",
+                "amount",
+                "unit"
+              ]
+            },
+            {
+              "key": "gen_demand_customer_confirm",
+              "label": "客户确认",
+              "kind": "text",
+              "defaultValue": "微信截图"
+            },
+            {
+              "key": "gen_demand_env_require",
+              "label": "部署环境要求",
+              "kind": "text",
+              "defaultValue": "客户提供部署环境，不包含在本次项目范围内"
+            },
+            {
+              "key": "gen_demand_public_url",
+              "label": "公示网址/招标文件",
+              "kind": "text",
+              "requiredWhen": "hasPublicUrl"
+            },
+            {
+              "key": "gen_demand_security_detail",
+              "label": "信息安全/密评",
+              "kind": "text",
+              "requiredWhen": "hasSecurity"
+            },
+            {
+              "key": "attach1",
+              "label": "附件1客户确认材料",
+              "kind": "image"
+            },
+            {
+              "key": "attach2",
+              "label": "附件2招标材料",
+              "kind": "image",
+              "requiredWhen": "hasPublicUrl"
+            }
+          ]
+        },
+        {
+          "id": "approval",
+          "name": "立项签批表",
+          "suffix": ".docx",
+          "fields": [
+            {
+              "key": "gen_proj_bg",
+              "label": "项目背景",
+              "kind": "derived",
+              "reason": "由项目基本信息提供；不属于模板保存态，须在项目页修改"
+            },
+            {
+              "key": "gen_sign_it_content",
+              "label": "IT服务内容",
+              "kind": "text",
+              "dynamicDefault": true
+            },
+            {
+              "key": "gen_sign_ct_content",
+              "label": "CT服务内容",
+              "kind": "text",
+              "dynamicDefault": true
+            },
+            {
+              "key": "gen_is_advance",
+              "label": "是否涉及垫资",
+              "kind": "derived",
+              "completionAlways": true,
+              "reason": "布尔选项，不开放文本写入"
+            },
+            {
+              "key": "gen_after_approval_selection",
+              "label": "是否立项后甄选",
+              "kind": "derived",
+              "completionAlways": true,
+              "reason": "布尔选项，不开放文本写入"
+            },
+            {
+              "key": "gen_rev_collection",
+              "label": "收入侧收款方式",
+              "kind": "text",
+              "stateKey": "revCollection",
+              "defaultValue": "项目验收完成后30天内客户单位支付100%"
+            },
+            {
+              "key": "gen_exp_payment",
+              "label": "支出侧付款方式",
+              "kind": "text",
+              "stateKey": "expPayment",
+              "defaultValue": "项目验收完成且收到款项后30天内支付100%"
+            }
+          ]
+        },
+        {
+          "id": "selection",
+          "name": "甄选结果签批表",
+          "suffix": ".docx",
+          "fields": [
+            {
+              "key": "gen_proj_bg",
+              "label": "项目背景",
+              "kind": "derived",
+              "reason": "由项目基本信息提供；不属于模板保存态，须在项目页修改"
+            },
+            {
+              "key": "gen_zx_winner_name",
+              "label": "中选合作伙伴",
+              "kind": "text"
+            },
+            {
+              "key": "gen_zx_content_desc",
+              "label": "合作内容描述",
+              "kind": "text"
+            },
+            {
+              "key": "gen_zx_scope",
+              "label": "甄选范围",
+              "kind": "text",
+              "defaultValue": "三级库"
+            },
+            {
+              "key": "gen_zx_industry",
+              "label": "行业",
+              "kind": "text",
+              "defaultValue": "/"
+            },
+            {
+              "key": "gen_zx_method",
+              "label": "甄选方式",
+              "kind": "text",
+              "defaultValue": "竞争性甄选"
+            },
+            {
+              "key": "gen_zx_rule",
+              "label": "甄选规则",
+              "kind": "text",
+              "defaultValue": "标准方案"
+            },
+            {
+              "key": "gen_zx_std_plan",
+              "label": "标准方案",
+              "kind": "text",
+              "defaultValue": "竞价法"
+            },
+            {
+              "key": "gen_zx_is_sme",
+              "label": "供应商是否中小企业",
+              "kind": "text",
+              "defaultValue": "否"
+            },
+            {
+              "key": "gen_rev_collection",
+              "label": "收入侧收款方式",
+              "kind": "text",
+              "stateKey": "revCollection",
+              "defaultValue": "项目验收完成后30天内客户单位支付100%"
+            },
+            {
+              "key": "gen_exp_payment",
+              "label": "支出侧付款方式",
+              "kind": "text",
+              "stateKey": "expPayment",
+              "defaultValue": "项目验收完成且收到款项后30天内支付100%"
+            },
+            {
+              "key": "post_selection_scheme",
+              "label": "甄选后方案",
+              "kind": "check",
+              "reason": "由现有方案、批次或测算校验得出；不属于可写字段，读工具不推断通过"
+            },
+            {
+              "key": "public_fields_consistent",
+              "label": "公共字段一致",
+              "kind": "check",
+              "reason": "由现有方案、批次或测算校验得出；不属于可写字段，读工具不推断通过"
+            },
+            {
+              "key": "batch_overrides_acknowledged",
+              "label": "批次字段差异已确认",
+              "kind": "check",
+              "reason": "由现有方案、批次或测算校验得出；不属于可写字段，读工具不推断通过"
+            },
+            {
+              "key": "renewal_costs_confirmed",
+              "label": "续签成本归类已确认",
+              "kind": "check",
+              "reason": "由现有方案、批次或测算校验得出；不属于可写字段，读工具不推断通过"
+            },
+            {
+              "key": "approval_amount_below_500k",
+              "label": "立项金额低于50万元",
+              "kind": "check",
+              "reason": "由现有方案、批次或测算校验得出；不属于可写字段，读工具不推断通过"
+            }
+          ]
+        },
+        {
+          "id": "presales",
+          "name": "售前预算表",
+          "suffix": ".xlsx",
+          "excludedReason": "零占位符；数字由测算科目生成，无人工文本字段",
+          "fields": []
+        },
+        {
+          "id": "benefit",
+          "name": "效益分析表",
+          "suffix": ".xlsx",
+          "excludedReason": "零占位符；数字由测算科目生成，无人工文本字段",
+          "fields": []
+        },
+        {
+          "id": "decision",
+          "name": "立项决策纪要",
+          "suffix": ".docx",
+          "excludedReason": "零占位符；固定文本，无人工填写字段",
+          "fields": []
+        }
+      ]
+    }
+  },
+  "unchangedSourceCount": 240,
+  "changedSourceFiles": [],
+  "result": "PASS: added third template using catalog JSON only; all .ts/.tsx/.rs and test/build scripts unchanged, including generated TypeScript"
+}

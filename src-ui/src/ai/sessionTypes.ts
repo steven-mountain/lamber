@@ -9,8 +9,8 @@ export type AiSessionTitleSource = 'default' | 'manual' | 'generated';
 /**
  * Frontend-owned conversation container.
  *
- * `harnessSessionId` is intentionally metadata-only in this phase. The current
- * OpenAI-compatible AiRuntime remains the only message execution path.
+ * `harnessSessionId` mirrors the durable Rust-owned ACP mapping.
+ * Historical display stays here because ACP resume does not replay messages.
  */
 export interface AiSession {
   id: string;

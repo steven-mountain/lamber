@@ -116,6 +116,8 @@ pub struct IctInput {
     pub selection_fee_anchor: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selection_fee_target_subject_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_fee_merge_service: Option<bool>,
 
     pub rev_it_integration: IctItem,
     pub rev_it_maintenance: IctItem,
@@ -192,9 +194,14 @@ pub struct IctResult {
     pub cashflow: Vec<IctCashflowRow>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SelectionFeeResult {
+    // Legacy key remains explicitly tax-exclusive. New consumers use the named bases.
     pub selection_fee: String,
+    pub selection_fee_excl: String,
+    pub selection_fee_incl: String,
+    pub quote_excl: String,
+    pub quote_candidates: Vec<String>,
     pub actual_cost: String,
     pub final_limit: String,
     pub quote: String,

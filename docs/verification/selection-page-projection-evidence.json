@@ -1,0 +1,3522 @@
+[
+  {
+    "name": "需求导入表.docx",
+    "mode": "single",
+    "filled": false,
+    "state": {
+      "formData": {
+        "gen_demand_branch_name": "",
+        "gen_demand_it_business_mode": "",
+        "gen_demand_service_content": "",
+        "gen_demand_device_list": "",
+        "gen_demand_customer_confirm": "",
+        "gen_demand_env_require": "",
+        "gen_demand_public_url": "",
+        "gen_demand_security_detail": ""
+      },
+      "selectionResultMode": "single",
+      "selectionBatchName": "",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "",
+      "midThreeName": "",
+      "selfThreeValue": "",
+      "itContent": "",
+      "ctContent": "",
+      "revCollection": "",
+      "expPayment": "",
+      "itBusMode": "",
+      "itFundSrc": "",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "需求导入表.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 1,
+      "fields": [
+        {
+          "key": "gen_demand_branch_name",
+          "label": "项目需求单位",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_it_business_mode",
+          "label": "业务模式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_service_content",
+          "label": "服务内容",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_device_list",
+          "label": "设备清单",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_customer_confirm",
+          "label": "客户确认",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_env_require",
+          "label": "部署环境要求",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_public_url",
+          "label": "公示网址/招标文件",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_security_detail",
+          "label": "信息安全/密评",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        }
+      ],
+      "lists": {
+        "techItems": []
+      },
+      "listCounts": {
+        "techItems": 0
+      },
+      "returnedListCounts": {
+        "techItems": 0
+      },
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [
+        {
+          "fieldKey": "attach1",
+          "exists": false
+        },
+        {
+          "fieldKey": "attach2",
+          "exists": false
+        }
+      ],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 0,
+      "returnedCharacters": 0,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "demand",
+      "readOnlyFields": [
+        {
+          "key": "techItems",
+          "label": "技术方案可行性清单",
+          "kind": "list",
+          "reason": "AI仅提议内容，用户在卡片编辑并保存；amount为数量，此清单同时用于需求导入表与会审纪要",
+          "completionAlways": null,
+          "listType": "editable"
+        },
+        {
+          "key": "attach1",
+          "label": "附件1客户确认材料",
+          "kind": "image",
+          "reason": null,
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "attach2",
+          "label": "附件2招标材料",
+          "kind": "image",
+          "reason": null,
+          "completionAlways": null,
+          "listType": null
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_demand_branch_name": "",
+          "gen_demand_it_business_mode": "",
+          "gen_demand_service_content": "",
+          "gen_demand_device_list": "",
+          "gen_demand_customer_confirm": "",
+          "gen_demand_env_require": "",
+          "gen_demand_public_url": "",
+          "gen_demand_security_detail": ""
+        },
+        "hasPublicUrl": false,
+        "hasSecurity": false,
+        "techItems": []
+      }
+    }
+  },
+  {
+    "name": "需求导入表.docx",
+    "mode": "single",
+    "filled": true,
+    "state": {
+      "formData": {
+        "gen_demand_branch_name": "已填写",
+        "gen_demand_it_business_mode": "已填写",
+        "gen_demand_service_content": "已填写",
+        "gen_demand_device_list": "已填写",
+        "gen_demand_customer_confirm": "已填写",
+        "gen_demand_env_require": "已填写",
+        "gen_demand_public_url": "已填写",
+        "gen_demand_security_detail": "已填写"
+      },
+      "selectionResultMode": "single",
+      "selectionBatchName": "已填写",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "已填写",
+      "midThreeName": "已填写",
+      "selfThreeValue": "已填写",
+      "itContent": "已填写",
+      "ctContent": "已填写",
+      "revCollection": "已填写",
+      "expPayment": "已填写",
+      "itBusMode": "已填写",
+      "itFundSrc": "已填写",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "需求导入表.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 2,
+      "fields": [
+        {
+          "key": "gen_demand_branch_name",
+          "label": "项目需求单位",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_it_business_mode",
+          "label": "业务模式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_service_content",
+          "label": "服务内容",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_device_list",
+          "label": "设备清单",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_customer_confirm",
+          "label": "客户确认",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_env_require",
+          "label": "部署环境要求",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_public_url",
+          "label": "公示网址/招标文件",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_security_detail",
+          "label": "信息安全/密评",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        }
+      ],
+      "lists": {
+        "techItems": []
+      },
+      "listCounts": {
+        "techItems": 0
+      },
+      "returnedListCounts": {
+        "techItems": 0
+      },
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [
+        {
+          "fieldKey": "attach1",
+          "exists": false
+        },
+        {
+          "fieldKey": "attach2",
+          "exists": false
+        }
+      ],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 24,
+      "returnedCharacters": 24,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "demand",
+      "readOnlyFields": [
+        {
+          "key": "techItems",
+          "label": "技术方案可行性清单",
+          "kind": "list",
+          "reason": "AI仅提议内容，用户在卡片编辑并保存；amount为数量，此清单同时用于需求导入表与会审纪要",
+          "completionAlways": null,
+          "listType": "editable"
+        },
+        {
+          "key": "attach1",
+          "label": "附件1客户确认材料",
+          "kind": "image",
+          "reason": null,
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "attach2",
+          "label": "附件2招标材料",
+          "kind": "image",
+          "reason": null,
+          "completionAlways": null,
+          "listType": null
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_demand_branch_name": "filled",
+          "gen_demand_it_business_mode": "filled",
+          "gen_demand_service_content": "filled",
+          "gen_demand_device_list": "filled",
+          "gen_demand_customer_confirm": "filled",
+          "gen_demand_env_require": "filled",
+          "gen_demand_public_url": "filled",
+          "gen_demand_security_detail": "filled"
+        },
+        "hasPublicUrl": false,
+        "hasSecurity": false,
+        "techItems": []
+      }
+    }
+  },
+  {
+    "name": "需求导入表.docx",
+    "mode": "batch",
+    "filled": false,
+    "state": {
+      "formData": {
+        "gen_demand_branch_name": "",
+        "gen_demand_it_business_mode": "",
+        "gen_demand_service_content": "",
+        "gen_demand_device_list": "",
+        "gen_demand_customer_confirm": "",
+        "gen_demand_env_require": "",
+        "gen_demand_public_url": "",
+        "gen_demand_security_detail": ""
+      },
+      "selectionResultMode": "batch",
+      "selectionBatchName": "",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "",
+      "midThreeName": "",
+      "selfThreeValue": "",
+      "itContent": "",
+      "ctContent": "",
+      "revCollection": "",
+      "expPayment": "",
+      "itBusMode": "",
+      "itFundSrc": "",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "需求导入表.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 3,
+      "fields": [
+        {
+          "key": "gen_demand_branch_name",
+          "label": "项目需求单位",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_it_business_mode",
+          "label": "业务模式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_service_content",
+          "label": "服务内容",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_device_list",
+          "label": "设备清单",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_customer_confirm",
+          "label": "客户确认",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_env_require",
+          "label": "部署环境要求",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_public_url",
+          "label": "公示网址/招标文件",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_security_detail",
+          "label": "信息安全/密评",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        }
+      ],
+      "lists": {
+        "techItems": []
+      },
+      "listCounts": {
+        "techItems": 0
+      },
+      "returnedListCounts": {
+        "techItems": 0
+      },
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [
+        {
+          "fieldKey": "attach1",
+          "exists": false
+        },
+        {
+          "fieldKey": "attach2",
+          "exists": false
+        }
+      ],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 0,
+      "returnedCharacters": 0,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "demand",
+      "readOnlyFields": [
+        {
+          "key": "techItems",
+          "label": "技术方案可行性清单",
+          "kind": "list",
+          "reason": "AI仅提议内容，用户在卡片编辑并保存；amount为数量，此清单同时用于需求导入表与会审纪要",
+          "completionAlways": null,
+          "listType": "editable"
+        },
+        {
+          "key": "attach1",
+          "label": "附件1客户确认材料",
+          "kind": "image",
+          "reason": null,
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "attach2",
+          "label": "附件2招标材料",
+          "kind": "image",
+          "reason": null,
+          "completionAlways": null,
+          "listType": null
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_demand_branch_name": "",
+          "gen_demand_it_business_mode": "",
+          "gen_demand_service_content": "",
+          "gen_demand_device_list": "",
+          "gen_demand_customer_confirm": "",
+          "gen_demand_env_require": "",
+          "gen_demand_public_url": "",
+          "gen_demand_security_detail": ""
+        },
+        "hasPublicUrl": false,
+        "hasSecurity": false,
+        "techItems": []
+      }
+    }
+  },
+  {
+    "name": "需求导入表.docx",
+    "mode": "batch",
+    "filled": true,
+    "state": {
+      "formData": {
+        "gen_demand_branch_name": "已填写",
+        "gen_demand_it_business_mode": "已填写",
+        "gen_demand_service_content": "已填写",
+        "gen_demand_device_list": "已填写",
+        "gen_demand_customer_confirm": "已填写",
+        "gen_demand_env_require": "已填写",
+        "gen_demand_public_url": "已填写",
+        "gen_demand_security_detail": "已填写"
+      },
+      "selectionResultMode": "batch",
+      "selectionBatchName": "已填写",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "已填写",
+      "midThreeName": "已填写",
+      "selfThreeValue": "已填写",
+      "itContent": "已填写",
+      "ctContent": "已填写",
+      "revCollection": "已填写",
+      "expPayment": "已填写",
+      "itBusMode": "已填写",
+      "itFundSrc": "已填写",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "需求导入表.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 4,
+      "fields": [
+        {
+          "key": "gen_demand_branch_name",
+          "label": "项目需求单位",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_it_business_mode",
+          "label": "业务模式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_service_content",
+          "label": "服务内容",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_device_list",
+          "label": "设备清单",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_customer_confirm",
+          "label": "客户确认",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_env_require",
+          "label": "部署环境要求",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_public_url",
+          "label": "公示网址/招标文件",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_demand_security_detail",
+          "label": "信息安全/密评",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        }
+      ],
+      "lists": {
+        "techItems": []
+      },
+      "listCounts": {
+        "techItems": 0
+      },
+      "returnedListCounts": {
+        "techItems": 0
+      },
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [
+        {
+          "fieldKey": "attach1",
+          "exists": false
+        },
+        {
+          "fieldKey": "attach2",
+          "exists": false
+        }
+      ],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 24,
+      "returnedCharacters": 24,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "demand",
+      "readOnlyFields": [
+        {
+          "key": "techItems",
+          "label": "技术方案可行性清单",
+          "kind": "list",
+          "reason": "AI仅提议内容，用户在卡片编辑并保存；amount为数量，此清单同时用于需求导入表与会审纪要",
+          "completionAlways": null,
+          "listType": "editable"
+        },
+        {
+          "key": "attach1",
+          "label": "附件1客户确认材料",
+          "kind": "image",
+          "reason": null,
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "attach2",
+          "label": "附件2招标材料",
+          "kind": "image",
+          "reason": null,
+          "completionAlways": null,
+          "listType": null
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_demand_branch_name": "filled",
+          "gen_demand_it_business_mode": "filled",
+          "gen_demand_service_content": "filled",
+          "gen_demand_device_list": "filled",
+          "gen_demand_customer_confirm": "filled",
+          "gen_demand_env_require": "filled",
+          "gen_demand_public_url": "filled",
+          "gen_demand_security_detail": "filled"
+        },
+        "hasPublicUrl": false,
+        "hasSecurity": false,
+        "techItems": []
+      }
+    }
+  },
+  {
+    "name": "立项签批表.docx",
+    "mode": "single",
+    "filled": false,
+    "state": {
+      "formData": {
+        "gen_sign_it_content": "",
+        "gen_sign_ct_content": ""
+      },
+      "selectionResultMode": "single",
+      "selectionBatchName": "",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "",
+      "midThreeName": "",
+      "selfThreeValue": "",
+      "itContent": "",
+      "ctContent": "",
+      "revCollection": "",
+      "expPayment": "",
+      "itBusMode": "",
+      "itFundSrc": "",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "立项签批表.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 1,
+      "fields": [
+        {
+          "key": "gen_sign_it_content",
+          "label": "IT服务内容",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_sign_ct_content",
+          "label": "CT服务内容",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        }
+      ],
+      "lists": {},
+      "listCounts": {},
+      "returnedListCounts": {},
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 0,
+      "returnedCharacters": 0,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "approval",
+      "readOnlyFields": [
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "kind": "derived",
+          "reason": "由项目基本信息提供；不属于模板保存态，须在项目页修改",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_is_advance",
+          "label": "是否涉及垫资",
+          "kind": "derived",
+          "reason": "布尔选项，不开放文本写入",
+          "completionAlways": true,
+          "listType": null
+        },
+        {
+          "key": "gen_after_approval_selection",
+          "label": "是否立项后甄选",
+          "kind": "derived",
+          "reason": "布尔选项，不开放文本写入",
+          "completionAlways": true,
+          "listType": null
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_sign_it_content": "",
+          "gen_sign_ct_content": ""
+        },
+        "revCollection": "",
+        "expPayment": ""
+      }
+    }
+  },
+  {
+    "name": "立项签批表.docx",
+    "mode": "single",
+    "filled": true,
+    "state": {
+      "formData": {
+        "gen_sign_it_content": "已填写",
+        "gen_sign_ct_content": "已填写"
+      },
+      "selectionResultMode": "single",
+      "selectionBatchName": "已填写",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "已填写",
+      "midThreeName": "已填写",
+      "selfThreeValue": "已填写",
+      "itContent": "已填写",
+      "ctContent": "已填写",
+      "revCollection": "已填写",
+      "expPayment": "已填写",
+      "itBusMode": "已填写",
+      "itFundSrc": "已填写",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "立项签批表.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 2,
+      "fields": [
+        {
+          "key": "gen_sign_it_content",
+          "label": "IT服务内容",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_sign_ct_content",
+          "label": "CT服务内容",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        }
+      ],
+      "lists": {},
+      "listCounts": {},
+      "returnedListCounts": {},
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 12,
+      "returnedCharacters": 12,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "approval",
+      "readOnlyFields": [
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "kind": "derived",
+          "reason": "由项目基本信息提供；不属于模板保存态，须在项目页修改",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_is_advance",
+          "label": "是否涉及垫资",
+          "kind": "derived",
+          "reason": "布尔选项，不开放文本写入",
+          "completionAlways": true,
+          "listType": null
+        },
+        {
+          "key": "gen_after_approval_selection",
+          "label": "是否立项后甄选",
+          "kind": "derived",
+          "reason": "布尔选项，不开放文本写入",
+          "completionAlways": true,
+          "listType": null
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_sign_it_content": "filled",
+          "gen_sign_ct_content": "filled"
+        },
+        "revCollection": "filled",
+        "expPayment": "filled"
+      }
+    }
+  },
+  {
+    "name": "立项签批表.docx",
+    "mode": "batch",
+    "filled": false,
+    "state": {
+      "formData": {
+        "gen_sign_it_content": "",
+        "gen_sign_ct_content": ""
+      },
+      "selectionResultMode": "batch",
+      "selectionBatchName": "",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "",
+      "midThreeName": "",
+      "selfThreeValue": "",
+      "itContent": "",
+      "ctContent": "",
+      "revCollection": "",
+      "expPayment": "",
+      "itBusMode": "",
+      "itFundSrc": "",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "立项签批表.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 3,
+      "fields": [
+        {
+          "key": "gen_sign_it_content",
+          "label": "IT服务内容",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_sign_ct_content",
+          "label": "CT服务内容",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        }
+      ],
+      "lists": {},
+      "listCounts": {},
+      "returnedListCounts": {},
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 0,
+      "returnedCharacters": 0,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "approval",
+      "readOnlyFields": [
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "kind": "derived",
+          "reason": "由项目基本信息提供；不属于模板保存态，须在项目页修改",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_is_advance",
+          "label": "是否涉及垫资",
+          "kind": "derived",
+          "reason": "布尔选项，不开放文本写入",
+          "completionAlways": true,
+          "listType": null
+        },
+        {
+          "key": "gen_after_approval_selection",
+          "label": "是否立项后甄选",
+          "kind": "derived",
+          "reason": "布尔选项，不开放文本写入",
+          "completionAlways": true,
+          "listType": null
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_sign_it_content": "",
+          "gen_sign_ct_content": ""
+        },
+        "revCollection": "",
+        "expPayment": ""
+      }
+    }
+  },
+  {
+    "name": "立项签批表.docx",
+    "mode": "batch",
+    "filled": true,
+    "state": {
+      "formData": {
+        "gen_sign_it_content": "已填写",
+        "gen_sign_ct_content": "已填写"
+      },
+      "selectionResultMode": "batch",
+      "selectionBatchName": "已填写",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "已填写",
+      "midThreeName": "已填写",
+      "selfThreeValue": "已填写",
+      "itContent": "已填写",
+      "ctContent": "已填写",
+      "revCollection": "已填写",
+      "expPayment": "已填写",
+      "itBusMode": "已填写",
+      "itFundSrc": "已填写",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "立项签批表.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 4,
+      "fields": [
+        {
+          "key": "gen_sign_it_content",
+          "label": "IT服务内容",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_sign_ct_content",
+          "label": "CT服务内容",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        }
+      ],
+      "lists": {},
+      "listCounts": {},
+      "returnedListCounts": {},
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 12,
+      "returnedCharacters": 12,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "approval",
+      "readOnlyFields": [
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "kind": "derived",
+          "reason": "由项目基本信息提供；不属于模板保存态，须在项目页修改",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_is_advance",
+          "label": "是否涉及垫资",
+          "kind": "derived",
+          "reason": "布尔选项，不开放文本写入",
+          "completionAlways": true,
+          "listType": null
+        },
+        {
+          "key": "gen_after_approval_selection",
+          "label": "是否立项后甄选",
+          "kind": "derived",
+          "reason": "布尔选项，不开放文本写入",
+          "completionAlways": true,
+          "listType": null
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_sign_it_content": "filled",
+          "gen_sign_ct_content": "filled"
+        },
+        "revCollection": "filled",
+        "expPayment": "filled"
+      }
+    }
+  },
+  {
+    "name": "会审纪要.docx",
+    "mode": "single",
+    "filled": false,
+    "state": {
+      "formData": {
+        "gen_meet_start": "",
+        "gen_meet_end": "",
+        "gen_meet_mode": "",
+        "gen_city_attendees": "",
+        "gen_branch_name": "",
+        "gen_branch_attendees": "",
+        "gen_onsite_support": "",
+        "gen_tech_solution": "",
+        "gen_threeization": "",
+        "gen_strategic_value": "",
+        "gen_tech_conclusion": "",
+        "gen_construction_time_req": "",
+        "gen_risk_owner": "",
+        "gen_is_joint": "",
+        "gen_review_acc": "",
+        "gen_single_source": "",
+        "gen_procurement_method_other": "",
+        "gen_construction_interface": ""
+      },
+      "selectionResultMode": "single",
+      "selectionBatchName": "",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "",
+      "midThreeName": "",
+      "selfThreeValue": "",
+      "itContent": "",
+      "ctContent": "",
+      "revCollection": "",
+      "expPayment": "",
+      "itBusMode": "",
+      "itFundSrc": "",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "会审纪要.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 1,
+      "fields": [
+        {
+          "key": "gen_meet_start",
+          "label": "会议开始日期",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_meet_end",
+          "label": "会议结束日期",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_meet_mode",
+          "label": "会议方式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_city_attendees",
+          "label": "市公司参会人员",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_branch_name",
+          "label": "分公司参会人员",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_branch_attendees",
+          "label": "分公司参会人员",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_onsite_support",
+          "label": "驻点支撑人员",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_tech_solution",
+          "label": "技术方案",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_threeization",
+          "label": "三化方案",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_strategic_value",
+          "label": "战略价值",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_tech_conclusion",
+          "label": "综论",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_construction_time_req",
+          "label": "时间要求",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_risk_owner",
+          "label": "风险点及其他责任人",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_is_joint",
+          "label": "是否联合体投标",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_review_acc",
+          "label": "项目评审清单准确完整",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_single_source",
+          "label": "是否涉及单一来源",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_procurement_method_other",
+          "label": "采购方式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_construction_interface",
+          "label": "售中建设及施工界面",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        }
+      ],
+      "lists": {
+        "techItems": [],
+        "inqVendors": []
+      },
+      "listCounts": {
+        "techItems": 0,
+        "inqVendors": 0
+      },
+      "returnedListCounts": {
+        "techItems": 0,
+        "inqVendors": 0
+      },
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 0,
+      "returnedCharacters": 0,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "meeting",
+      "readOnlyFields": [
+        {
+          "key": "gen_project_scale",
+          "label": "项目规模",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_it_content",
+          "label": "IT建设内容",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_ct_content",
+          "label": "CT建设内容",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "techItems",
+          "label": "技术方案可行性清单",
+          "kind": "list",
+          "reason": "AI仅提议内容，用户在卡片编辑并保存；amount为数量，此清单同时用于需求导入表与会审纪要",
+          "completionAlways": null,
+          "listType": "editable"
+        },
+        {
+          "key": "gen_mid_three",
+          "label": "涉及中台能力调用",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_self_three",
+          "label": "自主三问",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入付款方式",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出付款方式",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_it_bus_mode",
+          "label": "IT服务模式/商务模式",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_it_fund_src",
+          "label": "资金来源",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "inqVendors",
+          "label": "询价情况/询价过程",
+          "kind": "list",
+          "reason": "AI仅提示用户确认调用既有autoGenerateInquiry，禁止提议或修改厂商/报价/税率；失败先完善成本或收入，不给绕过方案；生成后由用户修改及上传证据",
+          "completionAlways": null,
+          "listType": "generated"
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_meet_start": "",
+          "gen_meet_end": "",
+          "gen_meet_mode": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "",
+          "gen_onsite_support": "",
+          "gen_tech_solution": "",
+          "gen_threeization": "",
+          "gen_strategic_value": "",
+          "gen_tech_conclusion": "",
+          "gen_construction_time_req": "",
+          "gen_risk_owner": "",
+          "gen_is_joint": "",
+          "gen_review_acc": "",
+          "gen_single_source": "",
+          "gen_procurement_method_other": "",
+          "gen_construction_interface": ""
+        },
+        "projectScale": "large",
+        "itContent": "",
+        "ctContent": "",
+        "hasMidThree": true,
+        "midThreeCode": "",
+        "midThreeName": "",
+        "selfThreeValue": "",
+        "revCollection": "",
+        "expPayment": "",
+        "itBusMode": "",
+        "itFundSrc": "",
+        "hasSingleSource": true,
+        "procurementMethod": "comparison",
+        "techItems": [],
+        "inqVendors": []
+      }
+    }
+  },
+  {
+    "name": "会审纪要.docx",
+    "mode": "single",
+    "filled": true,
+    "state": {
+      "formData": {
+        "gen_meet_start": "已填写",
+        "gen_meet_end": "已填写",
+        "gen_meet_mode": "已填写",
+        "gen_city_attendees": "已填写",
+        "gen_branch_name": "已填写",
+        "gen_branch_attendees": "已填写",
+        "gen_onsite_support": "已填写",
+        "gen_tech_solution": "已填写",
+        "gen_threeization": "已填写",
+        "gen_strategic_value": "已填写",
+        "gen_tech_conclusion": "已填写",
+        "gen_construction_time_req": "已填写",
+        "gen_risk_owner": "已填写",
+        "gen_is_joint": "已填写",
+        "gen_review_acc": "已填写",
+        "gen_single_source": "已填写",
+        "gen_procurement_method_other": "已填写",
+        "gen_construction_interface": "已填写"
+      },
+      "selectionResultMode": "single",
+      "selectionBatchName": "已填写",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "已填写",
+      "midThreeName": "已填写",
+      "selfThreeValue": "已填写",
+      "itContent": "已填写",
+      "ctContent": "已填写",
+      "revCollection": "已填写",
+      "expPayment": "已填写",
+      "itBusMode": "已填写",
+      "itFundSrc": "已填写",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "会审纪要.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 2,
+      "fields": [
+        {
+          "key": "gen_meet_start",
+          "label": "会议开始日期",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_meet_end",
+          "label": "会议结束日期",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_meet_mode",
+          "label": "会议方式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_city_attendees",
+          "label": "市公司参会人员",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_branch_name",
+          "label": "分公司参会人员",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_branch_attendees",
+          "label": "分公司参会人员",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_onsite_support",
+          "label": "驻点支撑人员",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_tech_solution",
+          "label": "技术方案",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_threeization",
+          "label": "三化方案",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_strategic_value",
+          "label": "战略价值",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_tech_conclusion",
+          "label": "综论",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_construction_time_req",
+          "label": "时间要求",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_risk_owner",
+          "label": "风险点及其他责任人",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_is_joint",
+          "label": "是否联合体投标",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_review_acc",
+          "label": "项目评审清单准确完整",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_single_source",
+          "label": "是否涉及单一来源",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_procurement_method_other",
+          "label": "采购方式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_construction_interface",
+          "label": "售中建设及施工界面",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        }
+      ],
+      "lists": {
+        "techItems": [],
+        "inqVendors": []
+      },
+      "listCounts": {
+        "techItems": 0,
+        "inqVendors": 0
+      },
+      "returnedListCounts": {
+        "techItems": 0,
+        "inqVendors": 0
+      },
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 54,
+      "returnedCharacters": 54,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "meeting",
+      "readOnlyFields": [
+        {
+          "key": "gen_project_scale",
+          "label": "项目规模",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_it_content",
+          "label": "IT建设内容",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_ct_content",
+          "label": "CT建设内容",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "techItems",
+          "label": "技术方案可行性清单",
+          "kind": "list",
+          "reason": "AI仅提议内容，用户在卡片编辑并保存；amount为数量，此清单同时用于需求导入表与会审纪要",
+          "completionAlways": null,
+          "listType": "editable"
+        },
+        {
+          "key": "gen_mid_three",
+          "label": "涉及中台能力调用",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_self_three",
+          "label": "自主三问",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入付款方式",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出付款方式",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_it_bus_mode",
+          "label": "IT服务模式/商务模式",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_it_fund_src",
+          "label": "资金来源",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "inqVendors",
+          "label": "询价情况/询价过程",
+          "kind": "list",
+          "reason": "AI仅提示用户确认调用既有autoGenerateInquiry，禁止提议或修改厂商/报价/税率；失败先完善成本或收入，不给绕过方案；生成后由用户修改及上传证据",
+          "completionAlways": null,
+          "listType": "generated"
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_meet_start": "filled",
+          "gen_meet_end": "filled",
+          "gen_meet_mode": "filled",
+          "gen_city_attendees": "filled",
+          "gen_branch_name": "filled",
+          "gen_branch_attendees": "filled",
+          "gen_onsite_support": "filled",
+          "gen_tech_solution": "filled",
+          "gen_threeization": "filled",
+          "gen_strategic_value": "filled",
+          "gen_tech_conclusion": "filled",
+          "gen_construction_time_req": "filled",
+          "gen_risk_owner": "filled",
+          "gen_is_joint": "filled",
+          "gen_review_acc": "filled",
+          "gen_single_source": "filled",
+          "gen_procurement_method_other": "filled",
+          "gen_construction_interface": "filled"
+        },
+        "projectScale": "large",
+        "itContent": "filled",
+        "ctContent": "filled",
+        "hasMidThree": true,
+        "midThreeCode": "filled",
+        "midThreeName": "filled",
+        "selfThreeValue": "filled",
+        "revCollection": "filled",
+        "expPayment": "filled",
+        "itBusMode": "filled",
+        "itFundSrc": "filled",
+        "hasSingleSource": true,
+        "procurementMethod": "comparison",
+        "techItems": [],
+        "inqVendors": []
+      }
+    }
+  },
+  {
+    "name": "会审纪要.docx",
+    "mode": "batch",
+    "filled": false,
+    "state": {
+      "formData": {
+        "gen_meet_start": "",
+        "gen_meet_end": "",
+        "gen_meet_mode": "",
+        "gen_city_attendees": "",
+        "gen_branch_name": "",
+        "gen_branch_attendees": "",
+        "gen_onsite_support": "",
+        "gen_tech_solution": "",
+        "gen_threeization": "",
+        "gen_strategic_value": "",
+        "gen_tech_conclusion": "",
+        "gen_construction_time_req": "",
+        "gen_risk_owner": "",
+        "gen_is_joint": "",
+        "gen_review_acc": "",
+        "gen_single_source": "",
+        "gen_procurement_method_other": "",
+        "gen_construction_interface": ""
+      },
+      "selectionResultMode": "batch",
+      "selectionBatchName": "",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "",
+      "midThreeName": "",
+      "selfThreeValue": "",
+      "itContent": "",
+      "ctContent": "",
+      "revCollection": "",
+      "expPayment": "",
+      "itBusMode": "",
+      "itFundSrc": "",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "会审纪要.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 3,
+      "fields": [
+        {
+          "key": "gen_meet_start",
+          "label": "会议开始日期",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_meet_end",
+          "label": "会议结束日期",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_meet_mode",
+          "label": "会议方式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_city_attendees",
+          "label": "市公司参会人员",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_branch_name",
+          "label": "分公司参会人员",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_branch_attendees",
+          "label": "分公司参会人员",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_onsite_support",
+          "label": "驻点支撑人员",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_tech_solution",
+          "label": "技术方案",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_threeization",
+          "label": "三化方案",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_strategic_value",
+          "label": "战略价值",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_tech_conclusion",
+          "label": "综论",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_construction_time_req",
+          "label": "时间要求",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_risk_owner",
+          "label": "风险点及其他责任人",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_is_joint",
+          "label": "是否联合体投标",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_review_acc",
+          "label": "项目评审清单准确完整",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_single_source",
+          "label": "是否涉及单一来源",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_procurement_method_other",
+          "label": "采购方式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_construction_interface",
+          "label": "售中建设及施工界面",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        }
+      ],
+      "lists": {
+        "techItems": [],
+        "inqVendors": []
+      },
+      "listCounts": {
+        "techItems": 0,
+        "inqVendors": 0
+      },
+      "returnedListCounts": {
+        "techItems": 0,
+        "inqVendors": 0
+      },
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 0,
+      "returnedCharacters": 0,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "meeting",
+      "readOnlyFields": [
+        {
+          "key": "gen_project_scale",
+          "label": "项目规模",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_it_content",
+          "label": "IT建设内容",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_ct_content",
+          "label": "CT建设内容",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "techItems",
+          "label": "技术方案可行性清单",
+          "kind": "list",
+          "reason": "AI仅提议内容，用户在卡片编辑并保存；amount为数量，此清单同时用于需求导入表与会审纪要",
+          "completionAlways": null,
+          "listType": "editable"
+        },
+        {
+          "key": "gen_mid_three",
+          "label": "涉及中台能力调用",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_self_three",
+          "label": "自主三问",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入付款方式",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出付款方式",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_it_bus_mode",
+          "label": "IT服务模式/商务模式",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_it_fund_src",
+          "label": "资金来源",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "inqVendors",
+          "label": "询价情况/询价过程",
+          "kind": "list",
+          "reason": "AI仅提示用户确认调用既有autoGenerateInquiry，禁止提议或修改厂商/报价/税率；失败先完善成本或收入，不给绕过方案；生成后由用户修改及上传证据",
+          "completionAlways": null,
+          "listType": "generated"
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_meet_start": "",
+          "gen_meet_end": "",
+          "gen_meet_mode": "",
+          "gen_city_attendees": "",
+          "gen_branch_name": "",
+          "gen_branch_attendees": "",
+          "gen_onsite_support": "",
+          "gen_tech_solution": "",
+          "gen_threeization": "",
+          "gen_strategic_value": "",
+          "gen_tech_conclusion": "",
+          "gen_construction_time_req": "",
+          "gen_risk_owner": "",
+          "gen_is_joint": "",
+          "gen_review_acc": "",
+          "gen_single_source": "",
+          "gen_procurement_method_other": "",
+          "gen_construction_interface": ""
+        },
+        "projectScale": "large",
+        "itContent": "",
+        "ctContent": "",
+        "hasMidThree": true,
+        "midThreeCode": "",
+        "midThreeName": "",
+        "selfThreeValue": "",
+        "revCollection": "",
+        "expPayment": "",
+        "itBusMode": "",
+        "itFundSrc": "",
+        "hasSingleSource": true,
+        "procurementMethod": "comparison",
+        "techItems": [],
+        "inqVendors": []
+      }
+    }
+  },
+  {
+    "name": "会审纪要.docx",
+    "mode": "batch",
+    "filled": true,
+    "state": {
+      "formData": {
+        "gen_meet_start": "已填写",
+        "gen_meet_end": "已填写",
+        "gen_meet_mode": "已填写",
+        "gen_city_attendees": "已填写",
+        "gen_branch_name": "已填写",
+        "gen_branch_attendees": "已填写",
+        "gen_onsite_support": "已填写",
+        "gen_tech_solution": "已填写",
+        "gen_threeization": "已填写",
+        "gen_strategic_value": "已填写",
+        "gen_tech_conclusion": "已填写",
+        "gen_construction_time_req": "已填写",
+        "gen_risk_owner": "已填写",
+        "gen_is_joint": "已填写",
+        "gen_review_acc": "已填写",
+        "gen_single_source": "已填写",
+        "gen_procurement_method_other": "已填写",
+        "gen_construction_interface": "已填写"
+      },
+      "selectionResultMode": "batch",
+      "selectionBatchName": "已填写",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "已填写",
+      "midThreeName": "已填写",
+      "selfThreeValue": "已填写",
+      "itContent": "已填写",
+      "ctContent": "已填写",
+      "revCollection": "已填写",
+      "expPayment": "已填写",
+      "itBusMode": "已填写",
+      "itFundSrc": "已填写",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "会审纪要.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 4,
+      "fields": [
+        {
+          "key": "gen_meet_start",
+          "label": "会议开始日期",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_meet_end",
+          "label": "会议结束日期",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_meet_mode",
+          "label": "会议方式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_city_attendees",
+          "label": "市公司参会人员",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_branch_name",
+          "label": "分公司参会人员",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_branch_attendees",
+          "label": "分公司参会人员",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_onsite_support",
+          "label": "驻点支撑人员",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_tech_solution",
+          "label": "技术方案",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_threeization",
+          "label": "三化方案",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_strategic_value",
+          "label": "战略价值",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_tech_conclusion",
+          "label": "综论",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_construction_time_req",
+          "label": "时间要求",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_risk_owner",
+          "label": "风险点及其他责任人",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_is_joint",
+          "label": "是否联合体投标",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_review_acc",
+          "label": "项目评审清单准确完整",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_single_source",
+          "label": "是否涉及单一来源",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_procurement_method_other",
+          "label": "采购方式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_construction_interface",
+          "label": "售中建设及施工界面",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        }
+      ],
+      "lists": {
+        "techItems": [],
+        "inqVendors": []
+      },
+      "listCounts": {
+        "techItems": 0,
+        "inqVendors": 0
+      },
+      "returnedListCounts": {
+        "techItems": 0,
+        "inqVendors": 0
+      },
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 54,
+      "returnedCharacters": 54,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "meeting",
+      "readOnlyFields": [
+        {
+          "key": "gen_project_scale",
+          "label": "项目规模",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_it_content",
+          "label": "IT建设内容",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_ct_content",
+          "label": "CT建设内容",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "techItems",
+          "label": "技术方案可行性清单",
+          "kind": "list",
+          "reason": "AI仅提议内容，用户在卡片编辑并保存；amount为数量，此清单同时用于需求导入表与会审纪要",
+          "completionAlways": null,
+          "listType": "editable"
+        },
+        {
+          "key": "gen_mid_three",
+          "label": "涉及中台能力调用",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_self_three",
+          "label": "自主三问",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入付款方式",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出付款方式",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_it_bus_mode",
+          "label": "IT服务模式/商务模式",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_it_fund_src",
+          "label": "资金来源",
+          "kind": "derived",
+          "reason": "由既有项目/模板业务状态提供，本次不开放AI文本写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "inqVendors",
+          "label": "询价情况/询价过程",
+          "kind": "list",
+          "reason": "AI仅提示用户确认调用既有autoGenerateInquiry，禁止提议或修改厂商/报价/税率；失败先完善成本或收入，不给绕过方案；生成后由用户修改及上传证据",
+          "completionAlways": null,
+          "listType": "generated"
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_meet_start": "filled",
+          "gen_meet_end": "filled",
+          "gen_meet_mode": "filled",
+          "gen_city_attendees": "filled",
+          "gen_branch_name": "filled",
+          "gen_branch_attendees": "filled",
+          "gen_onsite_support": "filled",
+          "gen_tech_solution": "filled",
+          "gen_threeization": "filled",
+          "gen_strategic_value": "filled",
+          "gen_tech_conclusion": "filled",
+          "gen_construction_time_req": "filled",
+          "gen_risk_owner": "filled",
+          "gen_is_joint": "filled",
+          "gen_review_acc": "filled",
+          "gen_single_source": "filled",
+          "gen_procurement_method_other": "filled",
+          "gen_construction_interface": "filled"
+        },
+        "projectScale": "large",
+        "itContent": "filled",
+        "ctContent": "filled",
+        "hasMidThree": true,
+        "midThreeCode": "filled",
+        "midThreeName": "filled",
+        "selfThreeValue": "filled",
+        "revCollection": "filled",
+        "expPayment": "filled",
+        "itBusMode": "filled",
+        "itFundSrc": "filled",
+        "hasSingleSource": true,
+        "procurementMethod": "comparison",
+        "techItems": [],
+        "inqVendors": []
+      }
+    }
+  },
+  {
+    "name": "甄选结果签批表.docx",
+    "mode": "single",
+    "filled": false,
+    "state": {
+      "formData": {
+        "gen_zx_winner_name": "",
+        "gen_zx_content_desc": "",
+        "gen_zx_scope": "",
+        "gen_zx_industry": "",
+        "gen_zx_method": "",
+        "gen_zx_rule": "",
+        "gen_zx_std_plan": "",
+        "gen_zx_is_sme": ""
+      },
+      "selectionResultMode": "single",
+      "selectionBatchName": "",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "",
+      "midThreeName": "",
+      "selfThreeValue": "",
+      "itContent": "",
+      "ctContent": "",
+      "revCollection": "",
+      "expPayment": "",
+      "itBusMode": "",
+      "itFundSrc": "",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "甄选结果签批表.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 1,
+      "fields": [
+        {
+          "key": "gen_zx_winner_name",
+          "label": "中选合作伙伴",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_content_desc",
+          "label": "合作内容描述",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_scope",
+          "label": "甄选范围",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_industry",
+          "label": "行业",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_method",
+          "label": "甄选方式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_rule",
+          "label": "甄选规则",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_std_plan",
+          "label": "标准方案",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_is_sme",
+          "label": "供应商是否中小企业",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        }
+      ],
+      "lists": {},
+      "listCounts": {},
+      "returnedListCounts": {},
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 0,
+      "returnedCharacters": 0,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "selection",
+      "readOnlyFields": [
+        {
+          "key": "post_selection_scheme",
+          "label": "甄选后方案",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "selection_batch_name",
+          "label": "合并项目名称",
+          "kind": "derived",
+          "reason": "批次合并名称由页面维护（含自动命名），不开放 AI 写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "kind": "derived",
+          "reason": "由项目基本信息提供；不属于模板保存态，须在项目页修改",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "public_fields_consistent",
+          "label": "公共字段一致",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "batch_overrides_acknowledged",
+          "label": "批次字段差异已确认",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "renewal_costs_confirmed",
+          "label": "续签成本归类已确认",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "approval_amount_below_500k",
+          "label": "立项金额低于50万元",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_zx_winner_name": "",
+          "gen_zx_content_desc": "",
+          "gen_zx_scope": "",
+          "gen_zx_industry": "",
+          "gen_zx_method": "",
+          "gen_zx_rule": "",
+          "gen_zx_std_plan": "",
+          "gen_zx_is_sme": ""
+        },
+        "revCollection": "",
+        "expPayment": "",
+        "selectionResultMode": "single",
+        "selectionBatchName": ""
+      }
+    }
+  },
+  {
+    "name": "甄选结果签批表.docx",
+    "mode": "single",
+    "filled": true,
+    "state": {
+      "formData": {
+        "gen_zx_winner_name": "已填写",
+        "gen_zx_content_desc": "已填写",
+        "gen_zx_scope": "已填写",
+        "gen_zx_industry": "已填写",
+        "gen_zx_method": "已填写",
+        "gen_zx_rule": "已填写",
+        "gen_zx_std_plan": "已填写",
+        "gen_zx_is_sme": "已填写"
+      },
+      "selectionResultMode": "single",
+      "selectionBatchName": "已填写",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "已填写",
+      "midThreeName": "已填写",
+      "selfThreeValue": "已填写",
+      "itContent": "已填写",
+      "ctContent": "已填写",
+      "revCollection": "已填写",
+      "expPayment": "已填写",
+      "itBusMode": "已填写",
+      "itFundSrc": "已填写",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "甄选结果签批表.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 2,
+      "fields": [
+        {
+          "key": "gen_zx_winner_name",
+          "label": "中选合作伙伴",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_content_desc",
+          "label": "合作内容描述",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_scope",
+          "label": "甄选范围",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_industry",
+          "label": "行业",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_method",
+          "label": "甄选方式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_rule",
+          "label": "甄选规则",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_std_plan",
+          "label": "标准方案",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_is_sme",
+          "label": "供应商是否中小企业",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        }
+      ],
+      "lists": {},
+      "listCounts": {},
+      "returnedListCounts": {},
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 30,
+      "returnedCharacters": 30,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "selection",
+      "readOnlyFields": [
+        {
+          "key": "post_selection_scheme",
+          "label": "甄选后方案",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "selection_batch_name",
+          "label": "合并项目名称",
+          "kind": "derived",
+          "reason": "批次合并名称由页面维护（含自动命名），不开放 AI 写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "kind": "derived",
+          "reason": "由项目基本信息提供；不属于模板保存态，须在项目页修改",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "public_fields_consistent",
+          "label": "公共字段一致",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "batch_overrides_acknowledged",
+          "label": "批次字段差异已确认",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "renewal_costs_confirmed",
+          "label": "续签成本归类已确认",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "approval_amount_below_500k",
+          "label": "立项金额低于50万元",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_zx_winner_name": "filled",
+          "gen_zx_content_desc": "filled",
+          "gen_zx_scope": "filled",
+          "gen_zx_industry": "filled",
+          "gen_zx_method": "filled",
+          "gen_zx_rule": "filled",
+          "gen_zx_std_plan": "filled",
+          "gen_zx_is_sme": "filled"
+        },
+        "revCollection": "filled",
+        "expPayment": "filled",
+        "selectionResultMode": "single",
+        "selectionBatchName": "filled"
+      }
+    }
+  },
+  {
+    "name": "甄选结果签批表.docx",
+    "mode": "batch",
+    "filled": false,
+    "state": {
+      "formData": {
+        "gen_zx_winner_name": "",
+        "gen_zx_content_desc": "",
+        "gen_zx_scope": "",
+        "gen_zx_industry": "",
+        "gen_zx_method": "",
+        "gen_zx_rule": "",
+        "gen_zx_std_plan": "",
+        "gen_zx_is_sme": ""
+      },
+      "selectionResultMode": "batch",
+      "selectionBatchName": "",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "",
+      "midThreeName": "",
+      "selfThreeValue": "",
+      "itContent": "",
+      "ctContent": "",
+      "revCollection": "",
+      "expPayment": "",
+      "itBusMode": "",
+      "itFundSrc": "",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "甄选结果签批表.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 3,
+      "fields": [
+        {
+          "key": "gen_zx_winner_name",
+          "label": "中选合作伙伴",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_content_desc",
+          "label": "合作内容描述",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_scope",
+          "label": "甄选范围",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_industry",
+          "label": "行业",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_method",
+          "label": "甄选方式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_rule",
+          "label": "甄选规则",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_std_plan",
+          "label": "标准方案",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_is_sme",
+          "label": "供应商是否中小企业",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        }
+      ],
+      "lists": {},
+      "listCounts": {},
+      "returnedListCounts": {},
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 0,
+      "returnedCharacters": 0,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "selection",
+      "readOnlyFields": [
+        {
+          "key": "post_selection_scheme",
+          "label": "甄选后方案",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "selection_batch_name",
+          "label": "合并项目名称",
+          "kind": "derived",
+          "reason": "批次合并名称由页面维护（含自动命名），不开放 AI 写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "kind": "derived",
+          "reason": "由项目基本信息提供；不属于模板保存态，须在项目页修改",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "public_fields_consistent",
+          "label": "公共字段一致",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "batch_overrides_acknowledged",
+          "label": "批次字段差异已确认",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "renewal_costs_confirmed",
+          "label": "续签成本归类已确认",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "approval_amount_below_500k",
+          "label": "立项金额低于50万元",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_zx_winner_name": "",
+          "gen_zx_content_desc": "",
+          "gen_zx_scope": "",
+          "gen_zx_industry": "",
+          "gen_zx_method": "",
+          "gen_zx_rule": "",
+          "gen_zx_std_plan": "",
+          "gen_zx_is_sme": ""
+        },
+        "revCollection": "",
+        "expPayment": "",
+        "selectionResultMode": "batch",
+        "selectionBatchName": ""
+      }
+    }
+  },
+  {
+    "name": "甄选结果签批表.docx",
+    "mode": "batch",
+    "filled": true,
+    "state": {
+      "formData": {
+        "gen_zx_winner_name": "已填写",
+        "gen_zx_content_desc": "已填写",
+        "gen_zx_scope": "已填写",
+        "gen_zx_industry": "已填写",
+        "gen_zx_method": "已填写",
+        "gen_zx_rule": "已填写",
+        "gen_zx_std_plan": "已填写",
+        "gen_zx_is_sme": "已填写"
+      },
+      "selectionResultMode": "batch",
+      "selectionBatchName": "已填写",
+      "selectionBatchNameCustomized": true,
+      "projectScale": "large",
+      "hasMidThree": true,
+      "hasSingleSource": true,
+      "procurementMethod": "comparison",
+      "midThreeCode": "已填写",
+      "midThreeName": "已填写",
+      "selfThreeValue": "已填写",
+      "itContent": "已填写",
+      "ctContent": "已填写",
+      "revCollection": "已填写",
+      "expPayment": "已填写",
+      "itBusMode": "已填写",
+      "itFundSrc": "已填写",
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "techItems": [],
+      "inqVendors": []
+    },
+    "projection": {
+      "projectId": "8391fdbc-b43e-4f20-be57-ed024c909623",
+      "projectName": "桥接测试项目-selection-page-catalog",
+      "templateId": "甄选结果签批表.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 4,
+      "fields": [
+        {
+          "key": "gen_zx_winner_name",
+          "label": "中选合作伙伴",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_content_desc",
+          "label": "合作内容描述",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_scope",
+          "label": "甄选范围",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_industry",
+          "label": "行业",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_method",
+          "label": "甄选方式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_rule",
+          "label": "甄选规则",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_std_plan",
+          "label": "标准方案",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_zx_is_sme",
+          "label": "供应商是否中小企业",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_rev_collection",
+          "label": "收入侧收款方式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        },
+        {
+          "key": "gen_exp_payment",
+          "label": "支出侧付款方式",
+          "value": "已填写",
+          "valueSource": "saved",
+          "originalCharacters": 3,
+          "truncated": false
+        }
+      ],
+      "lists": {},
+      "listCounts": {},
+      "returnedListCounts": {},
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 30,
+      "returnedCharacters": 30,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "selection",
+      "readOnlyFields": [
+        {
+          "key": "post_selection_scheme",
+          "label": "甄选后方案",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "selection_batch_name",
+          "label": "合并项目名称",
+          "kind": "derived",
+          "reason": "批次合并名称由页面维护（含自动命名），不开放 AI 写入",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "gen_proj_bg",
+          "label": "项目背景",
+          "kind": "derived",
+          "reason": "由项目基本信息提供；不属于模板保存态，须在项目页修改",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "public_fields_consistent",
+          "label": "公共字段一致",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "batch_overrides_acknowledged",
+          "label": "批次字段差异已确认",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "renewal_costs_confirmed",
+          "label": "续签成本归类已确认",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "approval_amount_below_500k",
+          "label": "立项金额低于50万元",
+          "kind": "check",
+          "reason": "由页面运行期的方案、批次冲突、续签归类或测算结果判定；聊天侧 unknown，需在甄选结果签批表页面查看，不代表已完成或未完成",
+          "completionAlways": null,
+          "listType": null
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_zx_winner_name": "filled",
+          "gen_zx_content_desc": "filled",
+          "gen_zx_scope": "filled",
+          "gen_zx_industry": "filled",
+          "gen_zx_method": "filled",
+          "gen_zx_rule": "filled",
+          "gen_zx_std_plan": "filled",
+          "gen_zx_is_sme": "filled"
+        },
+        "revCollection": "filled",
+        "expPayment": "filled",
+        "selectionResultMode": "batch",
+        "selectionBatchName": "filled"
+      }
+    }
+  }
+]

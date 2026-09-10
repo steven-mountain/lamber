@@ -1,0 +1,109 @@
+{
+  "date": "2026-09-06",
+  "testWorkspace": "/private/tmp/lamber-template-20260906-workspace",
+  "documents": [
+    {
+      "name": "approval-confirm.docx",
+      "documentXmlSha256": "7b3a4795649a5c1f61f5a5fb79cf3193b231c1a5ea2043d2159a4a86c0eb1e80",
+      "images": []
+    },
+    {
+      "name": "approval-content.docx",
+      "documentXmlSha256": "7b3a4795649a5c1f61f5a5fb79cf3193b231c1a5ea2043d2159a4a86c0eb1e80",
+      "images": []
+    },
+    {
+      "name": "demand-before-images.docx",
+      "documentXmlSha256": "64b5722ca5ef45c5cfa68af77dde778ae9a36bedcc0dfff8cd4223fbbcae615f",
+      "images": []
+    },
+    {
+      "name": "demand-chat-images.docx",
+      "documentXmlSha256": "454dba86eb520c70b8b1ee1d62eeed2fd34f63facbc341af2424633ee62233cc",
+      "images": [
+        "word/media/attach1_image_0.png",
+        "word/media/attach2_image_0.png"
+      ]
+    },
+    {
+      "name": "demand-confirm.docx",
+      "documentXmlSha256": "64b5722ca5ef45c5cfa68af77dde778ae9a36bedcc0dfff8cd4223fbbcae615f",
+      "images": []
+    },
+    {
+      "name": "demand-content.docx",
+      "documentXmlSha256": "64b5722ca5ef45c5cfa68af77dde778ae9a36bedcc0dfff8cd4223fbbcae615f",
+      "images": []
+    },
+    {
+      "name": "demand-initial.docx",
+      "documentXmlSha256": "64b5722ca5ef45c5cfa68af77dde778ae9a36bedcc0dfff8cd4223fbbcae615f",
+      "images": []
+    },
+    {
+      "name": "meeting-basic.docx",
+      "documentXmlSha256": "3290c676f80e611525128eded3a79d19e97f3b6ae7052a238255672a2b0270be",
+      "images": []
+    },
+    {
+      "name": "meeting-business.docx",
+      "documentXmlSha256": "3290c676f80e611525128eded3a79d19e97f3b6ae7052a238255672a2b0270be",
+      "images": []
+    },
+    {
+      "name": "meeting-confirm.docx",
+      "documentXmlSha256": "3290c676f80e611525128eded3a79d19e97f3b6ae7052a238255672a2b0270be",
+      "images": []
+    },
+    {
+      "name": "meeting-content.docx",
+      "documentXmlSha256": "3290c676f80e611525128eded3a79d19e97f3b6ae7052a238255672a2b0270be",
+      "images": []
+    },
+    {
+      "name": "meeting-risk.docx",
+      "documentXmlSha256": "3290c676f80e611525128eded3a79d19e97f3b6ae7052a238255672a2b0270be",
+      "images": []
+    },
+    {
+      "name": "selection-confirm.docx",
+      "documentXmlSha256": "7766407b5d4755ffa578e9f4abdad43144bc791db0eab7b9aa5caa02b451c44b",
+      "images": []
+    },
+    {
+      "name": "selection-content.docx",
+      "documentXmlSha256": "7766407b5d4755ffa578e9f4abdad43144bc791db0eab7b9aa5caa02b451c44b",
+      "images": []
+    }
+  ],
+  "handshake": {
+    "model": "deepseek-v4-flash",
+    "initialize": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "protocolVersion": 1,
+        "agentInfo": {
+          "name": "deepseek-harness-acp",
+          "version": "0.0.1"
+        },
+        "agentCapabilities": {
+          "mcpCapabilities": {
+            "http": true
+          },
+          "promptCapabilities": {
+            "image": false,
+            "audio": false,
+            "embeddedContext": false
+          },
+          "sessionCapabilities": {
+            "close": {},
+            "list": {},
+            "resume": {}
+          }
+        },
+        "authMethods": []
+      }
+    }
+  }
+}

@@ -46,20 +46,33 @@ Lamber 是一个基于 **Tauri + React + Rust** 架构的销售支撑桌面工�
    * 模块文档：[agent-bridge/README.md](../agent-bridge/README.md)
    * 工具插件：[dsh-tool-lamber](../agent-bridge/dsh-tool-lamber/src/runBenefitCalculation.ts)
    * 后端桥接：[agent_bridge/mod.rs](../src-tauri/src/agent_bridge/mod.rs)
+   * 启动契约唯一来源：[bridge-contract.json](../agent-bridge/bridge-contract.json)，[验证与旧版限制](./verification/bridge-contract-handshake.md)
 7. **智算测算与金额来源 (Intelligent Compute)**
    * 前端：[AiComputeQuoteView.tsx](../src-ui/src/features/ai-compute-quote/AiComputeQuoteView.tsx)
    * 计算核心：[calculations.ts](../src-ui/src/features/ai-compute-quote/calculations.ts)
    * 模块文档：[ai-compute-quote.md](./modules/ai-compute-quote.md)
 
 ## 模块详细设计上下文目录 (On-Demand)
+* **仓库提交与隐私边界**: [repository-publication.md](./modules/repository-publication.md)
+* **模板状态生成与需求表附件**: [template-state-and-assets.md](./modules/template-state-and-assets.md)
 * **前端外观与设置体系 (Appearance)**: [appearance.md](./modules/appearance.md)
 * **采购甄选费测算 (Selection Fee)**: [selection-fee.md](./modules/selection-fee.md)
 * **智算测算与金额来源 (Intelligent Compute)**: [ai-compute-quote.md](./modules/ai-compute-quote.md)
 * **测算方案甄选阶段 (Scheme Stage · 甄选前/甄选后切换)**: [scheme-stage.md](./modules/scheme-stage.md)
 * **多项目甄选结果签批表 (Selection Result Batch)**: [selection-result-batch.md](./modules/selection-result-batch.md)
 * **税额换算与尾差核验 (Tax Reconciliation)**: [tax-reconciliation.md](./modules/tax-reconciliation.md)
+* **锁定总额结构反算与达标写入契约**: [ict-structure-reverse.md](./modules/ict-structure-reverse.md)
 * **AI Agent 工具执行桥接 (Agent Bridge)**: [agent-bridge/README.md](../agent-bridge/README.md)
+* **AI 模板文本读写**: [ai-template-write.md](./modules/ai-template-write.md)
+* **AI 长文本审批**: [ai-approval-review.md](./modules/ai-approval-review.md)
+* **AI 测算只读工具（A/B/C）与确认反算卡片（D）**: [ai-benefit-calculation.md](./modules/ai-benefit-calculation.md)
+* **AI 跨项目聚合查询**: [ai-project-query.md](./modules/ai-project-query.md)
 * **AI 多 Session 会话工作区**: [ai-session-workspace.md](./modules/ai-session-workspace.md)
+
+## 任务书目录
+
+* **索引**：[docs/tasks/README.md](./tasks/README.md) —— 进行中 / 已冻结 / 已完成三档
+* **默认不读**。只有 [CURRENT_TASK.md](./CURRENT_TASK.md) 把你指到某一份时才打开它。
 
 ## AI 上下文读取规则
 在每轮开发任务开始前，AI 必须严格执行按需读取，以节省上下文空间：

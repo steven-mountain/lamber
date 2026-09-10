@@ -179,10 +179,20 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            agent_bridge::benefit_simulation::ai_claim_benefit_simulation,
+            agent_bridge::benefit_simulation::ai_finish_benefit_simulation,
             agent_bridge::ai_send_prompt,
+            agent_bridge::ai_bind_session_to_project,
+            agent_bridge::ai_get_session_binding,
+            agent_bridge::template_images::ai_replace_template_image,
+            agent_bridge::ai_cancel_prompt,
+            agent_bridge::ai_reset_session,
             agent_bridge::ai_agent_status,
             agent_bridge::ai_agent_stop,
+            agent_bridge::ai_get_settings,
+            agent_bridge::ai_save_settings,
             agent_bridge::ai_resolve_approval,
+            agent_bridge::ai_rehearse_text_approval,
             agent_bridge::ai_list_approval_log,
             benefit::calculate_ict_benefit,
             benefit::calculator::calculate_ict_benefit_batch,

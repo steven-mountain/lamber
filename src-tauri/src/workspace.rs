@@ -113,13 +113,32 @@ impl WorkspaceRuntime {
             })
     }
 
+    /// Capture identity and connection under the same lock order as activation.
+    pub fn require_context(&self) -> Result<(CurrentWorkspace, Arc<Mutex<rusqlite::Connection>>), String> {
+        let current = self.current.read().map_err(|e| e.to_string())?;
+        let db = self.db.read().map_err(|e| e.to_string())?;
+        Ok((current.clone().ok_or("请先打开 Lamber 工作区")?, db.clone().ok_or("工作区数据库未就绪")?))
+    }
+
+    /// Hold workspace identity through a bounded database action. Activation waits until completion.
+    pub(crate) fn with_locked_context<T>(&self, action: impl FnOnce(&CurrentWorkspace, &mut rusqlite::Connection) -> Result<T, String>) -> Result<T, String> {
+        let current = self.current.read().map_err(|e| e.to_string())?;
+        let databases = self.db.read().map_err(|e| e.to_string())?;
+        let workspace = current.as_ref().ok_or("请先打开 Lamber 工作区")?;
+        let database = databases.as_ref().ok_or("工作区数据库未就绪")?;
+        let mut conn = database.lock().map_err(|e| e.to_string())?;
+        action(workspace, &mut conn)
+    }
+
     pub fn switch_workspace(
         &self,
         workspace: CurrentWorkspace,
         conn: rusqlite::Connection,
     ) -> Result<(), String> {
-        *self.current.write().map_err(|e| e.to_string())? = Some(workspace);
-        *self.db.write().map_err(|e| e.to_string())? = Some(Arc::new(Mutex::new(conn)));
+        let mut current = self.current.write().map_err(|e| e.to_string())?;
+        let mut db = self.db.write().map_err(|e| e.to_string())?;
+        *current = Some(workspace);
+        *db = Some(Arc::new(Mutex::new(conn)));
         *self.startup_error.write().map_err(|e| e.to_string())? = None;
         Ok(())
     }

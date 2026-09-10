@@ -7,6 +7,7 @@ const ts = require("typescript");
 const moduleCache = new Map();
 function loadTsFile(sourcePath) {
   const normalizedPath = path.normalize(sourcePath);
+  if (normalizedPath.endsWith(".json")) return JSON.parse(fs.readFileSync(normalizedPath, "utf8"));
   if (moduleCache.has(normalizedPath)) return moduleCache.get(normalizedPath).exports;
   const source = fs.readFileSync(normalizedPath, "utf8");
   const transpiled = ts.transpileModule(source, {

@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
+import { getDemandCompletion } from "../../lib/templateCompletion/demand";
 import {
   buildAiProjectContext,
   listAiWorkspaceProjects,
@@ -8,7 +10,6 @@ import { useAiContextStore, type AiContextSnapshot } from "../../store/useAiCont
 import { readStoredNavigationState } from "../../store/useNavigationStore";
 import { readStoredCurrentProject } from "../../store/useProjectStore";
 import { useSaveStore } from "../../store/useSaveStore";
-import { AI_CONTEXT_KEY } from "../../utils/aiContextKeys";
 import type { ContextNode } from "../types";
 import { buildDraftOverlay } from "./buildDraftOverlay";
 import type { AiComposedChatContext, AiSavedProjectContext } from "./types";
@@ -20,6 +21,8 @@ import {
 interface BuildAiChatContextInput {
   currentView: string;
   userMessage: string;
+  /** null is explicit general chat; missing identity always fails closed. */
+  boundProjectId: string | null;
 }
 
 function isProjectAwareView(view: string) {
@@ -107,6 +110,10 @@ function buildSavedNode(saved: AiSavedProjectContext): ContextNode {
         fieldMapping: data.templateDetail.fieldMapping,
         outputConfig: data.templateDetail.outputConfig,
         assets: data.templateDetail.assets,
+        completion: data.templateDetail.templateId.includes("需求导入表") ? (() => {
+          const items = getDemandCompletion(data.templateDetail.templateId, data.templateDetail.fields, data.templateDetail.assets);
+          return { items, missingFields: items.filter(item => item.kind === 'field' && !item.filled), missingImages: items.filter(item => item.kind === 'image' && !item.filled) };
+        })() : undefined,
         warnings: data.templateDetail.warnings,
       } : undefined,
       files: data.files,
@@ -131,32 +138,6 @@ function buildDraftNode(draft: NonNullable<AiComposedChatContext["draftOverlay"]
     },
     metadata: { module: "unsaved_frontend_draft" },
   };
-}
-
-function buildProjectBoardPageNode(aiSnapshot: AiContextSnapshot): ContextNode[] {
-  const data = aiSnapshot.businessData[AI_CONTEXT_KEY.PROJECT_BOARD_CORE];
-  if (!data) return [];
-
-  return [{
-    type: "json",
-    title: "Current workspace project board summary",
-    content: {
-      source: "project_board_frontend_snapshot",
-      status: "Current Project Board view state loaded from the active workspace. This is read-only context.",
-      data,
-    },
-    metadata: {
-      module: AI_CONTEXT_KEY.PROJECT_BOARD_CORE,
-      updatedAt: aiSnapshot.lastUpdated[AI_CONTEXT_KEY.PROJECT_BOARD_CORE],
-    },
-  }];
-}
-
-function buildPageContextNodes(currentView: string, aiSnapshot: AiContextSnapshot): ContextNode[] {
-  if (currentView === "project_board") {
-    return buildProjectBoardPageNode(aiSnapshot);
-  }
-  return [];
 }
 
 function buildWorkspaceProjectIndexNode(projectIndex: AiWorkspaceProjectIndexItem[]): ContextNode[] {
@@ -206,8 +187,14 @@ function hasPotentialNamedProjectReference(userMessage: string) {
 }
 
 export async function buildAiChatContext(input: BuildAiChatContextInput): Promise<AiComposedChatContext> {
+  if (input.boundProjectId === undefined) throw new Error('缺少会话项目权限，不能读取业务上下文');
   const warnings: string[] = [];
-  const projectId = getCurrentProjectId(input.currentView);
+  if (input.boundProjectId === null) return {
+    savedProjectContexts: [], warnings: ['通用聊天不自动提供业务上下文；跨项目汇总须通过 query_projects 读取；另允许甄选费纯计算，项目明细和写工具禁用。'],
+    contextNodes: { savedOfficial: [], pageContext: [], draftOverlay: [], warnings: [] },
+  };
+  const pageProjectId = getCurrentProjectId(input.currentView);
+  const projectId = input.boundProjectId;
   const latestAiState = useAiContextStore.getState();
   const aiSnapshot: AiContextSnapshot = {
     activeModule: latestAiState.activeModule,
@@ -215,8 +202,7 @@ export async function buildAiChatContext(input: BuildAiChatContextInput): Promis
     lastUpdated: latestAiState.lastUpdated,
   };
   const dirtyScopes = useSaveStore.getState().dirtyScopes;
-  const activeTemplateId = getActiveTemplateId(aiSnapshot);
-  const pageContextNodes = buildPageContextNodes(input.currentView, aiSnapshot);
+  const activeTemplateId = pageProjectId === projectId ? getActiveTemplateId(aiSnapshot) : null;
   const workspaceListQuery = isWorkspaceProjectListQuery(input.userMessage);
   const potentialNamedProjectReference = hasPotentialNamedProjectReference(input.userMessage);
 
@@ -227,9 +213,10 @@ export async function buildAiChatContext(input: BuildAiChatContextInput): Promis
     | ReturnType<typeof resolveWorkspaceProjectsFromMessage>
     | undefined;
 
-  if (input.currentView !== "hub") {
+  {
     try {
-      workspaceProjectIndex = await listAiWorkspaceProjects();
+      workspaceProjectIndex = (await listAiWorkspaceProjects()).filter(project => project.projectId === projectId);
+      warnings.push("此上下文只提供绑定项目。跨项目汇总须通过 query_projects；其结果不得代替当前项目结论。其他项目明细需另建会话。");
       explicitProjectResolution = resolveWorkspaceProjectsFromMessage(input.userMessage, workspaceProjectIndex);
       warnings.push(...explicitProjectResolution.warnings);
       if (
@@ -304,11 +291,17 @@ export async function buildAiChatContext(input: BuildAiChatContextInput): Promis
     warnings.push("The user appears to reference a named project, but it was not found uniquely in the current Workspace. Do not answer using the active project as a substitute.");
   } else if (explicitProjectResolution?.hasExplicitProjectReference) {
     warnings.push("The user mentioned a project, but it was not uniquely resolved in the current Workspace. Do not answer using another project as a substitute.");
-  } else {
-    if (pageContextNodes.length > 0) {
-      warnings.push("No active project is selected; project-level SQLite context was not requested. Use current page context for workspace-level questions.");
-    } else {
-      warnings.push("No active project is selected; project-level SQLite context was not requested.");
+  }
+
+  if (/需求分析|需求导入|缺.*附件|补.*附件/.test(input.userMessage)) {
+    for (const saved of savedProjectContexts) {
+      if (saved.data.templateDetail?.templateId.includes("需求导入表")) continue;
+      try {
+        const available = await invoke<string[]>('get_available_templates', { moduleId: 'ict_lifecycle' });
+        const candidates = available.filter(name => name.includes('需求导入表'));
+        if (candidates.length !== 1) { warnings.push("需求导入表模板无法唯一确定，请先在模板页选择目标模板。"); continue; }
+        saved.data = await buildAiProjectContext({ projectId: saved.projectId, requestedSources: ['templates', 'template_detail'], activeTemplateId: candidates[0] });
+      } catch (error) { warnings.push(`需求表缺项读取失败：${String(error)}`); }
     }
   }
 
@@ -320,7 +313,7 @@ export async function buildAiChatContext(input: BuildAiChatContextInput): Promis
     ? (projectId && savedProjectContexts.some(context => context.projectId === projectId) ? projectId : null)
     : projectId;
 
-  const draftOverlay = buildDraftOverlay({
+  const draftOverlay = pageProjectId !== projectId ? undefined : buildDraftOverlay({
     projectId: draftProjectId,
     currentView: input.currentView,
     dirtyScopes,
@@ -340,7 +333,6 @@ export async function buildAiChatContext(input: BuildAiChatContextInput): Promis
     contextNodes: {
       savedOfficial: savedProjectContexts.map(buildSavedNode),
       pageContext: [
-        ...pageContextNodes,
         ...(shouldAttachWorkspaceProjectIndex ? buildWorkspaceProjectIndexNode(workspaceProjectIndex) : []),
       ],
       draftOverlay: draftOverlay ? [buildDraftNode(draftOverlay)] : [],

@@ -1,0 +1,215 @@
+{
+  "fixture": {
+    "boundProjectName": "当前甲项目",
+    "boundMarginRate": 0.13,
+    "otherMarginRate": 0.87
+  },
+  "actualModelAnswers": [
+    {
+      "sessionType": "bound",
+      "queryAnswer": "命中 2 条，已返回 2 条，未截断。\n\n**按毛利率降序**（结果本身已按 marginRate 降序返回）：\n\n1. **其他乙项目1**（非绑定项目）\n   - 阶段：未标注，方案名/保存时间为 null，不可猜测，仅列出名称与数值\n   - 已保存毛利率：0.87（87%）\n   - 含税总成本：500.2 元\n\n2. **当前甲项目**（isBoundProject=true，即绑定项目）\n   - 阶段：甄选前（限价口径），方案名「甄选前」，保存时间 2026-01-01T00:00:00Z\n   - 已保存毛利率：0.13（13%）\n   - 含税总成本：500.2 元\n\n注：本次结果含不同甄选阶段（甄选前与未标注），口径不可横向比较，未提供跨阶段合计。数据均来自已保存摘要，未重新测算。",
+      "followupAnswer": "您当前绑定项目「当前甲项目」的已保存毛利率为 **0.13（13%）**，对应方案：**甄选前（限价口径）**，方案名「甄选前」，保存时间 2026-01-01T00:00:00Z。该值为已保存摘要，非本次重新测算。"
+    },
+    {
+      "sessionType": "general",
+      "queryAnswer": "命中 **2 条**，已返回 2 条（未截断），无绑定项目。本次为混合阶段口径，不可横向比较。各项目及其已保存摘要如下：\n\n- **当前甲项目** — 毛利率 0.13（13%），含税总成本 500.2 元；阶段：甄选前（限价口径），方案\"甄选前\"，保存时间 2026-01-01T00:00:00Z（benefitStatus: normal，已保存）\n- **其他乙项目1** — 毛利率 0.87（87%），含税总成本 500.2 元；阶段：未标注，方案名/保存时间缺失（benefitStatus: normal）\n\n含税总成本合计：pre_selection 组 500.2 元、未标注组 500.2 元（跨阶段不可合计）。"
+    }
+  ],
+  "actualToolResponses": [
+    {
+      "scope": "workspace_project_search",
+      "source": "projects + summary_metrics (saved)",
+      "notice": "以下为跨项目检索结果，不得用作当前绑定项目的测算结论。isBoundProject 标记命中的绑定项目；金额为含税元，比例使用小数（0.2=20%）。指标是已保存的项目摘要，非本次重新测算；缺失指标不等于零。指标属于 defaultSchemeId 对应的最后保存方案；必须同时说明 stageLabel、方案名和保存时间，未标注不得猜测。合计按甄选阶段分组覆盖全部命中，混合口径不提供跨阶段合计。",
+      "boundProjectId": "24a323a3-8e5f-4496-b97e-4353edc2e11c",
+      "matchedCount": 2,
+      "returnedCount": 2,
+      "appliedLimit": 20,
+      "truncated": false,
+      "message": "命中 2 条，已返回 2 条（服务端上限 50）",
+      "totals": null,
+      "mixedStages": true,
+      "comparisonNotice": "本次结果包含不同甄选阶段的口径，不可直接横向比较。金额仅按阶段合计；财务指标在阶段内排序。",
+      "stageTotals": [
+        {
+          "stage": "pre_selection",
+          "stageLabel": "甄选前（限价口径）",
+          "matchedCount": 1,
+          "totals": {
+            "totalRevenueIncl": "1000.1",
+            "totalCostIncl": "500.2",
+            "revenueValueCount": 1,
+            "costValueCount": 1
+          }
+        },
+        {
+          "stage": "unlabeled",
+          "stageLabel": "未标注",
+          "matchedCount": 1,
+          "totals": {
+            "totalRevenueIncl": "1000.1",
+            "totalCostIncl": "500.2",
+            "revenueValueCount": 1,
+            "costValueCount": 1
+          }
+        }
+      ],
+      "projects": [
+        {
+          "id": "24a323a3-8e5f-4496-b97e-4353edc2e11c",
+          "name": "当前甲项目",
+          "customerName": "聚合测试客户",
+          "status": "实施中",
+          "benefitStatus": "normal",
+          "createdAt": "2026-01-01T00:00:00Z",
+          "updatedAt": "2026-09-06T00:00:00Z",
+          "progress": 0.0,
+          "projectYears": 1,
+          "discountRate": 0.055,
+          "totalRevenueIncl": 1000.1,
+          "totalCostIncl": 500.2,
+          "summaryMetrics": {
+            "marginRate": 0.13,
+            "npv": 123.45,
+            "npvRate": 0.2,
+            "irr": null,
+            "dynamicPayback": 1.5,
+            "riskLevel": "low"
+          },
+          "isBoundProject": true,
+          "defaultSchemeId": "d0f50cce-7b19-4c8d-abdc-701e9c5bafc2",
+          "stage": "pre_selection",
+          "stageLabel": "甄选前（限价口径）",
+          "schemeName": "甄选前",
+          "schemeUpdatedAt": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "query-project-001",
+          "name": "其他乙项目1",
+          "customerName": "聚合测试客户",
+          "status": "实施中",
+          "benefitStatus": "normal",
+          "createdAt": "2025-06-01T00:00:00Z",
+          "updatedAt": "2026-09-06T00:00:00Z",
+          "progress": 0.0,
+          "projectYears": 1,
+          "discountRate": 0.055,
+          "totalRevenueIncl": 1000.1,
+          "totalCostIncl": 500.2,
+          "summaryMetrics": {
+            "marginRate": 0.87,
+            "npv": 123.45,
+            "npvRate": 0.2,
+            "irr": null,
+            "dynamicPayback": 1.5,
+            "riskLevel": "low"
+          },
+          "isBoundProject": false,
+          "defaultSchemeId": null,
+          "stage": "unlabeled",
+          "stageLabel": "未标注",
+          "schemeName": null,
+          "schemeUpdatedAt": null
+        }
+      ],
+      "queriedAt": "2026-09-09T10:35:43.802151+00:00"
+    },
+    {
+      "scope": "workspace_project_search",
+      "source": "projects + summary_metrics (saved)",
+      "notice": "以下为跨项目检索结果，不得用作当前绑定项目的测算结论。isBoundProject 标记命中的绑定项目；金额为含税元，比例使用小数（0.2=20%）。指标是已保存的项目摘要，非本次重新测算；缺失指标不等于零。指标属于 defaultSchemeId 对应的最后保存方案；必须同时说明 stageLabel、方案名和保存时间，未标注不得猜测。合计按甄选阶段分组覆盖全部命中，混合口径不提供跨阶段合计。",
+      "boundProjectId": null,
+      "matchedCount": 2,
+      "returnedCount": 2,
+      "appliedLimit": 20,
+      "truncated": false,
+      "message": "命中 2 条，已返回 2 条（服务端上限 50）",
+      "totals": null,
+      "mixedStages": true,
+      "comparisonNotice": "本次结果包含不同甄选阶段的口径，不可直接横向比较。金额仅按阶段合计；财务指标在阶段内排序。",
+      "stageTotals": [
+        {
+          "stage": "pre_selection",
+          "stageLabel": "甄选前（限价口径）",
+          "matchedCount": 1,
+          "totals": {
+            "totalRevenueIncl": "1000.1",
+            "totalCostIncl": "500.2",
+            "revenueValueCount": 1,
+            "costValueCount": 1
+          }
+        },
+        {
+          "stage": "unlabeled",
+          "stageLabel": "未标注",
+          "matchedCount": 1,
+          "totals": {
+            "totalRevenueIncl": "1000.1",
+            "totalCostIncl": "500.2",
+            "revenueValueCount": 1,
+            "costValueCount": 1
+          }
+        }
+      ],
+      "projects": [
+        {
+          "id": "24a323a3-8e5f-4496-b97e-4353edc2e11c",
+          "name": "当前甲项目",
+          "customerName": "聚合测试客户",
+          "status": "实施中",
+          "benefitStatus": "normal",
+          "createdAt": "2026-01-01T00:00:00Z",
+          "updatedAt": "2026-09-06T00:00:00Z",
+          "progress": 0.0,
+          "projectYears": 1,
+          "discountRate": 0.055,
+          "totalRevenueIncl": 1000.1,
+          "totalCostIncl": 500.2,
+          "summaryMetrics": {
+            "marginRate": 0.13,
+            "npv": 123.45,
+            "npvRate": 0.2,
+            "irr": null,
+            "dynamicPayback": 1.5,
+            "riskLevel": "low"
+          },
+          "isBoundProject": false,
+          "defaultSchemeId": "d0f50cce-7b19-4c8d-abdc-701e9c5bafc2",
+          "stage": "pre_selection",
+          "stageLabel": "甄选前（限价口径）",
+          "schemeName": "甄选前",
+          "schemeUpdatedAt": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "query-project-001",
+          "name": "其他乙项目1",
+          "customerName": "聚合测试客户",
+          "status": "实施中",
+          "benefitStatus": "normal",
+          "createdAt": "2025-06-01T00:00:00Z",
+          "updatedAt": "2026-09-06T00:00:00Z",
+          "progress": 0.0,
+          "projectYears": 1,
+          "discountRate": 0.055,
+          "totalRevenueIncl": 1000.1,
+          "totalCostIncl": 500.2,
+          "summaryMetrics": {
+            "marginRate": 0.87,
+            "npv": 123.45,
+            "npvRate": 0.2,
+            "irr": null,
+            "dynamicPayback": 1.5,
+            "riskLevel": "low"
+          },
+          "isBoundProject": false,
+          "defaultSchemeId": null,
+          "stage": "unlabeled",
+          "stageLabel": "未标注",
+          "schemeName": null,
+          "schemeUpdatedAt": null
+        }
+      ],
+      "queriedAt": "2026-09-09T10:35:54.545381+00:00"
+    }
+  ],
+  "humanReview": "pending"
+}

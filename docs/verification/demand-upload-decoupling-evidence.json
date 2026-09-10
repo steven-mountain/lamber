@@ -1,0 +1,69 @@
+{
+  "date": "2026-09-07",
+  "environment": "independent macOS Scope Test, synthetic workspace only",
+  "projectId": "id_79962ba708eb402dbb198e9d770d6ab3",
+  "templateId": "ICT项目需求导入表模板.docx",
+  "ui": {
+    "originalRoute": "#/ai-assistant?view=project_board",
+    "templateOpenedBeforeFirstUpload": false,
+    "prompt": "附件1 还没传吧",
+    "tool": "read_template_fields",
+    "modelResponse": "上传方式：在本会话中找到标有「附件1 客户确认材料」的上传卡片，直接选择图片，或在卡片上聚焦后粘贴即可。图片需要由你在卡片上操作保存，我无法代为写入；仅把图片贴在聊天消息里不会保存到模板。",
+    "firstUploadAssetId": "asset_4057ab25c98675b0",
+    "templatePageRegressionBefore": "10/11",
+    "templatePageRegressionAfter": "11/11",
+    "generalCardVisible": false,
+    "unboundCardVisible": false,
+    "boundSessionRestoresCard": true
+  },
+  "assets": [
+    {
+      "id": "asset_35523ec9602ed6d",
+      "usage": "attach2",
+      "relative_path": ".projects/id_79962ba708eb402dbb198e9d770d6ab3/assets/asset_35523ec9602ed6d.png",
+      "width": 1,
+      "height": 1
+    },
+    {
+      "id": "asset_a00a0c54e2f49656",
+      "usage": "attach1",
+      "relative_path": "3A/3A流式验收项目-图片/assets/asset_a00a0c54e2f49656.png",
+      "width": 160,
+      "height": 80
+    }
+  ],
+  "docx": {
+    "path": "/private/tmp/lamber-template-20260906-workspace/3A/ICT项目需求导入表-3A流式验收项目.docx",
+    "sha256": "3f27940884068ffa7ae4538cd2448b8426f779954126ecd63a18a34f792d61a8",
+    "attachment1Sha256": "e16c42b64f622be99d67d81c692e81c6aefe30f591a5b1878e514b2ac32cb3ad",
+    "uploadedImageSha256": "e16c42b64f622be99d67d81c692e81c6aefe30f591a5b1878e514b2ac32cb3ad",
+    "matchingImageBytes": true,
+    "drawingCount": 2,
+    "attachmentPlacement": [
+      [
+        {
+          "text": "附件1：  客户纸质需求确认函（如有），格式自拟。",
+          "images": []
+        },
+        {
+          "text": "",
+          "images": [
+            "media/attach1_image_0.png"
+          ]
+        }
+      ],
+      [
+        {
+          "text": "附件2、有效的挂网链接截图/招标文件（有效地址：https://example.test/tender）",
+          "images": []
+        },
+        {
+          "text": "",
+          "images": [
+            "media/attach2_image_0.png"
+          ]
+        }
+      ]
+    ]
+  }
+}

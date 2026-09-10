@@ -4,22 +4,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 const ts = require("typescript");
 
-function load(p) {
-  const source = fs.readFileSync(p, "utf8");
-  const transpiled = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2020,
-    },
-  });
-  const moduleRef = { exports: {} };
-  vm.runInNewContext(
-    transpiled.outputText,
-    { module: moduleRef, exports: moduleRef.exports, require },
-    { filename: p },
-  );
-  return moduleRef.exports;
-}
+const load = require("./load_ts.cjs");
 
 const fp = load(path.join(__dirname, "../src/lib/ictSubjectFundingPlan.ts"));
 

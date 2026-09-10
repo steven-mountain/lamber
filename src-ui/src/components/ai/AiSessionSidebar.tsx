@@ -134,7 +134,7 @@ export default function AiSessionSidebar({
             onSelect={onSelect}
             onRename={onRename}
             onDelete={onDelete}
-            emptyText="新建会话会自动关联当前项目。"
+            emptyText="新会话需选择项目或通用聊天。"
           />
         )}
 

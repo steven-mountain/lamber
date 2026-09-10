@@ -7,7 +7,8 @@
     "package:windows": "node scripts/package-windows.mjs",
     "package:windows:minor": "node scripts/package-windows.mjs minor",
     "package:windows:major": "node scripts/package-windows.mjs major",
-    "test:packaging": "node --test scripts/package-windows.test.mjs"
+    "test:packaging": "node --test scripts/package-windows.test.mjs",
+    "test:dsh-stream": "npm run build --prefix agent-bridge/dsh-tool-lamber && python3 scripts/verify-dsh-stage3a.py"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0"

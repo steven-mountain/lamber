@@ -77,4 +77,12 @@
 - `cargo test selection_result_docx_fills_batch_rows_and_approval_amount -- --nocapture`：以真实签批表模板生成两项目文档，验证五表增行、合计、立项金额和占位符清理。
 - `npm run build --prefix src-ui`：TypeScript 与生产构建校验。
 
-最后更新：2026-08-06。
+最后更新：2026-09-10。
+
+## 目录完成度（2026-09-10）
+
+甄选页面与读工具共用 `getCatalogCompletion`。原14项判定及相对顺序保留；合作内容描述接在中选合作伙伴之后，行业接在甄选范围之后，标准方案接在甄选规则之后，共17项。后两项默认 `/`、`竞价法`；内容描述空白会新增缺项，原14/14可能变为16/17。完成度展示不改变原生成门禁或默认生成内容。
+
+合并名称仅用 `derived + completionSources + requiredWhen`，不带stateKey：batch要求非空，single视为不要求，自动命名及页面编辑保持原样，AI不可写。项目背景、甄选后方案、公共字段一致、批次差异确认、续签归类、金额低于50万元仍由页面提供原6个判定式；不落库派生结论，聊天逐项unknown并提示到页面查看。供应商是否中小企业沿用原页面始终完成语义（否/是均有效），目录使用已有completionAlways；不把空白异常存量值转成新门禁。
+
+原14项已作2048组状态逐项比较，三表回归及真实AI行业写入联动见[独立验证](../verification/selection-result-page-catalog.md)。

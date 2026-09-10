@@ -1,0 +1,2218 @@
+[
+  {
+    "template": "需求导入表.docx",
+    "mode": "single",
+    "filled": false,
+    "completion": [
+      {
+        "key": "gen_demand_branch_name",
+        "label": "项目需求单位",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_it_business_mode",
+        "label": "业务模式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_service_content",
+        "label": "服务内容",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_device_list",
+        "label": "设备清单",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "techItems",
+        "label": "技术方案可行性清单",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_customer_confirm",
+        "label": "客户确认",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_env_require",
+        "label": "部署环境要求",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_public_url",
+        "label": "公示网址/招标文件",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_security_detail",
+        "label": "信息安全/密评",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "attach1",
+        "label": "附件1客户确认材料",
+        "filled": false,
+        "evaluated": true,
+        "kind": "image",
+        "templateName": "需求导入表.docx",
+        "usage": "attach1"
+      },
+      {
+        "key": "attach2",
+        "label": "附件2招标材料",
+        "filled": true,
+        "evaluated": true,
+        "kind": "image",
+        "templateName": "需求导入表.docx",
+        "usage": "attach2"
+      }
+    ],
+    "totalCount": 11,
+    "filledCount": 3,
+    "unknownCount": 0
+  },
+  {
+    "template": "需求导入表.docx",
+    "mode": "single",
+    "filled": true,
+    "completion": [
+      {
+        "key": "gen_demand_branch_name",
+        "label": "项目需求单位",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_it_business_mode",
+        "label": "业务模式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_service_content",
+        "label": "服务内容",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_device_list",
+        "label": "设备清单",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "techItems",
+        "label": "技术方案可行性清单",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_customer_confirm",
+        "label": "客户确认",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_env_require",
+        "label": "部署环境要求",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_public_url",
+        "label": "公示网址/招标文件",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_security_detail",
+        "label": "信息安全/密评",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "attach1",
+        "label": "附件1客户确认材料",
+        "filled": false,
+        "evaluated": true,
+        "kind": "image",
+        "templateName": "需求导入表.docx",
+        "usage": "attach1"
+      },
+      {
+        "key": "attach2",
+        "label": "附件2招标材料",
+        "filled": true,
+        "evaluated": true,
+        "kind": "image",
+        "templateName": "需求导入表.docx",
+        "usage": "attach2"
+      }
+    ],
+    "totalCount": 11,
+    "filledCount": 9,
+    "unknownCount": 0
+  },
+  {
+    "template": "需求导入表.docx",
+    "mode": "batch",
+    "filled": false,
+    "completion": [
+      {
+        "key": "gen_demand_branch_name",
+        "label": "项目需求单位",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_it_business_mode",
+        "label": "业务模式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_service_content",
+        "label": "服务内容",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_device_list",
+        "label": "设备清单",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "techItems",
+        "label": "技术方案可行性清单",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_customer_confirm",
+        "label": "客户确认",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_env_require",
+        "label": "部署环境要求",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_public_url",
+        "label": "公示网址/招标文件",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_security_detail",
+        "label": "信息安全/密评",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "attach1",
+        "label": "附件1客户确认材料",
+        "filled": false,
+        "evaluated": true,
+        "kind": "image",
+        "templateName": "需求导入表.docx",
+        "usage": "attach1"
+      },
+      {
+        "key": "attach2",
+        "label": "附件2招标材料",
+        "filled": true,
+        "evaluated": true,
+        "kind": "image",
+        "templateName": "需求导入表.docx",
+        "usage": "attach2"
+      }
+    ],
+    "totalCount": 11,
+    "filledCount": 3,
+    "unknownCount": 0
+  },
+  {
+    "template": "需求导入表.docx",
+    "mode": "batch",
+    "filled": true,
+    "completion": [
+      {
+        "key": "gen_demand_branch_name",
+        "label": "项目需求单位",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_it_business_mode",
+        "label": "业务模式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_service_content",
+        "label": "服务内容",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_device_list",
+        "label": "设备清单",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "techItems",
+        "label": "技术方案可行性清单",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_customer_confirm",
+        "label": "客户确认",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_env_require",
+        "label": "部署环境要求",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_public_url",
+        "label": "公示网址/招标文件",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "gen_demand_security_detail",
+        "label": "信息安全/密评",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "需求导入表.docx"
+      },
+      {
+        "key": "attach1",
+        "label": "附件1客户确认材料",
+        "filled": false,
+        "evaluated": true,
+        "kind": "image",
+        "templateName": "需求导入表.docx",
+        "usage": "attach1"
+      },
+      {
+        "key": "attach2",
+        "label": "附件2招标材料",
+        "filled": true,
+        "evaluated": true,
+        "kind": "image",
+        "templateName": "需求导入表.docx",
+        "usage": "attach2"
+      }
+    ],
+    "totalCount": 11,
+    "filledCount": 9,
+    "unknownCount": 0
+  },
+  {
+    "template": "立项签批表.docx",
+    "mode": "single",
+    "filled": false,
+    "completion": [
+      {
+        "key": "gen_proj_bg",
+        "label": "项目背景",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_sign_it_content",
+        "label": "IT服务内容",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_sign_ct_content",
+        "label": "CT服务内容",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_is_advance",
+        "label": "是否涉及垫资",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_after_approval_selection",
+        "label": "是否立项后甄选",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_rev_collection",
+        "label": "收入侧收款方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_exp_payment",
+        "label": "支出侧付款方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      }
+    ],
+    "totalCount": 7,
+    "filledCount": 2,
+    "unknownCount": 1
+  },
+  {
+    "template": "立项签批表.docx",
+    "mode": "single",
+    "filled": true,
+    "completion": [
+      {
+        "key": "gen_proj_bg",
+        "label": "项目背景",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_sign_it_content",
+        "label": "IT服务内容",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_sign_ct_content",
+        "label": "CT服务内容",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_is_advance",
+        "label": "是否涉及垫资",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_after_approval_selection",
+        "label": "是否立项后甄选",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_rev_collection",
+        "label": "收入侧收款方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_exp_payment",
+        "label": "支出侧付款方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      }
+    ],
+    "totalCount": 7,
+    "filledCount": 6,
+    "unknownCount": 1
+  },
+  {
+    "template": "立项签批表.docx",
+    "mode": "batch",
+    "filled": false,
+    "completion": [
+      {
+        "key": "gen_proj_bg",
+        "label": "项目背景",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_sign_it_content",
+        "label": "IT服务内容",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_sign_ct_content",
+        "label": "CT服务内容",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_is_advance",
+        "label": "是否涉及垫资",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_after_approval_selection",
+        "label": "是否立项后甄选",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_rev_collection",
+        "label": "收入侧收款方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_exp_payment",
+        "label": "支出侧付款方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      }
+    ],
+    "totalCount": 7,
+    "filledCount": 2,
+    "unknownCount": 1
+  },
+  {
+    "template": "立项签批表.docx",
+    "mode": "batch",
+    "filled": true,
+    "completion": [
+      {
+        "key": "gen_proj_bg",
+        "label": "项目背景",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_sign_it_content",
+        "label": "IT服务内容",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_sign_ct_content",
+        "label": "CT服务内容",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_is_advance",
+        "label": "是否涉及垫资",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_after_approval_selection",
+        "label": "是否立项后甄选",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_rev_collection",
+        "label": "收入侧收款方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      },
+      {
+        "key": "gen_exp_payment",
+        "label": "支出侧付款方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "立项签批表.docx"
+      }
+    ],
+    "totalCount": 7,
+    "filledCount": 6,
+    "unknownCount": 1
+  },
+  {
+    "template": "会审纪要.docx",
+    "mode": "single",
+    "filled": false,
+    "completion": [
+      {
+        "key": "gen_meet_start",
+        "label": "会议开始日期",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_meet_end",
+        "label": "会议结束日期",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_meet_mode",
+        "label": "会议方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_project_scale",
+        "label": "项目规模",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_city_attendees",
+        "label": "市公司参会人员",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_branch_name",
+        "label": "分公司参会人员",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_onsite_support",
+        "label": "驻点支撑人员",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_proj_bg",
+        "label": "项目背景",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_it_content",
+        "label": "IT建设内容",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_ct_content",
+        "label": "CT建设内容",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_tech_solution",
+        "label": "技术方案",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "techItems",
+        "label": "技术方案可行性清单",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_mid_three",
+        "label": "涉及中台能力调用",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_self_three",
+        "label": "自主三问",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_threeization",
+        "label": "三化方案",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_strategic_value",
+        "label": "战略价值",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_tech_conclusion",
+        "label": "综论",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_rev_collection",
+        "label": "收入付款方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_exp_payment",
+        "label": "支出付款方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_it_bus_mode",
+        "label": "IT服务模式/商务模式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_it_fund_src",
+        "label": "资金来源",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "inqVendors",
+        "label": "询价情况/询价过程",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_construction_time_req",
+        "label": "时间要求",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_risk_owner",
+        "label": "风险点及其他责任人",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_is_joint",
+        "label": "是否联合体投标",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_review_acc",
+        "label": "项目评审清单准确完整",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_single_source",
+        "label": "是否涉及单一来源",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_procurement_method_other",
+        "label": "采购方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_construction_interface",
+        "label": "售中建设及施工界面",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      }
+    ],
+    "totalCount": 29,
+    "filledCount": 2,
+    "unknownCount": 1
+  },
+  {
+    "template": "会审纪要.docx",
+    "mode": "single",
+    "filled": true,
+    "completion": [
+      {
+        "key": "gen_meet_start",
+        "label": "会议开始日期",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_meet_end",
+        "label": "会议结束日期",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_meet_mode",
+        "label": "会议方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_project_scale",
+        "label": "项目规模",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_city_attendees",
+        "label": "市公司参会人员",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_branch_name",
+        "label": "分公司参会人员",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_onsite_support",
+        "label": "驻点支撑人员",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_proj_bg",
+        "label": "项目背景",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_it_content",
+        "label": "IT建设内容",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_ct_content",
+        "label": "CT建设内容",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_tech_solution",
+        "label": "技术方案",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "techItems",
+        "label": "技术方案可行性清单",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_mid_three",
+        "label": "涉及中台能力调用",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_self_three",
+        "label": "自主三问",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_threeization",
+        "label": "三化方案",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_strategic_value",
+        "label": "战略价值",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_tech_conclusion",
+        "label": "综论",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_rev_collection",
+        "label": "收入付款方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_exp_payment",
+        "label": "支出付款方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_it_bus_mode",
+        "label": "IT服务模式/商务模式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_it_fund_src",
+        "label": "资金来源",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "inqVendors",
+        "label": "询价情况/询价过程",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_construction_time_req",
+        "label": "时间要求",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_risk_owner",
+        "label": "风险点及其他责任人",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_is_joint",
+        "label": "是否联合体投标",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_review_acc",
+        "label": "项目评审清单准确完整",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_single_source",
+        "label": "是否涉及单一来源",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_procurement_method_other",
+        "label": "采购方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_construction_interface",
+        "label": "售中建设及施工界面",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      }
+    ],
+    "totalCount": 29,
+    "filledCount": 26,
+    "unknownCount": 1
+  },
+  {
+    "template": "会审纪要.docx",
+    "mode": "batch",
+    "filled": false,
+    "completion": [
+      {
+        "key": "gen_meet_start",
+        "label": "会议开始日期",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_meet_end",
+        "label": "会议结束日期",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_meet_mode",
+        "label": "会议方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_project_scale",
+        "label": "项目规模",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_city_attendees",
+        "label": "市公司参会人员",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_branch_name",
+        "label": "分公司参会人员",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_onsite_support",
+        "label": "驻点支撑人员",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_proj_bg",
+        "label": "项目背景",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_it_content",
+        "label": "IT建设内容",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_ct_content",
+        "label": "CT建设内容",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_tech_solution",
+        "label": "技术方案",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "techItems",
+        "label": "技术方案可行性清单",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_mid_three",
+        "label": "涉及中台能力调用",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_self_three",
+        "label": "自主三问",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_threeization",
+        "label": "三化方案",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_strategic_value",
+        "label": "战略价值",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_tech_conclusion",
+        "label": "综论",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_rev_collection",
+        "label": "收入付款方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_exp_payment",
+        "label": "支出付款方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_it_bus_mode",
+        "label": "IT服务模式/商务模式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_it_fund_src",
+        "label": "资金来源",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "inqVendors",
+        "label": "询价情况/询价过程",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_construction_time_req",
+        "label": "时间要求",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_risk_owner",
+        "label": "风险点及其他责任人",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_is_joint",
+        "label": "是否联合体投标",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_review_acc",
+        "label": "项目评审清单准确完整",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_single_source",
+        "label": "是否涉及单一来源",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_procurement_method_other",
+        "label": "采购方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_construction_interface",
+        "label": "售中建设及施工界面",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      }
+    ],
+    "totalCount": 29,
+    "filledCount": 2,
+    "unknownCount": 1
+  },
+  {
+    "template": "会审纪要.docx",
+    "mode": "batch",
+    "filled": true,
+    "completion": [
+      {
+        "key": "gen_meet_start",
+        "label": "会议开始日期",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_meet_end",
+        "label": "会议结束日期",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_meet_mode",
+        "label": "会议方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_project_scale",
+        "label": "项目规模",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_city_attendees",
+        "label": "市公司参会人员",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_branch_name",
+        "label": "分公司参会人员",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_onsite_support",
+        "label": "驻点支撑人员",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_proj_bg",
+        "label": "项目背景",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_it_content",
+        "label": "IT建设内容",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_ct_content",
+        "label": "CT建设内容",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_tech_solution",
+        "label": "技术方案",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "techItems",
+        "label": "技术方案可行性清单",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_mid_three",
+        "label": "涉及中台能力调用",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_self_three",
+        "label": "自主三问",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_threeization",
+        "label": "三化方案",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_strategic_value",
+        "label": "战略价值",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_tech_conclusion",
+        "label": "综论",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_rev_collection",
+        "label": "收入付款方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_exp_payment",
+        "label": "支出付款方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_it_bus_mode",
+        "label": "IT服务模式/商务模式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_it_fund_src",
+        "label": "资金来源",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "inqVendors",
+        "label": "询价情况/询价过程",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_construction_time_req",
+        "label": "时间要求",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_risk_owner",
+        "label": "风险点及其他责任人",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_is_joint",
+        "label": "是否联合体投标",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_review_acc",
+        "label": "项目评审清单准确完整",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_single_source",
+        "label": "是否涉及单一来源",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_procurement_method_other",
+        "label": "采购方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      },
+      {
+        "key": "gen_construction_interface",
+        "label": "售中建设及施工界面",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "会审纪要.docx"
+      }
+    ],
+    "totalCount": 29,
+    "filledCount": 26,
+    "unknownCount": 1
+  },
+  {
+    "template": "甄选结果签批表.docx",
+    "mode": "single",
+    "filled": false,
+    "completion": [
+      {
+        "key": "post_selection_scheme",
+        "label": "甄选后方案",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "selection_batch_name",
+        "label": "合并项目名称",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_proj_bg",
+        "label": "项目背景",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_winner_name",
+        "label": "中选合作伙伴",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_content_desc",
+        "label": "合作内容描述",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_scope",
+        "label": "甄选范围",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_industry",
+        "label": "行业",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_method",
+        "label": "甄选方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_rule",
+        "label": "甄选规则",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_std_plan",
+        "label": "标准方案",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_is_sme",
+        "label": "供应商是否中小企业",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_rev_collection",
+        "label": "收入侧收款方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_exp_payment",
+        "label": "支出侧付款方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "public_fields_consistent",
+        "label": "公共字段一致",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "batch_overrides_acknowledged",
+        "label": "批次字段差异已确认",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "renewal_costs_confirmed",
+        "label": "续签成本归类已确认",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "approval_amount_below_500k",
+        "label": "立项金额低于50万元",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      }
+    ],
+    "totalCount": 17,
+    "filledCount": 2,
+    "unknownCount": 6
+  },
+  {
+    "template": "甄选结果签批表.docx",
+    "mode": "single",
+    "filled": true,
+    "completion": [
+      {
+        "key": "post_selection_scheme",
+        "label": "甄选后方案",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "selection_batch_name",
+        "label": "合并项目名称",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_proj_bg",
+        "label": "项目背景",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_winner_name",
+        "label": "中选合作伙伴",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_content_desc",
+        "label": "合作内容描述",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_scope",
+        "label": "甄选范围",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_industry",
+        "label": "行业",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_method",
+        "label": "甄选方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_rule",
+        "label": "甄选规则",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_std_plan",
+        "label": "标准方案",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_is_sme",
+        "label": "供应商是否中小企业",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_rev_collection",
+        "label": "收入侧收款方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_exp_payment",
+        "label": "支出侧付款方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "public_fields_consistent",
+        "label": "公共字段一致",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "batch_overrides_acknowledged",
+        "label": "批次字段差异已确认",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "renewal_costs_confirmed",
+        "label": "续签成本归类已确认",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "approval_amount_below_500k",
+        "label": "立项金额低于50万元",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      }
+    ],
+    "totalCount": 17,
+    "filledCount": 11,
+    "unknownCount": 6
+  },
+  {
+    "template": "甄选结果签批表.docx",
+    "mode": "batch",
+    "filled": false,
+    "completion": [
+      {
+        "key": "post_selection_scheme",
+        "label": "甄选后方案",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "selection_batch_name",
+        "label": "合并项目名称",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_proj_bg",
+        "label": "项目背景",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_winner_name",
+        "label": "中选合作伙伴",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_content_desc",
+        "label": "合作内容描述",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_scope",
+        "label": "甄选范围",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_industry",
+        "label": "行业",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_method",
+        "label": "甄选方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_rule",
+        "label": "甄选规则",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_std_plan",
+        "label": "标准方案",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_is_sme",
+        "label": "供应商是否中小企业",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_rev_collection",
+        "label": "收入侧收款方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_exp_payment",
+        "label": "支出侧付款方式",
+        "filled": false,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "public_fields_consistent",
+        "label": "公共字段一致",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "batch_overrides_acknowledged",
+        "label": "批次字段差异已确认",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "renewal_costs_confirmed",
+        "label": "续签成本归类已确认",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "approval_amount_below_500k",
+        "label": "立项金额低于50万元",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      }
+    ],
+    "totalCount": 17,
+    "filledCount": 1,
+    "unknownCount": 6
+  },
+  {
+    "template": "甄选结果签批表.docx",
+    "mode": "batch",
+    "filled": true,
+    "completion": [
+      {
+        "key": "post_selection_scheme",
+        "label": "甄选后方案",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "selection_batch_name",
+        "label": "合并项目名称",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_proj_bg",
+        "label": "项目背景",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_winner_name",
+        "label": "中选合作伙伴",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_content_desc",
+        "label": "合作内容描述",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_scope",
+        "label": "甄选范围",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_industry",
+        "label": "行业",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_method",
+        "label": "甄选方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_rule",
+        "label": "甄选规则",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_std_plan",
+        "label": "标准方案",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_zx_is_sme",
+        "label": "供应商是否中小企业",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_rev_collection",
+        "label": "收入侧收款方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "gen_exp_payment",
+        "label": "支出侧付款方式",
+        "filled": true,
+        "evaluated": true,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "public_fields_consistent",
+        "label": "公共字段一致",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "batch_overrides_acknowledged",
+        "label": "批次字段差异已确认",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "renewal_costs_confirmed",
+        "label": "续签成本归类已确认",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      },
+      {
+        "key": "approval_amount_below_500k",
+        "label": "立项金额低于50万元",
+        "filled": false,
+        "evaluated": false,
+        "kind": "field",
+        "templateName": "甄选结果签批表.docx"
+      }
+    ],
+    "totalCount": 17,
+    "filledCount": 11,
+    "unknownCount": 6
+  }
+]

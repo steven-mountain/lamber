@@ -1,0 +1,129 @@
+{
+  "demandCardStateVsPageState": {
+    "card": {
+      "path": "/private/tmp/lamber-meeting-docx-evidence/demand-card-state.docx",
+      "fileSHA256": "1120c568c336abf05d86caf75a9600baefd4e499453d6e0c6a03585f92b806cc",
+      "bodySHA256": "da3e1d0e64a650399533daf4b01b7fd3a4a8da80e44bcc50df357040b8cbbae5"
+    },
+    "page": {
+      "path": "/private/tmp/lamber-meeting-docx-evidence/demand-page-state.docx",
+      "fileSHA256": "a68364bd7acebf7264a060f5842eaf104206e82bdc102f0928420c272a3072b0",
+      "bodySHA256": "14215d3a0bd97b74bd9b6e9504c1ddabec111c9a98195816872b3efa80a31686"
+    },
+    "textNodeCount": 55,
+    "textNodesIdentical": true,
+    "imagesInDocumentOrderIdentical": true,
+    "imageSHA256InDocumentOrder": [
+      "e16c42b64f622be99d67d81c692e81c6aefe30f591a5b1878e514b2ac32cb3ad",
+      "f3ec9e14b9c085b55edc96155f7bd26b6fdeda2462f02af4e0279d8319b365e3"
+    ],
+    "normalizedBodyIdentical": true
+  },
+  "meeting-content": {
+    "card": {
+      "path": "/private/tmp/lamber-meeting-docx-evidence/meeting-basic.docx",
+      "fileSHA256": "6b3fb0071a99b9774311d1673fafd416c4884f4e3fe25360ff4967dd620d6262",
+      "bodySHA256": "95dd58482885ebcc755c624a1cb913fd28b62d5cc20904d4437c968590539658"
+    },
+    "page": {
+      "path": "/private/tmp/lamber-meeting-docx-evidence/meeting-content.docx",
+      "fileSHA256": "c5b07add4fd4e143b2909f9eec6d993d96127073efc93263b4f1512143593e9b",
+      "bodySHA256": "95dd58482885ebcc755c624a1cb913fd28b62d5cc20904d4437c968590539658"
+    },
+    "textNodeCount": 108,
+    "textNodesIdentical": true,
+    "imagesInDocumentOrderIdentical": true,
+    "imageSHA256InDocumentOrder": [],
+    "normalizedBodyIdentical": true
+  },
+  "meeting-business": {
+    "card": {
+      "path": "/private/tmp/lamber-meeting-docx-evidence/meeting-basic.docx",
+      "fileSHA256": "6b3fb0071a99b9774311d1673fafd416c4884f4e3fe25360ff4967dd620d6262",
+      "bodySHA256": "95dd58482885ebcc755c624a1cb913fd28b62d5cc20904d4437c968590539658"
+    },
+    "page": {
+      "path": "/private/tmp/lamber-meeting-docx-evidence/meeting-business.docx",
+      "fileSHA256": "a43824db798d856e128a6225cfe561277ede2bddf9a4f2fdb3c8054b474c9262",
+      "bodySHA256": "95dd58482885ebcc755c624a1cb913fd28b62d5cc20904d4437c968590539658"
+    },
+    "textNodeCount": 108,
+    "textNodesIdentical": true,
+    "imagesInDocumentOrderIdentical": true,
+    "imageSHA256InDocumentOrder": [],
+    "normalizedBodyIdentical": true
+  },
+  "meeting-risk": {
+    "card": {
+      "path": "/private/tmp/lamber-meeting-docx-evidence/meeting-basic.docx",
+      "fileSHA256": "6b3fb0071a99b9774311d1673fafd416c4884f4e3fe25360ff4967dd620d6262",
+      "bodySHA256": "95dd58482885ebcc755c624a1cb913fd28b62d5cc20904d4437c968590539658"
+    },
+    "page": {
+      "path": "/private/tmp/lamber-meeting-docx-evidence/meeting-risk.docx",
+      "fileSHA256": "b69c56ba8c063a592199a9e721588dd6a7dc27e60b82262ca227ce066389fa9b",
+      "bodySHA256": "95dd58482885ebcc755c624a1cb913fd28b62d5cc20904d4437c968590539658"
+    },
+    "textNodeCount": 108,
+    "textNodesIdentical": true,
+    "imagesInDocumentOrderIdentical": true,
+    "imageSHA256InDocumentOrder": [],
+    "normalizedBodyIdentical": true
+  },
+  "meeting-confirm": {
+    "card": {
+      "path": "/private/tmp/lamber-meeting-docx-evidence/meeting-basic.docx",
+      "fileSHA256": "6b3fb0071a99b9774311d1673fafd416c4884f4e3fe25360ff4967dd620d6262",
+      "bodySHA256": "95dd58482885ebcc755c624a1cb913fd28b62d5cc20904d4437c968590539658"
+    },
+    "page": {
+      "path": "/private/tmp/lamber-meeting-docx-evidence/meeting-confirm.docx",
+      "fileSHA256": "20e7a1ab53652ab632946023ba4010fe71836fa42f9da53e90c767c9dfe7e517",
+      "bodySHA256": "95dd58482885ebcc755c624a1cb913fd28b62d5cc20904d4437c968590539658"
+    },
+    "textNodeCount": 108,
+    "textNodesIdentical": true,
+    "imagesInDocumentOrderIdentical": true,
+    "imageSHA256InDocumentOrder": [],
+    "normalizedBodyIdentical": true
+  },
+  "inquiry": {
+    "path": "/tmp/lamber-meeting-docx-evidence/meeting-inquiry.docx",
+    "fileSHA256": "25c9a1bcb1106ba09dcdcc770e8f428d210ccf471ba39104c0d555d0229d72e6",
+    "textNodeCount": 118,
+    "vendors": [
+      {
+        "vendorName": "合成验收厂商甲",
+        "amount": 106000,
+        "taxRate": 6,
+        "remark": "最低",
+        "images": [
+          {
+            "assetId": "asset_d8b1a27d0d0f5fc1",
+            "width": 160,
+            "height": 80
+          }
+        ]
+      },
+      {
+        "vendorName": "厂商B",
+        "amount": 74595,
+        "taxRate": 6,
+        "remark": "",
+        "images": []
+      },
+      {
+        "vendorName": "厂商C",
+        "amount": 71543,
+        "taxRate": 6,
+        "remark": "",
+        "images": []
+      }
+    ],
+    "imageSHA256": "e16c42b64f622be99d67d81c692e81c6aefe30f591a5b1878e514b2ac32cb3ad",
+    "imagePresentAtDocumentPosition": 0,
+    "imageCount": 1,
+    "enteredOverCapAmount": 999999,
+    "savedCappedAmount": 106000
+  }
+}

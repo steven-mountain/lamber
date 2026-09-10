@@ -65,6 +65,7 @@ export interface IctInput {
   selection_fee_limit?: string;
   selection_fee_anchor?: "quote" | "limit";
   selection_fee_target_subject_code?: string;
+  selection_fee_merge_service?: boolean;
   [key: string]: any;
 }
 

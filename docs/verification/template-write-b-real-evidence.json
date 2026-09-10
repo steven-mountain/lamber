@@ -1,0 +1,104 @@
+{
+  "execution": "real dsh model; synthetic project; automatic approval edit, not human Gate B",
+  "modelAnswer": "已确认模板 `ICT项目需求导入表.docx` 存在，字段 `gen_demand_env_require`（部署环境要求）当前为空且可写。现在提交填写。已实际调用并完成填写（templateVersion 从 1 → 2，保存成功）。\n\n但需注意：**实际批准并保存的内容与提交内容不同**。审批弹窗中原文被人工修订，最终落库的值为：\n\n> 人工修订：分区实施并保留原网络。\n> 先完成回退演练，再按清单验收。\n\n而我请求填写的文本是「模型原始方案：一次性切换所有网络。」——该文本未保存。按照实际保存结果，绑定项目 `439a0e99-865e-437b-aa4c-09434842afcb` 的 `ICT项目需求导入表.docx` 部署环境要求字段现为上述「人工修订」内容。若确实需要写入「模型原始方案：一次性切换所有网络。」，请告知，我可以重新发起一次填写供审批。",
+  "savedState": {
+    "id": "template_1788950255071_71895000",
+    "projectId": "439a0e99-865e-437b-aa4c-09434842afcb",
+    "templateId": "ICT项目需求导入表.docx",
+    "templateName": "ICT项目需求导入表.docx",
+    "templateType": "word",
+    "templateVersion": 2,
+    "templatePath": "ICT项目需求导入表.docx",
+    "templatePathType": "module",
+    "filledDataJson": {
+      "formData": {
+        "gen_demand_env_require": "人工修订：分区实施并保留原网络。\n先完成回退演练，再按清单验收。"
+      },
+      "techItems": [
+        {
+          "text": "synthetic"
+        }
+      ]
+    },
+    "fieldMappingJson": {
+      "keep": "mapping"
+    },
+    "outputConfigJson": {
+      "outputDir": "unchanged"
+    },
+    "createdAt": "2026-09-09T10:37:35.071886+00:00",
+    "updatedAt": "2026-09-09T10:37:39.638217+00:00",
+    "source": "project_template_states"
+  },
+  "approvalPrompt": {
+    "sessionId": "90295a60-66cc-4bb3-94de-9ca8853d7239",
+    "intent": {
+      "workspaceId": "439a0e99-865e-437b-aa4c-09434842afcb",
+      "stateVersion": 1,
+      "projectName": "桥接测试项目-template-write-real",
+      "templateName": "ICT项目需求导入表.docx",
+      "targetDescription": "模板已保存正文 · ICT项目需求导入表.docx",
+      "fields": [
+        {
+          "key": "gen_demand_env_require",
+          "label": "部署环境要求",
+          "previousValue": "",
+          "proposedValue": "模型原始方案：一次性切换所有网络。"
+        }
+      ]
+    },
+    "expiresAt": "2026-09-09T10:37:59.627578+00:00",
+    "requestId": "d8181862-4850-45e0-b669-e36b08ca2af0",
+    "toolName": "fill_template_fields",
+    "callId": "call_00_Vsvp3FGtKID1mpWOsMtR3925",
+    "reason": "将写入绑定项目的需求导入表文本，请核对表单、字段及新旧内容后批准。",
+    "args": {
+      "projectId": "439a0e99-865e-437b-aa4c-09434842afcb",
+      "templateId": "ICT项目需求导入表.docx",
+      "fields": {
+        "gen_demand_env_require": "模型原始方案：一次性切换所有网络。"
+      }
+    },
+    "timeoutSeconds": 20
+  },
+  "audit": {
+    "auditVersion": 2,
+    "modelArgs": {
+      "projectId": "439a0e99-865e-437b-aa4c-09434842afcb",
+      "templateId": "ICT项目需求导入表.docx",
+      "fields": {
+        "gen_demand_env_require": "模型原始方案：一次性切换所有网络。"
+      }
+    },
+    "userArgs": {
+      "projectId": "439a0e99-865e-437b-aa4c-09434842afcb",
+      "templateId": "ICT项目需求导入表.docx",
+      "fields": {
+        "gen_demand_env_require": "人工修订：分区实施并保留原网络。\n先完成回退演练，再按清单验收。"
+      }
+    },
+    "approvedArgs": {
+      "projectId": "439a0e99-865e-437b-aa4c-09434842afcb",
+      "templateId": "ICT项目需求导入表.docx",
+      "fields": {
+        "gen_demand_env_require": "人工修订：分区实施并保留原网络。\n先完成回退演练，再按清单验收。"
+      }
+    },
+    "intent": {
+      "workspaceId": "439a0e99-865e-437b-aa4c-09434842afcb",
+      "stateVersion": 1,
+      "projectName": "桥接测试项目-template-write-real",
+      "templateName": "ICT项目需求导入表.docx",
+      "targetDescription": "模板已保存正文 · ICT项目需求导入表.docx",
+      "fields": [
+        {
+          "key": "gen_demand_env_require",
+          "label": "部署环境要求",
+          "previousValue": "",
+          "proposedValue": "模型原始方案：一次性切换所有网络。"
+        }
+      ]
+    }
+  },
+  "humanGateB": "pending"
+}

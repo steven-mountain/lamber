@@ -22,6 +22,7 @@
  * one, and for lamber's tools this guard is what asks.
  */
 import type { Context } from '@deepseek-ai/cordis';
+import { FILL_TEMPLATE_FIELDS } from './fillTemplateFields.js';
 import { WRITE_TEST_MARKER } from './writeTestMarker.js';
 
 /**
@@ -36,6 +37,7 @@ import { WRITE_TEST_MARKER } from './writeTestMarker.js';
  * why a tool is gated.
  */
 const GATED_TOOLS = new Map<string, string>([
+  [FILL_TEMPLATE_FIELDS, '将写入绑定项目的需求导入表文本，请核对表单、字段及新旧内容后批准。'],
   [WRITE_TEST_MARKER, '该工具会写入文件（测试标记文件，位于系统临时目录），需要你确认后才执行。'],
 ]);
 

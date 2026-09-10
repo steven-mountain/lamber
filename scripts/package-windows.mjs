@@ -1,9 +1,14 @@
+import { assertPluginContract, assertBinaryContract } from './bridge-contract.mjs';
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
+  copyFileSync,
+  cpSync,
   existsSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -20,6 +25,105 @@ const VERSION_FILES = [
   "src-tauri/Cargo.toml",
   "src-tauri/Cargo.lock",
 ];
+const AGENT_RUNTIME_DIR = join(ROOT, "src-tauri", "resources", "agent-runtime");
+const AGENT_PACKAGE_DIR = join(ROOT, "agent-bridge");
+const DSH_VERSION = "0.1.2-alpha.5";
+
+export function assertAgentPackageMetadata(packageJson, packageLock) {
+  if (packageJson.dependencies?.["@deepseek-ai/dsh"] !== DSH_VERSION) {
+    throw new Error(`agent-bridge must pin @deepseek-ai/dsh ${DSH_VERSION} as a production dependency.`);
+  }
+  if (packageJson.devDependencies?.["@deepseek-ai/dsh"]) {
+    throw new Error("@deepseek-ai/dsh must not remain in devDependencies; production pruning would remove it.");
+  }
+  if (packageLock.packages?.[""]?.dependencies?.["@deepseek-ai/dsh"] !== DSH_VERSION) {
+    throw new Error("agent-bridge/package-lock.json does not match the production dsh dependency.");
+  }
+}
+
+function runChecked(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    cwd: ROOT,
+    shell: false,
+    stdio: "inherit",
+    ...options,
+  });
+  if (result.status !== 0) {
+    const detail = result.error ? `: ${result.error.message}` : "";
+    throw new Error(`${command} ${args.join(" ")} failed${detail}`);
+  }
+}
+
+export function prepareAgentRuntime() {
+  const packageJson = readJson("agent-bridge/package.json");
+  const packageLock = readJson("agent-bridge/package-lock.json");
+  assertAgentPackageMetadata(packageJson, packageLock);
+
+  console.log("Preparing bundled dsh runtime (production dependencies + Node)…");
+  mkdirSync(AGENT_RUNTIME_DIR, { recursive: true });
+  for (const name of [
+    "node.exe",
+    "node_modules",
+    "dsh-tool-lamber",
+    "dsh-home-template",
+    "patch.yml",
+    "package.json",
+    "package-lock.json",
+  ]) {
+    rmSync(join(AGENT_RUNTIME_DIR, name), { recursive: true, force: true });
+  }
+
+  copyFileSync(join(AGENT_PACKAGE_DIR, "package.json"), join(AGENT_RUNTIME_DIR, "package.json"));
+  copyFileSync(join(AGENT_PACKAGE_DIR, "package-lock.json"), join(AGENT_RUNTIME_DIR, "package-lock.json"));
+  runChecked("npm", ["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], {
+    cwd: AGENT_RUNTIME_DIR,
+  });
+
+  runChecked("npm", ["run", "build"], {
+    cwd: join(AGENT_PACKAGE_DIR, "dsh-tool-lamber"),
+  });
+  const pluginTarget = join(AGENT_RUNTIME_DIR, "dsh-tool-lamber");
+  mkdirSync(pluginTarget, { recursive: true });
+  copyFileSync(
+    join(AGENT_PACKAGE_DIR, "dsh-tool-lamber", "package.json"),
+    join(pluginTarget, "package.json"),
+  );
+  cpSync(join(AGENT_PACKAGE_DIR, "dsh-tool-lamber", "lib"), join(pluginTarget, "lib"), {
+    recursive: true,
+  });
+  assertPluginContract(pluginTarget, readJson("agent-bridge/bridge-contract.json"));
+  cpSync(join(AGENT_PACKAGE_DIR, "dsh-home-template"), join(AGENT_RUNTIME_DIR, "dsh-home-template"), {
+    recursive: true,
+  });
+  copyFileSync(join(AGENT_PACKAGE_DIR, "patch.yml"), join(AGENT_RUNTIME_DIR, "patch.yml"));
+  copyFileSync(process.execPath, join(AGENT_RUNTIME_DIR, "node.exe"));
+
+  const transient = collectFiles(join(AGENT_RUNTIME_DIR, "dsh-home-template")).filter((path) =>
+    path.endsWith("node_modules.lock"),
+  );
+  if (transient.length > 0) {
+    throw new Error(`DSH_HOME template contains transient lock files: ${transient.join(", ")}`);
+  }
+  for (const required of [
+    "node.exe",
+    "node_modules/@deepseek-ai/dsh/lib/bin.js",
+    "dsh-tool-lamber/lib/index.js",
+    "dsh-home-template/profiles/acp/package.json",
+    "patch.yml",
+  ]) {
+    if (!existsSync(join(AGENT_RUNTIME_DIR, required))) {
+      throw new Error(`Bundled dsh runtime is missing ${required}.`);
+    }
+  }
+  runChecked(
+    join(AGENT_RUNTIME_DIR, "node.exe"),
+    [join(AGENT_RUNTIME_DIR, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"), "--version"],
+    { cwd: AGENT_RUNTIME_DIR },
+  );
+
+  const sizeMb = (directorySize(AGENT_RUNTIME_DIR) / 1024 / 1024).toFixed(1);
+  console.log(`Bundled dsh runtime ready: ${relative(ROOT, AGENT_RUNTIME_DIR)} (${sizeMb} MB)`);
+}
 
 export function bumpVersion(version, releaseType = "patch") {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
@@ -193,6 +297,10 @@ function collectFiles(directory) {
   });
 }
 
+function directorySize(directory) {
+  return collectFiles(directory).reduce((total, path) => total + statSync(path).size, 0);
+}
+
 function sha256(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex").toUpperCase();
 }
@@ -246,9 +354,10 @@ export function main(args = process.argv.slice(2)) {
   const nextVersion = bumpVersion(currentVersion, releaseType);
 
   console.log(`Packaging Windows release ${currentVersion} -> ${nextVersion} (${releaseType})`);
+  prepareAgentRuntime();
   updateVersionFiles(snapshot, nextVersion);
 
-  const result = spawnSync("npm run tauri -- build", {
+  const result = spawnSync("npm run tauri -- build --no-bundle", {
     cwd: ROOT,
     shell: true,
     stdio: "inherit",
@@ -263,6 +372,17 @@ export function main(args = process.argv.slice(2)) {
     return result.status ?? 1;
   }
 
+  // Inspect the actual compiled executable before any installer is emitted.
+  try {
+    assertBinaryContract(
+      join(AGENT_RUNTIME_DIR, "dsh-tool-lamber"),
+      join(ROOT, "src-tauri", "target", "release", "benefit-calculator.exe"),
+    );
+    runChecked("npm", ["run", "tauri", "--", "bundle"]);
+  } catch (error) {
+    restoreVersionFiles(snapshot);
+    throw error;
+  }
   printArtifacts(nextVersion);
   console.log(`\nPackaging completed. Current project version is ${nextVersion}.`);
   return 0;

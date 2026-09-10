@@ -1,0 +1,234 @@
+{
+  "sourceCount": 233,
+  "changedSources": [],
+  "fixture": "src-ui/scripts/fixtures/catalog-delivery-witness.json",
+  "transaction": {
+    "before": {
+      "projectId": "2104f4b8-e518-439f-a7f9-65f12fe153ef",
+      "projectName": "桥接测试项目-template-catalog",
+      "templateId": "ICT项目交付交接记录（契约复验）.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 1,
+      "fields": [
+        {
+          "key": "gen_delivery_team",
+          "label": "交接责任人",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_delivery_owner",
+          "label": "交接责任人",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_delivery_address",
+          "label": "异地交付地址",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        },
+        {
+          "key": "gen_delivery_note",
+          "label": "补充说明",
+          "value": "",
+          "valueSource": "saved",
+          "originalCharacters": 0,
+          "truncated": false
+        }
+      ],
+      "lists": {
+        "deliveryTasks": []
+      },
+      "listCounts": {
+        "deliveryTasks": 0
+      },
+      "returnedListCounts": {
+        "deliveryTasks": 0
+      },
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 0,
+      "returnedCharacters": 0,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "delivery_witness",
+      "readOnlyFields": [
+        {
+          "key": "deliveryReview",
+          "label": "交接确认",
+          "kind": "derived",
+          "reason": "既有业务状态提供",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "deliveryTasks",
+          "label": "交付任务",
+          "kind": "list",
+          "reason": "仅用户编辑，不开放AI直接写入",
+          "completionAlways": null,
+          "listType": "editable"
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_delivery_team": "",
+          "gen_delivery_owner": "",
+          "gen_delivery_address": "",
+          "gen_delivery_note": ""
+        },
+        "deliveryScope": "remote",
+        "hasDeliveryNote": true,
+        "deliveryTasks": []
+      }
+    },
+    "after": {
+      "projectId": "2104f4b8-e518-439f-a7f9-65f12fe153ef",
+      "projectName": "桥接测试项目-template-catalog",
+      "templateId": "ICT项目交付交接记录（契约复验）.docx",
+      "source": "project_template_states",
+      "hasSavedState": true,
+      "templateVersion": 2,
+      "fields": [
+        {
+          "key": "gen_delivery_team",
+          "label": "交接责任人",
+          "value": "人工修订：gen_delivery_team分区实施，保留回退。\n双方按清单验收。",
+          "valueSource": "saved",
+          "originalCharacters": 41,
+          "truncated": false
+        },
+        {
+          "key": "gen_delivery_owner",
+          "label": "交接责任人",
+          "value": "人工修订：gen_delivery_owner分区实施，保留回退。\n双方按清单验收。",
+          "valueSource": "saved",
+          "originalCharacters": 42,
+          "truncated": false
+        },
+        {
+          "key": "gen_delivery_address",
+          "label": "异地交付地址",
+          "value": "人工修订：gen_delivery_address分区实施，保留回退。\n双方按清单验收。",
+          "valueSource": "saved",
+          "originalCharacters": 44,
+          "truncated": false
+        },
+        {
+          "key": "gen_delivery_note",
+          "label": "补充说明",
+          "value": "人工修订：gen_delivery_note分区实施，保留回退。\n双方按清单验收。",
+          "valueSource": "saved",
+          "originalCharacters": 41,
+          "truncated": false
+        }
+      ],
+      "lists": {
+        "deliveryTasks": []
+      },
+      "listCounts": {
+        "deliveryTasks": 0
+      },
+      "returnedListCounts": {
+        "deliveryTasks": 0
+      },
+      "techItems": [],
+      "hasPublicUrl": false,
+      "hasSecurity": false,
+      "attachments": [],
+      "truncated": false,
+      "textLimit": 24000,
+      "originalCharacters": 168,
+      "returnedCharacters": 168,
+      "techItemCount": 0,
+      "returnedTechItemCount": 0,
+      "notice": "读取绑定项目已保存状态；未保存草稿不在结果内。valueSource=default 表示界面默认值，并非用户已保存填写。",
+      "catalogId": "delivery_witness",
+      "readOnlyFields": [
+        {
+          "key": "deliveryReview",
+          "label": "交接确认",
+          "kind": "derived",
+          "reason": "既有业务状态提供",
+          "completionAlways": null,
+          "listType": null
+        },
+        {
+          "key": "deliveryTasks",
+          "label": "交付任务",
+          "kind": "list",
+          "reason": "仅用户编辑，不开放AI直接写入",
+          "completionAlways": null,
+          "listType": "editable"
+        }
+      ],
+      "completionState": {
+        "formData": {
+          "gen_delivery_team": "filled",
+          "gen_delivery_owner": "filled",
+          "gen_delivery_address": "filled",
+          "gen_delivery_note": "filled"
+        },
+        "deliveryScope": "remote",
+        "hasDeliveryNote": true,
+        "deliveryTasks": []
+      }
+    },
+    "savedState": {
+      "id": "template_1788843541574_574517000",
+      "projectId": "2104f4b8-e518-439f-a7f9-65f12fe153ef",
+      "templateId": "ICT项目交付交接记录（契约复验）.docx",
+      "templateName": "ICT项目需求导入表.docx",
+      "templateType": "word",
+      "templateVersion": 2,
+      "templatePath": "ICT项目需求导入表.docx",
+      "templatePathType": "module",
+      "filledDataJson": {
+        "formData": {
+          "untouched": "保留字段",
+          "gen_delivery_team": "人工修订：gen_delivery_team分区实施，保留回退。\n双方按清单验收。",
+          "gen_delivery_owner": "人工修订：gen_delivery_owner分区实施，保留回退。\n双方按清单验收。",
+          "gen_delivery_address": "人工修订：gen_delivery_address分区实施，保留回退。\n双方按清单验收。",
+          "gen_delivery_note": "人工修订：gen_delivery_note分区实施，保留回退。\n双方按清单验收。"
+        },
+        "techItems": [
+          {
+            "keep": true
+          }
+        ],
+        "asset": "preserve",
+        "deliveryScope": "remote",
+        "hasDeliveryNote": true
+      },
+      "fieldMappingJson": {
+        "keep": "mapping"
+      },
+      "outputConfigJson": {
+        "outputDir": "unchanged"
+      },
+      "createdAt": "2026-09-08T04:59:01.574508+00:00",
+      "updatedAt": "2026-09-08T04:59:01.576551+00:00",
+      "source": "project_template_states"
+    },
+    "approvedFields": {
+      "gen_delivery_team": "人工修订：gen_delivery_team分区实施，保留回退。\n双方按清单验收。",
+      "gen_delivery_owner": "人工修订：gen_delivery_owner分区实施，保留回退。\n双方按清单验收。",
+      "gen_delivery_address": "人工修订：gen_delivery_address分区实施，保留回退。\n双方按清单验收。",
+      "gen_delivery_note": "人工修订：gen_delivery_note分区实施，保留回退。\n双方按清单验收。"
+    }
+  },
+  "scope": "Synthetic independent fifth template; not a new production business template"
+}

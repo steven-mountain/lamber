@@ -1,0 +1,28 @@
+{
+  "method": "Execute unchanged production reverse function extracted with TypeScript AST; candidate builder and engine are test doubles. Control-flow witness only, not an actual project or Rust financial scenario.",
+  "requestedMetric": 0.1,
+  "engineOnlyMetrics": [
+    0.094,
+    0.108
+  ],
+  "evaluations": 22,
+  "writes": [
+    [
+      {
+        "groupId": "revIt",
+        "key": "integration",
+        "incl": 50,
+        "reason": "reverse_calculation_sync"
+      },
+      {
+        "groupId": "revIt",
+        "key": "maintenance",
+        "incl": 50,
+        "reason": "balance_allocation_sync"
+      }
+    ]
+  ],
+  "messages": [
+    "结构反算完成：收入含税总金额保持 100.00 不变。\n目标毛利润率：目标 10.00%，当前 10.80%\n目标科目：“合成目标科目” 40.00 -> 50.00\n承接科目：“合成承接科目” 60.00 -> 50.00\n固定同侧科目合计：0.00；可重分配池：100.00"
+  ]
+}

@@ -1488,7 +1488,7 @@ fn looks_like_absolute_path(value: &str) -> bool {
             .unwrap_or(false)
 }
 
-fn safe_workspace_asset_exists(workspace_root: &Path, relative_path: &str) -> Option<bool> {
+pub(crate) fn safe_workspace_asset_exists(workspace_root: &Path, relative_path: &str) -> Option<bool> {
     let path = Path::new(relative_path);
     if path.is_absolute()
         || path

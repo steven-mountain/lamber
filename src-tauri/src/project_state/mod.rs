@@ -141,7 +141,7 @@ fn row_to_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
     })
 }
 
-fn get_project_locked(
+pub(crate) fn get_project_locked(
     conn: &rusqlite::Connection,
     project_id: &str,
 ) -> Result<Option<Project>, String> {
@@ -402,7 +402,7 @@ fn resolve_default_scheme_bucket(
     Ok(default_scheme.unwrap_or_default())
 }
 
-fn get_template_state_locked(
+pub(crate) fn get_template_state_locked(
     conn: &rusqlite::Connection,
     project_id: &str,
     template_id: &str,
@@ -470,7 +470,7 @@ fn get_template_state_locked(
     }))
 }
 
-fn list_template_states_locked(
+pub(crate) fn list_template_states_locked(
     conn: &rusqlite::Connection,
     project_id: &str,
 ) -> Result<Vec<StoredTemplateState>, String> {
@@ -509,7 +509,7 @@ fn list_template_states_locked(
     Ok(list)
 }
 
-fn list_template_assets_locked(
+pub(crate) fn list_template_assets_locked(
     conn: &rusqlite::Connection,
     project_id: &str,
     template_id: Option<&str>,
@@ -1208,18 +1208,92 @@ fn apply_ai_compute_quote_to_ict_locked(
     })
 }
 
+/// Revision 0 includes legacy-only state; first normalized save creates version 1.
+pub(crate) fn template_revision(state: &StoredTemplateState) -> i64 {
+    if state.source == "project_template_states" { state.template_version } else { 0 }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SharedTechTarget { pub template_name: String, pub expected: Value }
+
 #[tauri::command]
 pub async fn save_template_state(
     runtime: State<'_, Arc<crate::workspace::WorkspaceRuntime>>,
     project_id: String,
     template_id: String,
     template_state: TemplateStatePayload,
+    expected_version: Option<i64>,
+    shared_tech_templates: Option<Vec<SharedTechTarget>>,
 ) -> Result<StoredTemplateState, String> {
-    runtime.require_workspace()?;
-    let db = runtime.require_db()?;
-    let mut conn = db.lock().map_err(|e| e.to_string())?;
+    runtime.with_locked_context(|_, conn| save_template_with_shared_tech_locked(conn, project_id, template_id, template_state, expected_version, shared_tech_templates.unwrap_or_default()))
+}
+
+/// User UI only: selected template save and explicitly shared technical rows commit atomically.
+/// No bridge route exposes this operation; non-text AI writes remain rejected by the text tool.
+pub(crate) fn save_template_with_shared_tech_locked(
+    conn: &mut rusqlite::Connection, project_id: String, template_id: String,
+    template_state: TemplateStatePayload, expected_version: Option<i64>, shared_templates: Vec<SharedTechTarget>,
+) -> Result<StoredTemplateState, String> {
+    if shared_templates.is_empty() { return save_template_state_locked(conn, project_id, template_id, template_state, expected_version); }
+    let editable = |name: &str| crate::agent_bridge::template_catalog::resolve(name, false)
+        .map(|t| t.fields.iter().any(|f| f.key == "techItems" && f.kind == "list" && f.list_type.as_deref() == Some("editable"))).unwrap_or(false);
+    if !editable(&template_id) || shared_templates.len() > 20 || shared_templates.iter().any(|target| !editable(&target.template_name)) {
+        return Err("共享清单只能写入目录声明的技术清单模板".into());
+    }
+    let rows = template_state.filled_data_json.get("techItems").and_then(Value::as_array).ok_or("技术清单格式无效")?.clone();
+    if rows.len() > 100 || rows.iter().any(|row| {
+        let object = match row.as_object() {Some(value) => value, None => return true};
+        object.keys().any(|key| !["serviceName","serviceDesc","amount","unit"].contains(&key.as_str()))
+            || ["serviceName","serviceDesc","unit"].iter().any(|key| !row.get(*key).map(Value::is_string).unwrap_or(false))
+            || !row.get("amount").and_then(|v| v.as_f64().or_else(||v.as_str().and_then(|s|s.parse::<f64>().ok()))).map(|n|n.is_finite() && n >= 0.0).unwrap_or(false)
+    }) { return Err("技术清单只接受服务名称、描述、非负数量与单位，最多100行".into()); }
+    ensure_project_exists(conn, &project_id)?;
+    let tx = conn.transaction().map_err(|e|e.to_string())?;
+    for target in &shared_templates {
+        let current = get_template_state_locked(&tx, &project_id, &target.template_name)?;
+        let rows = current.as_ref().and_then(|state|state.filled_data_json.get("techItems")).cloned().unwrap_or(serde_json::json!([]));
+        if rows != target.expected { return Err("TemplateStateConflict::共享模板的清单已改变，请重新读取两张表后核对".into()); }
+    }
+    save_template_state_in_transaction(&tx, &project_id, &template_id, template_state, expected_version)?;
+    let mut visited = std::collections::BTreeSet::new();
+    for target in shared_templates {
+        let name = target.template_name;
+        if name == template_id || !visited.insert(name.clone()) {continue;}
+        let existing = get_template_state_locked(&tx, &project_id, &name)?;
+        let mut payload = if let Some(state) = existing { TemplateStatePayload {
+            template_name:state.template_name, template_type:state.template_type, template_path:state.template_path,
+            template_path_type:state.template_path_type, filled_data_json:state.filled_data_json,
+            field_mapping_json:state.field_mapping_json, output_config_json:state.output_config_json,
+        }} else {TemplateStatePayload {template_name:Some(name.clone()),template_type:Some("word".into()),template_path:Some(name.clone()),
+            template_path_type:Some("module".into()),filled_data_json:serde_json::json!({}),field_mapping_json:serde_json::json!({}),output_config_json:serde_json::json!({})}};
+        payload.filled_data_json.as_object_mut().ok_or("目标模板状态损坏，已回滚全部清单保存")?.insert("techItems".into(), Value::Array(rows.clone()));
+        save_template_state_in_transaction(&tx, &project_id, &name, payload, None)?;
+    }
+    tx.commit().map_err(|e|e.to_string())?;
+    get_template_state_locked(conn, &project_id, &template_id)?.ok_or("TemplateStateSaveFailed".into())
+}
+
+/// Shared save path: same validation, transaction, normalized row and legacy mirror.
+pub(crate) fn save_template_state_locked(
+    conn: &mut rusqlite::Connection, project_id: String, template_id: String,
+    template_state: TemplateStatePayload, expected_version: Option<i64>,
+) -> Result<StoredTemplateState, String> {
     ensure_project_exists(&conn, &project_id)?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+    save_template_state_in_transaction(&tx, &project_id, &template_id, template_state, expected_version)?;
+    tx.commit().map_err(|e| e.to_string())?;
+    get_template_state_locked(conn, &project_id, &template_id)?.ok_or_else(|| "TemplateStateSaveFailed".to_string())
+}
+
+fn save_template_state_in_transaction(
+    tx: &rusqlite::Transaction<'_>, project_id: &str, template_id: &str,
+    template_state: TemplateStatePayload, expected_version: Option<i64>,
+) -> Result<(), String> {
+    if let Some(expected) = expected_version {
+        let actual = get_template_state_locked(&tx, &project_id, &template_id)?.map(|s| template_revision(&s)).unwrap_or(0);
+        if actual != expected { return Err("TemplateStateConflict::模板已被其他窗口或审批更新，请先核对最新内容再保存".into()); }
+    }
     let now = now_iso();
     let existing_id: Option<String> = tx
         .query_row(
@@ -1233,7 +1307,7 @@ pub async fn save_template_state(
     let template_name = template_state
         .template_name
         .clone()
-        .unwrap_or_else(|| template_id.clone());
+        .unwrap_or_else(|| template_id.to_owned());
     tx.execute(
         "INSERT INTO project_template_states (
             id, project_id, template_id, template_name, template_type, template_version, template_path,
@@ -1277,10 +1351,7 @@ pub async fn save_template_state(
         ],
     )
     .map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())?;
-
-    get_template_state_locked(&conn, &project_id, &template_id)?
-        .ok_or_else(|| "TemplateStateSaveFailed".to_string())
+    Ok(())
 }
 
 #[tauri::command]

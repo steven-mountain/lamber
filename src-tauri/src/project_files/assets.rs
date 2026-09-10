@@ -233,6 +233,128 @@ pub fn save_template_asset_internal(
     }
 }
 
+/// A replacement is one asset transaction, never a UI save followed by a delete.
+/// The selected old asset must still be live; concurrent replacement fails closed.
+pub fn validate_replacement_image(data_url: &str, width: i32, height: i32) -> Result<(), String> {
+    // The UI fully decodes the selected file before preview. Reject empty/spoofed
+    // payloads here too, before an IPC request can remove the old asset.
+    let (mime, bytes) = parse_base64_data(data_url)?;
+    let matches = match mime.as_str() {
+        "image/png" => bytes.starts_with(&[137,80,78,71,13,10,26,10]),
+        "image/jpeg" => bytes.starts_with(&[0xff,0xd8,0xff]),
+        "image/webp" => bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP"),
+        _ => false,
+    };
+    if !matches || bytes.len() > 20 * 1024 * 1024 || width <= 0 || height <= 0 {
+        return Err("替换图片格式、大小或尺寸无效，原图片保持不变".into());
+    }
+    Ok(())
+}
+
+pub fn replace_demand_image_internal(
+    conn: &Connection, workspace_root: &str, project_id: &str, template_name: &str, old_id: &str,
+    save: impl FnOnce(&Connection, &str) -> Result<String, String>,
+) -> Result<String, String> {
+    let template = crate::agent_bridge::template_catalog::resolve(template_name, false)?;
+    if template.id != "demand" { return Err("本轮图片替换仅支持需求导入表附件".into()); }
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let (usage, created): (String, String) = tx.query_row(
+        "SELECT usage, created_at FROM project_template_assets WHERE id=?1 AND project_id=?2 AND template_name=?3 AND asset_type='image' AND deleted_at IS NULL",
+        params![old_id, project_id, template_name], |r| Ok((r.get(0)?, r.get(1)?)),
+    ).map_err(|_| "原图片已变更、删除或不属于此项目模板，请重新选择")?;
+    if !matches!(usage.as_str(), "attach1" | "attach2") { return Err("此图片不是可替换的需求表附件".into()); }
+    let new_id = save(&tx, &usage)?;
+    let relative: String = tx.query_row("SELECT relative_path FROM project_template_assets WHERE id=?1", [&new_id], |r| r.get(0)).map_err(|e| e.to_string())?;
+    let result = (|| {
+        // Preserve document order; the old file remains available for recovery.
+        tx.execute("UPDATE project_template_assets SET created_at=?1 WHERE id=?2", params![created, new_id]).map_err(|e| e.to_string())?;
+        tx.execute("UPDATE project_template_assets SET deleted_at=?1, updated_at=?1 WHERE id=?2", params![Utc::now().to_rfc3339(), old_id]).map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(new_id)
+    })();
+    if result.is_err() {
+        let path = Path::new(workspace_root).join(relative);
+        if crate::workspace::is_inside_workspace(Path::new(workspace_root), &path) { let _ = fs::remove_file(path); }
+    }
+    result
+}
+
+#[cfg(test)]
+mod replacement_tests {
+    use super::*;
+    use std::cell::Cell;
+    const TEMPLATE: &str = "ICT项目需求导入表.docx";
+    #[test]
+    fn image_replacement_rejects_empty_and_spoofed_payloads() {
+        for value in ["data:image/png;base64,", "data:image/png;base64,YmFk", "data:image/gif;base64,R0lGODlh"] {
+            assert!(validate_replacement_image(value, 10, 10).is_err());
+        }
+        let png = "data:image/png;base64,iVBORw0KGgo=";
+        assert!(validate_replacement_image(png, 0, 10).is_err());
+        assert!(validate_replacement_image(png, 10, -1).is_err());
+    }
+    fn fixture() -> (Connection, PathBuf) {
+        let root = std::env::temp_dir().join(format!("lamber-image-replace-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap(); fs::write(root.join("old.png"), b"original").unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE project_template_assets (
+            id TEXT PRIMARY KEY, project_id TEXT, template_name TEXT, asset_type TEXT,
+            usage TEXT, created_at TEXT, updated_at TEXT, deleted_at TEXT, relative_path TEXT);").unwrap();
+        for (id, project, usage, deleted) in [("old","p","attach1",None),("sibling","p","attach1",None),
+            ("second","p","attach2",None),("foreign","q","attach1",None),
+            ("deleted","p","attach1",Some("gone")),("vendor","p","vendor_0",None)] {
+            conn.execute("INSERT INTO project_template_assets VALUES (?1,?2,?3,'image',?4,'old-time','old-time',?5,'old.png')",
+                params![id,project,TEMPLATE,usage,deleted]).unwrap();
+        }
+        (conn, root)
+    }
+    fn snapshot(conn: &Connection) -> Vec<Vec<Option<String>>> {
+        conn.prepare("SELECT * FROM project_template_assets ORDER BY id").unwrap()
+            .query_map([], |r| (0..9).map(|i| r.get(i)).collect()).unwrap().collect::<Result<_,_>>().unwrap()
+    }
+    fn save(conn: &Connection, root: &Path, usage: &str) -> Result<String, String> {
+        fs::write(root.join("new.png"), b"replacement").unwrap();
+        conn.execute("INSERT INTO project_template_assets VALUES ('new','p',?1,'image',?2,'new-time','new-time',NULL,'new.png')",params![TEMPLATE,usage]).map_err(|e|e.to_string())?;
+        Ok("new".into())
+    }
+    #[test]
+    fn image_replacement_rejects_stale_foreign_and_wrong_slot_before_save() {
+        let (conn,root)=fixture(); let before=snapshot(&conn); let calls=Cell::new(0);
+        for (project,template,id) in [("q",TEMPLATE,"old"),("p",TEMPLATE,"foreign"),("p",TEMPLATE,"deleted"),
+            ("p",TEMPLATE,"missing"),("p",TEMPLATE,"vendor"),("p","其他需求导入表.docx","old"),
+            ("p","会审纪要.docx","old")] {
+            assert!(replace_demand_image_internal(&conn,root.to_str().unwrap(),project,template,id,|tx,usage|{
+                calls.set(calls.get()+1);save(tx,&root,usage)
+            }).is_err());
+            assert_eq!(calls.get(),0);assert_eq!(snapshot(&conn),before);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn image_replacement_failure_rolls_back_and_success_preserves_other_assets() {
+        let (conn,root)=fixture();let before=snapshot(&conn);
+        assert!(replace_demand_image_internal(&conn,root.to_str().unwrap(),"p",TEMPLATE,"old",|_,_|Err("save failed".into())).is_err());
+        assert_eq!(snapshot(&conn),before);
+        // Simulate a DB failure AFTER the new image has been saved but before commit.
+        conn.execute_batch("CREATE TRIGGER fail_delete BEFORE UPDATE OF deleted_at ON project_template_assets BEGIN SELECT RAISE(ABORT,'injected delete failure'); END;").unwrap();
+        assert!(replace_demand_image_internal(&conn,root.to_str().unwrap(),"p",TEMPLATE,"old",|tx,usage|save(tx,&root,usage)).is_err());
+        assert_eq!(snapshot(&conn),before);assert!(!root.join("new.png").exists());
+        assert_eq!(fs::read(root.join("old.png")).unwrap(),b"original");
+        conn.execute_batch("DROP TRIGGER fail_delete").unwrap();
+        assert_eq!(replace_demand_image_internal(&conn,root.to_str().unwrap(),"p",TEMPLATE,"old",|tx,usage|save(tx,&root,usage)).unwrap(),"new");
+        let after=snapshot(&conn);
+        for row in before.iter().filter(|row|row[0].as_deref()!=Some("old")) {assert!(after.contains(row));}
+        assert!(after.iter().find(|r|r[0].as_deref()==Some("old")).unwrap()[7].is_some());
+        let new=after.iter().find(|r|r[0].as_deref()==Some("new")).unwrap();
+        assert_eq!(new[5].as_deref(),Some("old-time"));assert!(new[7].is_none());
+        let calls=Cell::new(0);
+        assert!(replace_demand_image_internal(&conn,root.to_str().unwrap(),"p",TEMPLATE,"old",|_,_|{calls.set(1);Ok("bad".into())}).is_err());
+        assert_eq!(calls.get(),0);assert_eq!(snapshot(&conn),after);
+        assert_eq!(fs::read(root.join("old.png")).unwrap(),b"original");
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
 pub fn get_template_assets_internal(
     conn: &Connection,
     project_id: &str,
@@ -363,6 +485,24 @@ pub fn get_template_asset_path_internal(
     }
 }
 
+// Demand slots are asset-table owned: a chat upload need not have a saved form reference yet.
+fn demand_slot_asset_ids(
+    conn: &Connection,
+    project_id: &str,
+) -> Result<std::collections::HashSet<String>, String> {
+    let mut statement = conn
+        .prepare(
+            "SELECT id FROM project_template_assets WHERE project_id = ?1 AND deleted_at IS NULL
+         AND template_name LIKE '%需求导入表%' AND usage IN ('attach1', 'attach2')",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([project_id], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<std::collections::HashSet<_>, _>>()
+        .map_err(|error| error.to_string())
+}
+
 pub fn cleanup_orphan_template_assets_internal(
     app_handle: &AppHandle,
     conn: &Connection,
@@ -382,7 +522,7 @@ pub fn cleanup_orphan_template_assets_internal(
     let re = regex::Regex::new(r#""(asset_[0-9a-f]+)""#)
         .map_err(|e| format!("Failed to compile regex: {}", e))?;
 
-    let mut active_assets = std::collections::HashSet::new();
+    let mut active_assets = demand_slot_asset_ids(conn, project_id)?;
     for val_res in value_iter {
         if let Ok(val) = val_res {
             for cap in re.captures_iter(&val) {
@@ -492,4 +632,30 @@ pub fn cleanup_orphan_template_assets_internal(
     }
 
     Ok((orphans_cleaned, cleaned_ids))
+}
+
+#[cfg(test)]
+mod demand_asset_tests {
+    use super::*;
+
+    #[test]
+    fn cleanup_preserves_only_live_demand_slots_in_the_requested_project() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE project_template_assets (id TEXT, project_id TEXT, template_name TEXT, usage TEXT, deleted_at TEXT);
+            INSERT INTO project_template_assets VALUES
+            ('chat1', 'p1', 'ICT项目需求导入表模板.docx', 'attach1', NULL),
+            ('chat2', 'p1', 'ICT项目需求导入表模板.docx', 'attach2', NULL),
+            ('removed', 'p1', 'ICT项目需求导入表模板.docx', 'attach1', 'deleted'),
+            ('other-project', 'p2', 'ICT项目需求导入表模板.docx', 'attach1', NULL),
+            ('vendor', 'p1', '会审纪要.docx', 'attach1', NULL),
+            ('unknown', 'p1', 'ICT项目需求导入表模板.docx', 'other', NULL);").unwrap();
+        let ids = demand_slot_asset_ids(&conn, "p1").unwrap();
+        assert_eq!(
+            ids,
+            ["chat1".to_string(), "chat2".to_string()]
+                .into_iter()
+                .collect()
+        );
+        assert!(demand_slot_asset_ids(&conn, "missing").unwrap().is_empty());
+    }
 }

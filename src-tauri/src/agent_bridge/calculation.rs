@@ -57,6 +57,8 @@ pub struct CalculateCashflowRow {
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CalculateResponse {
+    pub basis: String,
+    pub irr_notice: String,
     pub project_id: String,
     pub project_name: String,
     pub customer_name: String,
@@ -79,20 +81,22 @@ pub fn run_calculation(
     service: &ProjectService,
     request: &CalculateRequest,
 ) -> Result<CalculateResponse, String> {
+    let (project, scheme, snapshot) = resolve_snapshot(service, request)?;
+    let result = crate::benefit::calculator::calculate_ict_benefit(snapshot.input_params.clone())?;
+    Ok(build_response(&project, &scheme, &snapshot, &result))
+}
+
+pub(super) fn resolve_snapshot(
+    service: &ProjectService,
+    request: &CalculateRequest,
+) -> Result<(Project, BenefitAnalysisScheme, BenefitAnalysisSnapshot), String> {
     let project = service
         .get_project(&request.project_id)?
         .ok_or_else(|| format!("未找到项目 {}", request.project_id))?;
-
     let schemes = service.get_schemes(&project.id)?;
-    if schemes.is_empty() {
-        return Err(format!("项目「{}」还没有任何测算方案", project.name));
-    }
-    let scheme = select_scheme(&project, &schemes, request.scenario.as_deref())?;
-
+    let scheme = select_scheme(&project, &schemes, request.scenario.as_deref())?.clone();
     let snapshot = latest_snapshot(service, &scheme.id)?;
-    let result = crate::benefit::calculator::calculate_ict_benefit(snapshot.input_params.clone())?;
-
-    Ok(build_response(&project, scheme, &snapshot, &result))
+    Ok((project, scheme, snapshot))
 }
 
 /// Pick the scheme the `scenario` selector names, falling back to the project default.
@@ -111,13 +115,12 @@ fn select_scheme<'a>(
     };
 
     if selector == STAGE_PRE_SELECTION || selector == STAGE_POST_SELECTION {
-        return newest(schemes.iter().filter(|s| s.stage.as_deref() == Some(selector)))
-            .ok_or_else(|| {
-                format!(
-                    "项目「{}」没有标记为 {} 的测算方案",
-                    project.name, selector
-                )
-            });
+        return newest(
+            schemes
+                .iter()
+                .filter(|s| s.stage.as_deref() == Some(selector)),
+        )
+        .ok_or_else(|| format!("项目「{}」没有标记为 {} 的测算方案", project.name, selector));
     }
 
     if let Some(found) = schemes.iter().find(|s| s.id == selector) {
@@ -148,8 +151,7 @@ fn default_scheme<'a>(
             return Ok(found);
         }
     }
-    newest(schemes.iter())
-        .ok_or_else(|| format!("项目「{}」还没有任何测算方案", project.name))
+    newest(schemes.iter()).ok_or_else(|| format!("项目「{}」还没有任何测算方案", project.name))
 }
 
 /// Most recently updated scheme of an iterator, matching the UI's ordering rule.
@@ -175,13 +177,15 @@ fn latest_snapshot(
         .ok_or_else(|| format!("测算方案 {scheme_id} 还没有保存过任何测算快照"))
 }
 
-fn build_response(
+pub(super) fn build_response(
     project: &Project,
     scheme: &BenefitAnalysisScheme,
     snapshot: &BenefitAnalysisSnapshot,
     result: &IctResult,
 ) -> CalculateResponse {
     CalculateResponse {
+        basis: "saved_snapshot".into(),
+        irr_notice: "本系统未计算 IRR；-- 不表示该项目无法求解。".into(),
         project_id: project.id.clone(),
         project_name: project.name.clone(),
         customer_name: project.customer_name.clone(),

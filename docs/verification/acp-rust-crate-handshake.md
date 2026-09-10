@@ -93,11 +93,11 @@ cd src-tauri && DEEPSEEK_API_KEY=<key> cargo run --example acp_handshake_probe
 `node scripts/provision-profile.mjs --profile acp` 原样输出（含一条既有的无害告警）：
 
 ```
-[provision] DSH_HOME=/Users/hermesjang/Documents/CMCC/tools/lamber/agent-bridge/.dsh-home
-[provision] linking /Users/hermesjang/Documents/CMCC/tools/lamber/agent-bridge/dsh-tool-lamber into profile "acp"…
+[provision] DSH_HOME=./agent-bridge/.dsh-home
+[provision] linking ./agent-bridge/dsh-tool-lamber into profile "acp"…
 
 dependencies:
-+ dsh-tool-lamber link:/Users/hermesjang/Documents/CMCC/tools/lamber/agent-bridge/dsh-tool-lamber
++ dsh-tool-lamber link:./agent-bridge/dsh-tool-lamber
 
 Already up to date
 Done in 192ms using pnpm v10.34.5
@@ -153,7 +153,7 @@ capabilities 完整解析成了结构体（包括 dsh 侧没发的字段，都�
 ### 3. `session/new` —— 成功
 
 ```
->> {"jsonrpc":"2.0","id":"d2964da2-5efa-4be3-9ef5-8a136261ede4","method":"session/new","params":{"cwd":"/Users/hermesjang/Documents/CMCC/tools/lamber/src-tauri","mcpServers":[]}}
+>> {"jsonrpc":"2.0","id":"d2964da2-5efa-4be3-9ef5-8a136261ede4","method":"session/new","params":{"cwd":"./src-tauri","mcpServers":[]}}
 << {"jsonrpc":"2.0","id":"d2964da2-5efa-4be3-9ef5-8a136261ede4","result":{"sessionId":"b6b80f9e-943e-481b-9863-cdc2e24ed5f3","configOptions":[...]}}
 ```
 

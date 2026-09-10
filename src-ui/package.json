@@ -10,7 +10,21 @@
     "preview": "vite preview",
     "test:ai-compute-quote": "node scripts/test_ai_compute_quote.cjs",
     "test:tax-split": "node scripts/test_tax_split.cjs",
-    "test:selection-batch": "node scripts/test_selection_result_batch.cjs"
+    "test:selection-batch": "node scripts/test_selection_result_batch.cjs",
+    "test:dsh": "node scripts/test_dsh_runtime.cjs",
+    "test:ai-window": "node scripts/test_ai_window.cjs",
+    "test:demand-upload": "node scripts/test_demand_upload_targets.cjs",
+    "test:template-state": "node scripts/test_template_state.cjs",
+    "test:session-scope": "node scripts/test_session_scope.cjs",
+    "test:approval-review": "node scripts/test_approval_review.cjs",
+    "test:chat-document": "node scripts/test_chat_document.cjs",
+    "test:meeting-lists": "node scripts/test_meeting_lists.cjs",
+    "test:selection-fee": "node scripts/test_selection_fee.cjs",
+    "test:structure-reverse": "node scripts/test_structure_reverse_success.cjs",
+    "test:structure-commit": "node scripts/test_structure_commit.cjs",
+    "test:chat-structure-reverse": "node scripts/test_chat_structure_reverse.cjs",
+    "test:selection-page-catalog": "node scripts/test_selection_page_catalog.cjs",
+    "test:chat-template-images": "node scripts/test_chat_template_images.cjs"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.8",

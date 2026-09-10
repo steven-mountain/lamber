@@ -14,6 +14,34 @@ lerna-debug.log*
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.example
+!.env.*.example
+
+# Local credentials and runtime business data must never be published
+.npmrc
+.netrc
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json
+config.local.json
+projects_store.json
+.lamber.workspace.json
+.lamber/
+.projects/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+/workspace/
+/local-data/
+/src-ui/vite.config.js
+/src-ui/vite.config.d.ts
 
 # Editor directories and files
 .vscode/
@@ -33,6 +61,13 @@ lerna-debug.log*
 # Agent bridge (deepseek-harness runtime)
 /agent-bridge/.dsh-home/
 /agent-bridge/dsh-tool-lamber/lib/
+/src-tauri/resources/agent-runtime/node.exe
+/src-tauri/resources/agent-runtime/node_modules/
+/src-tauri/resources/agent-runtime/dsh-tool-lamber/
+/src-tauri/resources/agent-runtime/dsh-home-template/
+/src-tauri/resources/agent-runtime/patch.yml
+/src-tauri/resources/agent-runtime/package.json
+/src-tauri/resources/agent-runtime/package-lock.json
 
 # Log files
 *.log
@@ -98,3 +133,13 @@ ESOP附件/
 
 # Claude Code 本机配置：含本机绝对路径与内部项目命名，不进公开仓库
 .claude/
+
+/agent-bridge/dsh-tool-lamber/src/contract.generated.ts
+
+agent-bridge/dsh-tool-lamber/src/templateFields.generated.ts
+
+agent-bridge/dsh-tool-lamber/src/demandCompletion.generated.ts
+
+agent-bridge/dsh-tool-lamber/src/catalogCompletion.generated.ts
+
+agent-bridge/dsh-tool-lamber/src/*.generated.json

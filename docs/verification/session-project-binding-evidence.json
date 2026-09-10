@@ -1,0 +1,30 @@
+{
+  "date": "2026-09-06",
+  "rust": {
+    "unitPassed": 80,
+    "ignoredIntegrationPassed": 14,
+    "realKeyUsed": true
+  },
+  "scope": {
+    "allowOwnProject": true,
+    "denyExistingOtherProjectAfterDshRestart": true,
+    "missingAgentBeforeIO": true,
+    "missingBinding": true,
+    "missingProject": true,
+    "crossSessionHttpRequests": 24
+  },
+  "macOS": {
+    "isolatedAppId": "com.cmcc.benefitcalc.scope-test",
+    "projectPicker": true,
+    "generalChatLabel": true,
+    "realCalculationNpv": "37914.69",
+    "wholeAppRestartRetainedBindingAndHistory": true,
+    "resumeKeptOneAcpMapping": true,
+    "crossProjectPromptRefusedWithoutToolExecution": true
+  },
+  "limits": [
+    "Concurrent UI generation not tested",
+    "Windows not revalidated",
+    "No aggregate exemption implemented"
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "status": "BLOCKER REPRODUCED — not acceptance",
+  "method": "Production reverse control flow with a controlled linear metric engine; real production batch setter, tax normalization, candidate amount transform and funding synchronization. Synthetic in-memory state only. Demonstrates total preservation failure independently of metric formula; does not claim a real-engine UI run.",
+  "results": [
+    {
+      "autoFix": false,
+      "targetMetric": 0.10325,
+      "controlledEngineMetric": 0.103325,
+      "returnedStatus": "success",
+      "updateTaxItemsInclBatchCalls": 1,
+      "lockedTotal": 100,
+      "candidateAmounts": [
+        41.33,
+        58.67
+      ],
+      "actualAmounts": [
+        41.33,
+        58.67
+      ],
+      "actualTotal": 100,
+      "targetAnnualPlan": [
+        10.33,
+        10.33,
+        10.33,
+        10.34,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "balancingAnnualPlan": [
+        14.67,
+        14.67,
+        14.67,
+        14.66,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "message": "结构反算完成：收入含税总金额保持 ¥100.00 不变。\n目标毛利润率：目标 10.32%，当前 10.33%\n目标科目：“IT集成收入” ¥40.00 -> ¥41.33\n承接科目：“IT维护收入” ¥60.00 -> ¥58.67\n固定同侧科目合计：¥0.00；可重分配池：¥100.00"
+    },
+    {
+      "autoFix": true,
+      "targetMetric": 0.10325,
+      "controlledEngineMetric": 0.103325,
+      "returnedStatus": "success",
+      "updateTaxItemsInclBatchCalls": 1,
+      "lockedTotal": 100,
+      "candidateAmounts": [
+        41.33,
+        58.67
+      ],
+      "actualAmounts": [
+        41.34,
+        58.67
+      ],
+      "actualTotal": 100.01,
+      "targetAnnualPlan": [
+        10.34,
+        10.34,
+        10.34,
+        10.32,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "balancingAnnualPlan": [
+        14.67,
+        14.67,
+        14.67,
+        14.66,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "message": "结构反算完成：收入含税总金额保持 ¥100.00 不变。\n目标毛利润率：目标 10.32%，当前 10.33%\n目标科目：“IT集成收入” ¥40.00 -> ¥41.33\n承接科目：“IT维护收入” ¥60.00 -> ¥58.67\n固定同侧科目合计：¥0.00；可重分配池：¥100.00"
+    }
+  ]
+}

@@ -1,0 +1,2436 @@
+{
+  "method": "real DeepSeek + dsh + Rust routes; preparation executes shared desktop TypeScript in a test-only Node host; actual main-window IPC is verified separately in desktop acceptance",
+  "answers": [
+    {
+      "prompt": "当前绑定项目ID是70d856df-61f2-4031-be74-899afb8da2a6。请查询当前已保存方案的全部收入与支出科目，并告诉我当前利润率、NPV及IRR。",
+      "answer": "已按当前已保存方案为您查询。当前方案为 **「甄选前」**（快照 v2，阶段 pre_selection）。\n\n## 一、收入科目（9 项，共 110,664.00 元含税）\n\n| 科目 | 含税金额（元） | 税率 | 备注 |\n|---|---|---|---|\n| 系统集成服务收入 | 106,000.00 | 6% | 已拆分明细 53,000/53,000 |\n| 维保收入 | 212.00 | 6% | |\n| 设备销售收入 | 318.00 | 13% | |\n| 设备租赁收入 | 424.00 | 13% | |\n| 其他收入 | 530.00 | 6% | |\n| 移动云-定制化收入 | 636.00 | 6% | |\n| 专线收入 | 742.00 | 9% | |\n| 产品收入 | 848.00 | 6% | |\n| 工程施工收入等 | 954.00 | 9% | |\n\n分组小计：IT 收入 108,120.00 元（系统集成+维保+设备销售+设备租赁+其他+移动云）、CT 收入 1,590.00 元（专线+产品）、非IT/CT 收入 954.00 元。\n\n## 二、支出科目（19 项，共 89,888.00 元含税）\n\n| 科目 | 含税金额（元） | 税率 |\n|---|---|---|\n| 主要设备/甲供材料 | 1,060.00 | 13% |\n| 施工 | 1,166.00 | 9% |\n| 勘察设计/预备费 | 1,272.00 | 6% |\n| 集成服务 | 53,000.00 | 6% |\n| 其他投入 | 1,484.00 | 6% |\n| 维护费用 | 1,590.00 | 6% |\n| 其他运行支出（电费等） | 1,696.00 | 13% |\n| 中标服务费 | 1,802.00 | 6% |\n| 设计院成本评估费 | 1,908.00 | 6% |\n| 第三方审计评估费 | 2,014.00 | 6% |\n| 专线建设 | 2,120.00 | 9% |\n| 专线维护 | 2,226.00 | 9% |\n| 其他产品成本 | 2,332.00 | 6% |\n| 专线带宽成本 | 2,438.00 | 9% |\n| 专线/其他产品续签成本 | 2,544.00 | 9% |\n| 工程施工投入等 | 2,650.00 | 9% |\n| 融合营销成本 | 2,756.00 | 6% |\n| 渠道酬金 | 2,862.00 | 6% |\n| 其他管理费用等 | 2,968.00 | 6% |\n\n分组小计：IT 成本 66,992.00 元、CT 成本 11,660.00 元、混合成本 11,236.00 元。\n\n## 三、当前效益指标（快照重算）\n\n- **利润率：19.19%**（0.1919）\n- **NPV：17,538.87 元**\n- **NPV 率：23.74%**（0.2374）\n- 动态回收期：1 年\n- **IRR：本系统未计算 IRR**（界面上显示为 \"--\"，不代表该项目无法求解）\n\n另外本快照还有 IT 侧口径指标：IT NPV 34,129.64 元、IT NPV 率 61.81%、IT 利润率 38.20%，供参考。"
+    },
+    {
+      "prompt": "如果集成收入改成800000元呢？请试算，列出联动变化、全部效益指标，以逐年完整金额列出每组年度现金流的覆盖前后对照，以及前四年每年的现金流入、流出、净现金流原始金额，保留到分。",
+      "answer": "已按「系统集成服务收入（rev_it_integration）含税 106000 → 800000，税率保持 6%」做了一次**假设试算**。以下全部为试算值，**未保存、未生成方案、未回填科目**。\n\n## 一、显式覆盖\n| 科目 | 覆盖前 | 假设覆盖后 |\n|---|---|---|\n| rev_it_integration 系统集成服务收入 | 含税 106000，税率 6% | 含税 800000，税率 6% |\n\n## 二、联动变更\n\n**1. rev_it_integration 拆分明细被清除（split_cleared）**\n- 覆盖前：`[含税53000/不含税50000, 含税53000/不含税50000]`\n- 假设后：`[]`\n\n**2. 资金计划同步 revenue:revIt:integration（manual_amount_sync）**\n- 覆盖前年度含税计划：`[26500, 26500, 26500, 26500, 0, 0, 0, 0, 0, 0]`\n- 假设后年度含税计划：`[200000, 200000, 200000, 200000, 0, 0, 0, 0, 0, 0]`\n\n**3. 总收入现金流（不含税）重建 rev_cashflow_excl**\n| 年度 | 覆盖前 | 假设覆盖后 |\n|---|---|---|\n| 第1年 | 26078.16 | 189757.41 |\n| 第2年 | 26078.16 | 189757.41 |\n| 第3年 | 26078.16 | 189757.41 |\n| 第4年 | 26078.12 | 189757.35 |\n| 第5–10年 | 0.00 | 0.00 |\n\n**4. IT 收入现金流（不含税）重建 it_rev_cashflow_excl**\n| 年度 | 覆盖前 | 假设覆盖后 |\n|---|---|---|\n| 第1年 | 25489.17 | 189168.42 |\n| 第2年 | 25489.17 | 189168.42 |\n| 第3年 | 25489.17 | 189168.42 |\n| 第4年 | 25489.13 | 189168.36 |\n| 第5–10年 | 0.00 | 0.00 |\n\n**成本侧两组现金流本次未出现联动清单，视为不变**（按已保存快照值逐年列示，覆盖前=假设后）：\n- cost_cashflow_excl：第1–3年 21074.42、第4年 21074.37、第5–10年 0.00\n- it_cost_cashflow_excl：第1–3年 15752.16、第4年 15752.17、第5–10年 0.00\n\n## 三、全部效益指标（假设后）\n- **NPV：591259.19**\n- **NPV 率：8.0042**\n- **利润率：0.8889**\n- 动态回收期：1\n- IRR：--（本系统未计算 IRR，不代表无法求解）\n- IT NPV：607849.97；IT NPV 率：11.0090；IT 利润率：0.9167\n\n## 四、前四年每年现金流入/流出/净现金流（假设后，保留到分）\n| 年度 | 现金流入 | 现金流出 | 净现金流 |\n|---|---|---|---|\n| 第1年 | 189757.41 | 21074.42 | 168682.99 |\n| 第2年 | 189757.41 | 21074.42 | 168682.99 |\n| 第3年 | 189757.41 | 21074.42 | 168682.99 |\n| 第4年 | 189757.35 | 21074.37 | 168682.98 |\n\n供对照，覆盖前（已保存快照重算值）前四年：第1–3年 流入26078.16/流出21074.42/净5003.74，第4年 流入26078.12/流出21074.37/净5003.75；第4年与前三年不同，已逐年列示。\n\n需要提醒：此结果仅是试算假设值，若需变成正式测算结果，请在测算页实际修改并保存后重新测算。"
+    },
+    {
+      "prompt": "我没有保存刚才的假设。当前项目已保存的利润率和NPV到底是多少？",
+      "answer": "已重新按**已保存快照**（方案：甄选前 / pre_selection / 快照 v2）重算，确认当前已保存值是：\n\n- **利润率：0.1919（19.19%）**\n- **NPV：17538.87 元**\n- NPV 率：0.2374；动态回收期：1；IRR：--（本系统未计算 IRR）\n\n之前给的 800000 集成收入试算结果（NPV 591259.19、利润率 0.8889 等）只是假设值，未保存，不影响以上已保存结论。"
+    },
+    {
+      "prompt": "含税报价300000元，浮动0，甄选服务费和限价是多少？",
+      "answer": "甄选服务费计算结果如下：\n\n- **含税报价**：300000.00 元\n- **不含税计费基数**（展示4位小数）：283018.8679 元（= 300000 ÷ 1.06）\n- **不含税服务费**：2292.41 元\n- **含税服务费**：2429.95 元（浮动 0）\n- **含税实际成本**：302429.95 元\n- **含税限价**：302429.95 元（即报价 + 含税服务费，浮动为 0 时两者相同）\n\n纯计算，未写入任何科目；目标投入科目需为 6% 税率。"
+    },
+    {
+      "prompt": "含税限价106600元、浮动0，精确反算报价是多少？",
+      "answer": "反算失败，后端错误原样如下：\n\n**该限价落在资费表 10 万元档位跳变形成的空档，无对应报价**\n\n即含税限价 106600 元（浮动 0）落在资费表 10 万元档位跳变产生的空档区间内，无法反算得到对应的精确报价。此为空档无解，不能估算或给出绕过办法。如需继续，可改用其他限价反算，或用正算按指定报价验证。"
+    },
+    {
+      "prompt": "含税限价51834元、浮动0，报价有几个精确解？请列全。",
+      "answer": "含税限价 51834 元、浮动 0，共有 **2 个精确解**：\n\n| 候选报价（含税） | 不含税计费基数（展示4位小数） |\n|---|---|\n| 51409.87 | 48499.8773 |\n| 51410.00 | 48499.9057 |\n\n两个报价均能精确命中限价 51834.00（含税实际成本 = 含税限价 = 51834.00）。\n\n当前默认采用**较低报价 51409.87**；如需要采用 51410.00，可用正算按指定报价验证。纯计算，未写入任何科目；目标投入科目须为 6% 税率。"
+    }
+  ],
+  "calls": [
+    {
+      "route": "/lamber-bridge/calculate",
+      "request": {
+        "sessionId": "04c6e656-096a-42be-abf0-d86eb6ae55d9",
+        "projectId": "70d856df-61f2-4031-be74-899afb8da2a6",
+        "scenario": null
+      },
+      "status": 200,
+      "response": {
+        "basis": "saved_snapshot",
+        "irrNotice": "本系统未计算 IRR；-- 不表示该项目无法求解。",
+        "projectId": "70d856df-61f2-4031-be74-899afb8da2a6",
+        "projectName": "桥接测试项目-benefit-real-model",
+        "customerName": "测试客户",
+        "schemeId": "bbfec444-0e65-495a-b95f-a078e3a7ca01",
+        "schemeName": "甄选前",
+        "stage": "pre_selection",
+        "snapshotVersion": 2,
+        "calculatedAt": "2026-09-09T10:33:28.021326+00:00",
+        "metrics": {
+          "npv": "17538.87",
+          "npvRate": "0.2374",
+          "marginRate": "0.1919",
+          "dynamicPayback": "1",
+          "irr": "--",
+          "itNpv": "34129.64",
+          "itNpvRate": "0.6181",
+          "itMarginRate": "0.3820"
+        },
+        "cashflow": [
+          {
+            "year": 1,
+            "cashIn": "26078.16",
+            "cashOut": "21074.42",
+            "netCash": "5003.74",
+            "cumNetCash": "5003.74",
+            "pv": "4742.88",
+            "cumPv": "4742.88"
+          },
+          {
+            "year": 2,
+            "cashIn": "26078.16",
+            "cashOut": "21074.42",
+            "netCash": "5003.74",
+            "cumNetCash": "10007.48",
+            "pv": "4495.62",
+            "cumPv": "9238.50"
+          },
+          {
+            "year": 3,
+            "cashIn": "26078.16",
+            "cashOut": "21074.42",
+            "netCash": "5003.74",
+            "cumNetCash": "15011.22",
+            "pv": "4261.25",
+            "cumPv": "13499.76"
+          },
+          {
+            "year": 4,
+            "cashIn": "26078.12",
+            "cashOut": "21074.37",
+            "netCash": "5003.75",
+            "cumNetCash": "20014.97",
+            "pv": "4039.11",
+            "cumPv": "17538.87"
+          },
+          {
+            "year": 5,
+            "cashIn": "0",
+            "cashOut": "0",
+            "netCash": "0",
+            "cumNetCash": "20014.97",
+            "pv": "0",
+            "cumPv": "17538.87"
+          },
+          {
+            "year": 6,
+            "cashIn": "0",
+            "cashOut": "0",
+            "netCash": "0",
+            "cumNetCash": "20014.97",
+            "pv": "0",
+            "cumPv": "17538.87"
+          },
+          {
+            "year": 7,
+            "cashIn": "0",
+            "cashOut": "0",
+            "netCash": "0",
+            "cumNetCash": "20014.97",
+            "pv": "0",
+            "cumPv": "17538.87"
+          },
+          {
+            "year": 8,
+            "cashIn": "0",
+            "cashOut": "0",
+            "netCash": "0",
+            "cumNetCash": "20014.97",
+            "pv": "0",
+            "cumPv": "17538.87"
+          },
+          {
+            "year": 9,
+            "cashIn": "0",
+            "cashOut": "0",
+            "netCash": "0",
+            "cumNetCash": "20014.97",
+            "pv": "0",
+            "cumPv": "17538.87"
+          },
+          {
+            "year": 10,
+            "cashIn": "0",
+            "cashOut": "0",
+            "netCash": "0",
+            "cumNetCash": "20014.97",
+            "pv": "0",
+            "cumPv": "17538.87"
+          }
+        ]
+      }
+    },
+    {
+      "route": "/lamber-bridge/read-benefit-inputs",
+      "request": {
+        "sessionId": "04c6e656-096a-42be-abf0-d86eb6ae55d9"
+      },
+      "status": 200,
+      "response": {
+        "basis": "saved_snapshot",
+        "projectId": "70d856df-61f2-4031-be74-899afb8da2a6",
+        "projectName": "桥接测试项目-benefit-real-model",
+        "customerName": "测试客户",
+        "schemeId": "bbfec444-0e65-495a-b95f-a078e3a7ca01",
+        "schemeName": "甄选前",
+        "stage": "pre_selection",
+        "snapshotVersion": 2,
+        "subjects": [
+          {
+            "key": "rev_it_integration",
+            "name": "系统集成服务收入",
+            "displayName": "系统集成服务收入（开票名称1）",
+            "groupId": "revIt",
+            "side": "revenue",
+            "inclTax": "106000",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称1",
+            "billing_subject_name": "开票名称1",
+            "split": true,
+            "split_parts": [
+              {
+                "incl_tax": "53000",
+                "excl_tax": "50000"
+              },
+              {
+                "incl_tax": "53000",
+                "excl_tax": "50000"
+              }
+            ]
+          },
+          {
+            "key": "rev_it_maintenance",
+            "name": "维保收入",
+            "displayName": "维保收入（开票名称2）",
+            "groupId": "revIt",
+            "side": "revenue",
+            "inclTax": "212",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称2",
+            "billing_subject_name": "开票名称2",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "rev_it_device_sales",
+            "name": "设备销售收入",
+            "displayName": "设备销售收入（开票名称3）",
+            "groupId": "revIt",
+            "side": "revenue",
+            "inclTax": "318",
+            "taxRate": "13",
+            "custom_subject_name": "业务名称3",
+            "billing_subject_name": "开票名称3",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "rev_it_device_lease",
+            "name": "设备租赁收入",
+            "displayName": "设备租赁收入（开票名称4）",
+            "groupId": "revIt",
+            "side": "revenue",
+            "inclTax": "424",
+            "taxRate": "13",
+            "custom_subject_name": "业务名称4",
+            "billing_subject_name": "开票名称4",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "rev_it_other",
+            "name": "其他收入",
+            "displayName": "其他收入（开票名称5）",
+            "groupId": "revIt",
+            "side": "revenue",
+            "inclTax": "530",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称5",
+            "billing_subject_name": "开票名称5",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "rev_it_cloud",
+            "name": "移动云-定制化收入",
+            "displayName": "移动云-定制化收入（开票名称6）",
+            "groupId": "revIt",
+            "side": "revenue",
+            "inclTax": "636",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称6",
+            "billing_subject_name": "开票名称6",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "rev_ct_line",
+            "name": "专线收入",
+            "displayName": "专线收入（开票名称7）",
+            "groupId": "revCt",
+            "side": "revenue",
+            "inclTax": "742",
+            "taxRate": "9",
+            "custom_subject_name": "业务名称7",
+            "billing_subject_name": "开票名称7",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "rev_ct_product",
+            "name": "产品收入",
+            "displayName": "产品收入（开票名称8）",
+            "groupId": "revCt",
+            "side": "revenue",
+            "inclTax": "848",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称8",
+            "billing_subject_name": "开票名称8",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "rev_non_it_ct",
+            "name": "工程施工收入等",
+            "displayName": "工程施工收入等（开票名称9）",
+            "groupId": "revNonItCt",
+            "side": "revenue",
+            "inclTax": "954",
+            "taxRate": "9",
+            "custom_subject_name": "业务名称9",
+            "billing_subject_name": "开票名称9",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_it_device",
+            "name": "主要设备/甲供材料",
+            "displayName": "主要设备/甲供材料（开票名称10）",
+            "groupId": "costIt",
+            "side": "cost",
+            "inclTax": "1060",
+            "taxRate": "13",
+            "custom_subject_name": "业务名称10",
+            "billing_subject_name": "开票名称10",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_it_construction",
+            "name": "施工",
+            "displayName": "施工（开票名称11）",
+            "groupId": "costIt",
+            "side": "cost",
+            "inclTax": "1166",
+            "taxRate": "9",
+            "custom_subject_name": "业务名称11",
+            "billing_subject_name": "开票名称11",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_it_survey",
+            "name": "勘察设计/预备费",
+            "displayName": "勘察设计/预备费（开票名称12）",
+            "groupId": "costIt",
+            "side": "cost",
+            "inclTax": "1272",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称12",
+            "billing_subject_name": "开票名称12",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_it_integration",
+            "name": "集成服务",
+            "displayName": "集成服务（开票名称13）",
+            "groupId": "costIt",
+            "side": "cost",
+            "inclTax": "53000",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称13",
+            "billing_subject_name": "开票名称13",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_it_other",
+            "name": "其他投入",
+            "displayName": "其他投入（开票名称14）",
+            "groupId": "costIt",
+            "side": "cost",
+            "inclTax": "1484",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称14",
+            "billing_subject_name": "开票名称14",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_it_maintenance",
+            "name": "维护费用",
+            "displayName": "维护费用（开票名称15）",
+            "groupId": "costIt",
+            "side": "cost",
+            "inclTax": "1590",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称15",
+            "billing_subject_name": "开票名称15",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_it_running",
+            "name": "其他运行支出（电费等）",
+            "displayName": "其他运行支出（电费等）（开票名称16）",
+            "groupId": "costIt",
+            "side": "cost",
+            "inclTax": "1696",
+            "taxRate": "13",
+            "custom_subject_name": "业务名称16",
+            "billing_subject_name": "开票名称16",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_it_bidding",
+            "name": "中标服务费",
+            "displayName": "中标服务费（开票名称17）",
+            "groupId": "costIt",
+            "side": "cost",
+            "inclTax": "1802",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称17",
+            "billing_subject_name": "开票名称17",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_it_design_eval",
+            "name": "设计院成本评估费",
+            "displayName": "设计院成本评估费（开票名称18）",
+            "groupId": "costIt",
+            "side": "cost",
+            "inclTax": "1908",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称18",
+            "billing_subject_name": "开票名称18",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_it_audit",
+            "name": "第三方审计评估费",
+            "displayName": "第三方审计评估费（开票名称19）",
+            "groupId": "costIt",
+            "side": "cost",
+            "inclTax": "2014",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称19",
+            "billing_subject_name": "开票名称19",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_ct_construction",
+            "name": "专线建设",
+            "displayName": "专线建设（开票名称20）",
+            "groupId": "costCt",
+            "side": "cost",
+            "inclTax": "2120",
+            "taxRate": "9",
+            "custom_subject_name": "业务名称20",
+            "billing_subject_name": "开票名称20",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_ct_maintenance",
+            "name": "专线维护",
+            "displayName": "专线维护（开票名称21）",
+            "groupId": "costCt",
+            "side": "cost",
+            "inclTax": "2226",
+            "taxRate": "9",
+            "custom_subject_name": "业务名称21",
+            "billing_subject_name": "开票名称21",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_ct_other",
+            "name": "其他产品成本",
+            "displayName": "其他产品成本（开票名称22）",
+            "groupId": "costCt",
+            "side": "cost",
+            "inclTax": "2332",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称22",
+            "billing_subject_name": "开票名称22",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_ct_bandwidth",
+            "name": "专线带宽成本",
+            "displayName": "专线带宽成本（开票名称23）",
+            "groupId": "costCt",
+            "side": "cost",
+            "inclTax": "2438",
+            "taxRate": "9",
+            "custom_subject_name": "业务名称23",
+            "billing_subject_name": "开票名称23",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_ct_renewal",
+            "name": "专线/其他产品续签成本",
+            "displayName": "专线/其他产品续签成本（开票名称24）",
+            "groupId": "costCt",
+            "side": "cost",
+            "inclTax": "2544",
+            "taxRate": "9",
+            "custom_subject_name": "业务名称24",
+            "billing_subject_name": "开票名称24",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_non_it_ct",
+            "name": "工程施工投入等",
+            "displayName": "工程施工投入等（开票名称25）",
+            "groupId": "costMix",
+            "side": "cost",
+            "inclTax": "2650",
+            "taxRate": "9",
+            "custom_subject_name": "业务名称25",
+            "billing_subject_name": "开票名称25",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_mix_marketing",
+            "name": "融合营销成本",
+            "displayName": "融合营销成本（开票名称26）",
+            "groupId": "costMix",
+            "side": "cost",
+            "inclTax": "2756",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称26",
+            "billing_subject_name": "开票名称26",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_mix_channel",
+            "name": "渠道酬金",
+            "displayName": "渠道酬金（开票名称27）",
+            "groupId": "costMix",
+            "side": "cost",
+            "inclTax": "2862",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称27",
+            "billing_subject_name": "开票名称27",
+            "split": false,
+            "split_parts": []
+          },
+          {
+            "key": "cost_mix_other",
+            "name": "其他管理费用等",
+            "displayName": "其他管理费用等（开票名称28）",
+            "groupId": "costMix",
+            "side": "cost",
+            "inclTax": "2968",
+            "taxRate": "6",
+            "custom_subject_name": "业务名称28",
+            "billing_subject_name": "开票名称28",
+            "split": false,
+            "split_parts": []
+          }
+        ],
+        "groups": [
+          {
+            "groupId": "revIt",
+            "side": "revenue",
+            "inclTax": "108120.00"
+          },
+          {
+            "groupId": "revCt",
+            "side": "revenue",
+            "inclTax": "1590.00"
+          },
+          {
+            "groupId": "revNonItCt",
+            "side": "revenue",
+            "inclTax": "954.00"
+          },
+          {
+            "groupId": "costIt",
+            "side": "cost",
+            "inclTax": "66992.00"
+          },
+          {
+            "groupId": "costCt",
+            "side": "cost",
+            "inclTax": "11660.00"
+          },
+          {
+            "groupId": "costMix",
+            "side": "cost",
+            "inclTax": "11236.00"
+          }
+        ],
+        "totals": {
+          "revenueInclTax": "110664.00",
+          "costInclTax": "89888.00"
+        },
+        "assumptions": {
+          "discount_rate": "0.055",
+          "project_years": 4,
+          "rev_distribution": [
+            0.25,
+            0.25,
+            0.25,
+            0.25,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "cost_distribution": [
+            0.25,
+            0.25,
+            0.25,
+            0.25,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "cashflow_model": "model_e",
+          "cashflow_calculation_source": "subject_funding_plans",
+          "cashflow_segment_value_mode": "amount",
+          "cashflow_segments": [],
+          "subject_funding_plans": {
+            "revenue:revIt:integration": {
+              "id": "revenue:revIt:integration",
+              "subjectRef": {
+                "side": "revenue",
+                "groupId": "revIt",
+                "key": "integration"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                26500,
+                26500,
+                26500,
+                26500,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.169Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "revenue:revIt:maintenance": {
+              "id": "revenue:revIt:maintenance",
+              "subjectRef": {
+                "side": "revenue",
+                "groupId": "revIt",
+                "key": "maintenance"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                53,
+                53,
+                53,
+                53,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "revenue:revIt:device_sales": {
+              "id": "revenue:revIt:device_sales",
+              "subjectRef": {
+                "side": "revenue",
+                "groupId": "revIt",
+                "key": "device_sales"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                79.5,
+                79.5,
+                79.5,
+                79.5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "revenue:revIt:device_lease": {
+              "id": "revenue:revIt:device_lease",
+              "subjectRef": {
+                "side": "revenue",
+                "groupId": "revIt",
+                "key": "device_lease"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                106,
+                106,
+                106,
+                106,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "revenue:revIt:other": {
+              "id": "revenue:revIt:other",
+              "subjectRef": {
+                "side": "revenue",
+                "groupId": "revIt",
+                "key": "other"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                132.5,
+                132.5,
+                132.5,
+                132.5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "revenue:revIt:cloud": {
+              "id": "revenue:revIt:cloud",
+              "subjectRef": {
+                "side": "revenue",
+                "groupId": "revIt",
+                "key": "cloud"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                159,
+                159,
+                159,
+                159,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "revenue:revCt:line": {
+              "id": "revenue:revCt:line",
+              "subjectRef": {
+                "side": "revenue",
+                "groupId": "revCt",
+                "key": "line"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                185.5,
+                185.5,
+                185.5,
+                185.5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "revenue:revCt:product": {
+              "id": "revenue:revCt:product",
+              "subjectRef": {
+                "side": "revenue",
+                "groupId": "revCt",
+                "key": "product"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                212,
+                212,
+                212,
+                212,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "revenue:revNonItCt:item": {
+              "id": "revenue:revNonItCt:item",
+              "subjectRef": {
+                "side": "revenue",
+                "groupId": "revNonItCt",
+                "key": "item"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                238.5,
+                238.5,
+                238.5,
+                238.5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costIt:device": {
+              "id": "cost:costIt:device",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costIt",
+                "key": "device"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                265,
+                265,
+                265,
+                265,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costIt:construction": {
+              "id": "cost:costIt:construction",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costIt",
+                "key": "construction"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                291.5,
+                291.5,
+                291.5,
+                291.5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costIt:survey": {
+              "id": "cost:costIt:survey",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costIt",
+                "key": "survey"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                318,
+                318,
+                318,
+                318,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costIt:integration": {
+              "id": "cost:costIt:integration",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costIt",
+                "key": "integration"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                13250,
+                13250,
+                13250,
+                13250,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costIt:other": {
+              "id": "cost:costIt:other",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costIt",
+                "key": "other"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                371,
+                371,
+                371,
+                371,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costIt:maintenance": {
+              "id": "cost:costIt:maintenance",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costIt",
+                "key": "maintenance"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                397.5,
+                397.5,
+                397.5,
+                397.5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costIt:running": {
+              "id": "cost:costIt:running",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costIt",
+                "key": "running"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                424,
+                424,
+                424,
+                424,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costIt:bidding": {
+              "id": "cost:costIt:bidding",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costIt",
+                "key": "bidding"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                450.5,
+                450.5,
+                450.5,
+                450.5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costIt:design_eval": {
+              "id": "cost:costIt:design_eval",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costIt",
+                "key": "design_eval"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                477,
+                477,
+                477,
+                477,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costIt:audit": {
+              "id": "cost:costIt:audit",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costIt",
+                "key": "audit"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                503.5,
+                503.5,
+                503.5,
+                503.5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costCt:construction": {
+              "id": "cost:costCt:construction",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costCt",
+                "key": "construction"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                530,
+                530,
+                530,
+                530,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costCt:maintenance": {
+              "id": "cost:costCt:maintenance",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costCt",
+                "key": "maintenance"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                556.5,
+                556.5,
+                556.5,
+                556.5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costCt:other": {
+              "id": "cost:costCt:other",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costCt",
+                "key": "other"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                583,
+                583,
+                583,
+                583,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costCt:bandwidth": {
+              "id": "cost:costCt:bandwidth",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costCt",
+                "key": "bandwidth"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                609.5,
+                609.5,
+                609.5,
+                609.5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costCt:renewal": {
+              "id": "cost:costCt:renewal",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costCt",
+                "key": "renewal"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                636,
+                636,
+                636,
+                636,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costMix:non_it_ct": {
+              "id": "cost:costMix:non_it_ct",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costMix",
+                "key": "non_it_ct"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                662.5,
+                662.5,
+                662.5,
+                662.5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costMix:marketing": {
+              "id": "cost:costMix:marketing",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costMix",
+                "key": "marketing"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                689,
+                689,
+                689,
+                689,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costMix:channel": {
+              "id": "cost:costMix:channel",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costMix",
+                "key": "channel"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                715.5,
+                715.5,
+                715.5,
+                715.5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            },
+            "cost:costMix:other": {
+              "id": "cost:costMix:other",
+              "subjectRef": {
+                "side": "cost",
+                "groupId": "costMix",
+                "key": "other"
+              },
+              "mode": "custom",
+              "annualInclValues": [
+                742,
+                742,
+                742,
+                742,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastValidAnnualInclValues": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "enabled": true,
+              "source": "manual",
+              "equalYears": 10,
+              "annualPercentages": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "lastChangeReason": "auto_created_upfront",
+              "lastChangedAt": "2026-09-09T06:51:15.172Z",
+              "updatedAt": "2026-09-09T06:51:15.172Z"
+            }
+          },
+          "rev_cashflow_excl": [
+            "26078.16",
+            "26078.16",
+            "26078.16",
+            "26078.12",
+            "0.00",
+            "0.00",
+            "0.00",
+            "0.00",
+            "0.00",
+            "0.00"
+          ],
+          "cost_cashflow_excl": [
+            "21074.42",
+            "21074.42",
+            "21074.42",
+            "21074.37",
+            "0.00",
+            "0.00",
+            "0.00",
+            "0.00",
+            "0.00",
+            "0.00"
+          ],
+          "it_rev_cashflow_excl": [
+            "25489.17",
+            "25489.17",
+            "25489.17",
+            "25489.13",
+            "0.00",
+            "0.00",
+            "0.00",
+            "0.00",
+            "0.00",
+            "0.00"
+          ],
+          "it_cost_cashflow_excl": [
+            "15752.16",
+            "15752.16",
+            "15752.16",
+            "15752.17",
+            "0.00",
+            "0.00",
+            "0.00",
+            "0.00",
+            "0.00",
+            "0.00"
+          ]
+        },
+        "irrNotice": "本系统未计算 IRR；不能按 IRR 筛选或排序，也不能解释为该项目无法求解。"
+      }
+    },
+    {
+      "route": "/lamber-bridge/simulate-benefit-calculation",
+      "request": {
+        "overrides": [
+          {
+            "subject": "rev_it_integration",
+            "inclTax": "800000"
+          }
+        ],
+        "sessionId": "04c6e656-096a-42be-abf0-d86eb6ae55d9"
+      },
+      "status": 200,
+      "response": {
+        "basis": "hypothetical",
+        "notice": "仅为假设试算；未保存、未生成方案、未回填任何科目。",
+        "result": {
+          "basis": "hypothetical",
+          "irrNotice": "本系统未计算 IRR；-- 不表示该项目无法求解。",
+          "projectId": "70d856df-61f2-4031-be74-899afb8da2a6",
+          "projectName": "桥接测试项目-benefit-real-model",
+          "customerName": "测试客户",
+          "schemeId": "bbfec444-0e65-495a-b95f-a078e3a7ca01",
+          "schemeName": "甄选前",
+          "stage": "pre_selection",
+          "snapshotVersion": 2,
+          "calculatedAt": "2026-09-09T10:33:40.396549+00:00",
+          "metrics": {
+            "npv": "591259.19",
+            "npvRate": "8.0042",
+            "marginRate": "0.8889",
+            "dynamicPayback": "1",
+            "irr": "--",
+            "itNpv": "607849.97",
+            "itNpvRate": "11.0090",
+            "itMarginRate": "0.9167"
+          },
+          "cashflow": [
+            {
+              "year": 1,
+              "cashIn": "189757.41",
+              "cashOut": "21074.42",
+              "netCash": "168682.99",
+              "cumNetCash": "168682.99",
+              "pv": "159889.09",
+              "cumPv": "159889.09"
+            },
+            {
+              "year": 2,
+              "cashIn": "189757.41",
+              "cashOut": "21074.42",
+              "netCash": "168682.99",
+              "cumNetCash": "337365.98",
+              "pv": "151553.64",
+              "cumPv": "311442.73"
+            },
+            {
+              "year": 3,
+              "cashIn": "189757.41",
+              "cashOut": "21074.42",
+              "netCash": "168682.99",
+              "cumNetCash": "506048.97",
+              "pv": "143652.74",
+              "cumPv": "455095.47"
+            },
+            {
+              "year": 4,
+              "cashIn": "189757.35",
+              "cashOut": "21074.37",
+              "netCash": "168682.98",
+              "cumNetCash": "674731.95",
+              "pv": "136163.73",
+              "cumPv": "591259.19"
+            },
+            {
+              "year": 5,
+              "cashIn": "0",
+              "cashOut": "0",
+              "netCash": "0",
+              "cumNetCash": "674731.95",
+              "pv": "0",
+              "cumPv": "591259.19"
+            },
+            {
+              "year": 6,
+              "cashIn": "0",
+              "cashOut": "0",
+              "netCash": "0",
+              "cumNetCash": "674731.95",
+              "pv": "0",
+              "cumPv": "591259.19"
+            },
+            {
+              "year": 7,
+              "cashIn": "0",
+              "cashOut": "0",
+              "netCash": "0",
+              "cumNetCash": "674731.95",
+              "pv": "0",
+              "cumPv": "591259.19"
+            },
+            {
+              "year": 8,
+              "cashIn": "0",
+              "cashOut": "0",
+              "netCash": "0",
+              "cumNetCash": "674731.95",
+              "pv": "0",
+              "cumPv": "591259.19"
+            },
+            {
+              "year": 9,
+              "cashIn": "0",
+              "cashOut": "0",
+              "netCash": "0",
+              "cumNetCash": "674731.95",
+              "pv": "0",
+              "cumPv": "591259.19"
+            },
+            {
+              "year": 10,
+              "cashIn": "0",
+              "cashOut": "0",
+              "netCash": "0",
+              "cumNetCash": "674731.95",
+              "pv": "0",
+              "cumPv": "591259.19"
+            }
+          ]
+        },
+        "explicitChanges": [
+          {
+            "kind": "explicit_override",
+            "subject": "rev_it_integration",
+            "before": "{\"inclTax\":\"106000\",\"taxRate\":\"6\"}",
+            "after": "{\"inclTax\":\"800000\",\"taxRate\":\"6\"}"
+          }
+        ],
+        "linkedChanges": [
+          {
+            "kind": "split_cleared",
+            "subject": "rev_it_integration",
+            "before": "[{\"incl_tax\":\"53000\",\"excl_tax\":\"50000\"},{\"incl_tax\":\"53000\",\"excl_tax\":\"50000\"}]",
+            "after": "[]"
+          },
+          {
+            "kind": "funding_plan",
+            "subject": "revenue:revIt:integration",
+            "before": "{\"id\":\"revenue:revIt:integration\",\"subjectRef\":{\"side\":\"revenue\",\"groupId\":\"revIt\",\"key\":\"integration\"},\"mode\":\"custom\",\"annualInclValues\":[26500,26500,26500,26500,0,0,0,0,0,0],\"lastValidAnnualInclValues\":[0,0,0,0,0,0,0,0,0,0],\"enabled\":true,\"source\":\"manual\",\"equalYears\":10,\"annualPercentages\":[0,0,0,0,0,0,0,0,0,0],\"lastChangeReason\":\"auto_created_upfront\"}",
+            "after": "{\"id\":\"revenue:revIt:integration\",\"subjectRef\":{\"side\":\"revenue\",\"groupId\":\"revIt\",\"key\":\"integration\"},\"mode\":\"custom\",\"annualInclValues\":[200000,200000,200000,200000,0,0,0,0,0,0],\"lastValidAnnualInclValues\":[26500,26500,26500,26500,0,0,0,0,0,0],\"enabled\":true,\"source\":\"manual\",\"equalYears\":10,\"annualPercentages\":[0,0,0,0,0,0,0,0,0,0],\"lastChangeReason\":\"manual_amount_sync\"}"
+          },
+          {
+            "kind": "annual_cashflow",
+            "subject": "rev_cashflow_excl",
+            "before": "[\"26078.16\",\"26078.16\",\"26078.16\",\"26078.12\",\"0.00\",\"0.00\",\"0.00\",\"0.00\",\"0.00\",\"0.00\"]",
+            "after": "[\"189757.41\",\"189757.41\",\"189757.41\",\"189757.35\",\"0.00\",\"0.00\",\"0.00\",\"0.00\",\"0.00\",\"0.00\"]"
+          },
+          {
+            "kind": "annual_cashflow",
+            "subject": "it_rev_cashflow_excl",
+            "before": "[\"25489.17\",\"25489.17\",\"25489.17\",\"25489.13\",\"0.00\",\"0.00\",\"0.00\",\"0.00\",\"0.00\",\"0.00\"]",
+            "after": "[\"189168.42\",\"189168.42\",\"189168.42\",\"189168.36\",\"0.00\",\"0.00\",\"0.00\",\"0.00\",\"0.00\",\"0.00\"]"
+          }
+        ],
+        "taxInclAutoFix": false
+      }
+    },
+    {
+      "route": "/lamber-bridge/calculate",
+      "request": {
+        "sessionId": "04c6e656-096a-42be-abf0-d86eb6ae55d9",
+        "projectId": "70d856df-61f2-4031-be74-899afb8da2a6",
+        "scenario": null
+      },
+      "status": 200,
+      "response": {
+        "basis": "saved_snapshot",
+        "irrNotice": "本系统未计算 IRR；-- 不表示该项目无法求解。",
+        "projectId": "70d856df-61f2-4031-be74-899afb8da2a6",
+        "projectName": "桥接测试项目-benefit-real-model",
+        "customerName": "测试客户",
+        "schemeId": "bbfec444-0e65-495a-b95f-a078e3a7ca01",
+        "schemeName": "甄选前",
+        "stage": "pre_selection",
+        "snapshotVersion": 2,
+        "calculatedAt": "2026-09-09T10:34:20.204625+00:00",
+        "metrics": {
+          "npv": "17538.87",
+          "npvRate": "0.2374",
+          "marginRate": "0.1919",
+          "dynamicPayback": "1",
+          "irr": "--",
+          "itNpv": "34129.64",
+          "itNpvRate": "0.6181",
+          "itMarginRate": "0.3820"
+        },
+        "cashflow": [
+          {
+            "year": 1,
+            "cashIn": "26078.16",
+            "cashOut": "21074.42",
+            "netCash": "5003.74",
+            "cumNetCash": "5003.74",
+            "pv": "4742.88",
+            "cumPv": "4742.88"
+          },
+          {
+            "year": 2,
+            "cashIn": "26078.16",
+            "cashOut": "21074.42",
+            "netCash": "5003.74",
+            "cumNetCash": "10007.48",
+            "pv": "4495.62",
+            "cumPv": "9238.50"
+          },
+          {
+            "year": 3,
+            "cashIn": "26078.16",
+            "cashOut": "21074.42",
+            "netCash": "5003.74",
+            "cumNetCash": "15011.22",
+            "pv": "4261.25",
+            "cumPv": "13499.76"
+          },
+          {
+            "year": 4,
+            "cashIn": "26078.12",
+            "cashOut": "21074.37",
+            "netCash": "5003.75",
+            "cumNetCash": "20014.97",
+            "pv": "4039.11",
+            "cumPv": "17538.87"
+          },
+          {
+            "year": 5,
+            "cashIn": "0",
+            "cashOut": "0",
+            "netCash": "0",
+            "cumNetCash": "20014.97",
+            "pv": "0",
+            "cumPv": "17538.87"
+          },
+          {
+            "year": 6,
+            "cashIn": "0",
+            "cashOut": "0",
+            "netCash": "0",
+            "cumNetCash": "20014.97",
+            "pv": "0",
+            "cumPv": "17538.87"
+          },
+          {
+            "year": 7,
+            "cashIn": "0",
+            "cashOut": "0",
+            "netCash": "0",
+            "cumNetCash": "20014.97",
+            "pv": "0",
+            "cumPv": "17538.87"
+          },
+          {
+            "year": 8,
+            "cashIn": "0",
+            "cashOut": "0",
+            "netCash": "0",
+            "cumNetCash": "20014.97",
+            "pv": "0",
+            "cumPv": "17538.87"
+          },
+          {
+            "year": 9,
+            "cashIn": "0",
+            "cashOut": "0",
+            "netCash": "0",
+            "cumNetCash": "20014.97",
+            "pv": "0",
+            "cumPv": "17538.87"
+          },
+          {
+            "year": 10,
+            "cashIn": "0",
+            "cashOut": "0",
+            "netCash": "0",
+            "cumNetCash": "20014.97",
+            "pv": "0",
+            "cumPv": "17538.87"
+          }
+        ]
+      }
+    },
+    {
+      "route": "/lamber-bridge/calculate-selection-fee",
+      "request": {
+        "quote": "300000",
+        "markup": "0",
+        "sessionId": "d581db74-f417-45f8-8420-542584796053"
+      },
+      "status": 200,
+      "response": {
+        "selection_fee": "2292.41",
+        "selection_fee_excl": "2292.41",
+        "selection_fee_incl": "2429.95",
+        "quote_excl": "283018.8679",
+        "quote_candidates": [],
+        "actual_cost": "302429.95",
+        "final_limit": "302429.95",
+        "quote": "300000.00"
+      }
+    },
+    {
+      "route": "/lamber-bridge/reverse-calculate-selection-fee",
+      "request": {
+        "limit": "106600",
+        "markup": "0",
+        "sessionId": "d581db74-f417-45f8-8420-542584796053"
+      },
+      "status": 422,
+      "response": {
+        "error": "该限价落在资费表 10 万元档位跳变形成的空档，无对应报价"
+      }
+    },
+    {
+      "route": "/lamber-bridge/reverse-calculate-selection-fee",
+      "request": {
+        "limit": "51834",
+        "markup": "0",
+        "sessionId": "d581db74-f417-45f8-8420-542584796053"
+      },
+      "status": 200,
+      "response": {
+        "selection_fee": "400.12",
+        "selection_fee_excl": "400.12",
+        "selection_fee_incl": "424.13",
+        "quote_excl": "48499.8773",
+        "quote_candidates": [
+          "51409.87",
+          "51410.00"
+        ],
+        "actual_cost": "51834.00",
+        "final_limit": "51834.00",
+        "quote": "51409.87"
+      }
+    }
+  ],
+  "snapshotUnchanged": true
+}

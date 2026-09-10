@@ -1,0 +1,31 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const vm = require('node:vm');
+const ts = require('typescript');
+const root = path.resolve(__dirname, '../..');
+// Preserve the preflight witness after the authorized catalog migration.
+const catalog = require('./fixtures/selection-page-before-catalog.json').catalog;
+const mod = {exports:{}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(root,'src-ui/src/lib/templateCompletion/catalog.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true}}).outputText,{module:mod,exports:mod.exports,require:()=>catalog});
+const {getCatalogCompletion} = mod.exports;
+const state = {formData:{gen_sign_it_content:'IT内容',gen_sign_ct_content:'CT内容'},revCollection:'收款',expPayment:'付款',projectBackground:'已填写项目背景'};
+const summarize = rows => ({total:rows.length,filled:rows.filter(r=>r.filled).length,unknown:rows.filter(r=>!r.evaluated).map(r=>r.key),background:rows.find(r=>r.key==='gen_proj_bg')});
+const approvalBefore = summarize(getCatalogCompletion('立项签批表.docx',{...state,completionValues:{gen_proj_bg:true}}));
+const approvalAfterRemoval = summarize(getCatalogCompletion('立项签批表.docx',state));
+assert.equal(approvalBefore.background.filled,true);
+assert.equal(approvalAfterRemoval.background.evaluated,false);
+assert.equal(approvalBefore.filled-approvalAfterRemoval.filled,1);
+const selection = summarize(getCatalogCompletion('甄选结果签批表.docx',state));
+assert.equal(selection.unknown.length,6);
+const build = fs.readFileSync(path.join(root,'agent-bridge/scripts/build-contract.mjs'),'utf8');
+const guard = build.split('\n').find(line=>line.includes("throw new Error('Invalid root text state key')"));
+assert.ok(guard);
+const validateStateKey = new Function('f',guard);
+assert.throws(()=>validateStateKey({kind:'derived',stateKey:'selectionBatchName'}),/Invalid root text state key/);
+validateStateKey({kind:'derived',completionSources:[{field:'selectionBatchName'}]});
+const paths=['src-ui/src/lib/templateCompletion/catalog.ts','src-tauri/src/agent_bridge/template_catalog.rs','src-tauri/src/agent_bridge/template_read.rs','agent-bridge/scripts/build-contract.mjs','agent-bridge/scripts/validate-template-catalog.mjs','src-ui/src/views/TemplateForms.tsx','src-ui/src/lib/templateCompletion/catalog.json'];
+const evidence={method:'Read-only execution of production getCatalogCompletion and extracted unchanged production build guard; no catalog, UI, business state or build contract writes.',approvalBefore,approvalAfterRemoval,selection,derivedWithStateKeyRejected:true,derivedWithoutStateKeyAcceptedBySameGuard:true,sourceHashes:Object.fromEntries(paths.map(file=>[file,crypto.createHash('sha256').update(fs.readFileSync(path.join(root,file))).digest('hex')]))};
+// Historical evidence is immutable; print the current witness without overwriting it.
+console.log(JSON.stringify(evidence,null,2));

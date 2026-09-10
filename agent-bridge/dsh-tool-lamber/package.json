@@ -10,8 +10,12 @@
     "lib"
   ],
   "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "build": "node ../scripts/build-contract.mjs && tsc",
+    "typecheck": "node ../scripts/build-contract.mjs && tsc --noEmit",
+    "test:scope": "npm run build && node ../scripts/test-project-scope.mjs",
+    "test:contract": "npm run build && node ../scripts/test-contract.mjs",
+    "test:template-read": "npm run build && node ../scripts/test-template-read.mjs",
+    "test:template-catalog": "npm run build && node ../scripts/test-template-catalog.mjs"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "^4.0.2",

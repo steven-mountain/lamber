@@ -1,0 +1,118 @@
+{
+  "method": "Computer Use in independent Lamber Scope Test app; real model; synthetic project; not human Gate B",
+  "workspace": "/private/tmp/lamber-template-20260906-workspace",
+  "projectId": "id_79962ba708eb402dbb198e9d770d6ab3",
+  "templateId": "ICT项目需求导入表模板.docx",
+  "templateVersion": 12,
+  "serviceContentCharacters": 337,
+  "completionBefore": "10/11",
+  "completionAfter": "11/11",
+  "savedFields": {
+    "gen_demand_service_content": "本项目为合成测试园区提供统一网络接入与业务协同支撑，建设范围覆盖办公区、公共服务区及设备机房。实施前需核实接入条件、点位、供电及布线路由，按双方确认的勘察记录实施。\n\n施工采用分区推进方式，先完成试点和联通测试，再逐步扩展；业务切换提前约定窗口，并在切换前完成回退演练、保留原网络。交付包括安装调试、访问稳定性验证、告警验证、使用培训及资料整理。验收按照双方确认的清单逐项检查，对未完成事项形成记录并约定处理方式。\n\n维护阶段明确联系人、问题反馈渠道及升级流程，确保关键业务异常可以定位、跟踪和复核。涉及客户现有系统的调整，需要在实施前核对影响范围并确认恢复方法。所有测试记录及交付材料均应保留版本，便于后续运维接续。本段为合成项目联调正文，用于验证人工审批和模板生成链路。",
+    "gen_demand_env_require": "客户提供机房、供电及布线条件，施工前完成联合勘察并书面确认。"
+  },
+  "approvalAudit": [
+    {
+      "request_id": "f68e2c9b-41e5-460d-998c-f4e362f327f9",
+      "approved": 1,
+      "decided_by": "user",
+      "decided_at": "2026-09-07T05:49:59.059991+00:00",
+      "args": {
+        "auditVersion": 2,
+        "modelArgs": {
+          "projectId": "id_79962ba708eb402dbb198e9d770d6ab3",
+          "templateId": "ICT项目需求导入表模板.docx",
+          "fields": {
+            "gen_demand_service_content": "本项目为合成测试园区提供统一网络接入与业务协同支撑，建设范围覆盖办公区、公共服务区及设备机房。实施前需核实接入条件、点位、供电及布线路由，按双方确认的勘察记录实施。\n\n施工采用分区推进方式，先完成试点和联通测试，再逐步扩展；业务切换提前约定窗口，并保留回退方案。交付包括安装调试、访问稳定性验证、告警验证、使用培训及资料整理。验收按照双方确认的清单逐项检查，对未完成事项形成记录并约定处理方式。\n\n维护阶段明确联系人、问题反馈渠道及升级流程，确保关键业务异常可以定位、跟踪和复核。涉及客户现有系统的调整，需要在实施前核对影响范围并确认恢复方法。所有测试记录及交付材料均应保留版本，便于后续运维接续。本段为合成项目联调正文，用于验证人工审批和模板生成链路。"
+          }
+        },
+        "userArgs": {
+          "projectId": "id_79962ba708eb402dbb198e9d770d6ab3",
+          "templateId": "ICT项目需求导入表模板.docx",
+          "fields": {
+            "gen_demand_service_content": "本项目为合成测试园区提供统一网络接入与业务协同支撑，建设范围覆盖办公区、公共服务区及设备机房。实施前需核实接入条件、点位、供电及布线路由，按双方确认的勘察记录实施。\n\n施工采用分区推进方式，先完成试点和联通测试，再逐步扩展；业务切换提前约定窗口，并在切换前完成回退演练、保留原网络。交付包括安装调试、访问稳定性验证、告警验证、使用培训及资料整理。验收按照双方确认的清单逐项检查，对未完成事项形成记录并约定处理方式。\n\n维护阶段明确联系人、问题反馈渠道及升级流程，确保关键业务异常可以定位、跟踪和复核。涉及客户现有系统的调整，需要在实施前核对影响范围并确认恢复方法。所有测试记录及交付材料均应保留版本，便于后续运维接续。本段为合成项目联调正文，用于验证人工审批和模板生成链路。"
+          }
+        },
+        "approvedArgs": {
+          "projectId": "id_79962ba708eb402dbb198e9d770d6ab3",
+          "templateId": "ICT项目需求导入表模板.docx",
+          "fields": {
+            "gen_demand_service_content": "本项目为合成测试园区提供统一网络接入与业务协同支撑，建设范围覆盖办公区、公共服务区及设备机房。实施前需核实接入条件、点位、供电及布线路由，按双方确认的勘察记录实施。\n\n施工采用分区推进方式，先完成试点和联通测试，再逐步扩展；业务切换提前约定窗口，并在切换前完成回退演练、保留原网络。交付包括安装调试、访问稳定性验证、告警验证、使用培训及资料整理。验收按照双方确认的清单逐项检查，对未完成事项形成记录并约定处理方式。\n\n维护阶段明确联系人、问题反馈渠道及升级流程，确保关键业务异常可以定位、跟踪和复核。涉及客户现有系统的调整，需要在实施前核对影响范围并确认恢复方法。所有测试记录及交付材料均应保留版本，便于后续运维接续。本段为合成项目联调正文，用于验证人工审批和模板生成链路。"
+          }
+        },
+        "intent": {
+          "workspaceId": "7c9e82b4-aeaa-4250-8b07-d32f218e29e5",
+          "stateVersion": 6,
+          "projectName": "3A流式验收项目",
+          "templateName": "ICT项目需求导入表模板.docx",
+          "targetDescription": "需求导入表已保存正文 · ICT项目需求导入表模板.docx",
+          "fields": [
+            {
+              "key": "gen_demand_service_content",
+              "label": "服务内容",
+              "previousValue": "",
+              "proposedValue": "本项目为合成测试园区提供统一网络接入与业务协同支撑，建设范围覆盖办公区、公共服务区及设备机房。实施前需核实接入条件、点位、供电及布线路由，按双方确认的勘察记录实施。\n\n施工采用分区推进方式，先完成试点和联通测试，再逐步扩展；业务切换提前约定窗口，并保留回退方案。交付包括安装调试、访问稳定性验证、告警验证、使用培训及资料整理。验收按照双方确认的清单逐项检查，对未完成事项形成记录并约定处理方式。\n\n维护阶段明确联系人、问题反馈渠道及升级流程，确保关键业务异常可以定位、跟踪和复核。涉及客户现有系统的调整，需要在实施前核对影响范围并确认恢复方法。所有测试记录及交付材料均应保留版本，便于后续运维接续。本段为合成项目联调正文，用于验证人工审批和模板生成链路。"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request_id": "b589b810-92e8-4aea-b313-8a3b9622a7f7",
+      "approved": 1,
+      "decided_by": "user",
+      "decided_at": "2026-09-07T05:58:38.818992+00:00",
+      "args": {
+        "auditVersion": 2,
+        "modelArgs": {
+          "fields": {
+            "gen_demand_env_require": "客户提供机房、供电及布线条件，施工前完成联合勘察。"
+          },
+          "projectId": "id_79962ba708eb402dbb198e9d770d6ab3",
+          "templateId": "ICT项目需求导入表模板.docx"
+        },
+        "userArgs": {
+          "fields": {
+            "gen_demand_env_require": "客户提供机房、供电及布线条件，施工前完成联合勘察并书面确认。"
+          },
+          "projectId": "id_79962ba708eb402dbb198e9d770d6ab3",
+          "templateId": "ICT项目需求导入表模板.docx"
+        },
+        "approvedArgs": {
+          "fields": {
+            "gen_demand_env_require": "客户提供机房、供电及布线条件，施工前完成联合勘察并书面确认。"
+          },
+          "projectId": "id_79962ba708eb402dbb198e9d770d6ab3",
+          "templateId": "ICT项目需求导入表模板.docx"
+        },
+        "intent": {
+          "workspaceId": "7c9e82b4-aeaa-4250-8b07-d32f218e29e5",
+          "stateVersion": 9,
+          "projectName": "3A流式验收项目",
+          "templateName": "ICT项目需求导入表模板.docx",
+          "targetDescription": "需求导入表已保存正文 · ICT项目需求导入表模板.docx",
+          "fields": [
+            {
+              "key": "gen_demand_env_require",
+              "label": "部署环境要求",
+              "previousValue": "回归验证-gen_demand_env_require",
+              "proposedValue": "客户提供机房、供电及布线条件，施工前完成联合勘察。"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "duplicateApprovalAfterFix": false,
+  "docx": {
+    "path": "/private/tmp/lamber-template-20260906-workspace/3A/ICT项目需求导入表-3A流式验收项目.docx",
+    "sha256": "8102b8bb08d7e9de03cce2d85d29e35e6af660e9badb012fb9c3d080bb954797",
+    "modifiedAt": "2026-09-07T13:59:09.785506",
+    "approvedTextMatches": {
+      "gen_demand_service_content": true,
+      "gen_demand_env_require": true
+    },
+    "embeddedImages": 2
+  },
+  "humanGateB": "pending"
+}

@@ -1,0 +1,42 @@
+{
+  "method": "Computer Use actual desktop editing and main-hub IPC; assistant final text read back from same synthetic-session dsh event log (reasoning excluded)",
+  "projectId": "1283a3e9-fc87-41d6-8504-86ee8e61dfc3",
+  "desktopClearThenReenter": [
+    106000,
+    0,
+    800000
+  ],
+  "desktopAnnualPlan": [
+    200000,
+    200000,
+    200000,
+    200000,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "desktopRestoreNotice": "金额从零恢复，已按最近一次有效年度结构自动恢复",
+  "desktopMetrics": {
+    "npv": "591259.19",
+    "npvRate": "800.42%",
+    "marginRate": "88.89%",
+    "dynamicPayback": "1",
+    "irr": "--",
+    "itNpv": "607849.97",
+    "itNpvRate": "1100.90%",
+    "itMarginRate": "91.67%"
+  },
+  "crossCheckedAllEightMetricsAgainstRealTool": true,
+  "appViewDuringFinalTool": "hub; editor not opened after restart",
+  "finalModelAnswer": "复验完成，结果与上次一致。以下均为**假设试算（未保存、未回填）**，金额逐字引用自本次工具返回。\n\n## 显式覆盖\n| 科目 | 覆盖前 | 假设覆盖后 |\n|---|---|---|\n| rev_it_integration（系统集成服务收入） | 含税 106000 元 / 税率 6% | 含税 800000 元 / 税率 6% |\n\n## 联动变更\n**① 资金计划（revenue:revIt:integration，custom）**\n- 覆盖前 annualInclValues：`[26500, 26500, 26500, 26500, 0,0,0,0,0,0]`\n- 假设覆盖后 annualInclValues：`[200000, 200000, 200000, 200000, 0,0,0,0,0,0]`\n- lastValidAnnualInclValues 由 `[200000,200000,200000,200000,0,0,0,0,0,0]` 变为 `[26500,26500,26500,26500,0,0,0,0,0,0]`；lastChangeReason 由 restored_after_zero → manual_amount_sync。\n\n**② rev_cashflow_excl（收入现金流）**\n| 年度 | 覆盖前 | 假设覆盖后 |\n|---|---|---|\n| 第1年 | 26078.16 | 189757.41 |\n| 第2年 | 26078.16 | 189757.41 |\n| 第3年 | 26078.16 | 189757.41 |\n| 第4年 | 26078.12 | 189757.35 |\n| 第5–10年 | 0.00 | 0.00 |\n\n**③ it_rev_cashflow_excl（IT收入现金流）**\n| 年度 | 覆盖前 | 假设覆盖后 |\n|---|---|---|\n| 第1年 | 25489.17 | 189168.42 |\n| 第2年 | 25489.17 | 189168.42 |\n| 第3年 | 25489.17 | 189168.42 |\n| 第4年 | 25489.13 | 189168.36 |\n| 第5–10年 | 0.00 | 0.00 |\n\n说明：第4年数值与前三年不同，已逐年列示（未合并、未换算）。\n\n## 全部效益指标（假设）\n| 指标 | 已保存（甄选前 v5） | 假设覆盖后 |\n|---|---|---|\n| NPV | 17538.87 | 591259.19 |\n| NPV率 | 0.2374 | 8.0042 |\n| 利润率 | 0.1919 | 0.8889 |\n| 动态回收期 | 1 | 1 |\n| IRR | --（本系统未计算） | -- |\n| IT NPV | 34129.64 | 607849.97 |\n| IT NPV率 | 0.6181 | 11.0090 |\n| IT 利润率 | 0.3820 | 0.9167 |\n\n## 前四年现金流表（假设）\n| 年度 | 流入 | 流出 | 净额 | 累计净额 | 现值 | 累计现值 |\n|---|---|---|---|---|---|---|\n| 第1年 | 189757.41 | 21074.42 | 168682.99 | 168682.99 | 159889.09 | 159889.09 |\n| 第2年 | 189757.41 | 21074.42 | 168682.99 | 337365.98 | 151553.64 | 311442.73 |\n| 第3年 | 189757.41 | 21074.42 | 168682.99 | 506048.97 | 143652.74 | 455095.47 |\n| 第4年 | 189757.35 | 21074.37 | 168682.98 | 674731.95 | 136163.73 | 591259.19 |\n| 第5–10年 | 0 | 0 | 0 | 674731.95 | 0 | 591259.19 |\n\n注：第4年流入/流出/净额与前三年不同，已逐年列示，未合并。此假设试算不会被保存；如需以已保存值为准核对，我可重新运行 `run_benefit_calculation`。IRR 本系统未计算（“--”不代表无法求解）。",
+  "finalModelTime": 1788939101819,
+  "latestSnapshotAfterAI": 5,
+  "latestSavedIntegration": "106000",
+  "originalV2SplitPreserved": true,
+  "writes": "Only product UI saved zero/restored synthetic project. No AI writes and no real project mutations.",
+  "temporaryAiSettingsRestored": true,
+  "testAppQuit": true
+}

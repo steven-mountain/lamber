@@ -1,0 +1,25 @@
+title = "Lamber publication secret scan"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Business field identifier: approval amount below 500k, not a credential"
+regexTarget = "secret"
+regexes = ['''^approval_amount_below_500k$''']
+
+[[rules.allowlists]]
+description = "Five independently verified source SHA256 digests in the frozen catalog evidence"
+condition = "AND"
+paths = ['''(^|/)docs/verification/template-catalog-extension-evidence\.json$''']
+regexTarget = "secret"
+regexes = [
+  '''^5f842cfbb994342d726556b957b595acbda7febf70b41cdef33da56b2fb508df$''',
+  '''^8d0ef2a32276df4ffb6e79c90f7907fa9c12833c0258bb9e8a265922aeae911f$''',
+  '''^e22baed3a728859ac9d96c610f7a7bc5f3eb9f5a53dbb4a4085fb817fe0722b2$''',
+  '''^e9dbf268d25297aab8337bcd229d48fd6f3e0c28a6b400dd589ff8c226b90526$''',
+  '''^ee6e77e125f0b1b52ed7ef16910048a971da08479aa58839f6940671f8dc2a6e$''',
+]

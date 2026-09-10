@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import { runBenefitCalculation, writeTestMarker, queryProjects, fillTemplateFields, readTemplateFields, isGatedTool } from '../dsh-tool-lamber/lib/index.js';
+import { applyProjectScope, trustedSessionId } from '../dsh-tool-lamber/lib/projectScope.js';
+const signal = new AbortController().signal;
+let requests = 0;
+const originalFetch = globalThis.fetch;
+process.env.LAMBER_BRIDGE_URL = 'http://127.0.0.1:1';
+process.env.LAMBER_BRIDGE_TOKEN = 'synthetic-test-token';
+try {
+  globalThis.fetch = async (_url, options) => {
+    requests++;
+    const body = JSON.parse(options.body);
+    assert.equal(body.sessionId, 'trusted-acp');
+    return new Response(JSON.stringify({ error: '此会话只能访问绑定项目' }), { status: 403 });
+  };
+  assert.throws(() => trustedSessionId({}), /可信/);
+  await assert.rejects(runBenefitCalculation.execute({ projectId: 'A', sessionId: 'spoof' }, { signal }), /可信/);
+  await assert.rejects(writeTestMarker.execute({}, { signal }), /可信/);
+  await assert.rejects(queryProjects.execute({}, { signal }), /可信/);
+  assert.equal(isGatedTool('query_projects'), false);
+  assert.equal(isGatedTool('read_template_fields'), false);
+  await assert.rejects(readTemplateFields.execute({templateId:'需求导入表'}, {signal}), /可信/);
+  assert.equal(isGatedTool('fill_template_fields'), true);
+  await assert.rejects(fillTemplateFields.execute({ projectId: 'A', templateId: '需求导入表.docx', fields: { gen_demand_env_require: '测试' } }, { signal }), /可信/);
+  assert.equal(requests, 0, 'missing agent fails before network or filesystem');
+  let pre, guard;
+  applyProjectScope({ on: (_event, handler) => { pre = handler; }, tools: { guard: handler => { guard = handler; } } });
+  const exec = { name: 'run_benefit_calculation', arguments: { projectId: 'B', sessionId: 'spoof' }, agent: { session: { id: 'trusted-acp' } }, signal };
+  let continued = false;
+  assert.equal((await pre(exec, async () => { continued = true; return { kind: 'allow' }; })).kind, 'deny');
+  assert.equal(continued, false, 'hard denial must not enter human approval');
+  for (const name of ['run_code','bash','glob']) assert.match(guard({ ...exec, name }), /拒绝/);
+  assert.match(guard({ ...exec, agent: undefined }), /可信/);
+  await assert.rejects(runBenefitCalculation.execute(exec.arguments, exec), /此会话只能访问绑定项目/);
+  assert.equal(requests, 2);
+  assert.equal(guard({ ...exec, name: 'query_projects' }), undefined);
+  await assert.rejects(queryProjects.execute({}, exec), /此会话只能访问绑定项目/);
+  assert.equal(requests, 3);
+  assert.equal(guard({ ...exec, name: 'fill_template_fields' }), undefined);
+  await assert.rejects(fillTemplateFields.execute({ projectId: 'B', templateId: '需求导入表.docx', fields: { gen_demand_env_require: '测试' } }, exec), /此会话只能访问绑定项目/);
+  assert.equal(requests, 4);
+  await assert.rejects(readTemplateFields.execute({templateId:"需求导入表"},exec), /此会话只能访问绑定项目/);
+  assert.equal(requests,5);
+  console.log('PASS: missing agent, spoofed session parameter, hard deny before approval, unknown tool guard, execute-time recheck');
+} finally { globalThis.fetch = originalFetch; }

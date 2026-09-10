@@ -1,147 +1,96 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
+import { amendedArguments, readableArguments, remainingSeconds, type ApprovalPrompt } from '../../ai/approvalReview';
 
-/** Backend event carrying one pending approval question. */
 export const AI_APPROVAL_REQUEST_EVENT = "ai://approval-request";
 
-/** Mirrors `agent_bridge::approval::ApprovalPrompt`. */
-interface ApprovalPrompt {
-  requestId: string;
-  toolName: string;
-  callId: string | null;
-  reason: string | null;
-  args: unknown;
-  timeoutSeconds: number;
+function ApprovalReview({ current, onSettled }: { current: ApprovalPrompt; onSettled: (id: string) => void }) {
+  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(current.intent?.fields.map(field => [field.key, field.proposedValue]) ?? []));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [remaining, setRemaining] = useState(() => remainingSeconds(current.expiresAt));
+  useEffect(() => {
+    const tick = () => {
+      const seconds = remainingSeconds(current.expiresAt);
+      setRemaining(seconds);
+      if (!seconds) onSettled(current.requestId);
+    };
+    tick();
+    const timer = window.setInterval(tick, 500);
+    return () => window.clearInterval(timer);
+  }, [current, onSettled]);
+  const modifiedArgs = amendedArguments(current, values);
+  const respond = async (approved: boolean) => {
+    if (busy || !remainingSeconds(current.expiresAt)) return;
+    setBusy(true); setError('');
+    try {
+      await invoke("ai_resolve_approval", { requestId: current.requestId, approved, modifiedArgs: approved ? modifiedArgs ?? null : null });
+      onSettled(current.requestId);
+    } catch (cause) {
+      setError(String(cause)); // Keep the review visible; a rejected edit must never silently approve.
+    } finally { setBusy(false); }
+  };
+  return <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm">
+    <section role="dialog" aria-modal="true" aria-labelledby="approval-heading" className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-background p-5 shadow-xl">
+      <header className="shrink-0">
+        <h2 id="approval-heading" className="text-lg font-semibold text-foreground">审核 AI 写入内容</h2>
+        <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{current.reason ?? '该操作需要你确认后才会执行。'}</p>
+        {current.intent ? <div className="mt-3 rounded-lg bg-muted/60 p-3 text-sm">
+          <p>项目：<strong>{current.intent.projectName}</strong></p>
+          <p>表单：{current.intent.templateName}</p>
+          <p className="mt-1 text-xs text-muted-foreground">写入位置：{current.intent.targetDescription}</p>
+        </div> : <p className="mt-2 text-sm">操作：{current.toolName}</p>}
+      </header>
+      <div className="mt-4 min-h-0 space-y-4 overflow-y-auto">
+        {current.intent ? current.intent.fields.map(field => <section key={field.key} className="rounded-lg bg-muted/40 p-3">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h3 className="font-semibold">{field.label}</h3>
+            <span className="rounded-md bg-card px-2 py-1 text-xs text-secondary-foreground">{field.previousValue ? '覆盖已有内容' : '填入空白字段'}</span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div><p className="mb-1 text-xs text-muted-foreground">当前保存内容</p>
+              <div className="min-h-40 whitespace-pre-wrap break-words rounded-lg bg-card p-3 text-sm leading-7">{field.previousValue || '（尚未填写）'}</div>
+            </div>
+            <div><label className="mb-1 block text-xs text-muted-foreground" htmlFor={`review-${field.key}`}>拟写入内容（可修改）</label>
+              <textarea id={`review-${field.key}`} value={values[field.key] ?? ''} disabled={busy || remaining === 0} rows={12} maxLength={20000}
+                onChange={event => setValues(previous => ({...previous,[field.key]:event.target.value}))}
+                className="w-full resize-y rounded-lg bg-card p-3 text-sm leading-7 outline-none focus:ring-2 focus:ring-ring" />
+              <p className="text-right text-xs tabular-nums text-muted-foreground">{(values[field.key] ?? '').length} 字</p>
+              {values[field.key] !== field.proposedValue && <details className="mt-1 text-xs text-muted-foreground"><summary className="cursor-pointer">查看 AI 原始建议</summary><p className="whitespace-pre-wrap p-2 leading-6">{field.proposedValue}</p></details>}
+            </div>
+          </div>
+        </section>) : readableArguments(current.args).map((field,index) => <div key={index} className="rounded-lg bg-muted/50 p-3"><p className="text-xs text-muted-foreground">{field.label}</p><p className="mt-1 whitespace-pre-wrap break-words text-sm leading-7">{field.text}</p></div>)}
+      </div>
+      <footer className="mt-4 shrink-0">
+        {error && <p role="alert" className="mb-2 whitespace-pre-wrap text-sm text-destructive">{error}</p>}
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="text-xs text-muted-foreground"><p>最长审核时间 {Math.ceil(current.timeoutSeconds / 60)} 分钟，可先阅读、对照再修改。</p><p className="mt-1 tabular-nums">{remaining} 秒后自动拒绝；未确认不会写入。</p></div>
+          <div className="flex gap-2"><button type="button" disabled={busy || !remaining} onClick={() => void respond(false)} className="rounded-lg bg-muted px-4 py-2 text-sm disabled:opacity-50">拒绝</button>
+            <button type="button" disabled={busy || !remaining} onClick={() => void respond(true)} className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50">{modifiedArgs ? '修改后批准' : '批准写入'}</button></div>
+        </div>
+      </footer>
+    </section>
+  </div>;
 }
 
-/**
- * Confirmation dialog for agent tool calls that require a human decision.
- *
- * Mounted at the app root rather than inside the AI panel on purpose: the
- * backend parks a dsh tool call waiting for this answer, so a listener that
- * disappeared when the panel closed would turn every approval into a timeout.
- *
- * Deliberately plain — this exists to make the approval channel usable and
- * demonstrable, not to be the final UI.
- */
 export default function AgentApprovalDialog() {
   const [queue, setQueue] = useState<ApprovalPrompt[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [remaining, setRemaining] = useState<number | null>(null);
-  const current = queue[0] ?? null;
-  // Read inside the countdown effect without making it a dependency.
-  const currentRef = useRef<ApprovalPrompt | null>(null);
-  currentRef.current = current;
-
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let unlistenSettled: (() => void) | undefined;
     let disposed = false;
+    void listen<{requestId:string}>('ai://approval-settled', event => {
+      setQueue(items => items.filter(item => item.requestId !== event.payload.requestId));
+    }).then(handler => { if (disposed) handler(); else unlistenSettled = handler; })
+      .catch(error => console.warn('Failed to listen for approval outcomes:', error));
     listen<ApprovalPrompt>(AI_APPROVAL_REQUEST_EVENT, event => {
-      setQueue(prev =>
-        prev.some(item => item.requestId === event.payload.requestId)
-          ? prev
-          : [...prev, event.payload],
-      );
-    })
-      .then(handler => {
-        if (disposed) handler();
-        else unlisten = handler;
-      })
-      .catch(error => console.warn("Failed to listen for approval requests:", error));
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
+      if (remainingSeconds(event.payload.expiresAt) > 0) setQueue(prev => prev.some(item => item.requestId === event.payload.requestId) ? prev : [...prev,event.payload]);
+    }, { target: getCurrentWebviewWindow().label }).then(handler => { if (disposed) handler(); else unlisten = handler; })
+      .catch(error => console.warn('Failed to listen for approval requests:',error));
+    return () => { disposed = true; unlisten?.(); unlistenSettled?.(); };
   }, []);
-
-  // Mirror the backend's own deadline so the dialog cannot look actionable
-  // after the call has already been auto-rejected.
-  useEffect(() => {
-    if (!current) {
-      setRemaining(null);
-      return;
-    }
-    setRemaining(current.timeoutSeconds);
-    const requestId = current.requestId;
-    const timer = window.setInterval(() => {
-      setRemaining(prev => {
-        if (prev === null) return null;
-        if (prev > 1) return prev - 1;
-        if (currentRef.current?.requestId === requestId) {
-          setQueue(items => items.filter(item => item.requestId !== requestId));
-        }
-        return null;
-      });
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [current]);
-
-  const respond = useCallback(
-    async (approved: boolean) => {
-      if (!current || busy) return;
-      setBusy(true);
-      try {
-        await invoke("ai_resolve_approval", { requestId: current.requestId, approved });
-      } catch (error) {
-        // A timed-out request is already denied on the backend; drop it either way.
-        console.warn("Failed to resolve approval request:", error);
-      } finally {
-        setQueue(items => items.filter(item => item.requestId !== current.requestId));
-        setBusy(false);
-      }
-    },
-    [busy, current],
-  );
-
-  if (!current) return null;
-
-  const argsText =
-    current.args === null || current.args === undefined
-      ? "（无参数）"
-      : JSON.stringify(current.args, null, 2);
-
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-background p-5 shadow-xl">
-        <h2 className="text-base font-semibold text-foreground">AI 请求执行操作</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {current.reason ?? "该操作需要你确认后才会执行。"}
-        </p>
-
-        <div className="mt-4 rounded-xl bg-muted p-3">
-          <div className="text-xs text-muted-foreground">工具</div>
-          <div className="font-mono text-sm text-foreground">{current.toolName}</div>
-          <div className="mt-3 text-xs text-muted-foreground">参数</div>
-          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-foreground">
-            {argsText}
-          </pre>
-        </div>
-
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {remaining !== null ? `${remaining} 秒后自动拒绝` : "已超时"}
-          </span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => respond(false)}
-              className="rounded-lg bg-muted px-4 py-2 text-sm text-foreground disabled:opacity-50"
-            >
-              拒绝
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => respond(true)}
-              className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
-            >
-              确认执行
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  const current = queue[0];
+  return current ? <ApprovalReview key={current.requestId} current={current} onSettled={id => setQueue(items => items.filter(item => item.requestId !== id))} /> : null;
 }

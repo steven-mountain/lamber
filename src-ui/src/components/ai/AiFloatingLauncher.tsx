@@ -1,14 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { emit, emitTo } from '@tauri-apps/api/event';
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { AI_CONTEXT_REFRESH_REQUEST_EVENT } from '../../store/useAiContextStore';
+import { openAiAssistantWindow } from '../../services/aiAssistantWindow';
 import AppIcon from '../icons/AppIcon';
 
-const AI_ASSISTANT_LABEL = 'ai-assistant';
 const AI_LAUNCHER_POSITION_KEY = 'lamber_ai_launcher_position';
-const AI_WINDOW_POSITION_KEY = 'lamber_ai_window_position';
-const AI_CURRENT_VIEW_KEY = 'lamber_ai_current_view';
 const BUTTON_SIZE = 56;
 const SCREEN_MARGIN = 16;
 
@@ -70,11 +65,9 @@ function savePosition(key: string, position: FloatingPosition) {
   localStorage.setItem(key, JSON.stringify(position));
 }
 
-function isTauriRuntime() {
-  return typeof window !== 'undefined' && Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
-}
-
 export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherProps) {
+  const [openError, setOpenError] = useState('');
+  const [opening, setOpening] = useState(false);
   const [position, setPosition] = useState<FloatingPosition>(() => (
     clampLauncherPosition(readPosition(AI_LAUNCHER_POSITION_KEY) || getDefaultLauncherPosition())
   ));
@@ -136,52 +129,10 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
   }, []);
 
   const openAiWindow = async () => {
-    localStorage.setItem(AI_CURRENT_VIEW_KEY, currentView);
-
-    if (!isTauriRuntime()) {
-      window.location.hash = `#/ai-assistant?view=${encodeURIComponent(currentView)}`;
-      return;
-    }
-
-    const existing = await WebviewWindow.getByLabel(AI_ASSISTANT_LABEL);
-    if (existing) {
-      await existing.show();
-      await existing.setFocus();
-      await emitTo(AI_ASSISTANT_LABEL, 'lamber-ai-view-changed', { view: currentView });
-      await emit(AI_CONTEXT_REFRESH_REQUEST_EVENT, { view: currentView });
-      return;
-    }
-
-    const savedWindowPosition = readPosition(AI_WINDOW_POSITION_KEY);
-    const aiWindow = new WebviewWindow(AI_ASSISTANT_LABEL, {
-      url: `/#/ai-assistant?view=${encodeURIComponent(currentView)}`,
-      title: 'Lamber AI 助手',
-      width: 780,
-      height: 680,
-      minWidth: 360,
-      minHeight: 480,
-      decorations: false,
-      transparent: true,
-      backgroundColor: [0, 0, 0, 0],
-      alwaysOnTop: true,
-      resizable: true,
-      shadow: false,
-      skipTaskbar: false,
-      center: false,
-      preventOverflow: true,
-      ...(savedWindowPosition ? { x: savedWindowPosition.x, y: savedWindowPosition.y } : {}),
-    });
-
-    aiWindow.once('tauri://created', () => {
-      console.log('AI assistant window created');
-      emit(AI_CONTEXT_REFRESH_REQUEST_EVENT, { view: currentView }).catch((error) => {
-        console.warn('Failed to request AI context refresh:', error);
-      });
-    });
-
-    aiWindow.once('tauri://error', (event) => {
-      console.error('AI assistant window error', event);
-    });
+    setOpenError(''); setOpening(true);
+    try { await openAiAssistantWindow(currentView); }
+    catch (error) { setOpenError(`AI 窗口打开失败：${String(error)}`); }
+    finally { setOpening(false); }
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -244,9 +195,15 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
   };
 
   return (
+    <>
+    {openError && <div role="alert" className="fixed bottom-24 right-4 z-50 max-w-sm rounded-lg bg-card p-4 text-caption text-destructive shadow-md">
+      {openError}
+      <button type="button" className="ml-2 rounded-md bg-muted px-3 py-2 text-foreground" onClick={() => void openAiWindow()}>重试</button>
+    </div>}
     <button
       ref={launcherRef}
       type="button"
+      aria-busy={opening}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={(event) => {
@@ -267,8 +224,9 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
       aria-label="打开 AI 助手"
     >
       <span className="flex h-full w-full items-center justify-center rounded-full border border-slate-200 bg-white text-blue-600 shadow-md transition-[background-color,color,box-shadow,transform] duration-150 group-hover:scale-105 group-hover:bg-blue-600 group-hover:text-white group-hover:shadow-lg group-active:scale-95">
-        <AppIcon name="ai" size={28} />
+        <AppIcon name={opening ? 'loading' : 'ai'} size={28} />
       </span>
     </button>
+    </>
   );
 }

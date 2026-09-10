@@ -81,9 +81,14 @@ export async function postBridge<T>(
 
   const text = await response.text();
   if (!response.ok) {
-    throw new LamberBridgeError(
-      `lamber bridge ${path} returned ${response.status}: ${text.slice(0, 500)}`,
-    );
+    // Preserve the backend's business explanation without exposing transport
+    // paths/status codes as part of the model-visible business error.
+    let message = 'AI 本地服务未能完成请求，请稍后重新操作。';
+    try {
+      const body = JSON.parse(text) as { error?: unknown };
+      if (typeof body.error === 'string' && body.error.trim()) message = body.error;
+    } catch { /* Non-JSON transport failure: use the readable generic message. */ }
+    throw new LamberBridgeError(message);
   }
   try {
     return JSON.parse(text) as T;

@@ -5,12 +5,35 @@ use std::path::PathBuf;
 use tauri::AppHandle;
 use tauri::Manager;
 
+pub const DEFAULT_AI_AGENT_MODEL: &str = "deepseek-v4-flash";
+pub const DEFAULT_AI_AGENT_BASE_URL: &str = "https://api.deepseek.com";
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AiAgentSettings {
+    pub api_key: Option<String>,
+    pub model: String,
+    pub base_url: String,
+}
+
+impl Default for AiAgentSettings {
+    fn default() -> Self {
+        Self {
+            api_key: None,
+            model: DEFAULT_AI_AGENT_MODEL.to_string(),
+            base_url: DEFAULT_AI_AGENT_BASE_URL.to_string(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     pub module_paths: HashMap<String, String>,
     pub recent_workspaces: Vec<crate::workspace::RecentWorkspace>,
     pub last_opened_workspace_path: Option<String>,
+    #[serde(default)]
+    pub ai_agent: AiAgentSettings,
 }
 
 pub struct ConfigManager {
@@ -71,5 +94,22 @@ impl ConfigManager {
         self.resolve_module_path(module_id, "templates")?;
         self.resolve_module_path(module_id, "output")?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_config_without_ai_settings_keeps_compatible_defaults() {
+        let config: AppConfig = serde_json::from_str(
+            r#"{"modulePaths":{},"recentWorkspaces":[],"lastOpenedWorkspacePath":null}"#,
+        )
+        .expect("deserialize legacy config");
+
+        assert_eq!(config.ai_agent.model, DEFAULT_AI_AGENT_MODEL);
+        assert_eq!(config.ai_agent.base_url, DEFAULT_AI_AGENT_BASE_URL);
+        assert!(config.ai_agent.api_key.is_none());
     }
 }

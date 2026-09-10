@@ -1,0 +1,3 @@
+# User-editable profile layer. Lamber model and endpoint settings are written to
+# a separate generated patch so this file remains stable across app upgrades.
+[]

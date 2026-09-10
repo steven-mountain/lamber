@@ -1,4 +1,19 @@
+import TechItemsCard from './TechItemsCard';
+import StructureReverseCard from './StructureReverseCard';
+import { structureReverseIntent, structureReversePrompt } from '../../ai/structureReverseIntent';
+import { appReceiptContext } from '../../ai/appReceiptContext';
+import InquiryCard from './InquiryCard';
+import { templateListIntent, templateListPrompt, techProposal } from '../../ai/templateListIntent';
+import DocumentGenerationCards from './DocumentGenerationCards';
+import { documentTemplateRequests, documentGenerationPrompt } from '../../ai/documentGenerationIntent';
+import { GENERAL_SESSION_LABEL, sessionScopePrompt } from '../../ai/sessionScopePolicy';
+import { demandImageCompletionPrompt, isDemandFormRequest, wantsDemandImageCompletion } from '../../ai/demandFormIntent';
+import AiSessionProjectPicker from './AiSessionProjectPicker';
+import DemandImageCompletionCards from "./DemandImageCompletionCards";
+import TemplateImageCard from './TemplateImageCard';
+import { wantsTemplateImages, templateImagePrompt } from '../../ai/templateImageIntent';
 import { useEffect, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { SYSTEM_PROMPT_KNOWLEDGE } from '../../lib/knowledgeBase';
 import {
@@ -6,7 +21,10 @@ import {
   AI_CONTEXT_UPDATED_EVENT,
   useAiContextStore,
 } from '../../store/useAiContextStore';
-import { AiRuntime } from '../../ai/AiRuntime';
+import AiAgentSettingsCard from '../settings/AiAgentSettingsCard';
+import { getAiAgentSettings, type AiAgentSettings } from '../../ai/agentSettings';
+import { PromptRenderer } from '../../ai/PromptRenderer';
+import { DshRuntime } from '../../ai/DshRuntime';
 import type { AiChatMessage, AiImageAttachment, PromptAST, PromptRule } from '../../ai/types';
 import { buildAiChatContext } from '../../ai/context/buildAiChatContext';
 import { loadAiTemplateAsset } from '../../services/aiProjectContextService';
@@ -16,7 +34,6 @@ import {
   parseTemplateAssetSelection,
   type AiTemplateAssetSelection,
 } from '../../ai/templateAssetSelection';
-import { useStreamingParser } from '../../hooks/useStreamingParser';
 import MessageBubble from '../MessageBubble';
 import AiInputBox from './AiInputBox';
 import AiSessionSidebar from './AiSessionSidebar';
@@ -52,6 +69,7 @@ function formatLastUpdated(timestamp?: number) {
 }
 
 export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
+  const [pendingReceipts, setPendingReceipts] = useState<{ sessionId: string; content: string }[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [input, setInput] = useState('');
   const [images, setImages] = useState<AiImageAttachment[]>([]);
@@ -79,31 +97,59 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
   const currentProject = useProjectStore(state => state.currentProject);
   const currentSession = sessions.find(session => session.id === currentSessionId);
   const messages = currentSession?.messages ?? EMPTY_MESSAGES;
+  const listIntent = templateListIntent(messages);
+  const reverseIntent = structureReverseIntent(messages);
+  const listProposal = techProposal(messages);
+  const demandImagesRequested = wantsDemandImageCompletion(messages);
+  const latestImageRequest = [...messages].reverse().find(message => message.role === 'user')?.content || '';
+  const [imageCardSession, setImageCardSession] = useState<string | null>(null);
+  const savedImagesRequested = wantsTemplateImages(latestImageRequest) || imageCardSession === currentSessionId;
+  const documentTemplateIds = documentTemplateRequests(messages);
 
-  // Settings state with persistence
-  const [endpoint, setEndpoint] = useState(() => localStorage.getItem('lamber_ai_endpoint') || 'http://localhost:11434/v1/chat/completions');
-  const [model, setModel] = useState(() => localStorage.getItem('lamber_ai_model') || 'gemma:7b');
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('lamber_ai_api_key') || '');
-  const [visionEnabled, setVisionEnabled] = useState(() => localStorage.getItem('lamber_ai_vision_enabled') === 'true');
-
-  // Runtime Infrastructure
-  const runtime = useRef(new AiRuntime());
+  const dshRuntime = useRef(new DshRuntime());
+  const [bindingState, setBindingState] = useState<{ sessionId: string; binding: { projectId: string | null; workspaceId: string; projectName?: string | null } | null; error?: string } | null>(null);
+  const [bindingVersion, setBindingVersion] = useState(0);
+  const bindingReady = bindingState?.sessionId === currentSessionId && Boolean(bindingState?.binding);
+  useEffect(() => {
+    if (!currentSessionId) return;
+    let active = true;
+    invoke<{ projectId: string | null; workspaceId: string; projectName?: string | null } | null>('ai_get_session_binding', { sessionId: currentSessionId })
+      .then(binding => { if (active) setBindingState({ sessionId: currentSessionId, binding }); })
+      .catch(error => { if (active) setBindingState({ sessionId: currentSessionId, binding: null, error: String(error) }); });
+    return () => { active = false; };
+  }, [currentSessionId, bindingVersion]);
+  const chooseBinding = async (projectId: string | null) => {
+    const fresh = currentSession && !currentSession.harnessSessionId && !currentSession.messages.some(message => message.role === 'user');
+    // Historical contexts always get a fresh identity; unused placeholders can be completed.
+    const sessionId = fresh ? currentSession.id : crypto.randomUUID();
+    const binding = await invoke<{ projectId: string | null; workspaceId: string; projectName?: string | null }>('ai_bind_session_to_project', { sessionId, projectId });
+    if (fresh) {
+      useAiSessionStore.getState().setSessionProject(sessionId, projectId ?? undefined);
+      selectSession(sessionId);
+    } else createSession(projectId ?? undefined, sessionId);
+    setBindingVersion(version => version + 1);
+    setBindingState({ sessionId, binding });
+    setImages([]);
+    if (isCompactLayout) setIsSidebarOpen(false);
+  };
+  const [dshSettings, setDshSettings] = useState<AiAgentSettings | null>(null);
+  const [dshSettingsError, setDshSettingsError] = useState('');
+  const dshSupportsImages = dshSettings?.models.find(item => item.id === dshSettings.model)?.supportsImages ?? false;
+  useEffect(() => {
+    let active = true;
+    getAiAgentSettings().then(settings => {
+      if (active) { setDshSettings(settings); setDshSettingsError(''); }
+    }).catch(error => { if (active) setDshSettingsError(String(error)); });
+    return () => { active = false; };
+  }, [showSettings]);
+  const activeTurnRef = useRef<{
+    sessionId: string; requestId: string; controller: AbortController;
+    finished: Promise<void>; finish: () => void;
+  } | null>(null);
   const [loadingStatus, setLoadingStatus] = useState('正在分析...');
-  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Streaming Parser
-  const {
-    normalText,
-    thinkText,
-    parseChunk,
-    finalize,
-    reset: resetParser,
-    stop: stopParser,
-  } = useStreamingParser();
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const isAtBottom = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeModule = useAiContextStore(state => state.activeModule);
   const businessData = useAiContextStore(state => state.businessData);
   const lastUpdated = useAiContextStore(state => state.lastUpdated);
@@ -157,29 +203,9 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('lamber_ai_endpoint', endpoint);
-  }, [endpoint]);
-
-  useEffect(() => {
-    localStorage.setItem('lamber_ai_model', model);
-  }, [model]);
-
-  useEffect(() => {
-    localStorage.setItem('lamber_ai_api_key', apiKey);
-  }, [apiKey]);
-
-  useEffect(() => {
-    localStorage.setItem('lamber_ai_vision_enabled', String(visionEnabled));
-    if (!visionEnabled) {
-      setImages([]);
-    }
-  }, [visionEnabled]);
-
-  useEffect(() => {
     const appendTemplateAsset = (selection: AiTemplateAssetSelection | null) => {
       if (!selection || handledTemplateAssetRequestsRef.current.has(selection.requestId)) return;
       handledTemplateAssetRequestsRef.current.add(selection.requestId);
-      setVisionEnabled(true);
       setImages(prev => {
         const withoutDuplicate = prev.filter(image => image.assetId !== selection.assetId);
         const next: AiImageAttachment = {
@@ -264,47 +290,45 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
   useEffect(() => {
     if (!isAtBottom.current) return;
     const frameId = requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+      const container = chatContainerRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
     });
     return () => cancelAnimationFrame(frameId);
   }, [messages]);
 
   useEffect(() => {
     return () => {
-      if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
       if (abortControllerRef.current) abortControllerRef.current.abort();
-      stopParser();
       flushSessionPersistence();
     };
-  }, [flushSessionPersistence, stopParser]);
+  }, [flushSessionPersistence]);
 
   useEffect(() => {
     if (isAtBottom.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+      const container = chatContainerRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
     }
   }, []);
 
-  // Bind parser output to the session that initiated the request. The active
-  // session may change while the stream is running, so currentSessionId must
-  // never be used as the write target here.
   useEffect(() => {
-    if (!streamingSessionId) return;
-    updateLastAssistantMessage(streamingSessionId, {
-      content: normalText,
-      think: thinkText || undefined,
-    });
-  }, [normalText, streamingSessionId, thinkText, updateLastAssistantMessage]);
+    if (isTyping || !pendingReceipts.length) return;
+    for (const receipt of pendingReceipts) appendMessages(receipt.sessionId, [{ role: 'assistant', content: receipt.content, appReceipt: true }]);
+    setPendingReceipts([]);
+  }, [isTyping, pendingReceipts, appendMessages]);
 
   const handleSend = async (overrideInput?: string) => {
     const textToSend = overrideInput ?? input;
     const imagesToSend = overrideInput ? [] : [...images];
-    if ((!textToSend.trim() && imagesToSend.length === 0) || isTyping) return;
+    if ((!textToSend.trim() && imagesToSend.length === 0) || isTyping || activeTurnRef.current) return;
 
+    if (imagesToSend.length && !dshSupportsImages) {
+      setDshSettingsError('当前模型不支持图片，请在下方 AI 模型与服务中选择视觉模型。');
+      setShowSettings(true);
+      return;
+    }
+    if (!bindingReady) return;
     const sessionId = ensureActiveSession(currentProject?.id);
-    const sessionMessages = useAiSessionStore.getState().sessions
-      .find(session => session.id === sessionId)?.messages ?? EMPTY_MESSAGES;
     const userMessage = textToSend.trim();
-    const conversationHistory = sessionMessages.filter(message => message.content.trim());
     const promptText = userMessage || '请分析图片内容。';
 
     if (!overrideInput) {
@@ -312,9 +336,13 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
       setImages([]);
     }
 
-    resetParser();
     if (abortControllerRef.current) abortControllerRef.current.abort();
-    abortControllerRef.current = new AbortController();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    let finish!: () => void;
+    const finished = new Promise<void>(resolve => { finish = resolve; });
+    const turn = { sessionId, requestId: crypto.randomUUID(), controller, finished, finish };
+    activeTurnRef.current = turn;
 
     const pendingMessages: AiChatMessage[] = [
       { role: 'user', content: userMessage, images: imagesToSend },
@@ -324,145 +352,153 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
     setStreamingSessionId(sessionId);
     setIsTyping(true);
 
-    // --- Enterprise LLM Infrastructure: AST Construction ---
-    const systemRules: PromptRule[] = [
-      { id: 'presales_role', content: 'You are a helpful presales AI consultant for Lamber system.', priority: 100 },
-      { id: 'knowledge_base', content: SYSTEM_PROMPT_KNOWLEDGE, priority: 90 },
-      { id: 'code_priority', content: '优先根据 [产品编号] (如 A302600342) 在知识库中匹配产品。只有当编号缺失时，才根据名称进行模糊匹配。', priority: 85 },
-      { id: 'currency_unit_policy', content: 'Currency unit policy: all financial amount fields from BUSINESS CONTEXT are CNY yuan (元) unless the context explicitly says otherwise. Never label those raw values as ten-thousand yuan / 万元. If the user explicitly asks for 万元, divide the yuan value by 10,000 and state that conversion.', priority: 84 },
-      { id: 'data_awareness', content: 'ALWAYS check the BUSINESS CONTEXT before answering. If data is missing, state it clearly.', priority: 80 },
-      {
-        id: 'saved_vs_draft_boundary',
-        content: [
-          'Project context may contain two clearly separated sources.',
-          'Saved official state comes from the current Workspace SQLite database and represents persisted project data.',
-          'Unsaved draft overlay comes from the current editing page and only represents temporary changes that have not been saved.',
-          'When answering about current saved project status, prioritize saved official state.',
-          'If using draft overlay content, explicitly call it "current unsaved changes" and do not claim it has been saved, submitted, recalculated, or written to the project.',
-          'If saved state and draft overlay differ, point out the difference instead of silently merging them.',
-          'Do not trigger or imply project writes, template saves, file operations, recalculations, NPV/IRR/margin/tax-rule changes, or reverse-calculation changes.',
-        ].join('\n'),
-        priority: 88,
-      },
-      {
-        id: 'template_context_boundary',
-        content: [
-          'Template context rules:',
-          'Specified template saved content comes from the current Workspace SQLite database and represents official persisted template data.',
-          'Current template-page edits are unsaved draft overlay only; distinguish them from saved template content.',
-          'Template images are metadata-only by default. Only images explicitly selected by the user for this turn are provided as vision input.',
-          'Do not claim you modified, completed, saved, or generated template content.',
-          'Do not change project/template data based on image analysis unless the user performs an explicit app action outside chat.',
-        ].join('\n'),
-        priority: 87,
-      },
-      {
-        id: 'workspace_specified_project_boundary',
-        content: [
-          'Workspace specified project context rules:',
-          'When context is marked as "Specified project saved official state", it was resolved from an explicit project name in the current user message and loaded from the current Workspace SQLite database by real projectId.',
-          'If the user explicitly names a project, answer from that specified project context instead of defaulting to the currently opened project.',
-          'If multiple specified project contexts are provided, keep each project source separate and do not merge fields across projects.',
-          'If project matching is ambiguous or unavailable, do not guess project data; ask the user to specify the exact project.',
-          'Current unsaved draft overlay belongs only to its marked projectId and must not override or contaminate another specified project.',
-          'Project names are only routing hints for this turn; persisted reads must be treated as projectId-based Workspace SQLite reads.',
-        ].join('\n'),
-        priority: 89,
-      },
-    ];
-
-    const contextView = currentView || 'hub';
-    const composedContext = await buildAiChatContext({
-      currentView: contextView,
-      userMessage: promptText,
-    });
-
-    const resolvedImagesToSend = await resolveImagesForSend(imagesToSend);
-    const imageSourceNotes = resolvedImagesToSend
-      .filter(image => image.source === 'template_asset')
-      .map(image => `${image.name} (projectId=${image.projectId}, templateId=${image.templateId}, assetId=${image.assetId}, field=${image.fieldKey || '--'})`);
-
-    const ast: PromptAST = {
-      systemRules,
-      dynamicState: {
-        layer1Core: composedContext.contextNodes.savedOfficial,
-        layer2Active: [
-          ...composedContext.contextNodes.pageContext,
-          ...composedContext.contextNodes.draftOverlay,
-          ...(imageSourceNotes.length > 0 ? [{
-            type: 'summary' as const,
-            title: 'Explicit template image attachments for this turn',
-            content: imageSourceNotes.map(note => `- ${note}`).join('\n'),
-            metadata: { module: 'template_asset_vision_input' },
-          }] : []),
-        ],
-        layer3Context: composedContext.contextNodes.warnings,
-      },
-      userIntent: {
-        raw: promptText,
-        images: resolvedImagesToSend.length > 0 ? resolvedImagesToSend : undefined,
-      },
-    };
-
-    // --- Progressive UX: Start Status Timer ---
-    setLoadingStatus('正在分析...');
-    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
-    statusTimerRef.current = setTimeout(() => {
-      setLoadingStatus('正在提取「项目关联文档」数据...');
-    }, 1500);
-
     try {
-      await runtime.current.execute(
-        ast,
-        (chunk) => parseChunk(chunk),
-        { endpoint, model, apiKey },
-        conversationHistory,
-        abortControllerRef.current.signal
-      );
-      finalize();
+      // --- Enterprise LLM Infrastructure: AST Construction ---
+      const systemRules: PromptRule[] = [
+        { id: 'presales_role', content: 'You are a helpful presales AI consultant for Lamber system.', priority: 100 },
+        { id: 'knowledge_base', content: SYSTEM_PROMPT_KNOWLEDGE, priority: 90 },
+        { id: 'code_priority', content: '优先根据 [产品编号] (如 A302600342) 在知识库中匹配产品。只有当编号缺失时，才根据名称进行模糊匹配。', priority: 85 },
+        { id: 'currency_unit_policy', content: 'Currency unit policy: all financial amount fields from BUSINESS CONTEXT are CNY yuan (元) unless the context explicitly says otherwise. Never label those raw values as ten-thousand yuan / 万元. If the user explicitly asks for 万元, divide the yuan value by 10,000 and state that conversion.', priority: 84 },
+        { id: 'data_awareness', content: 'ALWAYS check the BUSINESS CONTEXT before answering. If data is missing, state it clearly.', priority: 80 },
+        {
+          id: 'saved_vs_draft_boundary',
+          content: [
+            'Project context may contain two clearly separated sources.',
+            'Saved official state comes from the current Workspace SQLite database and represents persisted project data.',
+            'Unsaved draft overlay comes from the current editing page and only represents temporary changes that have not been saved.',
+            'When answering about current saved project status, prioritize saved official state.',
+            'If using draft overlay content, explicitly call it "current unsaved changes" and do not claim it has been saved, submitted, recalculated, or written to the project.',
+            'If saved state and draft overlay differ, point out the difference instead of silently merging them.',
+            'Do not trigger or imply project writes, template saves, file operations, recalculations, NPV/IRR/margin/tax-rule changes, or reverse-calculation changes.',
+          ].join('\n'),
+          priority: 88,
+        },
+        {
+          id: 'template_context_boundary',
+          content: [
+            'Template context rules:',
+            'Specified template saved content comes from the current Workspace SQLite database and represents official persisted template data.',
+            'Current template-page edits are unsaved draft overlay only; distinguish them from saved template content.',
+            'Template images are metadata-only by default. Only images explicitly selected by the user for this turn are provided as vision input.',
+            'Do not claim you modified, completed, saved, or generated template content.',
+            'Do not change project/template data based on image analysis unless the user explicitly approves a supported text write or uses the image upload card in chat. Images are never written by the model; selecting or pasting into a labeled upload card is a user action. Merely attaching an image to a chat message does not save it to the template.',
+          ].join('\n'),
+          priority: 87,
+        },
+        {
+          id: 'workspace_specified_project_boundary',
+          content: [
+            'Workspace specified project context rules:',
+            'When context is marked as "Specified project saved official state", it was resolved from an explicit project name in the current user message and loaded from the current Workspace SQLite database by real projectId.',
+            'If the user explicitly names a project, answer from that specified project context instead of defaulting to the currently opened project.',
+            'If multiple specified project contexts are provided, keep each project source separate and do not merge fields across projects.',
+            'If project matching is ambiguous or unavailable, do not guess project data; ask the user to specify the exact project.',
+            'Current unsaved draft overlay belongs only to its marked projectId and must not override or contaminate another specified project.',
+            'Project names are only routing hints for this turn; persisted reads must be treated as projectId-based Workspace SQLite reads.',
+          ].join('\n'),
+          priority: 89,
+        },
+      ];
+
+      const binding = await invoke<{ projectId: string | null; workspaceId: string; projectName?: string | null } | null>('ai_get_session_binding', { sessionId });
+      if (!binding) throw new Error('会话未绑定，请新建会话并选择项目');
+      if (binding && imagesToSend.some(image => image.source === 'template_asset' && image.projectId !== binding.projectId)) {
+        throw new Error('模板图片不属于会话绑定项目，请移除附件或新建对应项目会话');
+      }
+      if (binding) systemRules.push({ id: 'session_project_scope', priority: 100, content: sessionScopePrompt(binding.projectId) });
+      systemRules.push({ id: 'demand_image_invitation', priority: 100,
+        content: demandImageCompletionPrompt(Boolean(binding.projectId) && isDemandFormRequest(userMessage)) });
+      systemRules.push({ id: 'saved_template_images', priority: 100,
+        content: templateImagePrompt(Boolean(binding.projectId) && (wantsTemplateImages(userMessage) || imageCardSession === sessionId)) });
+      systemRules.push({ id: 'document_generation_invitation', priority: 100,
+        content: documentGenerationPrompt(binding.projectId ? documentTemplateRequests([{ role: 'user', content: userMessage }]) : []) });
+      systemRules.push({id:'template_list_invitation',priority:100, content:templateListPrompt(binding.projectId ? templateListIntent([{role:'user',content:userMessage}]) : {tech:false,inquiry:false})});
+      systemRules.push({ id: 'structure_reverse_invitation', priority: 100,
+        content: structureReversePrompt(Boolean(binding.projectId) && structureReverseIntent([{ role: 'user', content: userMessage }]).requested) });
+      const contextView = currentView || 'hub';
+      const composedContext = await buildAiChatContext({
+        currentView: contextView,
+        userMessage: promptText,
+        boundProjectId: binding.projectId,
+      });
+
+      const resolvedImagesToSend = await resolveImagesForSend(imagesToSend);
+      const imageSourceNotes = resolvedImagesToSend
+        .filter(image => image.source === 'template_asset')
+        .map(image => `${image.name} (projectId=${image.projectId}, templateId=${image.templateId}, assetId=${image.assetId}, field=${image.fieldKey || '--'})`);
+
+      const ast: PromptAST = {
+        systemRules,
+        dynamicState: {
+          layer1Core: composedContext.contextNodes.savedOfficial,
+          layer2Active: [
+            ...composedContext.contextNodes.pageContext,
+            ...composedContext.contextNodes.draftOverlay,
+            ...(imageSourceNotes.length > 0 ? [{
+              type: 'summary' as const,
+              title: 'Explicit template image attachments for this turn',
+              content: imageSourceNotes.map(note => `- ${note}`).join('\n'),
+              metadata: { module: 'template_asset_vision_input' },
+            }] : []),
+          ],
+          layer3Context: [...composedContext.contextNodes.warnings,
+            ...appReceiptContext(useAiSessionStore.getState().sessions.find(item => item.id === sessionId)?.messages ?? [])],
+        },
+        userIntent: {
+          raw: promptText,
+          images: resolvedImagesToSend.length > 0 ? resolvedImagesToSend : undefined,
+        },
+      };
+
+      setLoadingStatus('正在等待模型回复…');
+      if (controller.signal.aborted) return;
+      await dshRuntime.current.execute({
+        sessionId, requestId: turn.requestId, text: new PromptRenderer().render(ast),
+        signal: controller.signal, images: resolvedImagesToSend,
+        onUpdate: message => updateLastAssistantMessage(sessionId, message),
+        harnessSessionId: useAiSessionStore.getState().sessions.find(item => item.id === sessionId)?.harnessSessionId,
+        onSession: id => useAiSessionStore.getState().setHarnessSessionId(sessionId, id),
+      });
     } catch (error) {
-      stopParser();
       if ((error as Error).name === 'AbortError') {
         console.log('Stream aborted by user');
         return;
       }
 
       console.error('Chat error:', error);
+      const partial = useAiSessionStore.getState().sessions.find(item => item.id === sessionId)?.messages.at(-1);
       updateLastAssistantMessage(sessionId, {
-        content: `**Error:** 连接 AI 服务失败 (${(error as Error).message})`,
-        think: undefined,
+        content: `${partial?.content || ''}\n\n**Error:** 连接 AI 服务失败 (${String(error instanceof Error ? error.message : error)})`,
+        think: partial?.think,
+        toolCalls: partial?.toolCalls,
       });
     } finally {
+      activeTurnRef.current = null;
+      turn.finish();
       setIsTyping(false);
       flushSessionPersistence();
-      if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
-      window.setTimeout(() => {
-        setStreamingSessionId(activeId => activeId === sessionId ? null : activeId);
-      }, 0);
+      setStreamingSessionId(null);
     }
   };
 
-  const handleStop = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    stopParser();
-    setIsTyping(false);
+  const handleStop = async () => {
+    const turn = activeTurnRef.current;
+    if (!turn) return;
+    turn.controller.abort();
+    setLoadingStatus('正在停止生成…');
+    await turn.finished;
     flushSessionPersistence();
   };
 
-  const clearMessages = () => {
+  const clearMessages = async () => {
     if (!currentSessionId) return;
     if (window.confirm('确定要清除当前会话的聊天记录吗？')) {
-      if (streamingSessionId === currentSessionId && abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        stopParser();
-        setIsTyping(false);
-        setStreamingSessionId(null);
-        resetParser();
-      } else if (!isTyping) {
-        resetParser();
-      }
+      if (activeTurnRef.current?.sessionId === currentSessionId) await handleStop();
+      try {
+        if (isTauriRuntime()) await invoke('ai_reset_session', { sessionId: currentSessionId });
+      } catch (error) { window.alert(String(error)); return; }
+      setBindingState(null);
+      setBindingVersion(version => version + 1);
       resetSessionMessages(currentSessionId, {
         role: 'assistant',
         content: '聊天记录已清除。请问还有什么可以帮您？',
@@ -491,19 +527,16 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
     setSessionTitle(sessionId, title, 'manual');
   };
 
-  const handleDeleteSession = (sessionId: string) => {
+  const handleDeleteSession = async (sessionId: string) => {
     const session = useAiSessionStore.getState().sessions.find(item => item.id === sessionId);
     if (!session || !window.confirm(`确定删除会话「${session.title}」吗？此操作无法撤销。`)) return;
     const wasCurrentSession = currentSessionId === sessionId;
 
-    if (streamingSessionId === sessionId) {
-      abortControllerRef.current?.abort();
-      stopParser();
-      resetParser();
-      setIsTyping(false);
-      setStreamingSessionId(null);
-    }
+    if (activeTurnRef.current?.sessionId === sessionId) await handleStop();
 
+    try {
+      if (isTauriRuntime()) await invoke('ai_reset_session', { sessionId });
+    } catch (error) { window.alert(String(error)); return; }
     deleteSession(sessionId);
     if (useAiSessionStore.getState().sessions.length === 0) {
       createSession(currentProject?.id);
@@ -558,11 +591,9 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
     : 'bg-muted-foreground/50';
   const isCurrentSessionStreaming = isTyping && currentSessionId === streamingSessionId;
   const isOtherSessionStreaming = isTyping && Boolean(streamingSessionId) && !isCurrentSessionStreaming;
-  const sessionContextLabel = currentSession?.projectId
-    ? currentSession.projectId === currentProject?.id
-      ? currentProject.name
-      : '项目会话'
-    : '通用会话';
+  const sessionContextLabel = !bindingReady ? '未建立项目权限' : bindingState?.binding?.projectId
+      ? `已绑定：${bindingState.binding.projectName || bindingState.binding.projectId}`
+      : GENERAL_SESSION_LABEL;
 
   return (
     <div className="relative flex min-h-0 flex-1 overflow-hidden bg-background">
@@ -593,7 +624,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col bg-background">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
         <div className="flex h-12 shrink-0 items-center justify-between gap-3 bg-card/70 px-4">
           <div className="flex min-w-0 items-center gap-2.5">
             {isCompactLayout && (
@@ -627,7 +658,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
       <div
         ref={chatContainerRef}
         onScroll={handleScroll}
-        className="flex flex-1 flex-col gap-6 overflow-y-auto p-5"
+        className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-5 [&>*]:shrink-0"
       >
         {messages.map((msg, idx) => (
           <MessageBubble
@@ -645,57 +676,46 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
             <span className="animate-pulse text-xs font-bold text-secondary-foreground">{loadingStatus}</span>
           </div>
         )}
-        <div ref={messagesEndRef} />
+        {demandImagesRequested && bindingReady && bindingState?.binding?.projectId && currentSessionId && (
+          <DemandImageCompletionCards key={`${currentSessionId}-${bindingState.binding.workspaceId}`}
+            sessionId={currentSessionId} refreshToken={messages.length} disabled={isTyping}
+            onReceipt={content => setPendingReceipts(previous => [...previous, { sessionId: currentSessionId, content }])} />
+        )}
+        {savedImagesRequested && bindingReady && bindingState?.binding?.projectId && currentSessionId && (
+          <TemplateImageCard key={`images-${currentSessionId}-${bindingState.binding.workspaceId}`}
+            sessionId={currentSessionId} disabled={isTyping}
+            onReceipt={content => setPendingReceipts(previous => [...previous, { sessionId: currentSessionId, content }])}
+            onAnalyze={image => { setImages(previous => [...previous.filter(item => item.assetId !== image.assetId), image].slice(-4));
+              setInput('请分析这张模板图片的内容和明显问题。'); }} />
+        )}
+        {documentTemplateIds.length > 0 && bindingReady && bindingState?.binding?.projectId && currentSessionId && (
+          <DocumentGenerationCards key={`${currentSessionId}-${bindingState.binding.workspaceId}-${documentTemplateIds.join(',')}`}
+            sessionId={currentSessionId} templateIds={documentTemplateIds} refreshToken={messages.length} disabled={isTyping}
+            onReceipt={content => setPendingReceipts(previous => [...previous, { sessionId: currentSessionId, content }])} />
+        )}
+        {listIntent.tech && bindingReady && bindingState?.binding?.projectId && currentSessionId && <TechItemsCard
+          key={`tech-${currentSessionId}-${bindingState.binding.workspaceId}`} sessionId={currentSessionId} proposal={isTyping?[]:listProposal} disabled={isTyping}
+          onReceipt={content=>setPendingReceipts(previous=>[...previous,{sessionId:currentSessionId,content}])}/>}
+        {listIntent.inquiry && bindingReady && bindingState?.binding?.projectId && currentSessionId && <InquiryCard
+          key={`inquiry-${currentSessionId}-${bindingState.binding.workspaceId}`} sessionId={currentSessionId} disabled={isTyping}
+          onReceipt={content=>setPendingReceipts(previous=>[...previous,{sessionId:currentSessionId,content}])}/>}
+        {reverseIntent.requested && bindingReady && bindingState?.binding?.projectId && currentSessionId && <StructureReverseCard
+          key={`structure-${currentSessionId}-${bindingState.binding.workspaceId}-${reverseIntent.key}`}
+          sessionId={currentSessionId} initialMetric={reverseIntent.metricType} initialTarget={reverseIntent.targetPercent}
+          initialScenario={reverseIntent.scenario} disabled={isTyping}
+          onReceipt={content => setPendingReceipts(previous => [...previous, { sessionId: currentSessionId, content }])} />}
       </div>
 
-      {showSettings && (
-        <div className="flex flex-col gap-3 bg-muted/50 p-4 text-sm animate-in slide-in-from-bottom-2 duration-200">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted-foreground">API Endpoint</label>
-            <input
-              type="text"
-              value={endpoint}
-              onChange={event => setEndpoint(event.target.value)}
-              className="rounded border border-border bg-background px-2 py-1.5 outline-none focus:border-ring"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted-foreground">Model Name</label>
-            <input
-              type="text"
-              value={model}
-              onChange={event => setModel(event.target.value)}
-              className="rounded border border-border bg-background px-2 py-1.5 outline-none focus:border-ring"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted-foreground">API Key (可选)</label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={event => setApiKey(event.target.value)}
-              placeholder="Bearer Token"
-              className="rounded border border-border bg-background px-2 py-1.5 outline-none focus:border-ring"
-            />
-          </div>
-          <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={visionEnabled}
-              onChange={event => setVisionEnabled(event.target.checked)}
-              className="h-4 w-4 accent-primary"
-            />
-            启用图片输入
-          </label>
-          {visionEnabled && (
-            <p className="text-[11px] leading-5 text-muted-foreground">
-              当前模型需支持 vision / image_url 格式，否则图片可能被忽略或请求失败。
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="bg-card p-4 shadow-[0_-8px_24px_hsl(var(--foreground)/0.025)]">
+      {showSettings && <div className="max-h-80 overflow-auto p-4"><AiAgentSettingsCard onSaved={settings => { setDshSettings(settings); setDshSettingsError(''); }} /></div>}
+      <div className="bg-muted/40 px-4 py-2 text-caption text-secondary-foreground">
+        {dshSettingsError || (dshSupportsImages ? '当前视觉模型支持图片输入。' : '当前模型不支持图片，请在模型设置中选择视觉模型。')}
+      </div>
+      {!bindingReady && <div className="px-4 py-3">
+        {bindingState?.sessionId !== currentSessionId ? <p className="text-caption text-muted-foreground">正在核对会话权限…</p>
+          : bindingState.error ? <p role="alert" className="text-caption text-destructive">{bindingState.error}。请打开原工作区或新建会话。</p>
+          : <AiSessionProjectPicker key={currentSessionId} legacy={Boolean(currentSession?.messages.some(message => message.role === 'user'))} onChoose={chooseBinding} />}
+      </div>}
+      <div className="bg-card p-4 shadow-[0_-8px_24px_hsl(var(--foreground)/0.025)]" hidden={!bindingReady}>
         {!isTyping && (
           <div className="mb-3 flex flex-wrap gap-2">
             {quickActions.map((action, index) => (
@@ -713,6 +733,8 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
         )}
 
         <div className="mb-2 flex items-center justify-between">
+          {bindingReady && bindingState?.binding?.projectId && currentSessionId && <button type="button"
+            className="rounded-md bg-muted px-3 py-2 text-caption" onClick={() => setImageCardSession(currentSessionId)}>项目图片</button>}
           <button
             type="button"
             className="flex items-center gap-1 text-[11px] font-bold text-muted-foreground transition-colors hover:text-primary"
@@ -743,7 +765,7 @@ export default function AiChatPanel({ currentView = 'hub' }: AiChatPanelProps) {
           input={input}
           images={images}
           isTyping={isTyping}
-          visionEnabled={visionEnabled}
+          visionEnabled={dshSupportsImages}
           onInputChange={setInput}
           onImagesChange={setImages}
           onSend={() => handleSend()}

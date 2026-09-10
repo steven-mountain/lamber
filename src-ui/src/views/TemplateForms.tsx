@@ -1,3 +1,11 @@
+import { assertListAction, listSnapshot, type TemplateListAction, type SharedTechTarget } from '../services/templateListTypes';
+import { assertDocumentBinding, finishDocumentRequest, useDocumentRequest, type DocumentRequest, type GenerationResult } from '../services/chatDocumentGeneration';
+import { mergeApprovedText } from '../lib/templateTextSync';
+import { listen } from '@tauri-apps/api/event';
+import { loadDemandImages, mergeDemandImages, subscribeDemandAssetsChanged, publishDemandAssetsChanged } from "../services/demandTemplateAssets"
+import { TEMPLATE_FIELD_DEFAULTS, buildTemplateGenerationFields, assertTemplateGenerationFields } from "../lib/templateGenerationState"
+import { getCatalogCompletion, catalogTextValues, getCatalogTemplate } from "../lib/templateCompletion/catalog"
+import { getDemandCompletion } from "../lib/templateCompletion/demand"
 import { useState, useRef, useEffect, useMemo } from "react"
 import { invoke, convertFileSrc } from "@tauri-apps/api/core"
 import AppIcon from "../components/icons/AppIcon"
@@ -18,7 +26,7 @@ import {
   TemplateSubmoduleCard,
   TemplateTabSection,
 } from "../components/templates/TemplateDocumentLayout"
-import { getTemplateCompletion, type TemplateCompletionItem } from "../lib/templateCompletion"
+import { getTemplateCompletion } from "../lib/templateCompletion"
 import { PRESET_FIELD_KEYS } from "../lib/presetFieldKeys"
 import { getProjectPresetValueType, type ProjectPresetFieldBinding } from "../lib/projectPresetFields"
 import { createTemplateAssetSelection, publishTemplateAssetSelection } from "../ai/templateAssetSelection"
@@ -60,6 +68,7 @@ import {
 } from "../lib/pptTaxRows"
 
 interface Props {
+  documentRequest?: DocumentRequest | null;
   selectedTemplate: string;
   projectData: any; // Basic/Rev/Cost data from IctLifecycle
   projectBackground: string;
@@ -228,6 +237,7 @@ const mergeVendorImages = (nextVendors: any[], previousVendors: any[]) => {
 }
 
 export default function TemplateForms({
+  documentRequest,
   selectedTemplate,
   projectData,
   projectBackground,
@@ -248,6 +258,10 @@ export default function TemplateForms({
   currentSchemeStage,
   onProjectPresetBindingsChange,
 }: Props) {
+  const [loadedTemplateKey, setLoadedTemplateKey] = useState('');
+  const [templateLoadError, setTemplateLoadError] = useState('');
+  const startedDocumentRef = useRef<string | null>(null);
+  const generationBusy = useRef(false);
   const formRef = useRef<HTMLFormElement>(null)
   const markDirty = useSaveStore(state => state.markDirty)
   const clearDirty = useSaveStore(state => state.clearDirty)
@@ -403,7 +417,7 @@ export default function TemplateForms({
       });
     };
     const addFormField = (fieldKey: string, name: string, defaultValue = "") =>
-      add(fieldKey, formData[name] ?? defaultValue, value => handleFieldChange(name, String(value ?? "")));
+      add(fieldKey, formData[name] ?? TEMPLATE_FIELD_DEFAULTS[name] ?? defaultValue, value => handleFieldChange(name, String(value ?? "")));
 
     if (selectedTemplate.endsWith(".xlsx")) {
       add(PRESET_FIELD_KEYS.templateItBusinessMode, itBusMode, value => setItBusMode(String(value ?? "")));
@@ -465,7 +479,7 @@ export default function TemplateForms({
 
   const getBind = (name: string, defaultVal: string = "") => {
     return {
-      value: formData[name] ?? defaultVal,
+      value: formData[name] ?? TEMPLATE_FIELD_DEFAULTS[name] ?? defaultVal,
       onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         handleFieldChange(name, e.target.value);
       }
@@ -482,7 +496,7 @@ export default function TemplateForms({
           handleFieldChange(name, "on");
           return;
         }
-        delete formDataRef.current[name];
+        formDataRef.current[name] = "";
         setFormData({ ...formDataRef.current });
         setSyncTrigger(prev => prev + 1);
       }
@@ -609,7 +623,7 @@ export default function TemplateForms({
         if (target.checked) {
           formDataRef.current[target.name] = "on";
         } else {
-          delete formDataRef.current[target.name];
+          formDataRef.current[target.name] = "";
         }
       } else {
         formDataRef.current[target.name] = target.value;
@@ -623,6 +637,11 @@ export default function TemplateForms({
   };
 
   const isLoadingRef = useRef(false);
+  const savedTemplateVersion = useRef<number | null>(null);
+  const savedFormFields = useRef<Record<string, unknown>>({});
+  const [templateConflict, setTemplateConflict] = useState('');
+  const loadSequence = useRef(0);
+  const saveInFlight = useRef<Promise<boolean> | null>(null);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // --- Load Form Settings from DB ---
@@ -653,6 +672,26 @@ export default function TemplateForms({
       return img;
     }));
   };
+
+  const assetTargetRef = useRef({ workspaceId, projectId, selectedTemplate });
+  assetTargetRef.current = { workspaceId, projectId, selectedTemplate };
+  const assetRefreshSequence = useRef(0);
+  const refreshDemandImages = useLatestCallback(async () => {
+    const sequence = ++assetRefreshSequence.current;
+    const target = assetTargetRef.current;
+    if (!target.projectId || !target.selectedTemplate.includes("需求导入表")) return;
+    const assets = await loadDemandImages(target.projectId, target.selectedTemplate);
+    const current = assetTargetRef.current;
+    if (sequence !== assetRefreshSequence.current || current.workspaceId !== target.workspaceId || current.projectId !== target.projectId || current.selectedTemplate !== target.selectedTemplate) return;
+    setAttach1Images(previous => mergeDemandImages(previous, assets.attach1));
+    setAttach2Images(previous => mergeDemandImages(previous, assets.attach2));
+  });
+  useEffect(() => subscribeDemandAssetsChanged(target => {
+    const current = assetTargetRef.current;
+    if (target.workspaceId === current.workspaceId && target.projectId === current.projectId && target.templateName === current.selectedTemplate) {
+      void refreshDemandImages().catch(console.error);
+    }
+  }), [refreshDemandImages]);
 
   const resetFormToDefaults = () => {
     setItContent("");
@@ -699,9 +738,19 @@ export default function TemplateForms({
       resetFormToDefaults();
       return;
     }
+    setLoadedTemplateKey('');
+    setTemplateLoadError('');
+    const sequence = ++loadSequence.current;
+    const target = assetTargetRef.current;
     isLoadingRef.current = true;
+    savedTemplateVersion.current = null;
+    setTemplateConflict('');
     try {
       const savedState = await domainSaveService.loadTemplateState(projectId, selectedTemplate);
+      if (sequence !== loadSequence.current || target.workspaceId !== assetTargetRef.current.workspaceId || target.projectId !== assetTargetRef.current.projectId || target.selectedTemplate !== assetTargetRef.current.selectedTemplate) return;
+      resetFormToDefaults();
+      savedTemplateVersion.current = savedState?.source === 'project_template_states' ? savedState.templateVersion : 0;
+      savedFormFields.current = catalogTextValues(selectedTemplate, savedState?.filledDataJson ?? {});
       if (savedState?.filledDataJson) {
         const parsed = savedState.filledDataJson as any;
         if (parsed.itContent !== undefined) setItContent(parsed.itContent);
@@ -741,18 +790,6 @@ export default function TemplateForms({
         if (parsed.formData) {
           formDataRef.current = { ...parsed.formData };
           setFormData({ ...parsed.formData });
-          if (formRef.current) {
-            setTimeout(() => {
-              if (formRef.current) {
-                Object.entries(parsed.formData).forEach(([name, val]) => {
-                  const el = formRef.current?.querySelector(`[name="${name}"]`) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
-                  if (el) {
-                    el.value = val as string;
-                  }
-                });
-              }
-            }, 0);
-          }
         } else {
           formDataRef.current = {};
           setFormData({});
@@ -763,32 +800,40 @@ export default function TemplateForms({
             const resolvedImages = await resolveImages(v.images || []);
             return { ...v, images: resolvedImages };
           }));
+          if (sequence !== loadSequence.current) return;
           setInqVendors(resolvedVendors);
         } else {
           setInqVendors([]);
         }
 
         const resolvedAttach1 = await resolveImages(parsed.attach1Images || []);
+        if (sequence !== loadSequence.current) return;
         setAttach1Images(resolvedAttach1);
 
         const resolvedAttach2 = await resolveImages(parsed.attach2Images || []);
+        if (sequence !== loadSequence.current) return;
         setAttach2Images(resolvedAttach2);
       } else {
         resetFormToDefaults();
       }
     } catch (err) {
+      if (sequence !== loadSequence.current) return;
+      setTemplateLoadError(String(err));
       console.error("Failed to load template settings", err);
       resetFormToDefaults();
     } finally {
-      setTimeout(() => {
+      if (sequence === loadSequence.current) {
+        await refreshDemandImages().catch(console.error);
         isLoadingRef.current = false;
-      }, 100);
+        setLoadedTemplateKey(JSON.stringify([target.workspaceId, target.projectId, target.selectedTemplate]));
+      }
     }
   });
 
   useEffect(() => {
     void loadFormSettings();
-  }, [projectId, selectedTemplate, loadFormSettings]);
+    return () => { loadSequence.current += 1; savedTemplateVersion.current = null; };
+  }, [workspaceId, projectId, selectedTemplate, loadFormSettings]);
 
   useEffect(() => {
     setMeetingReviewTab("basic");
@@ -826,12 +871,18 @@ export default function TemplateForms({
     }));
   };
 
-  const autoSaveFormSettings = useLatestCallback(async (options: { throwOnError?: boolean } = {}) => {
+  const saveFormSnapshot = useLatestCallback(async (options: { throwOnError?: boolean; sharedTechTemplates?: SharedTechTarget[] } = {}) => {
     if (!projectId || !selectedTemplate || isLoadingRef.current) {
       if (options.throwOnError) throw new Error("模板表单尚未准备好，无法保存");
       return false;
     }
 
+    if (templateConflict || savedTemplateVersion.current === null) {
+      if (options.throwOnError) throw new Error(templateConflict || '模板版本尚未加载');
+      return false;
+    }
+    const target = assetTargetRef.current;
+    const expectedVersion = savedTemplateVersion.current;
     const migratedAttach1 = await ensureAllImagesMigrated(attach1Images, "attach1");
     const migratedAttach2 = await ensureAllImagesMigrated(attach2Images, "attach2");
     
@@ -906,11 +957,12 @@ export default function TemplateForms({
       })),
       attach1Images: stripData(migratedAttach1),
       attach2Images: stripData(migratedAttach2),
-      formData: formDataRef.current,
+      formData: {...formDataRef.current},
     };
 
     try {
-      await domainSaveService.saveTemplateState(projectId, selectedTemplate, {
+      if (target.workspaceId !== assetTargetRef.current.workspaceId || target.projectId !== assetTargetRef.current.projectId || target.selectedTemplate !== assetTargetRef.current.selectedTemplate) throw new Error('保存期间项目或模板已切换');
+      const saved = await domainSaveService.saveTemplateState(projectId, selectedTemplate, {
         templateName: selectedTemplate,
         templateType: selectedTemplate.endsWith(".xlsx") ? "excel" : "word",
         templatePath: selectedTemplate,
@@ -918,17 +970,64 @@ export default function TemplateForms({
         filledDataJson: payload,
         fieldMappingJson: {},
         outputConfigJson: { outputDir: outputDir || null },
-      });
+      }, expectedVersion, options.sharedTechTemplates);
+      if (target.workspaceId !== assetTargetRef.current.workspaceId || target.projectId !== assetTargetRef.current.projectId || target.selectedTemplate !== assetTargetRef.current.selectedTemplate) return true;
+      if ((savedTemplateVersion.current ?? 0) > saved.templateVersion) return true;
+      savedTemplateVersion.current = saved.templateVersion;
+      savedFormFields.current = catalogTextValues(selectedTemplate, payload);
       clearDirty("template-forms");
       return true;
     } catch (err) {
       console.error("Failed to auto-save template settings", err);
+      if (String(err).includes('TemplateStateConflict') && savedTemplateVersion.current === expectedVersion) setTemplateConflict('模板已被其他窗口或审批更新，已停止旧副本保存。请核对最新保存内容后继续。');
       if (options.throwOnError) {
         throw err;
       }
       return false;
     }
   });
+
+  const autoSaveFormSettings = useLatestCallback(async (options: {throwOnError?:boolean; sharedTechTemplates?: SharedTechTarget[]} = {}) => {
+    while (saveInFlight.current) await saveInFlight.current;
+    const operation = saveFormSnapshot(options);
+    saveInFlight.current = operation;
+    try { return await operation; } finally { if (saveInFlight.current === operation) saveInFlight.current = null; }
+  });
+
+  const applyApprovedTemplateText = useLatestCallback((update: {workspaceId:string;projectId:string;templateId:string;templateVersion:number;fields:Record<string,string>}) => {
+    const target = assetTargetRef.current;
+    if (update.workspaceId !== target.workspaceId || update.projectId !== target.projectId || update.templateId !== target.selectedTemplate) return;
+    if (savedTemplateVersion.current === null || update.templateVersion <= savedTemplateVersion.current) return;
+    if (update.templateVersion !== savedTemplateVersion.current + 1) {
+      setTemplateConflict('模板还有其他保存变更，请重新载入最新保存内容后继续。'); return;
+    }
+    const local = catalogTextValues(selectedTemplate, {formData:formDataRef.current, revCollection, expPayment});
+    const result = mergeApprovedText(savedFormFields.current, local, update.fields);
+    if (result.conflicts.length) {
+      setTemplateConflict('已审批字段与本页未保存编辑冲突，已停止自动保存。请先保留本页草稿，再载入审批后的内容。'); return;
+    }
+    // The catalog targets existing state owners. Never leave approved root values in a gen_* shadow copy.
+    const rootSetters: Record<string, (value:string) => void> = {revCollection:setRevCollection, expPayment:setExpPayment};
+    const rules = getCatalogTemplate(selectedTemplate)?.fields ?? [];
+    if (Object.keys(update.fields).some(key => {
+      const rule = rules.find(f => f.key === key && f.kind === 'text');
+      return !rule || (rule.stateKey && !rootSetters[rule.stateKey]);
+    })) { setTemplateConflict('模板字段状态归属无法同步，请重新载入最新保存内容。'); return; }
+    for (const [key,value] of Object.entries(update.fields)) {
+      const rule = rules.find(f => f.key === key)!;
+      if (rule.stateKey) rootSetters[rule.stateKey](value);
+      else formDataRef.current[key] = value;
+    }
+    savedTemplateVersion.current = update.templateVersion;
+    savedFormFields.current = {...savedFormFields.current,...update.fields};
+    setFormData({...formDataRef.current}); setSyncTrigger(value => value + 1);
+  });
+  useEffect(() => {
+    let disposed = false; let unlisten: (() => void) | undefined;
+    void listen<Parameters<typeof applyApprovedTemplateText>[0]>('lamber-template-text-changed', event => applyApprovedTemplateText(event.payload))
+      .then(fn => { if (disposed) fn(); else unlisten = fn; }).catch(error => console.error("Template update subscription failed", error));
+    return () => { disposed = true; unlisten?.(); };
+  }, [applyApprovedTemplateText]);
 
   useEffect(() => {
     if (!projectId || !selectedTemplate) return;
@@ -990,6 +1089,7 @@ export default function TemplateForms({
     if (!projectId || !selectedTemplate || isLoadingRef.current) return;
 
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    if (documentRequest?.action) return;
 
     autoSaveTimerRef.current = setTimeout(() => {
       void autoSaveFormSettings();
@@ -999,6 +1099,7 @@ export default function TemplateForms({
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
   }, [
+    documentRequest?.action,
     projectId,
     selectedTemplate,
     itContent,
@@ -1034,8 +1135,6 @@ export default function TemplateForms({
   const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const buildTemplateContextPayload = (overrides: Record<string, string> = {}) => {
-    const form = formRef.current;
-    const formEntries = form ? Object.fromEntries(new FormData(form).entries()) : {};
     const nextSelfThreeValue = overrides.gen_self_three || selfThreeValue;
     const nextSelfThree = getSelfThreeOption(nextSelfThreeValue);
     const nextMissingFees = getSelfThreeMissingFees(nextSelfThree.requirements, hasItIntegrationFee, hasItMaintenanceFee);
@@ -1043,7 +1142,7 @@ export default function TemplateForms({
     return {
       projectId: projectId || null,
       selectedTemplate,
-      ...formEntries,
+      ...TEMPLATE_FIELD_DEFAULTS,
       ...formDataRef.current,
       ...overrides,
       itContent,
@@ -1128,9 +1227,7 @@ export default function TemplateForms({
 
   const addInqVendor = () => setInqVendors([...inqVendors, { vendorName: '', amount: 0, taxRate: 6, remark: '', images: [] }])
   const updateInqVendor = (i: number, key: string, val: string|number) => {
-    const newItems = [...inqVendors]
-    newItems[i] = { ...newItems[i], [key]: val }
-    setInqVendors(newItems)
+    setInqVendors(previous => previous.map((row, index) => index === i ? { ...row, [key]: val } : row))
   }
   const handleInquiryAmountChange = (i: number, value: string) => {
     const numeric = Number(value)
@@ -1143,23 +1240,23 @@ export default function TemplateForms({
   }
   const removeInqVendor = (i: number) => setInqVendors(inqVendors.filter((_, idx) => idx !== i))
 
-  const autoGenerateInquiry = () => {
+  const autoGenerateInquiry = (report: (message: string) => void = alert) => {
     const it = projectData.cost?.it || {}
     const limit = (it.device?.incl||0) + (it.construction?.incl||0) + (it.survey?.incl||0) +
                   (it.integration?.incl||0) + (it.other?.incl||0) + (it.maintenance?.incl||0) +
                   (it.running?.incl||0) + (it.bidding?.incl||0) + (it.design_eval?.incl||0) + (it.audit?.incl||0)
 
     if (limit === 0) {
-      alert("请先完善 IT 投入明细（当前 IT 总成本为 0），三家报价的底价需硬性绑定成本。")
-      return
+      report("请先完善 IT 投入明细（当前 IT 总成本为 0），三家报价的底价需硬性绑定成本。")
+      return false
     }
     if (totalRevenueIncl <= 0) {
-      alert("请先完善收入侧含税总收入，三家询价最高价不能超过含税总收入。")
-      return
+      report("请先完善收入侧含税总收入，三家询价最高价不能超过含税总收入。")
+      return false
     }
     if (limit > totalRevenueIncl) {
-      alert(`当前 IT 投入含税总成本为 ${limit.toFixed(2)}，已超过含税总收入 ${totalRevenueIncl.toFixed(2)}，无法生成合规三家报价。`)
-      return
+      report(`当前 IT 投入含税总成本为 ${limit.toFixed(2)}，已超过含税总收入 ${totalRevenueIncl.toFixed(2)}，无法生成合规三家报价。`)
+      return false
     }
 
     const quotes = [
@@ -1175,6 +1272,7 @@ export default function TemplateForms({
       images: []
     }))
     setInqVendors(previous => mergeVendorImages(generatedVendors, previous))
+    return true
   }
 
   const handleImageUpload = (e: any, setImages: any, typeName: string) => {
@@ -1214,6 +1312,10 @@ export default function TemplateForms({
           
           if (projectId) {
             try {
+              const matchesTarget = () => assetTargetRef.current.projectId === projectId
+                && assetTargetRef.current.selectedTemplate === selectedTemplate
+                && assetTargetRef.current.workspaceId === workspaceId;
+              if (!matchesTarget()) throw new Error("项目、模板或工作区已切换，请重新上传。");
               const assetId = await domainSaveService.saveTemplateAsset(projectId, selectedTemplate, {
                 assetType: "image",
                 usage: typeName,
@@ -1222,7 +1324,11 @@ export default function TemplateForms({
                 width: w,
                 height: h,
               });
-              setImages((prev: any) => [...prev, {
+              if (workspaceId && selectedTemplate.includes("需求导入表")) {
+                await publishDemandAssetsChanged({ workspaceId, projectId, templateName: selectedTemplate });
+              }
+              if (!matchesTarget()) return;
+              setImages((prev: any) => [...prev.filter((item: any) => item.assetId !== assetId), {
                 assetId,
                 data: base64Data,
                 width: w,
@@ -1242,19 +1348,13 @@ export default function TemplateForms({
   };
 
   const handleRemoveImage = async (img: any, index: number, setImages: any) => {
-    setImages((prev: any) => prev.filter((item: any, idx: number) => {
-      if (img.assetId && item.assetId) {
-        return item.assetId !== img.assetId;
+    try {
+      if (img.assetId) await projectService.deleteTemplateAsset(img.assetId);
+      setImages((previous: any[]) => previous.filter((item, idx) => img.assetId ? item.assetId !== img.assetId : idx !== index));
+      if (workspaceId && projectId && selectedTemplate.includes("需求导入表")) {
+        await publishDemandAssetsChanged({ workspaceId, projectId, templateName: selectedTemplate });
       }
-      return idx !== index;
-    }));
-    if (img.assetId) {
-      try {
-        await projectService.deleteTemplateAsset(img.assetId);
-      } catch (err) {
-        console.warn("Soft delete of template asset failed:", err);
-      }
-    }
+    } catch (error) { alert("移除图片失败：" + String(error)); }
   };
 
   const handleSendImageToAi = async (img: any, fieldKey: string) => {
@@ -1272,11 +1372,51 @@ export default function TemplateForms({
     }));
   };
 
-  const handleGenerate = async () => {
+  const beforeDocumentGenerate = documentRequest ? async () => {
+    await assertDocumentBinding(documentRequest);
+    if (useDocumentRequest.getState().request?.requestId !== documentRequest.requestId) throw new Error('生成请求已失效。');
+    useDocumentRequest.setState({ phase: 'running' });
+  } : undefined;
+  const handleGenerate = async (): Promise<GenerationResult> => {
+    const fail = (message: string): GenerationResult => { alert(message); return { status: 'error', message }; };
 
-    if (!formRef.current) return
-    const fd = new FormData(formRef.current)
-    const get = (name: string) => fd.get(name)?.toString() || ""
+    if (isLoadingRef.current) {
+      return fail("模板正在加载，请稍后生成。")
+    }
+    try { await autoSaveFormSettings({throwOnError: true}); }
+    catch (error) { return fail(String(error)); }
+    // The controlled business state owns these fields (presets can update it without DOM events).
+    const controlledFields = {
+      gen_project_scale: projectScale, gen_self_three: selfThreeValue,
+      gen_it_bus_mode: itBusMode, gen_it_fund_src: itFundSrc,
+      gen_rev_collection: revCollection, gen_exp_payment: expPayment,
+    }
+    const generationFields = buildTemplateGenerationFields(formDataRef.current, controlledFields, {
+      gen_meet_start: todayStr, gen_meet_end: todayStr,
+      gen_sign_it_content: defaultSignItContent, gen_sign_ct_content: defaultSignCtContent,
+    })
+    try {
+      assertTemplateGenerationFields({ ...formDataRef.current, ...controlledFields }, generationFields)
+    } catch (error) {
+      return fail(String(error))
+    }
+    const get = (name: string) => generationFields[name] ?? ""
+    let generationAttach1 = attach1Images;
+    let generationAttach2 = attach2Images;
+    if (selectedTemplate.includes("需求导入表") && projectId) {
+      try {
+        const assets = await loadDemandImages(projectId, selectedTemplate);
+        generationAttach1 = mergeDemandImages(attach1Images, assets.attach1);
+        generationAttach2 = mergeDemandImages(attach2Images, assets.attach2);
+        if ([...generationAttach1, ...(hasPublicUrl ? generationAttach2 : [])].some(img => img.error)) {
+          throw new Error("附件图片文件缺失，请重新上传后生成。");
+        }
+        if (assetTargetRef.current.projectId !== projectId || assetTargetRef.current.selectedTemplate !== selectedTemplate || assetTargetRef.current.workspaceId !== workspaceId) {
+          throw new Error("项目、模板或工作区已切换，请重新生成。");
+        }
+      } catch (error) { return fail(String(error)); }
+    }
+
     const isSelectionResultTemplate = selectedTemplate.includes("甄选结果签批表")
     let resolvedSelectionProjects: SelectionResultBatchProject[] = []
     let resolvedSelectionModel: ReturnType<typeof buildSelectionResultBatchModel> | null = null
@@ -1295,39 +1435,32 @@ export default function TemplateForms({
 
       if (selectionResultMode === "batch") {
         if (selectionBatchProjectIds.length < 2) {
-          alert("多项目合并至少需要选择 2 个项目。")
-          return
+          return fail("多项目合并至少需要选择 2 个项目。")
         }
         if (selectionBatchLoading) {
-          alert("正在读取所选项目的甄选方案，请稍后再生成。")
-          return
+          return fail("正在读取所选项目的甄选方案，请稍后再生成。")
         }
         if (selectionBatchLoadError) {
-          alert(`所选项目读取失败：${selectionBatchLoadError}`)
-          return
+          return fail(`所选项目读取失败：${selectionBatchLoadError}`)
         }
         if (selectionBatchProjects.length !== selectionBatchProjectIds.length) {
-          alert("所选项目数据尚未完整加载，请返回甄选信息页检查。")
-          return
+          return fail("所选项目数据尚未完整加载，请返回甄选信息页检查。")
         }
         if (!selectionBatchName.trim()) {
-          alert("请填写合并项目名称。")
-          return
+          return fail("请填写合并项目名称。")
         }
         resolvedSelectionProjects = selectionBatchProjects.map(project => project.projectId === projectId
           ? { ...project, sharedFields: liveSharedFields, projectBackground }
           : project)
       } else {
         if (currentSchemeStage !== "post_selection") {
-          alert("甄选结果签批表必须基于“甄选后”方案生成，请先切换或标注甄选后方案。")
-          return
+          return fail("甄选结果签批表必须基于“甄选后”方案生成，请先切换或标注甄选后方案。")
         }
         const zxPreCostIt = preSelectionCostIt
           ?? (preSelectionCostItPromiseRef.current ? await preSelectionCostItPromiseRef.current : null)
         const manualLimit = Number(selectionFeeData.limit ?? projectData.selection_fee_limit ?? 0)
         if (!zxPreCostIt && manualLimit <= 0) {
-          alert("未找到甄选前方案且未手填甄选限价，不能生成甄选结果签批表。")
-          return
+          return fail("未找到甄选前方案且未手填甄选限价，不能生成甄选结果签批表。")
         }
         resolvedSelectionProjects = [buildLiveSelectionResultProject({
           projectId: projectId || "current-project",
@@ -1354,20 +1487,17 @@ export default function TemplateForms({
           ]
           return `${project.projectName}：${issues.join("；")}`
         }).join("\n")
-        alert(`以下项目未通过正式材料校验，不能生成：\n${detail}`)
-        return
+        return fail(`以下项目未通过正式材料校验，不能生成：\n${detail}`)
       }
 
       const conflicts = detectSelectionSharedConflicts(resolvedSelectionProjects)
       const blockingConflicts = conflicts.filter(conflict => conflict.blocking)
       if (blockingConflicts.length > 0) {
-        alert(`以下公共字段不一致，请拆分签批表或统一各项目已保存资料：\n${blockingConflicts.map(conflict => `- ${conflict.label}`).join("\n")}`)
-        return
+        return fail(`以下公共字段不一致，请拆分签批表或统一各项目已保存资料：\n${blockingConflicts.map(conflict => `- ${conflict.label}`).join("\n")}`)
       }
       const overrideConflicts = conflicts.filter(conflict => !conflict.blocking)
       if (overrideConflicts.length > 0 && !selectionConflictAcknowledged) {
-        alert(`以下字段存在差异，请在甄选信息页确认统一使用本页批次内容：\n${overrideConflicts.map(conflict => `- ${conflict.label}`).join("\n")}`)
-        return
+        return fail(`以下字段存在差异，请在甄选信息页确认统一使用本页批次内容：\n${overrideConflicts.map(conflict => `- ${conflict.label}`).join("\n")}`)
       }
 
       const undecidedRenewals = resolvedSelectionProjects.filter(project =>
@@ -1375,8 +1505,7 @@ export default function TemplateForms({
         && !selectionRenewalDecisions[project.projectId],
       )
       if (undecidedRenewals.length > 0) {
-        alert(`以下项目存在“专线/其他产品续签成本”，请先确认是否属于专线并计入立项金额：\n${undecidedRenewals.map(project => `- ${project.projectName}`).join("\n")}`)
-        return
+        return fail(`以下项目存在“专线/其他产品续签成本”，请先确认是否属于专线并计入立项金额：\n${undecidedRenewals.map(project => `- ${project.projectName}`).join("\n")}`)
       }
 
       resolvedSelectionModel = buildSelectionResultBatchModel(
@@ -1393,12 +1522,10 @@ export default function TemplateForms({
         rows as Record<string, string>[]
       ).filter(row => row[sequenceKey as string]).length !== resolvedSelectionProjects.length)
       if (incompleteTables.length > 0) {
-        alert(`以下明细表缺少一个或多个项目的有效数据，不能生成：${incompleteTables.map(([label]) => label).join("、")}`)
-        return
+        return fail(`以下明细表缺少一个或多个项目的有效数据，不能生成：${incompleteTables.map(([label]) => label).join("、")}`)
       }
       if (resolvedSelectionModel.approvalAmountExcl.gte(500000)) {
-        alert(`本批次立项金额为 ${resolvedSelectionModel.approvalAmountExcl.toFixed(2)} 元（不含税），已达到或超过 50 万元，不能使用“50万以下”模板。`)
-        return
+        return fail(`本批次立项金额为 ${resolvedSelectionModel.approvalAmountExcl.toFixed(2)} 元（不含税），已达到或超过 50 万元，不能使用“50万以下”模板。`)
       }
     }
 
@@ -1409,12 +1536,10 @@ export default function TemplateForms({
         .filter(value => value > 0)
       const maxQuote = activeQuotes.length > 0 ? Math.max(...activeQuotes) : 0
       if (maxQuote > 0 && totalRevenueIncl <= 0) {
-        alert("请先完善收入侧含税总收入，三家询价最高价不能超过含税总收入。")
-        return
+        return fail("请先完善收入侧含税总收入，三家询价最高价不能超过含税总收入。")
       }
       if (totalRevenueIncl > 0 && maxQuote > totalRevenueIncl + 0.01) {
-        alert(`三家询价最高价 ${maxQuote.toFixed(2)} 不能超过含税总收入 ${totalRevenueIncl.toFixed(2)}。`)
-        return
+        return fail(`三家询价最高价 ${maxQuote.toFixed(2)} 不能超过含税总收入 ${totalRevenueIncl.toFixed(2)}。`)
       }
     }
 
@@ -1550,7 +1675,7 @@ export default function TemplateForms({
         .filter(Boolean);
     };
     const joinSubjectGroups = (groups: string[][]) => groups.filter(group => group.length > 0).map(group => group.join("，")).join("；");
-    const afterApprovalSelectionPhrase = get('gen_after_approval_selection') === "on" ? "申请立项后甄选，" : "";
+    const afterApprovalSelectionPhrase = ['on', 'true'].includes(get('gen_after_approval_selection')) ? "申请立项后甄选，" : "";
     const investmentDetailGroups = joinSubjectGroups([
       buildSubjectAmountDetails("cost", "IT", "投入"),
       buildSubjectAmountDetails("cost", "CT", "投入"),
@@ -1598,8 +1723,8 @@ export default function TemplateForms({
     const demandSecurityLine = `\n${securityIdx}、信息安全、密评：${hasSecurity ? (securityDetailStr || "有") : "无"}`;
 
     const attach2TitleLine = hasPublicUrl ? `\n附件2、有效的挂网链接截图/招标文件（有效地址：${demandUrlStr}）` : "";
-    const attach1ImageStr = attach1Images.length > 0 ? JSON.stringify(attach1Images.map(img => toDocImagePayload(img))) : "";
-    const attach2ImageStr = (hasPublicUrl && attach2Images.length > 0) ? JSON.stringify(attach2Images.map(img => toDocImagePayload(img))) : "";
+    const attach1ImageStr = generationAttach1.length > 0 ? JSON.stringify(generationAttach1.map(img => toDocImagePayload(img))) : "";
+    const attach2ImageStr = (hasPublicUrl && generationAttach2.length > 0) ? JSON.stringify(generationAttach2.map(img => toDocImagePayload(img))) : "";
 
     const now = new Date();
     const currDate = `${now.getFullYear()}年${String(now.getMonth()+1).padStart(2, '0')}月${String(now.getDate()).padStart(2, '0')}日`;
@@ -1666,7 +1791,7 @@ export default function TemplateForms({
       'PROJECT_REVIEW_ACCURACY': get('gen_review_acc'),
       'SINGLE_SOURCE_EXPLANATION': hasSingleSource ? get('gen_single_source') : "",
       'IS_SME': "是",
-      'IS_ADVANCE_PAYMENT': get('gen_is_advance') === "on" ? "是" : "否",
+      'IS_ADVANCE_PAYMENT': ['on', 'true'].includes(get('gen_is_advance')) ? "是" : "否",
 
       'SUBJECT_IT_COST': resolvedSubjectItCost,
       'SUBJECT_CT_COST': resolvedSubjectCtCost,
@@ -1918,7 +2043,10 @@ export default function TemplateForms({
       })
     }
 
-    const runGenerate = (overwriteExisting = false) => invoke<string>('generate_lifecycle_docs', {
+    const runGenerate = async (overwriteExisting = false) => {
+      if (assetTargetRef.current.projectId !== projectId || assetTargetRef.current.selectedTemplate !== selectedTemplate || assetTargetRef.current.workspaceId !== workspaceId) throw new Error('项目、模板或工作区已切换，请重新生成。');
+      await beforeDocumentGenerate?.();
+      return invoke<string>('generate_lifecycle_docs', {
           moduleId: "ict_lifecycle",
           variables: variables,
           selectedTemplates: [selectedTemplate],
@@ -1926,6 +2054,7 @@ export default function TemplateForms({
           projectId,
           overwriteExisting
       })
+    }
 
     try {
       let generatedOutputDir: string
@@ -1938,7 +2067,7 @@ export default function TemplateForms({
         }
         const conflictPath = message.replace("FILE_EXISTS::", "")
         const shouldOverwrite = confirm(`目标文件已存在，是否覆盖？\n${conflictPath}`)
-        if (!shouldOverwrite) return
+        if (!shouldOverwrite) return { status: 'cancelled', message: '用户取消覆盖现有文件。' }
         generatedOutputDir = await runGenerate(true)
       }
       if (projectId && outputDir) {
@@ -1952,10 +2081,104 @@ export default function TemplateForms({
       if (confirm(`生成成功！文件已保存至：\n${generatedOutputDir}\n是否立即打开输出目录？`)) {
         invoke('open_file', { path: generatedOutputDir })
       }
+      return { status: 'success', outputDir: generatedOutputDir };
     } catch(e) {
-      alert("生成失败：" + e)
+      return fail("生成失败：" + e)
     }
   }
+  const runUserGeneration = useLatestCallback(async (): Promise<GenerationResult> => {
+    if (generationBusy.current) return { status: 'error', message: '文档正在生成，请勿重复点击。' };
+    generationBusy.current = true;
+    try { return await handleGenerate(); }
+    catch (error) { const message = String(error); alert(message); return { status: 'error', message }; }
+    finally { generationBusy.current = false; }
+  });
+  const generateChatDocument = useLatestCallback(async (request: DocumentRequest) => {
+    let result: GenerationResult;
+    try {
+      await assertDocumentBinding(request);
+      if (templateLoadError) throw new Error(templateLoadError);
+      const target = assetTargetRef.current;
+      if (useDocumentRequest.getState().request?.requestId !== request.requestId || target.projectId !== request.projectId || target.workspaceId !== request.workspaceId || target.selectedTemplate !== request.templateName) throw new Error('项目或模板已切换，生成请求已失效。');
+      result = await runUserGeneration();
+    } catch (error) { result = { status: 'error', message: String(error) }; }
+    await finishDocumentRequest(request, result);
+  });
+  const [pendingListSave, setPendingListSave] = useState<DocumentRequest | null>(null);
+  const savingListRef = useRef<string | null>(null);
+  const runChatListAction = useLatestCallback(async (request: DocumentRequest) => {
+    try {
+      await assertDocumentBinding(request);
+      if (templateLoadError || templateConflict) throw new Error(templateLoadError || templateConflict);
+      if (useDocumentRequest.getState().request?.requestId !== request.requestId) throw new Error('请求已失效');
+      if (assetTargetRef.current.projectId !== request.projectId || assetTargetRef.current.selectedTemplate !== request.templateName || assetTargetRef.current.workspaceId !== request.workspaceId) throw new Error('项目或模板已切换');
+      const action = request.action as TemplateListAction;
+      assertListAction(action, listSnapshot(techItems, inqVendors));
+      useDocumentRequest.setState({phase:'running'});
+      if (action.type === 'readLists') {
+        await finishDocumentRequest(request, {status:'list',snapshot:listSnapshot(techItems,inqVendors)});
+        return;
+      }
+      if (action.type === 'saveTech') setTechItems(action.rows);
+      if (action.type === 'generateInquiry') {
+        let message = '';
+        if (!autoGenerateInquiry(value => { message = value; })) throw new Error(message);
+      }
+      if (action.type === 'saveInquiry') {
+        const uploaded: Array<{row:number; assetId:string; width:number; height:number}> = [];
+        for (const upload of action.uploads) {
+          if (!Number.isInteger(upload.row) || upload.row < 0 || upload.row >= inqVendors.length
+            || !/^data:image\/(png|jpeg|webp);base64,/.test(upload.base64Data) || upload.base64Data.length > 28_000_000) throw new Error('截图格式或目标行无效');
+          await assertDocumentBinding(request);
+          const assetId = await domainSaveService.saveTemplateAsset(request.projectId, selectedTemplate, {
+            assetType:'image',usage:`vendor_${upload.row}`,originalFileName:upload.name,
+            base64Data:upload.base64Data,width:upload.width,height:upload.height,
+          });
+          uploaded.push({row:upload.row,assetId,width:upload.width,height:upload.height});
+        }
+        await assertDocumentBinding(request);
+        if (assetTargetRef.current.projectId !== request.projectId || assetTargetRef.current.selectedTemplate !== request.templateName) throw new Error('项目或模板已切换');
+        action.rows.forEach((row, index) => {
+          updateInqVendor(index, 'vendorName', row.vendorName);
+          handleInquiryAmountChange(index, String(row.amount));
+          updateInqVendor(index, 'taxRate', row.taxRate);
+          updateInqVendor(index, 'remark', row.remark);
+        });
+        if (uploaded.length) setInqVendors(previous => previous.map((row,index) => ({...row,
+          images:[...(row.images || []), ...uploaded.filter(img => img.row === index).map(({row:_,...image}) => image)]})));
+      }
+      setPendingListSave(request);
+    } catch (error) { await finishDocumentRequest(request, {status:'error',message:String(error)}); }
+  });
+  const saveChatLists = useLatestCallback(async (request: DocumentRequest) => {
+    try {
+      await assertDocumentBinding(request);
+      if (assetTargetRef.current.projectId !== request.projectId || assetTargetRef.current.selectedTemplate !== request.templateName
+        || useDocumentRequest.getState().request?.requestId !== request.requestId) throw new Error('项目或模板已切换，清单未保存');
+      await autoSaveFormSettings({throwOnError:true,sharedTechTemplates:request.action?.type === 'saveTech' ? request.action.sharedTemplates : undefined});
+      await finishDocumentRequest(request, {status:'list',snapshot:listSnapshot(techItems,inqVendors)});
+    } catch (error) {
+      const target = assetTargetRef.current;
+      if (target.projectId === request.projectId && target.selectedTemplate === request.templateName && target.workspaceId === request.workspaceId) {
+        setTemplateConflict('清单保存未完成，请重新载入最新保存内容后继续：' + String(error));
+      }
+      await finishDocumentRequest(request, {status:'error',message:String(error)});
+    }
+    finally { setPendingListSave(current => current?.requestId === request.requestId ? null : current); }
+  });
+  useEffect(() => {
+    if (!pendingListSave || savingListRef.current === pendingListSave.requestId) return;
+    savingListRef.current = pendingListSave.requestId;
+    void saveChatLists(pendingListSave);
+  }, [pendingListSave, saveChatLists]);
+  useEffect(() => {
+    if (!documentRequest || startedDocumentRef.current === documentRequest.requestId
+      || loadedTemplateKey !== JSON.stringify([workspaceId, projectId, selectedTemplate])) return;
+    startedDocumentRef.current = documentRequest.requestId;
+    if (documentRequest.action) void runChatListAction(documentRequest);
+    else void generateChatDocument(documentRequest);
+  }, [documentRequest, loadedTemplateKey, workspaceId, projectId, selectedTemplate, generateChatDocument, runChatListAction]);
+
   const itCostInclForContent = (projectData.cost?.it?.integration?.incl || 0) + (projectData.cost?.it?.device?.incl || 0) + (projectData.cost?.it?.maintenance?.incl || 0)
   const defaultSignItContent = joinedBusinessNames(customItBusinessNames) || (itCostInclForContent > 0 ? (itContent || "集成服务") : "无")
   const defaultSignCtContent = joinedBusinessNames(customCtBusinessNames) || (hasMidThree ? (ctContent ? ctContent.replace(/能力/g, '') : "详见清单") : "无")
@@ -1964,9 +2187,8 @@ export default function TemplateForms({
   const isDemandTemplate = selectedTemplate.includes('需求导入表')
   const isSelectionResultDocTemplate = selectedTemplate.includes('甄选结果签批表')
   const usesTabbedDocumentLayout = isMeetingReviewTemplate || isApprovalTemplate || isDemandTemplate || isSelectionResultDocTemplate
-  const getFormValue = (name: string, defaultValue = "") => formData[name] ?? defaultValue
+  const getFormValue = (name: string, defaultValue = "") => formData[name] ?? TEMPLATE_FIELD_DEFAULTS[name] ?? defaultValue
   const hasText = (value: unknown) => String(value ?? "").trim().length > 0
-  const hasAnyInquiryVendor = inqVendors.some(v => hasText(v.vendorName) || Number(v.amount || 0) > 0)
   const projectInfoForConfirmation = {
     projectName: isSelectionResultDocTemplate && selectionResultMode === "batch"
       ? selectionBatchName
@@ -1985,80 +2207,32 @@ export default function TemplateForms({
   const selectionApprovalAmountPreview = selectionResultMode === "batch"
     ? selectionBatchModelPreview?.approvalAmountExcl || null
     : singleApprovalAmount
-  const meetingCompletionItems: TemplateCompletionItem[] = [
-    { label: "会议开始日期", filled: hasText(getFormValue("gen_meet_start", todayStr)) },
-    { label: "会议结束日期", filled: hasText(getFormValue("gen_meet_end", todayStr)) },
-    { label: "会议方式", filled: hasText(getFormValue("gen_meet_mode", "线上")) },
-    { label: "项目规模", filled: hasText(projectScale) },
-    { label: "市公司参会人员", filled: projectScale !== "large" || hasText(getFormValue("gen_city_attendees")) },
-    { label: "分公司参会人员", filled: hasText(getFormValue("gen_branch_name", "XXXX")) && hasText(getFormValue("gen_branch_attendees")) },
-    { label: "驻点支撑人员", filled: hasText(getFormValue("gen_onsite_support")) },
-    { label: "项目背景", filled: hasText(projectBackground) },
-    { label: "IT建设内容", filled: hasText(itContent) },
-    { label: "CT建设内容", filled: hasText(ctContent) },
-    { label: "技术方案", filled: hasText(getFormValue("gen_tech_solution", "采用端-管-云架构...")) },
-    { label: "技术方案可行性清单", filled: techItems.length > 0 },
-    { label: "涉及中台能力调用", filled: !hasMidThree || (hasText(midThreeCode) && hasText(midThreeName)) },
-    { label: "自主三问", filled: hasText(selfThreeValue) },
-    { label: "三化方案", filled: hasText(getFormValue("gen_threeization", "本项目不涉及三化方案。")) },
-    { label: "战略价值", filled: hasText(getFormValue("gen_strategic_value")) },
-    { label: "综论", filled: hasText(getFormValue("gen_tech_conclusion", "方案可行同时能满足客户需求。")) },
-    { label: "收入付款方式", filled: hasText(revCollection) },
-    { label: "支出付款方式", filled: hasText(expPayment) },
-    { label: "IT服务模式/商务模式", filled: hasText(itBusMode) },
-    { label: "资金来源", filled: hasText(itFundSrc) },
-    { label: "询价情况/询价过程", filled: hasAnyInquiryVendor },
-    { label: "时间要求", filled: hasText(getFormValue("gen_construction_time_req", "合同签定后30天内。")) },
-    { label: "风险点及其他责任人", filled: hasText(getFormValue("gen_risk_owner", "人员A")) },
-    { label: "是否联合体投标", filled: hasText(getFormValue("gen_is_joint", "否")) },
-    { label: "项目评审清单准确完整", filled: hasText(getFormValue("gen_review_acc", "是，项目投入收入核算完整，各表填写准确")) },
-    { label: "是否涉及单一来源", filled: !hasSingleSource || hasText(getFormValue("gen_single_source", "单一来源决策依据：符合单一来源场景...")) },
-    { label: "采购方式", filled: procurementMethod !== "其他" || hasText(getFormValue("gen_procurement_method_other")) },
-    { label: "售中建设及施工界面", filled: hasText(getFormValue("gen_construction_interface", "本项目采购统一集成单位实施。分公司负责客户侧的协调工作，并协调管理合作伙伴完成交付。")) },
-  ]
-  const approvalCompletionItems: TemplateCompletionItem[] = [
-    { label: "项目背景", filled: hasText(projectBackground) },
-    { label: "IT服务内容", filled: hasText(getFormValue("gen_sign_it_content", defaultSignItContent)) },
-    { label: "CT服务内容", filled: hasText(getFormValue("gen_sign_ct_content", defaultSignCtContent)) },
-    { label: "是否涉及垫资", filled: true },
-    { label: "是否立项后甄选", filled: true },
-    { label: "收入侧收款方式", filled: hasText(revCollection) },
-    { label: "支出侧付款方式", filled: hasText(expPayment) },
-  ]
-  const demandCompletionItems: TemplateCompletionItem[] = [
-    { label: "项目需求单位", filled: hasText(getFormValue("gen_demand_branch_name", "XXX分公司")) },
-    { label: "业务模式", filled: hasText(getFormValue("gen_demand_it_business_mode", "服务模式")) },
-    { label: "服务内容", filled: hasText(getFormValue("gen_demand_service_content", "IT；CT")) },
-    { label: "设备清单", filled: hasText(getFormValue("gen_demand_device_list", "不涉及")) },
-    { label: "技术方案可行性清单", filled: techItems.length > 0 },
-    { label: "客户确认", filled: hasText(getFormValue("gen_demand_customer_confirm", "微信截图")) },
-    { label: "部署环境要求", filled: hasText(getFormValue("gen_demand_env_require", "客户提供部署环境，不包含在本次项目范围内")) },
-    { label: "公示网址/招标文件", filled: !hasPublicUrl || hasText(getFormValue("gen_demand_public_url")) },
-    { label: "信息安全/密评", filled: !hasSecurity || hasText(getFormValue("gen_demand_security_detail")) },
-    { label: "附件1客户确认材料", filled: attach1Images.length > 0 },
-    { label: "附件2招标材料", filled: !hasPublicUrl || attach2Images.length > 0 },
-  ]
-  const selectionResultCompletionItems: TemplateCompletionItem[] = [
-    {
-      label: "甄选后方案",
-      filled: selectionResultMode === "batch"
+  const meetingCompletionItems = getCatalogCompletion("会审纪要.docx", {
+    formData: {gen_meet_start: todayStr, gen_meet_end: todayStr, ...formData},
+    projectScale, projectBackground, itContent, ctContent, techItems, hasMidThree,
+    midThreeCode, midThreeName, selfThreeValue, revCollection, expPayment, itBusMode,
+    itFundSrc, inqVendors, hasSingleSource, procurementMethod,
+  })
+  const approvalCompletionItems = getCatalogCompletion("立项签批表.docx", {
+    formData: {gen_sign_it_content:defaultSignItContent,gen_sign_ct_content:defaultSignCtContent,...formData},
+    revCollection, expPayment, completionValues:{gen_proj_bg:hasText(projectBackground)},
+  })
+  const demandCompletionItems = getDemandCompletion(selectedTemplate, {
+    formData, techItems, hasPublicUrl, hasSecurity, attach1Images, attach2Images,
+  })
+  const selectionResultCompletionItems = getCatalogCompletion("甄选结果签批表.docx", {
+    formData, revCollection, expPayment, selectionResultMode, selectionBatchName,
+    completionValues: {
+      post_selection_scheme: selectionResultMode === "batch"
         ? selectionBatchProjectIds.length >= 2 && selectionBatchProjects.length === selectionBatchProjectIds.length
         : currentSchemeStage === "post_selection",
+      gen_proj_bg: hasText(projectBackground),
+      public_fields_consistent: selectionResultMode === "single" || selectionBlockingConflicts.length === 0,
+      batch_overrides_acknowledged: selectionResultMode === "single" || selectionOverrideConflicts.length === 0 || selectionConflictAcknowledged,
+      renewal_costs_confirmed: selectionRenewalDecisionsComplete,
+      approval_amount_below_500k: Boolean(selectionApprovalAmountPreview && selectionApprovalAmountPreview.lt(500000)),
     },
-    { label: "合并项目名称", filled: selectionResultMode === "single" || hasText(selectionBatchName) },
-    { label: "项目背景", filled: hasText(projectBackground) },
-    { label: "中选合作伙伴", filled: hasText(getFormValue("gen_zx_winner_name")) },
-    { label: "甄选范围", filled: hasText(getFormValue("gen_zx_scope", "三级库")) },
-    { label: "甄选方式", filled: hasText(getFormValue("gen_zx_method", "竞争性甄选")) },
-    { label: "甄选规则", filled: hasText(getFormValue("gen_zx_rule", "标准方案")) },
-    { label: "供应商是否中小企业", filled: true },
-    { label: "收入侧收款方式", filled: hasText(revCollection) },
-    { label: "支出侧付款方式", filled: hasText(expPayment) },
-    { label: "公共字段一致", filled: selectionResultMode === "single" || selectionBlockingConflicts.length === 0 },
-    { label: "批次字段差异已确认", filled: selectionResultMode === "single" || selectionOverrideConflicts.length === 0 || selectionConflictAcknowledged },
-    { label: "续签成本归类已确认", filled: selectionRenewalDecisionsComplete },
-    { label: "立项金额低于50万元", filled: Boolean(selectionApprovalAmountPreview && selectionApprovalAmountPreview.lt(500000)) },
-  ]
+  })
   const meetingCompletion = getTemplateCompletion(meetingCompletionItems)
   const approvalCompletion = getTemplateCompletion(approvalCompletionItems)
   const demandCompletion = getTemplateCompletion(demandCompletionItems)
@@ -2066,6 +2240,11 @@ export default function TemplateForms({
 
   return (
     <div className="flex flex-col gap-6">
+      {templateConflict && <div role="alert" className="rounded-lg bg-warning-soft p-4 text-sm text-foreground">
+        <p>{templateConflict}</p>
+        <details className="mt-2"><summary>查看本页草稿（重新载入前可复制保留）</summary><pre className="max-h-48 overflow-auto whitespace-pre-wrap">{JSON.stringify(formData,null,2)}</pre></details>
+        <button type="button" onClick={() => void loadFormSettings()} className="mt-2 rounded-lg bg-card px-3 py-2">放弃本页未保存编辑，载入最新内容</button>
+      </div>}
       <form ref={formRef} className="flex flex-col gap-6" onSubmit={(e) => e.preventDefault()} onChange={handleFormChange}>
 
         {/* Excel 预算表/评估表专属配置 */}
@@ -2183,7 +2362,7 @@ export default function TemplateForms({
             onTabChange={setMeetingReviewTab}
             completion={meetingCompletion}
             metrics={metrics}
-            onGenerate={handleGenerate}
+            onGenerate={() => { void runUserGeneration(); }}
           >
 
             {meetingReviewTab === "basic" && (
@@ -2487,7 +2666,7 @@ export default function TemplateForms({
                         )}
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <button type="button" onClick={autoGenerateInquiry} className="inline-flex items-center gap-1.5 text-xs bg-warning-soft text-warning-foreground px-3 py-1.5 rounded font-bold hover:bg-warning/20">
+                        <button type="button" onClick={() => autoGenerateInquiry()} className="inline-flex items-center gap-1.5 text-xs bg-warning-soft text-warning-foreground px-3 py-1.5 rounded font-bold hover:bg-warning/20">
                           <AppIcon name="quickAction" size={14} /> 一键生成三家报价
                         </button>
                         <button type="button" onClick={addInqVendor} className="text-xs bg-primary-soft text-primary px-3 py-1.5 rounded font-semibold hover:bg-primary-soft/80">+ 新增厂商</button>
@@ -2691,7 +2870,7 @@ export default function TemplateForms({
                 templateName={selectedTemplate}
                 currentSchemeLabel={currentSchemeLabel}
                 completion={meetingCompletion}
-                onGenerate={handleGenerate}
+                onGenerate={() => { void runUserGeneration(); }}
                 {...projectInfoForConfirmation}
               />
             )}
@@ -2708,7 +2887,7 @@ export default function TemplateForms({
             onTabChange={setApprovalTemplateTab}
             completion={approvalCompletion}
             metrics={metrics}
-            onGenerate={handleGenerate}
+            onGenerate={() => { void runUserGeneration(); }}
           >
             {approvalTemplateTab === "content" && (
               <TemplateTabSection>
@@ -2841,7 +3020,7 @@ export default function TemplateForms({
                 templateName={selectedTemplate}
                 currentSchemeLabel={currentSchemeLabel}
                 completion={approvalCompletion}
-                onGenerate={handleGenerate}
+                onGenerate={() => { void runUserGeneration(); }}
                 {...projectInfoForConfirmation}
               />
             )}
@@ -2858,7 +3037,7 @@ export default function TemplateForms({
             onTabChange={setSelectionResultTab}
             completion={selectionResultCompletion}
             metrics={selectionResultMode === "batch" ? undefined : metrics}
-            onGenerate={handleGenerate}
+            onGenerate={() => { void runUserGeneration(); }}
           >
             {selectionResultTab === "content" && (
               <TemplateTabSection>
@@ -3232,7 +3411,7 @@ export default function TemplateForms({
                 templateName={selectedTemplate}
                 currentSchemeLabel={selectionResultMode === "batch" ? `已选择 ${selectionBatchProjectIds.length} 个甄选后方案` : currentSchemeLabel}
                 completion={selectionResultCompletion}
-                onGenerate={handleGenerate}
+                onGenerate={() => { void runUserGeneration(); }}
                 {...projectInfoForConfirmation}
               />
             )}
@@ -3249,7 +3428,7 @@ export default function TemplateForms({
             onTabChange={setDemandTemplateTab}
             completion={demandCompletion}
             metrics={metrics}
-            onGenerate={handleGenerate}
+            onGenerate={() => { void runUserGeneration(); }}
           >
             {demandTemplateTab === "content" && (
               <TemplateTabSection>
@@ -3478,7 +3657,7 @@ export default function TemplateForms({
                 templateName={selectedTemplate}
                 currentSchemeLabel={currentSchemeLabel}
                 completion={demandCompletion}
-                onGenerate={handleGenerate}
+                onGenerate={() => { void runUserGeneration(); }}
                 {...projectInfoForConfirmation}
               />
             )}
@@ -3488,7 +3667,7 @@ export default function TemplateForms({
       </form>
 
       {!usesTabbedDocumentLayout && (
-        <button className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-bold py-3 px-6 rounded-lg self-start shadow-sm hover:opacity-90 transition-opacity" onClick={handleGenerate}>
+        <button className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-bold py-3 px-6 rounded-lg self-start shadow-sm hover:opacity-90 transition-opacity" onClick={() => { void runUserGeneration(); }}>
           <AppIcon name="generate" size={18} /> 立即生成此文件
         </button>
       )}

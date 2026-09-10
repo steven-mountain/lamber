@@ -36,10 +36,21 @@ export interface AiImageAttachment {
   fieldKey?: string;
 }
 
+export interface AiToolCall {
+  id: string;
+  title: string;
+  status: string;
+  input?: unknown;
+  output?: unknown;
+}
+
 export interface AiChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** Emitted by a user-operated application card, never by model output. */
+  appReceipt?: boolean;
   think?: string;
+  toolCalls?: AiToolCall[];
   images?: AiImageAttachment[];
 }
 
@@ -58,19 +69,4 @@ export interface PromptAST {
     layer3Context: ContextNode[];// Background associated summaries
   };
   userIntent: UserIntent;
-}
-
-// 4. Runtime Telemetry & Events
-export type RuntimeEventType = 
-  | 'PromptRendered' 
-  | 'ToolCallStarted' 
-  | 'ToolCallCompleted' 
-  | 'ToolError' 
-  | 'StreamStarted' 
-  | 'StreamCompleted';
-
-export interface RuntimeEvent {
-  type: RuntimeEventType;
-  timestamp: number;
-  payload?: any;
 }

@@ -1,0 +1,187 @@
+{
+  "method": "Production candidate + production payload + production solver + production batch setter; controlled metric engine. All 28 subjects and 10-year plans compared.",
+  "cases": [
+    {
+      "name": "original witness",
+      "autoFix": false,
+      "calls": 1,
+      "status": "success",
+      "target": 0.10325,
+      "achieved": 0.103325,
+      "targetAmount": 41.33,
+      "balancingAmount": 58.67,
+      "plans": {
+        "revenue:revIt:integration": {
+          "id": "revenue:revIt:integration",
+          "subjectRef": {
+            "side": "revenue",
+            "groupId": "revIt",
+            "key": "integration"
+          },
+          "mode": "custom",
+          "annualInclValues": [
+            10.33,
+            10.33,
+            10.33,
+            10.34,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "enabled": true,
+          "source": "manual",
+          "lastValidAnnualInclValues": [
+            10,
+            10,
+            10,
+            10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "lastChangeReason": "reverse_calculation_sync"
+        },
+        "revenue:revIt:maintenance": {
+          "id": "revenue:revIt:maintenance",
+          "subjectRef": {
+            "side": "revenue",
+            "groupId": "revIt",
+            "key": "maintenance"
+          },
+          "mode": "custom",
+          "annualInclValues": [
+            14.67,
+            14.67,
+            14.67,
+            14.66,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "enabled": true,
+          "source": "manual",
+          "lastValidAnnualInclValues": [
+            15,
+            15,
+            15,
+            15,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "lastChangeReason": "balance_allocation_sync"
+        }
+      }
+    },
+    {
+      "name": "normalized metric misses target",
+      "autoFix": false,
+      "status": "success",
+      "calls": 1
+    },
+    {
+      "name": "final metric drift",
+      "autoFix": false,
+      "status": "error",
+      "calls": 0
+    },
+    {
+      "name": "original witness",
+      "autoFix": true,
+      "calls": 0,
+      "status": "error",
+      "targetAmount": 40,
+      "balancingAmount": 60,
+      "plans": {
+        "revenue:revIt:integration": {
+          "id": "revenue:revIt:integration",
+          "subjectRef": {
+            "side": "revenue",
+            "groupId": "revIt",
+            "key": "integration"
+          },
+          "mode": "custom",
+          "annualInclValues": [
+            10,
+            10,
+            10,
+            10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "enabled": true,
+          "source": "manual"
+        },
+        "revenue:revIt:maintenance": {
+          "id": "revenue:revIt:maintenance",
+          "subjectRef": {
+            "side": "revenue",
+            "groupId": "revIt",
+            "key": "maintenance"
+          },
+          "mode": "custom",
+          "annualInclValues": [
+            15,
+            15,
+            15,
+            15,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "enabled": true,
+          "source": "manual"
+        }
+      }
+    },
+    {
+      "name": "normalized metric misses target",
+      "autoFix": true,
+      "status": "error",
+      "calls": 0
+    },
+    {
+      "name": "final metric drift",
+      "autoFix": true,
+      "status": "error",
+      "calls": 0
+    },
+    {
+      "name": "unclosable pool",
+      "autoFix": false,
+      "status": "success",
+      "calls": 1
+    },
+    {
+      "name": "unclosable pool",
+      "autoFix": true,
+      "status": "error",
+      "calls": 0
+    }
+  ],
+  "before": {
+    "calls": 1,
+    "total": 100.01
+  },
+  "batchParity": 672,
+  "unclosableCandidates": 3
+}

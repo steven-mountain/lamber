@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  assertAgentPackageMetadata,
   bumpVersion,
   replaceCargoLockVersion,
   replaceCargoTomlVersion,
@@ -35,4 +36,47 @@ test("updates JSON versions without reformatting the document", () => {
 
   assert.match(updated, /"version": "1\.1\.1"/);
   assert.match(updated, /"targets": \["nsis"\]/);
+});
+
+test("requires dsh to be pinned as a production dependency", () => {
+  assert.doesNotThrow(() =>
+    assertAgentPackageMetadata(
+      { dependencies: { "@deepseek-ai/dsh": "0.1.2-alpha.5" }, devDependencies: { pnpm: "^10" } },
+      { packages: { "": { dependencies: { "@deepseek-ai/dsh": "0.1.2-alpha.5" } } } },
+    ),
+  );
+  assert.throws(
+    () =>
+      assertAgentPackageMetadata(
+        { devDependencies: { "@deepseek-ai/dsh": "0.1.2-alpha.5" } },
+        { packages: { "": { devDependencies: { "@deepseek-ai/dsh": "0.1.2-alpha.5" } } } },
+      ),
+    /production dependency/,
+  );
+});
+
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { assertBinaryContract, assertPluginContract } from './bridge-contract.mjs';
+
+test('packaging rejects old and mismatched compiled binaries and stale plugin output', () => {
+  const root = mkdtempSync(join(tmpdir(), 'lamber-contract-packaging-'));
+  try {
+    const contract = JSON.parse(readFileSync(new URL('../agent-bridge/bridge-contract.json', import.meta.url)));
+    mkdirSync(join(root, 'lib'));
+    writeFileSync(join(root, 'lib/contract.generated.js'), `export const BRIDGE_CONTRACT = ${JSON.stringify(contract)};\n`);
+    const binary = join(root, 'app');
+    const writeBinary = value => writeFileSync(binary, Buffer.concat([Buffer.from([0, 128, 255]), Buffer.from(`LAMBER_BRIDGE_CONTRACT:${JSON.stringify(value)}:END_LAMBER_BRIDGE_CONTRACT`)]));
+    writeBinary(contract);
+    assert.doesNotThrow(() => assertBinaryContract(root, binary));
+    assert.doesNotThrow(() => assertPluginContract(root, contract));
+    writeBinary({ ...contract, version: contract.version + 1 });
+    assert.throws(() => assertBinaryContract(root, binary), /打包已停止/);
+    writeBinary({ ...contract, routes: contract.routes.slice(1) });
+    assert.throws(() => assertBinaryContract(root, binary), /打包已停止/);
+    writeFileSync(binary, 'legacy executable');
+    assert.throws(() => assertBinaryContract(root, binary), /缺少桥接契约/);
+    assert.throws(() => assertPluginContract(root, { ...contract, version: 99 }), /打包已停止/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
