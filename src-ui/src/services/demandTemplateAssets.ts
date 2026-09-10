@@ -1,5 +1,6 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { emit, listen } from '@tauri-apps/api/event';
+import { emit } from '@tauri-apps/api/event';
+import { listenBusinessEvent as listen } from './businessEvents';
 import { domainSaveService } from './domainSaveService';
 import { projectService } from '../utils/projectService';
 

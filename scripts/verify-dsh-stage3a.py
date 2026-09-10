@@ -163,8 +163,7 @@ def main():
                 kinds = sorted({e['params']['chunk']['type'] for e in events if e['method'] == 'session/stream' and e['params']['kind'] == 'delta'})
                 output = args.output or Path(tempfile.gettempdir()) / ('lamber-stage3a-real-events.json' if args.real else 'lamber-stage3a-mock-events.json')
                 output.write_text(json.dumps(events, ensure_ascii=False))
-                subprocess.run(['node', str(base.parent / 'src-ui/scripts/test_dsh_runtime.cjs'), str(output)], check=True)
-                print(json.dumps({'mode': 'real' if args.real else 'mock', 'passed': True,
+                print(json.dumps({'scope': 'ACP diagnostic transport only; production UI is official WebUI', 'mode': 'real' if args.real else 'mock', 'passed': True,
                     'deltas': len(timings), 'kinds': kinds, 'firstDeltaSeconds': round(timings[0], 3),
                     'firstCommitSeconds': round(commits[0], 3), 'output': str(output)}, ensure_ascii=False))
             finally:

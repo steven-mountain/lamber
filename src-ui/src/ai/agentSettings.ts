@@ -1,3 +1,4 @@
+import { webBusinessTransport } from '../services/webBusinessTransport';
 import { invoke } from "@tauri-apps/api/core";
 
 export interface AiAgentModelOption {
@@ -21,9 +22,13 @@ export interface AiAgentSettingsUpdate {
 }
 
 export function getAiAgentSettings() {
+  const remote = webBusinessTransport();
+  if (remote) return remote<AiAgentSettings>("settings", {});
   return invoke<AiAgentSettings>("ai_get_settings");
 }
 
 export function saveAiAgentSettings(update: AiAgentSettingsUpdate) {
+  const remote = webBusinessTransport();
+  if (remote) return remote<AiAgentSettings>("save-settings", update);
   return invoke<AiAgentSettings>("ai_save_settings", { update });
 }

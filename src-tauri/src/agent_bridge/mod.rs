@@ -50,7 +50,12 @@ mod prompt;
 mod session_store;
 mod streaming;
 pub mod tool_calls;
+pub mod webui;
+pub mod webui_actions;
+pub mod webui_history;
 mod turns;
+#[cfg(debug_assertions)]
+pub mod webui_probe;
 
 #[cfg(test)]
 mod tests;
@@ -740,6 +745,12 @@ pub async fn ai_save_settings(
     app: tauri::AppHandle,
     update: AiAgentSettingsUpdate,
 ) -> Result<AiAgentSettingsView, String> {
+    let view = save_settings(&app,update)?;
+    app.state::<Arc<AgentRuntime>>().inner().clone().stop()?;
+    if app.get_webview_window("ai-assistant").is_some() { webui::restart_webui(app.clone()).await?; }
+    Ok(view)
+}
+fn save_settings(app:&tauri::AppHandle,update:AiAgentSettingsUpdate)->Result<AiAgentSettingsView,String> {
     let model = update.model.trim();
     if !AI_AGENT_MODELS
         .iter()
@@ -777,7 +788,6 @@ pub async fn ai_save_settings(
     };
     manager.save(&config)?;
 
-    app.state::<Arc<AgentRuntime>>().inner().clone().stop()?;
     Ok(config.ai_agent.into())
 }
 

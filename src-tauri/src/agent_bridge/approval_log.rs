@@ -272,3 +272,16 @@ pub fn workspace_recorder(
         }
     })
 }
+
+/// Web Hosts always have a workspace. Keep its database and its fallback spool
+/// together so a late decision cannot enter a subsequently opened workspace.
+pub fn bound_workspace_recorder(conn: Arc<std::sync::Mutex<rusqlite::Connection>>, spool: PathBuf) -> super::approval::ApprovalRecorder {
+    Arc::new(move |record| {
+        if let Err(reason) = insert(&conn, record) {
+            if let Err(error) = append_to_spool(&spool, record) {
+                eprintln!("[agent_bridge] 原工作区审批审计及缓冲写入失败: {reason} / {error}");
+            }
+        }
+    })
+}
+pub const WORKSPACE_SPOOL_FILE: &str = ".lamber-ai-approval-spool.jsonl";

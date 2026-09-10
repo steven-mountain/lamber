@@ -1,3 +1,5 @@
+import { AI_SESSION_STORAGE_KEY } from '../ai/sessionTypes';
+import { invoke } from '@tauri-apps/api/core';
 import { emit, emitTo } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { availableMonitors, currentMonitor, PhysicalPosition, PhysicalSize } from '@tauri-apps/api/window';
@@ -6,33 +8,27 @@ import { AI_WINDOW_POSITION_KEY, parseWindowPosition, placeAiWindow } from '../l
 
 const LABEL = 'ai-assistant';
 let opening: Promise<void> | null = null;
-
-function waitForCreation(target: WebviewWindow): Promise<void> {
-  const listeners: Promise<() => void>[] = [];
-  return new Promise<void>((resolve, reject) => {
-    listeners.push(
-      target.once('tauri://created', () => resolve()),
-      target.once('tauri://error', event => reject(new Error(String(event.payload)))),
-    );
-    // Registration failures must also reach the launcher, not become unhandled rejections.
-    listeners.forEach(listener => { void listener.catch(reject); });
-  }).finally(() => {
-    listeners.forEach(listener => { void listener.then(stop => stop(), () => {}); });
-  });
-}
+let trackedWindow: WebviewWindow | null = null;
 
 async function openWindow() {
   let target = await WebviewWindow.getByLabel(LABEL);
   const created = !target;
-  if (!target) {
-    target = new WebviewWindow(LABEL, {
-      url: `/#/ai-assistant?view=${encodeURIComponent(localStorage.getItem('lamber_ai_current_view') || 'hub')}`,
-      title: 'Lamber AI 助手', width: 780, height: 680, minWidth: 360, minHeight: 480,
-      decorations: false, transparent: true, backgroundColor: [0, 0, 0, 0],
-      alwaysOnTop: true, resizable: true, shadow: false, skipTaskbar: false,
-      center: true, visible: false, preventOverflow: true,
+  const legacy = localStorage.getItem(AI_SESSION_STORAGE_KEY);
+  if (legacy) await invoke('ai_webui_import_history', { raw: legacy });
+  await invoke('ai_open_webui');
+  target = await WebviewWindow.getByLabel(LABEL);
+  if (!target) throw new Error('AI 窗口未创建，请重试。');
+  if (trackedWindow !== target && created) {
+    trackedWindow = target;
+    const currentTarget = target;
+    const stopMoved = await target.onMoved(({ payload }) => {
+      try { localStorage.setItem(AI_WINDOW_POSITION_KEY, JSON.stringify({ version: 2, x: payload.x, y: payload.y })); }
+      catch { /* Geometry preferences never block native events. */ }
     });
-    await waitForCreation(target);
+    const stopDestroyed = await target.once('tauri://destroyed', () => {
+      stopMoved(); stopDestroyed();
+      if (trackedWindow === currentTarget) trackedWindow = null;
+    });
   }
   await target.unminimize();
   const [screens, preferred, size, current, scale] = await Promise.all([
@@ -64,8 +60,7 @@ async function openWindow() {
 export function openAiAssistantWindow(view: string): Promise<void> {
   localStorage.setItem('lamber_ai_current_view', view);
   if (!('__TAURI_INTERNALS__' in window)) {
-    window.location.hash = `#/ai-assistant?view=${encodeURIComponent(view)}`;
-    return Promise.resolve();
+    return Promise.reject(new Error('AI 工作区需要桌面应用，请通过 npm run tauri dev 启动。'));
   }
   if (!opening) opening = openWindow().finally(() => { opening = null; });
   return opening;

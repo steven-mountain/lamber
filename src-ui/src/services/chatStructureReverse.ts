@@ -1,3 +1,4 @@
+import { webBusinessTransport } from './webBusinessTransport';
 import { invoke } from '@tauri-apps/api/core';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -46,6 +47,8 @@ export async function assertStructureBinding(target: Pick<ReverseIdentity, 'sess
     || workspace.currentWorkspace?.workspaceId !== target.workspaceId) throw new Error('工作区或会话绑定已变更，请重新发起结构反算。');
 }
 export async function loadReverseProject(sessionId: string) {
+  const remote = webBusinessTransport();
+  if (remote) return remote<{ sessionId: string; workspaceId: string; projectId: string; project: Project; schemes: BenefitAnalysisScheme[] } | null>('reverse-project', { sessionId });
   const binding = await invoke<{ workspaceId: string; projectId: string | null; projectName?: string } | null>('ai_get_session_binding', { sessionId });
   if (!binding?.projectId) return null;
   const identity = { sessionId, workspaceId: binding.workspaceId, projectId: binding.projectId };
@@ -69,6 +72,8 @@ export function selectReverseScheme(project: Project, schemes: BenefitAnalysisSc
 
 /** Dispatched only by a card interaction. Apply is never automatically retried. */
 export async function requestStructureReverse(input: Omit<ReverseRequest, 'requestId' | 'replyWindow' | 'expiresAt'>): Promise<ReverseReply> {
+  const remote = webBusinessTransport();
+  if (remote) return remote('reverse-action', { sessionId: input.sessionId, input });
   await assertStructureBinding(input);
   const request: ReverseRequest = { ...input, requestId: crypto.randomUUID(), replyWindow: getCurrentWindow().label, expiresAt: Date.now() + 15000 };
   return new Promise((resolve, reject) => {

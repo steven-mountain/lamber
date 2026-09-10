@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { listenBusinessEvent as listen } from '../../services/businessEvents';
 import { subscribeDemandAssetsChanged } from '../../services/demandTemplateAssets';
 import { completionSummary, documentReceipt, loadDocumentTargets, requestDocumentGeneration, type DocumentTarget } from '../../services/chatDocumentGeneration';
 

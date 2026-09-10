@@ -1,0 +1,42 @@
+{
+  "scope": "Official WebUI D card; isolated synthetic desktop project; controlled model is not real-provider acceptance",
+  "target": 0.20005,
+  "achieved": 0.2,
+  "subjectCount": 28,
+  "changedSubjects": [
+    "cost_it_device",
+    "cost_it_integration"
+  ],
+  "unchangedSubjects": 26,
+  "lockedCostTotal": 89888,
+  "guardCases": [
+    "missing total lock/balancing rejects before changes",
+    "35% outside 19.13%-22.16% rejects; saved snapshots exact unchanged"
+  ],
+  "successBeforeManualSave": "all saved snapshots exact unchanged",
+  "webUiSavedVersion": 4,
+  "nativeBaselineVersion": 5,
+  "nativeSavedVersion": 6,
+  "nativeParity": {
+    "versions": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "inputDifferences": [
+      "/subject_funding_plans/cost:costIt:device/updatedAt",
+      "/subject_funding_plans/cost:costIt:device/lastChangedAt",
+      "/subject_funding_plans/cost:costIt:integration/updatedAt",
+      "/subject_funding_plans/cost:costIt:integration/lastChangedAt"
+    ],
+    "outputExact": true
+  },
+  "fourthYear": [
+    3885.57,
+    9629.43
+  ],
+  "financialFormulasChanged": false
+}

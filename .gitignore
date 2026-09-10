@@ -143,3 +143,8 @@ agent-bridge/dsh-tool-lamber/src/demandCompletion.generated.ts
 agent-bridge/dsh-tool-lamber/src/catalogCompletion.generated.ts
 
 agent-bridge/dsh-tool-lamber/src/*.generated.json
+
+# Generated production WebUI runtime (source lives in agent-bridge/webui)
+/src-tauri/resources/agent-runtime/webui/
+
+.lamber-ai-approval-spool.jsonl

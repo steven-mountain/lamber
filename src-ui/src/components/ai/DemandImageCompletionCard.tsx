@@ -1,8 +1,6 @@
+import { saveChatDemandUpload } from '../../services/chatDemandUpload';
 import { useEffect, useRef, useState } from 'react';
-import { assertDemandUploadBinding, type DemandUploadTarget } from '../../services/demandUploadTargets';
-import { domainSaveService } from '../../services/domainSaveService';
-import { publishDemandAssetsChanged } from '../../services/demandTemplateAssets';
-import { projectService } from '../../utils/projectService';
+import { type DemandUploadTarget } from '../../services/demandUploadTargets';
 import type { AiImageAttachment } from '../../ai/types';
 import ImageAttachmentPreview from './ImageAttachmentPreview';
 
@@ -35,18 +33,9 @@ export default function DemandImageCompletionCard({ target, disabled, onReceipt 
         image.onerror = () => reject(new Error('图片无法解码，请选择有效的图片文件'));
         image.src = dataUrl;
       });
-      // Resolve workspace immediately before the user-authorized write; never substitute the active project.
-      await assertDemandUploadBinding(target);
-      if (!active.current) throw new Error('工作区或会话已切换，请重新选择图片。');
-      assetId = await domainSaveService.saveTemplateAsset(target.projectId, target.templateName, {
-        assetType: 'image', usage: target.usage, originalFileName: file.name,
-        base64Data: dataUrl, ...dimensions,
-      });
-      // The write is already committed. Notify even if the receipt/path lookup fails.
-      await publishDemandAssetsChanged(target);
-      let path: string;
-      try { path = await projectService.getTemplateAssetPath(assetId); }
-      catch { path = '图片已入库，实际路径暂时无法读取；请在模板页查看。'; }
+      const saved = await saveChatDemandUpload(target, { name: file.name, dataUrl, ...dimensions }, () => active.current);
+      assetId = saved.assetId;
+      const path = saved.path;
       onReceipt(`【系统回执】已存入：${target.projectName} / ${target.templateName} / ${target.label}。\n实际位置：${path}`);
       if (active.current) {
         setPreview([{ id: assetId, name: file.name, mimeType: file.type, size: file.size, dataUrl }]);

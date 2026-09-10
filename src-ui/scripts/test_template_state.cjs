@@ -46,6 +46,7 @@ function extract(name, sourceAst = ast) {
   let result;
   function visit(node) {
     if (ts.isVariableDeclaration(node) && node.name.getText(sourceAst) === name) result = node.initializer.getText(sourceAst);
+    if (ts.isFunctionDeclaration(node) && node.name?.text === name) result = node.getText(sourceAst).replace(/^export\s+/, '');
     ts.forEachChild(node, visit);
   }
   visit(sourceAst); assert.ok(result, name);
@@ -222,7 +223,13 @@ async function testUploadBoundaries() {
       projectService: { getTemplateAssetPath: async () => '/workspace/.projects/p1/assets/saved-image.png' },
       assertDemandUploadBinding: async () => { if (options.workspaceId && options.workspaceId !== 'w1') throw new Error('工作区已切换'); if (options.unmounted) context.active.current = false; }, publishDemandAssetsChanged: async () => {}, onReceipt: text => receipts.push(text),
     };
-    vm.createContext(context); vm.runInContext(extract('upload', cardAst), context);
+    const serviceSource = fs.readFileSync(path.join(__dirname, '../src/services/chatDemandUpload.ts'), 'utf8');
+    const serviceAst = ts.createSourceFile('chatDemandUpload.ts', serviceSource, ts.ScriptTarget.Latest, true);
+    context.webBusinessTransport = () => null;
+    vm.createContext(context);
+    vm.runInContext(extract('saveChatDemandUpload', serviceAst), context);
+    context.saveChatDemandUpload = context.extracted;
+    vm.runInContext(extract('upload', cardAst), context);
     await context.extracted(file, { usage: 'attach1', label: '附件1' });
     assert.equal(context.uploading.current, false);
     return { errors, writes, receipts };

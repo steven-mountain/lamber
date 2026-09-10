@@ -1,0 +1,68 @@
+{
+  "status": "stage-0-native-carrier-verified-business-migration-pending",
+  "inventory": {
+    "packages": {
+      "dsh": "0.1.2-alpha.5",
+      "dsh-web-app": "0.1.2-alpha.5",
+      "dsh-web-frontend": "0.1.2-alpha.5",
+      "dsh-client-modules": "0.1.2-alpha.5",
+      "dsh-client-connection": "0.1.2-alpha.5",
+      "dsh-api-session-controller": "0.1.2-alpha.5",
+      "dsh-client-ui-chat": "0.1.2-alpha.5",
+      "dsh-client-ui-approval": "0.1.2-alpha.5",
+      "dsh-client-ui-theme": "0.1.2-alpha.5"
+    },
+    "lockedDshPackageCount": 214,
+    "frontendIndexSha256": "cd1680663a395480e30f15f4ff9676d568b7c05b9c5fc7261535ce7ffe4d6dc2"
+  },
+  "checks": {
+    "controlledSseChineseTable": true,
+    "controlledStopAndContinue": true,
+    "nativeResizeWideToNarrow": true,
+    "realModelChineseTable": true,
+    "realStopAndContinue": true,
+    "unauthenticatedApiStatus": 401,
+    "crossOriginApiStatus": 403
+  },
+  "screenshots": [
+    {
+      "file": "stage0-controlled-narrow.jpg",
+      "sha256": "cddd861369e5595cfbef38a33a649fe1893c703131252892a87adc5b0723f1ce"
+    },
+    {
+      "file": "stage0-controlled-wide.jpg",
+      "sha256": "133bc3ba40658eb09f7ca5a153ea6af643aa3d89455271eb700ad0b033a31de9"
+    },
+    {
+      "file": "stage0-real-wide.jpg",
+      "sha256": "ffb59914375ab1792f0b035da486764abb947e1f7c464b01ffee21f9f0ec23dd"
+    }
+  ],
+  "processCleanup": {
+    "controlled": {
+      "hostReaped": true,
+      "nativeReaped": true,
+      "nativeExitedCleanly": true
+    },
+    "real": {
+      "hostReaped": true,
+      "nativeReaped": true,
+      "nativeExitedCleanly": false,
+      "termination": "runner-terminated-after-successful-ui-checks"
+    },
+    "verifiedClosedPorts": true
+  },
+  "notVerified": [
+    "business-binding",
+    "single-approval-owner",
+    "editable-approval",
+    "persistent-action-receipts",
+    "history-migration",
+    "business-cards",
+    "D-independent-validation",
+    "production-default",
+    "release-installation",
+    "Windows",
+    "human-acceptance"
+  ]
+}

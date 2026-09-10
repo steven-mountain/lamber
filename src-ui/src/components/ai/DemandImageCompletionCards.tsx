@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { listenBusinessEvent as listen } from '../../services/businessEvents';
 import { loadDemandUploadTargets, type DemandUploadTarget } from '../../services/demandUploadTargets';
 import { subscribeDemandAssetsChanged } from '../../services/demandTemplateAssets';
 import DemandImageCompletionCard from './DemandImageCompletionCard';

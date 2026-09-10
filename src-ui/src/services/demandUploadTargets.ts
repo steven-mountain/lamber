@@ -1,3 +1,4 @@
+import { webBusinessTransport } from './webBusinessTransport';
 import { invoke } from '@tauri-apps/api/core';
 import { getCatalogCompletion, getCatalogTemplate } from '../lib/templateCompletion/catalog';
 import { domainSaveService } from './domainSaveService';
@@ -21,6 +22,8 @@ export async function assertDemandUploadBinding(target: DemandUploadTarget) {
 
 /** Product UI read channel. Never attach these states to a model prompt. */
 export async function loadDemandUploadTargets(sessionId: string): Promise<DemandUploadTarget[]> {
+  const remote = webBusinessTransport();
+  if (remote) return remote('demand-targets', { sessionId });
   const binding = await invoke<Binding | null>('ai_get_session_binding', { sessionId });
   if (!binding?.projectId) return [];
   const workspace = await workspaceService.getState();

@@ -1,0 +1,15 @@
+{
+  "name": "dsh-lamber-web-host",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "host-policy.js",
+  "exports": {
+    ".": "./host-policy.js",
+    "./host-policy": "./host-policy.js",
+    "./default-model": "./default-model.js",
+    "./session-controller": "./session-controller.js",
+    "./workspace-controller": "./workspace-controller.js",
+    "./gateway": "./gateway.js"
+  }
+}

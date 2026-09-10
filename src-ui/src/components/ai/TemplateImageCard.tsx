@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { listenBusinessEvent as listen } from '../../services/businessEvents';
 import { listChatTemplateImages, readChatTemplateImage, prepareReplacement, replaceChatTemplateImage,
   type ImageTarget, type ReplacementImage } from '../../services/chatTemplateImages';
 import { subscribeDemandAssetsChanged } from '../../services/demandTemplateAssets';

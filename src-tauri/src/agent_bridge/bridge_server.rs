@@ -209,18 +209,20 @@ fn validate(request: &tiny_http::Request, token: &str) -> Result<(), BridgeReply
 }
 
 fn read_body(request: &mut tiny_http::Request) -> Result<String, String> {
+    // Explicit user image uploads are bounded separately from model tool payloads.
+    let limit = if request.url() == "/lamber-webui/business" { 28 * 1024 * 1024 } else { MAX_BODY_BYTES };
     if let Some(len) = request.body_length() {
-        if len > MAX_BODY_BYTES {
+        if len > limit {
             return Err("请求体超出 AI 桥接服务允许的大小".to_string());
         }
     }
     let mut body = String::new();
     request
         .as_reader()
-        .take(MAX_BODY_BYTES as u64 + 1)
+        .take(limit as u64 + 1)
         .read_to_string(&mut body)
         .map_err(|e| format!("读取请求体失败: {e}"))?;
-    if body.len() > MAX_BODY_BYTES {
+    if body.len() > limit {
         return Err("请求体超出 AI 桥接服务允许的大小".to_string());
     }
     Ok(body)

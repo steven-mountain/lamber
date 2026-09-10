@@ -39,7 +39,7 @@ When a bug exposes fragile architecture, duplicated state, inconsistent data flo
 * **Discrete target reachability**: Being within a sampled minimum/maximum does not prove that a target is reachable. Validate the final metric against the unchanged tolerance before writing; never rewrite the user's target to make a result pass.
 * **0-tolerance reconciliation check**: Respect the 0-tolerance financial check before transitions to cashflow tables or document generation.
 * **AI features control**: Ensure the AI copilot only reads serialized business states and never writes core project data directly without user action, such as manual clicking or confirmations.
-* **UI Design System**: Follow "The Architectural Ledger" guidelines in [DESIGN.md](./DESIGN.md). Adhere to the "No-Line Rule" using tonal surface changes instead of borders, rounded corners (`ROUND_FOUR`), the `Inter` font family, and tabular numbers for numerical displays.
+* **UI Design System**: Use the pinned official dsh WebUI as the design baseline for all of Lamber, as specified in [DESIGN.md](./DESIGN.md). Align the main application and AI extensions with its component roles, semantic colors, corner hierarchy, typography, spacing, and interaction states through shared tokens/components. The former Architectural Ledger, ROUND_FOUR, and separate blue-grey palette are no longer target standards. Preserve Lamber branding, business semantics, accessibility, and tabular numbers for financial displays; do not restyle upstream WebUI to match the old Lamber design.
 
 ## Fix strategy
 
@@ -90,7 +90,7 @@ Record only long-term valuable project knowledge. Do not log transient debugging
 ## Forbidden behavior
 
 * **No direct AI database writes**: Do not bypass user confirmation to let the AI directly modify `projects_store.json`.
-* **No high-saturation UI backgrounds**: Do not restore large-area high-saturation blue/purple background panels. Respect the grey/pale-blue design system.
-* **No traditional 1px borders**: Avoid using arbitrary `border` classes; use the layout surface shift tokens (`bg-muted`, nesting, or HSL container backgrounds) to demarcate sections.
+* **No high-saturation UI backgrounds**: Do not restore large-area high-saturation blue/purple background panels. Follow the pinned dsh WebUI semantic surfaces across the product.
+* **No arbitrary visual separators**: Use the corresponding dsh component's semantic surfaces, separators, and shadows through the shared design mapping; do not add arbitrary dark borders or impose the old Lamber surface palette on official components.
 * **No dependency bloating**: Do not introduce large third-party crates or npm packages without explicit approval.
 * **No debt-increasing quick patches**: Do not choose a minimal local patch when the same effort can safely remove the related failure path or reduce directly connected technical debt.

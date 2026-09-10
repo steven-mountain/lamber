@@ -102,7 +102,7 @@ graph TD
   - [IctMetricsDashboard.tsx](../src-ui/src/components/IctMetricsDashboard.tsx): Margin and NPV indicators overlay.
   - [IctSubjectFundingPlanEditor.tsx](../src-ui/src/components/IctSubjectFundingPlanEditor.tsx): Inline editor for per-subject collection/payment plans. It edits 10-year tax-inclusive annual values, shows per-row consistency, and reflects whether the project currently uses legacy cashflow or subject-plan cashflow.
   - [ProjectFilesTab.tsx](../src-ui/src/components/project/ProjectFilesTab.tsx): Handles file binding, scanning, and main doc marking in the Project Board drawer.
-  - [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx): The AI assistant drawer interface.
+  - [webui/client.tsx](../src-ui/src/ai/webui/client.tsx): Business and brand slots in the complete official dsh WebUI; native lifecycle is owned by `agent_bridge/webui.rs`.
   - [IctSubjectRoleComponents.tsx](../src-ui/src/components/IctSubjectRoleComponents.tsx): UI components for subject role actions (SubjectRoleActions), summaries (SelectedSubjectRoleSummary), and smooth-scroll navigation (scrollToSubject, highlightSubjectElement).
 
 ## 3. Main application flow
@@ -176,20 +176,12 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 
 ### 4.0.3 AI chat composed context flow
 
-- `AiChatPanel` calls `buildAiChatContext()` every time a message is sent, not only when the AI window opens.
-- `buildAiChatContext()` derives the active project from existing navigation/project stores and refreshes the latest persisted navigation/current-project/ICT active project identity at send time so a separate AI window does not rely on stale in-memory Zustand state. If no active project-aware view/project exists, it does not call the project SQLite context command and emits only a lightweight warning node.
-- Before falling back to the active project, the composer asks `list_ai_workspace_projects` for the current Workspace's lightweight project index and deterministically checks whether the current user message explicitly names one or two projects. Unique matches are routed to `build_ai_project_context` by real `projectId`; project names are not used as persistent keys.
-- Explicitly named projects override the currently open project. Workspace-level list questions use the lightweight project index instead of defaulting to the active project. Named-project references that cannot be uniquely resolved do not fall back to another project.
-- For specified project template questions, the composer first loads the target project's template summary, resolves a unique template name or known alias, then reuses `build_ai_project_context` with `requestedSources: ["templates", "template_detail"]` and the matched `activeTemplateId`.
-- Workspace changes clear previous active project/scheme IDs from project, navigation, and legacy ICT local storage state before the new workspace is used for AI context lookup.
-- Saved official project state is injected as `Saved Official Project State (Workspace SQLite)`.
-- Specified project official state is injected as `Specified project saved official state (Workspace SQLite)` with the matched project name, real `projectId`, and resolution metadata. Multi-project comparison keeps each project's official context in a separate node.
-- Project Board publishes a compact current-workspace summary (`workspaceId`, project count, and lightweight project cards) as current page context so workspace-level questions do not require selecting a project.
-- Current frontend dirty page state is injected as `Current Unsaved Draft Overlay` only when `useSaveStore.dirtyScopes` contains scopes relevant to the current page and the draft payload is for the same project.
-- When the user explicitly queries another project, the current page draft overlay is omitted unless the dirty draft belongs to one of the explicitly loaded projects.
-- Draft overlay sanitation removes base64/data URL previews, omits absolute paths, truncates large strings/arrays/objects, and never reads image/document binaries.
-- Context loading failures degrade into prompt warnings and do not break streaming, image input, message history, or runtime provider calls.
-- Before a new assistant placeholder is inserted, `AiChatPanel` resets `useStreamingParser` and creates a fresh abort controller. During streaming, the last assistant message is overwritten from the parser's current `normalText` / `thinkText` values so old reply content cannot be carried into the new pending response.
+- The official dsh Connection and Session Controller own messages, streaming, cancellation and history. `ai_open_webui` starts the authenticated loopback Host and opens its exact origin in a native window; the page has no general Tauri IPC access.
+- `dsh-lamber-web-host` obtains the Rust session binding before each model turn, extracts the actual current user message, and requests context from the main window through a fixed business bridge. `webBusinessHost` calls `buildAiChatContext` with `boundProjectId`, and checks the binding again after the read. General chat does not inherit the active project's data.
+- Saved official state comes from Workspace SQLite. Unsaved draft overlays are included only for matching dirty project/page scopes and are labeled separately. Sanitization strips base64, previews and absolute paths; template images require explicit attachment.
+- Workspace switches stop the old Host and pending approvals. Session IDs and project IDs remain distinct; frontend labels never grant authority.
+- Business receipts belong to the exact session and are persisted in the native action ledger. Context includes committed receipts and preserved legacy receipts; history rendering does not rerun actions.
+- Deployment overrides disable the original four Host entries and insert distinct adapter entries. Generated client faces retain the official package identity and byte-identical browser modules; startup verifies the effective Host adapters. See [AI session ownership](./modules/ai-session-workspace.md).
 
 ### 4.0.4 AI template detail and vision asset flow
 
@@ -197,8 +189,8 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 - When the active module is an ICT template context, `buildAiChatContext()` requests `template_detail` with `activeTemplateId`. The backend loads only that template's saved fields from Workspace SQLite and sanitizes base64/data URLs, preview fields, absolute local paths, and oversized content before returning it.
 - Template dirty edits remain in `Current unsaved draft overlay`; they are not merged into saved official template detail.
 - Image assets in template detail are metadata-only by default. The template UI adds an explicit "AI analysis" action on image thumbnails. Selecting it broadcasts only `projectId + templateId + assetId` metadata to the AI window.
-- On send, `AiChatPanel` calls `load_ai_template_asset` for selected template-asset attachments. The command validates project ownership, supported image MIME type, size, and workspace-contained file resolution, then returns a temporary data URL for the existing `image_url` multimodal request path.
-- Conversation history stores only text and lightweight attachment metadata for template assets; selected image base64 is not written back to SQLite or injected automatically in later turns.
+- The project-image business card validates ownership and reads an explicitly selected asset through the native service. It adds a `File` to the official conversation draft-image API, including before the first message; the official composer owns sending. Missing legacy images remain metadata and require reattachment.
+- Legacy Lamber history preserves lightweight asset metadata and never automatically reinjects images. New message attachments are owned by official dsh history; business asset storage remains in the original native service.
 
 ### 4.1 Project Board data flow
 1. User creates a new project or edits a card on the board.
@@ -250,7 +242,7 @@ Each save handler returns the dirty scopes it actually persisted. `useSaveStore.
 1. User types in form fields or switches tabs.
 2. Frontend triggers debounced (300ms) updates to `useAiContextStore` via `updateBusinessData`.
 3. The store persists states to local storage and emits a Tauri event `lamber-ai-context-updated` to keep windows in sync.
-4. On sending a chat message, [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx) asks the AI context composer to load saved official project context from SQLite and optionally attach a dirty frontend draft overlay, then pipes the layered `PromptAST` to `AiRuntime.ts`.
+4. Before each official model turn, the Host business plugin requests context using the trusted session binding. The main-window context composer returns saved official state and matching dirty drafts; the plugin contributes these through the official prompt lifecycle.
 
 ### 4.5 File / Excel import flow
 1. User clicks "一键导入" (Import Excel) on a parsed spreadsheet list item.
@@ -382,7 +374,7 @@ Following "The Architectural Ledger" specs in [DESIGN.md](../DESIGN.md):
 - **Modify Project Board columns or list layouts**: Start at [ProjectBoard.tsx](../src-ui/src/views/ProjectBoard.tsx)
 - **Change financial calculation values**: Start at [calculator.rs](../src-tauri/src/benefit/calculator.rs)
 - **Introduce new Document template parameters**: Start at [TemplateForms.tsx](../src-ui/src/views/TemplateForms.tsx) and update variables mapping in [docfill.rs](../src-tauri/src/docfill.rs).
-- **Modify AI prompt behaviour or recommendation algorithms**: Start at [AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx).
+- **Modify AI prompt behaviour or recommendation algorithms**: Start at [host-policy.js](../agent-bridge/webui/lamber-host/host-policy.js) and [buildAiChatContext.ts](../src-ui/src/ai/context/buildAiChatContext.ts).
 
 ## 9. Areas needing caution
 

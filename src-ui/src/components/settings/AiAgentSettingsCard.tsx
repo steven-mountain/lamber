@@ -12,7 +12,7 @@ import { Label } from "../ui/label";
 
 const OFFICIAL_BASE_URL = "https://api.deepseek.com";
 
-export default function AiAgentSettingsCard({ onSaved }: { onSaved?: (settings: AiAgentSettings) => void } = {}) {
+export default function AiAgentSettingsCard({ onSaved, showDiagnostics = true }: { onSaved?: (settings: AiAgentSettings) => void; showDiagnostics?: boolean } = {}) {
   const [settings, setSettings] = useState<AiAgentSettings | null>(null);
   const [model, setModel] = useState("");
   const [baseUrl, setBaseUrl] = useState(OFFICIAL_BASE_URL);
@@ -59,7 +59,7 @@ export default function AiAgentSettingsCard({ onSaved }: { onSaved?: (settings: 
       setBaseUrl(updated.baseUrl);
       setApiKey("");
       setClearApiKey(false);
-      setMessage({ kind: "success", text: "AI 配置已保存，旧运行组件已停止；下一条消息会按新配置重新连接。" });
+      setMessage({ kind: "success", text: "AI 配置已保存，AI 窗口会重新连接。已有会话的模型请在聊天输入框切换。" });
     } catch (error) {
       setMessage({ kind: "error", text: String(error) });
     } finally {
@@ -79,7 +79,7 @@ export default function AiAgentSettingsCard({ onSaved }: { onSaved?: (settings: 
       <CardHeader>
         <CardTitle className="text-section-title">AI 模型与服务</CardTitle>
         <CardDescription className="text-caption">
-          配置产品内 dsh 运行链路。密钥只保存在本机应用配置中，不会回显到页面。
+          设置新会话的默认模型和服务连接。已有会话保留自己的模型选择；密钥仅保存在本机，不会回显。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -89,7 +89,7 @@ export default function AiAgentSettingsCard({ onSaved }: { onSaved?: (settings: 
           <>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="ai-agent-model" className="text-label">模型</Label>
+                <Label htmlFor="ai-agent-model" className="text-label">新会话默认模型</Label>
                 <select
                   id="ai-agent-model"
                   value={model}
@@ -104,7 +104,7 @@ export default function AiAgentSettingsCard({ onSaved }: { onSaved?: (settings: 
                 </select>
                 <p className="text-caption text-secondary-foreground">
                   {selectedModel?.supportsImages
-                    ? "该模型在 ACP 握手中声明支持图片输入。"
+                    ? "该模型支持图片输入。"
                     : "当前模型不支持图片；如需图片输入，请选择视觉模型。"}
                 </p>
               </div>
@@ -171,9 +171,9 @@ export default function AiAgentSettingsCard({ onSaved }: { onSaved?: (settings: 
             )}
 
             <div className="flex flex-wrap justify-end gap-2">
-              <Button type="button" variant="secondary" onClick={openAgentLab}>
+              {showDiagnostics && <Button type="button" variant="secondary" onClick={openAgentLab}>
                 打开 dsh 联调台
-              </Button>
+              </Button>}
               <Button onClick={save} disabled={saving || !model || !baseUrl.trim()}>
                 {saving ? "正在保存…" : "保存 AI 配置"}
               </Button>

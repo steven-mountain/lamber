@@ -1,5 +1,7 @@
 # 任务书：dsh 完全融合（全面替换 Chat 链路 + 打包内可用）
 
+> **2026-09-10 接续说明：** 当前主任务已切换为 [AI UI 整体升级改造：全面采用 dsh 官方 WebUI](./TASK_BOOK_ai_webui_upgrade.md)。本书保留此前引擎接入的施工与验证历史；产品目前已唯一使用 DshRuntime，AiRuntime 已删除，工具和业务卡片也已接入。下文关于“仅实验台可用”“两套密钥”“无持久化”等开工现状及排序均属于原轮次，不能当作当前事实或重复执行依据。原有尚未完成的配置、Windows 安装和用户真人 gate 仍须逐项核对，不因接续任务自动通过。
+
 > **排序**：本文排在 `docs/tasks/TASK_BOOK_cowork_session_project_binding.md`、
 > `docs/tasks/TASK_BOOK_create_intelligent_compute_project.md`、
 > `docs/tasks/TASK_BOOK_demand_analysis_image_completion.md` **全部之前**。

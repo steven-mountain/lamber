@@ -480,6 +480,10 @@ pub(crate) fn open_workspace_internal(
         }
     })?;
     ensure_workspace_root_registered(&conn, root)?;
+    // Replay only decisions originating in this same workspace.
+    let conn = Mutex::new(conn);
+    crate::agent_bridge::approval_log::drain_spool(&root.join(crate::agent_bridge::approval_log::WORKSPACE_SPOOL_FILE), &conn)?;
+    let conn = conn.into_inner().map_err(|e| e.to_string())?;
     if let Err(err) = crate::workspace_maintenance::ensure_daily_workspace_backup(root, &conn) {
         eprintln!("Workspace auto backup failed: {}", err);
     }
@@ -491,7 +495,11 @@ pub(crate) fn open_workspace_internal(
         workspace_id: manifest.workspace_id.clone(),
         manifest,
     };
-    runtime.switch_workspace(workspace.clone(), conn)?;
+    if runtime.get_current_workspace().as_ref().map(|current| current.workspace_id != workspace.workspace_id || !workspace_paths_match(&current.workspace_root, &workspace.workspace_root)).unwrap_or(false) {
+        crate::agent_bridge::webui::workspace_transition(app, || runtime.switch_workspace(workspace.clone(), conn))?;
+    } else {
+        runtime.switch_workspace(workspace.clone(), conn)?;
+    }
     // A database just became available: move any approval decisions that were
     // taken with no workspace open into this workspace's audit log.
     if let Ok(db) = runtime.require_db() {
@@ -650,7 +658,7 @@ pub async fn forget_workspace(
         .retain(|item| !workspace_paths_match(&item.path, &path));
 
     if is_current {
-        runtime.clear_workspace();
+        crate::agent_bridge::webui::workspace_transition(&app, || { runtime.clear_workspace(); Ok(()) })?;
         config.last_opened_workspace_path = None;
     } else if config
         .last_opened_workspace_path
@@ -677,7 +685,7 @@ pub async fn close_current_workspace(
     app: AppHandle,
     runtime: State<'_, Arc<WorkspaceRuntime>>,
 ) -> Result<WorkspaceState, String> {
-    runtime.clear_workspace();
+    crate::agent_bridge::webui::workspace_transition(&app, || { runtime.clear_workspace(); Ok(()) })?;
     let manager = ConfigManager::new(&app);
     let mut config = manager.load();
     config.last_opened_workspace_path = None;
@@ -1065,16 +1073,15 @@ pub async fn initialize_workspace_from_existing_directory(
         if created_db {
             let _ = fs::remove_file(db_path(&root));
         }
-        runtime.clear_workspace();
+        crate::agent_bridge::webui::workspace_transition(&app, || { runtime.clear_workspace(); Ok(()) })?;
     }
 
     result
 }
 
 #[tauri::command]
-pub async fn clear_workspace(runtime: State<'_, Arc<WorkspaceRuntime>>) -> Result<(), String> {
-    runtime.clear_workspace();
-    Ok(())
+pub async fn clear_workspace(app: AppHandle, runtime: State<'_, Arc<WorkspaceRuntime>>) -> Result<(), String> {
+    crate::agent_bridge::webui::workspace_transition(&app, || { runtime.clear_workspace(); Ok(()) })
 }
 
 #[tauri::command]

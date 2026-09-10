@@ -78,6 +78,16 @@ async fn set_module_path(
 }
 
 fn main() {
+    // Generate once: macOS dev builds embed a process-wide Info.plist symbol.
+    let context = tauri::generate_context!();
+    #[cfg(debug_assertions)]
+    if let Ok(url) = std::env::var("LAMBER_WEBUI_PROBE_URL") {
+        if let Err(error) = agent_bridge::webui_probe::run(&url, context) {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     fn write_webview_diagnostic_log(message: &str) {
         let path = std::env::temp_dir().join("lamber-webview-diagnostic.log");
         if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
@@ -159,6 +169,8 @@ fn main() {
 
             // The dsh child process starts lazily on the first AI prompt.
             app.manage(std::sync::Arc::new(agent_bridge::AgentRuntime::default()));
+            app.manage(std::sync::Arc::new(agent_bridge::webui::WebUiRuntime::default()));
+            agent_bridge::webui_actions::store(app.handle()).and_then(|store| store.recover()).map_err(std::io::Error::other)?;
 
             // Opt-in bench for exercising the agent and its approval dialog by
             // hand (`AgentLabView`). The window has no address bar, so the route
@@ -181,6 +193,10 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             agent_bridge::benefit_simulation::ai_claim_benefit_simulation,
             agent_bridge::benefit_simulation::ai_finish_benefit_simulation,
+            agent_bridge::webui::ai_open_webui,
+            agent_bridge::webui_history::ai_webui_import_history,
+            agent_bridge::webui_actions::ai_webui_claim_action,
+            agent_bridge::webui_actions::ai_webui_complete_action,
             agent_bridge::ai_send_prompt,
             agent_bridge::ai_bind_session_to_project,
             agent_bridge::ai_get_session_binding,
@@ -318,7 +334,7 @@ fn main() {
             workspace_maintenance::list_external_paths,
             workspace_maintenance::convert_internal_absolute_paths_to_relative,
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(|app, event| {
             // Deny any approval still waiting on a human before the process goes
@@ -331,6 +347,7 @@ fn main() {
                         eprintln!("[agent_bridge] 退出前拒绝了 {denied} 个未完成的审批请求");
                     }
                 }
+                if let Some(web) = app.try_state::<std::sync::Arc<agent_bridge::webui::WebUiRuntime>>() { let _ = web.stop(); }
             }
         });
 }

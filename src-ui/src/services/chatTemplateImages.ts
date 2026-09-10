@@ -1,3 +1,4 @@
+import { webBusinessTransport } from './webBusinessTransport';
 import { invoke } from '@tauri-apps/api/core';
 import { domainSaveService } from './domainSaveService';
 import { workspaceService } from '../utils/workspaceService';
@@ -21,6 +22,8 @@ export async function assertImageTarget(target: Pick<ImageTarget, 'sessionId' | 
 }
 
 export async function listChatTemplateImages(sessionId: string): Promise<ImageTarget[]> {
+  const remote = webBusinessTransport();
+  if (remote) return remote('images', { sessionId });
   const binding = await invoke<Binding | null>('ai_get_session_binding', { sessionId });
   if (!binding?.projectId) throw new Error('请使用绑定项目的会话。');
   const target = { sessionId, workspaceId: binding.workspaceId, projectId: binding.projectId };
@@ -37,6 +40,8 @@ export async function listChatTemplateImages(sessionId: string): Promise<ImageTa
 }
 
 export async function readChatTemplateImage(target: ImageTarget) {
+  const remote = webBusinessTransport();
+  if (remote) return remote<Awaited<ReturnType<typeof loadAiTemplateAsset>>>('read-image', { sessionId: target.sessionId, target });
   await assertImageTarget(target);
   const image = await loadAiTemplateAsset(target.projectId, target.assetId);
   await assertImageTarget(target);
@@ -58,6 +63,11 @@ export async function prepareReplacement(file: File): Promise<ReplacementImage> 
 }
 
 export async function replaceChatTemplateImage(target: ImageTarget, next: ReplacementImage, isActive: () => boolean) {
+  const remote = webBusinessTransport();
+  if (remote) {
+    if (!isActive()) throw new Error('当前图片卡片已失效，请重新选择。');
+    return remote<{ assetId: string; refreshWarning: string }>('replace-image', { sessionId: target.sessionId, target, next });
+  }
   await assertImageTarget(target);
   if (!isActive()) throw new Error('当前图片卡片已失效，请重新选择。');
   const assetId = await invoke<string>('ai_replace_template_image', { request: {

@@ -50,6 +50,10 @@ impl AgentDistribution {
             &distribution.base_patch,
             &distribution.home_template.join("profiles/acp/package.json"),
             &distribution.lamber_plugin.join("lib/index.js"),
+            &root.join("webui/lamber-brand/lib/client.js"),
+            &root.join("webui/lamber-host/host-policy.js"),
+            &root.join("webui/lamber-host/gateway.js"),
+            &root.join("webui/lamber-host/business-presentation.generated.js"),
         ] {
             if !path.is_file() && !path.is_dir() {
                 missing.push(path.display().to_string());
@@ -193,7 +197,7 @@ pub(super) fn prepare_home_at(
     Ok((home, patch_path))
 }
 
-fn copy_tree(source: &Path, destination: &Path) -> Result<(), String> {
+pub(super) fn copy_tree(source: &Path, destination: &Path) -> Result<(), String> {
     if !source.is_dir() {
         return Err(format!("源目录不存在：{}", source.display()));
     }
@@ -260,6 +264,10 @@ mod tests {
             PATCH_FILE,
             "dsh-home-template/profiles/acp/package.json",
             "dsh-tool-lamber/lib/index.js",
+            "webui/lamber-brand/lib/client.js",
+            "webui/lamber-host/host-policy.js",
+            "webui/lamber-host/gateway.js",
+            "webui/lamber-host/business-presentation.generated.js",
         ] {
             let path = root.join(file);
             fs::create_dir_all(path.parent().expect("runtime file parent"))

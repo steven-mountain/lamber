@@ -199,3 +199,9 @@ fill-template-fields 业务路由纳入契约，当前版本3；完整重建开�
 ### 主动读取契约 v4（2026-09-07 补充）
 
 新增read-template-fields路由，当前契约v4。独立macOS应用与开发/staging插件已完整构建并核对实际二进制；打包6项通过。Windows安装及真人gate仍保留。
+
+## 官方 WebUI 资源（2026-09-10，迁移实施中）
+
+准备运行树时同时构建并复制 `agent-bridge/webui` 的客户端和 Host 适配包，校验官方 conversation 静态资源、业务生成模块和网关入口。仅复制 ACP 工具包已不足以运行新的正常 AI 窗口。打包构建不需要新增业务计算依赖，财务逻辑仍在原主窗口及 Rust 服务。
+
+macOS 隔离应用已在移除开发根目录/Node 覆盖变量、PATH 无 Node/npm 的条件下，从应用包内 Node 和完整运行树启动。临时目录启动须使用 canonical 路径：`/var` 链接会被 Tauri 的安全资源定位拒绝，不能为测试开启危险符号链接特性。此项不替代 Windows NSIS 安装与真人 gate。

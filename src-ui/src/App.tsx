@@ -1,3 +1,4 @@
+import { listenWebBusinessRequests } from './services/webBusinessHost';
 import { listenBenefitSimulations } from "./services/benefitSimulation";
 import { assertStructureBinding, finishStructureRequest, listenStructureRequests, useStructureRequest, type ReverseRequest } from './services/chatStructureReverse';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -14,7 +15,6 @@ import SettingsView from "./components/settings/SettingsView";
 import AgentApprovalDialog from "./components/ai/AgentApprovalDialog";
 import AgentLabView from "./components/ai/AgentLabView";
 import AiFloatingLauncher from "./components/ai/AiFloatingLauncher";
-import AiFloatingWindow from "./components/ai/AiFloatingWindow";
 import AppIcon, { type AppIconName } from "./components/icons/AppIcon";
 import WorkspaceGate from "./components/workspace/WorkspaceGate";
 import { useAppearanceStore } from "./store/useAppearanceStore";
@@ -37,15 +37,6 @@ function isAgentLabRoute() {
   return window.location.hash.startsWith("#/agent-lab");
 }
 
-function getAiAssistantView() {
-  const hash = window.location.hash;
-  if (!hash.startsWith("#/ai-assistant")) return null;
-
-  const query = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
-  const view = new URLSearchParams(query).get("view");
-  return view || "hub";
-}
-
 export default function App() {
   useEffect(() => {
     if (!isTauriRuntime() || getCurrentWindow().label !== "main") return;
@@ -58,7 +49,6 @@ export default function App() {
   const aiLauncherVisible = useAppearanceStore(state => state.settings.aiLauncherVisible);
   const setActiveModule = useAiContextStore(state => state.setActiveModule);
   const { isWorkspaceReady, refreshWorkspaceState } = useWorkspaceStore();
-  const aiAssistantView = getAiAssistantView();
   const pendingDocument = useDocumentRequest(value => value.request);
   const pendingDocumentPhase = useDocumentRequest(value => value.phase);
   const pendingStructure = useStructureRequest(value => value.request);
@@ -93,35 +83,42 @@ export default function App() {
     }
   });
   useEffect(() => {
-    if (aiAssistantView || agentLab || !isTauriRuntime()) return;
+    if (agentLab || !isTauriRuntime()) return;
+    let disposed = false;
+    let stop: (() => void) | undefined;
+    void listenWebBusinessRequests().then(unlisten => { if (disposed) unlisten(); else stop = unlisten; }).catch(console.error);
+    return () => { disposed = true; stop?.(); };
+  }, [agentLab]);
+  useEffect(() => {
+    if (agentLab || !isTauriRuntime()) return;
     let disposed = false;
     let stop: (() => void) | undefined;
     void listenStructureRequests(openStructureEditor).then(unlisten => { if (disposed) unlisten(); else stop = unlisten; }).catch(console.error);
     return () => { disposed = true; stop?.(); };
-  }, [aiAssistantView, agentLab, openStructureEditor]);
+  }, [agentLab, openStructureEditor]);
   useEffect(() => {
-    if (aiAssistantView || agentLab || !isTauriRuntime()) return;
+    if (agentLab || !isTauriRuntime()) return;
     let disposed = false;
     let stop: (() => void) | undefined;
     void listenDocumentRequests(openChatDocument).then(unlisten => { if (disposed) unlisten(); else stop = unlisten; }).catch(console.error);
     return () => { disposed = true; stop?.(); };
-  }, [aiAssistantView, agentLab, openChatDocument]);
+  }, [agentLab, openChatDocument]);
 
   useEffect(() => {
-    if (aiAssistantView || agentLab || !pendingDocument || (pendingDocumentPhase === 'loading' || pendingDocumentPhase === 'running')) return;
+    if (agentLab || !pendingDocument || (pendingDocumentPhase === 'loading' || pendingDocumentPhase === 'running')) return;
     if (currentView !== 'ict_lifecycle' || activeDocumentProjectId !== pendingDocument.projectId || documentWorkspaceId !== pendingDocument.workspaceId) {
       void finishDocumentRequest(pendingDocument, { status: 'cancelled', message: '项目、工作区或页面已切换；已停止尚未执行的生成。' }).catch(console.error);
     }
-  }, [aiAssistantView, agentLab, pendingDocument, pendingDocumentPhase, currentView, activeDocumentProjectId, documentWorkspaceId]);
+  }, [agentLab, pendingDocument, pendingDocumentPhase, currentView, activeDocumentProjectId, documentWorkspaceId]);
   useEffect(() => {
-    if (aiAssistantView || agentLab || !pendingStructure || pendingStructurePhase !== 'opening') return;
+    if (agentLab || !pendingStructure || pendingStructurePhase !== 'opening') return;
     if (currentView !== 'ict_lifecycle' || activeDocumentProjectId !== pendingStructure.projectId || documentWorkspaceId !== pendingStructure.workspaceId) {
       void finishStructureRequest(pendingStructure, { status: 'error', message: '项目、工作区或页面已切换，已停止尚未执行的结构反算。' }).catch(console.error);
     }
-  }, [aiAssistantView, agentLab, pendingStructure, pendingStructurePhase, currentView, activeDocumentProjectId, documentWorkspaceId]);
+  }, [agentLab, pendingStructure, pendingStructurePhase, currentView, activeDocumentProjectId, documentWorkspaceId]);
 
   useEffect(() => {
-    if (aiAssistantView || agentLab) return;
+    if (agentLab) return;
     if (!isTauriRuntime()) return;
 
     let cancelled = false;
@@ -145,10 +142,10 @@ export default function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [agentLab, aiAssistantView, refreshWorkspaceState]);
+  }, [agentLab, refreshWorkspaceState]);
 
   useEffect(() => {
-    if (aiAssistantView || agentLab) return;
+    if (agentLab) return;
 
     localStorage.setItem(AI_CURRENT_VIEW_KEY, currentView);
     if (currentView === "hub") {
@@ -167,7 +164,7 @@ export default function App() {
       emitTo(AI_ASSISTANT_LABEL, "lamber-ai-view-changed", { view: currentView })
          .catch(error => console.warn("Failed to sync AI assistant view:", error));
     }
-  }, [agentLab, aiAssistantView, currentView, setActiveModule]);
+  }, [agentLab, currentView, setActiveModule]);
 
   // The bench needs the approval dialog alongside it: the backend parks a tool
   // call waiting for that answer.
@@ -180,14 +177,6 @@ export default function App() {
     );
   }
 
-  if (aiAssistantView) {
-    return (
-      <>
-        <AiFloatingWindow currentView={aiAssistantView} />
-        <AgentApprovalDialog />
-      </>
-    );
-  }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">

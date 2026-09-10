@@ -1,12 +1,10 @@
-import { convertFileSrc } from '@tauri-apps/api/core';
-import { projectService } from '../../utils/projectService';
 import { useEffect, useRef, useState } from 'react';
-import { loadListTargets, runListAction, type ListTarget } from '../../services/chatTemplateLists';
+import { loadListTargets, runListAction, readQuoteImage, type ListTarget } from '../../services/chatTemplateLists';
 import type { InquiryVendor, PendingQuoteImage } from '../../services/templateListTypes';
 const inputClass='w-full rounded-md bg-card p-2 text-body';
-function SavedQuoteImage({assetId}: {assetId:string}) {
+function SavedQuoteImage({assetId,target}: {assetId:string;target:ListTarget}) {
   const [url,setUrl]=useState('');const [error,setError]=useState('');
-  useEffect(()=>{let valid=true;void projectService.getTemplateAssetPath(assetId).then(path=>{if(valid)setUrl(convertFileSrc(path));}).catch(()=>{if(valid)setError('截图文件缺失，请补传');});return()=>{valid=false;};},[assetId]);
+  useEffect(()=>{let valid=true;void readQuoteImage(target,assetId).then(url=>{if(valid)setUrl(url);}).catch(()=>{if(valid)setError('截图文件缺失，请补传');});return()=>{valid=false;};},[assetId,target]);
   return url?<img src={url} alt="已保存的报价截图" className="max-h-36 max-w-full rounded-md object-contain"/>:<span className="text-caption">{error||'正在载入截图…'}</span>;
 }
 export default function InquiryCard({sessionId,disabled,onReceipt}: {sessionId:string;disabled:boolean;onReceipt:(content:string)=>void}) {
@@ -58,7 +56,7 @@ export default function InquiryCard({sessionId,disabled,onReceipt}: {sessionId:s
       {rows.map((row,index)=><div className="rounded-md bg-muted p-3 space-y-2" key={index}>
         <div className="grid grid-cols-2 gap-2">{(['vendorName','amount','taxRate','remark'] as const).map(key=><label className="text-caption" key={key}>{ {vendorName:'厂商名称',amount:'含税报价',taxRate:'税率（%）',remark:'备注'}[key] }<input aria-label={`第${index+1}家${{vendorName:'厂商名称',amount:'含税报价',taxRate:'税率',remark:'备注'}[key]}`} className={`${inputClass} ${key==='amount'||key==='taxRate'?'tabular-nums':''}`} disabled={busy} type={key==='amount'||key==='taxRate'?'number':'text'} value={row[key]} onChange={event=>setRows(previous=>previous.map((item,i)=>i===index?{...item,[key]:key==='amount'||key==='taxRate'?Number(event.target.value):event.target.value}:item))}/></label>)}</div>
         <p className="text-caption">已保存截图：{row.images.length} 张 · 保存时按原有金额编辑规则封顶。</p>
-        <div className="flex flex-wrap gap-2">{row.images.map(image=><SavedQuoteImage key={image.assetId} assetId={image.assetId}/>)}</div>
+        <div className="flex flex-wrap gap-2">{row.images.map(image=><SavedQuoteImage key={image.assetId} assetId={image.assetId} target={target}/>)}</div>
         <label className="block rounded-md bg-card p-3 text-caption">上传第{index+1}家报价截图（保存后入库）<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} className="block w-full pt-2" onChange={event=>{void chooseImage(event.target.files?.[0],index);event.target.value='';}}/></label>
         {uploads.filter(image=>image.row===index).map((image,i)=><figure key={i} className="rounded-md bg-card p-2"><img src={image.base64Data} alt={`第${index+1}家待保存报价截图`} className="max-h-36 max-w-full object-contain"/><figcaption className="text-caption">{image.name} · 待保存</figcaption><button disabled={busy} type="button" className="text-caption" onClick={()=>setUploads(previous=>previous.filter(item=>item!==image))}>移除待保存截图</button></figure>)}
       </div>)}

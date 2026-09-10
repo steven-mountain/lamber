@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { listenBusinessEvent as listen } from '../../services/businessEvents';
 import { METRIC_EPSILON } from '../../hooks/useIctCalculations';
 import { ICT_SUBJECT_DEFINITIONS } from '../../lib/ictSubjectCatalog';
 import { reverseMoney, reverseMetricDetail, reversePercent, type ReverseMetric } from '../../lib/structureReverseResult';

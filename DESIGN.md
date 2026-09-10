@@ -1,133 +1,61 @@
-# Design Specification: 效益测算工具
+# Lamber 全局设计规范：以 dsh WebUI 为基准
 
-This document outlines the design system extracted from the "效益测算工具" Stitch project.
+更新日期：2026-09-10。用户已确认：**dsh 官方 WebUI 是 Lamber 全产品统一的设计基准，Lamber 向 dsh 对齐。** 本文是目标规范；现有页面尚需逐项迁移与验收，本次文档修订不代表代码已完成改造。
 
-## 1. Visual Identity & Creative Direction
-**Creative North Star: "The Architectural Ledger"**
-The design focuses on transforming complex financial calculations into a clear, authoritative, and trustworthy experience. It avoids rigid outlines in favor of tonal shifts and sophisticated surface layering.
+## 1. 适用范围与优先级
 
----
+适用于 AI 工作区、项目看板、ICT 测算、模板表单、数据管理、预设中心、智算、设置以及所有弹窗、浮窗和业务组件。AI WebUI 与主应用共用一套设计语言，不设置“仅 AI 窗口采用 dsh”的例外。
 
-## 2. Lamber Global Visual Specification v1
+此前 The Architectural Ledger、ROUND_FOUR、小圆角和独立蓝灰配色不再作为目标设计规范；旧文档中的相应视觉要求仅用于解释迁移前实现。不得为了兼容这些旧要求反向改变官方 WebUI 的风格。
 
-This specification outlines the semantic tokens, typography scales, and visual layout parameters implemented in Lamber to guarantee visual consistency.
+Lamber 保留产品名称、标识、中文业务语义及业务信息结构。财务可读性、数值等宽、权限与确认保存要求继续生效。统一视觉不意味着把测算表单做成聊天布局，也不意味着主应用必须迁入 dsh 的运行时。
 
-### 2.1 Color Palette & Semantic Roles
-The palette is rooted in clinical greys, pale blues, and soft feedback color tokens. Hardcoded HSL values are stored in CSS variables and mapped into Tailwind configurations.
+## 2. 基准来源与版本
 
-| Category | Token | CSS Variable Mapping | Hex / HSL Target | Usage |
-| :--- | :--- | :--- | :--- | :--- |
-| **Primary** | `primary` | `hsl(var(--primary))` | `#2563eb` / `221 83% 53%` | Primary actions and branding |
-| | `primary-soft` | `hsl(var(--primary-soft))` | `221 83% 95%` | User chat bubbles, highlighted backgrounds |
-| **Surfaces** | `background` | `hsl(var(--background))` | `#f8fafc` / `210 40% 98%` | Main viewport background |
-| | `card` | `hsl(var(--card))` | `0 0% 100%` | Layout cards and panels |
-| | `muted` | `hsl(var(--muted))` | `#f1f5f9` / `210 40% 96%` | Muted containers, inactive panels |
-| **Borders** | `border` | `hsl(var(--border))` | `#e2e8f0` / `214 32% 91%` | Subtle boundaries |
-| | `input` | `hsl(var(--input))` | `#cbd5e1` / `213 27% 84%` | Interactive field borders |
-| **Feedback**| `success` | `hsl(var(--success))` | `142 70% 45%` | Positive statuses, healthy metrics |
-| | `success-soft`| `hsl(var(--success-soft))` | `142 70% 96%` | Success badges, confirmation banners |
-| | `warning` | `hsl(var(--warning))` | `38 92% 50%` | Mild alerts, warnings |
-| | `warning-soft`| `hsl(var(--warning-soft))` | `38 92% 96%` | Warning cards, alert backgrounds |
-| | `destructive` | `hsl(var(--destructive))` | `#9f403d` / `2 45% 43%` | Critical errors, destructive actions |
-| | `destructive-soft`| `hsl(var(--destructive-soft))`| `2 45% 95%` | Error badges, alert panels |
+- 基准取自项目当前锁定并实际运行的官方 dsh 版本，当前为 `0.1.2-alpha.5`，实际依赖以 `agent-bridge/package.json` 和锁文件为准。
+- 对照该版本原生按钮、输入框、菜单、侧栏、设置、卡片及浮层，使用相同主题、字号和视口采集实际样式；不能从压缩截图猜测 CSS 尺寸，也不能使用未验证的上游最新接口。
+- 优先复用官方组件和公开语义 token。主应用中无法直接复用的组件，通过共享设计 token 和基础组件映射实现等价外观与交互。
+- 官方没有直接对应的密集财务表格等业务组件，沿用相邻层级的色彩、字体、圆角、间距和状态规则，记录映射依据；不另建一套视觉风格。
+- 升级 dsh 版本时复核基准与映射，不能无记录地改变全产品主题。
 
-### 2.2 The "No-Line" Rule
-Traditional 1px solid dark borders are replaced by:
-- **Background Shifts**: Using different surface tokens (e.g., nesting `bg-card` inside `bg-background` or `bg-muted/30`) to define sections.
-- **Tonal Boundaries**: When outlines are necessary, always utilize `border-border` or `border-border/30` rather than arbitrary slate/zinc colors.
-- **Shadow Depth**: Using subtle soft shadows (`shadow-sm` or `shadow-md`) to elevate active elements.
+## 3. 全局视觉规则
 
-### 2.3 Typography & Sizing Scale
-**Primary Font Stack**: `Inter, "Microsoft YaHei", "PingFang SC", "Noto Sans SC", system-ui, -apple-system, BlinkMacSystemFont, sans-serif`
-Legibility, structure, and perfect alignment of numerical metrics are enforced by typographic scales linked to the base variable `--font-scale` (defaults to `1`).
+| 维度 | 统一规则 |
+| --- | --- |
+| 圆角 | 采用官方同类组件的圆角层级，分别覆盖图标/普通按钮、输入、卡片、弹层；不统一设4px或全部改为大圆角，不允许圆角减法归零造成局部直角 |
+| 颜色 | 官方背景、控件、浮层、文字、强调色及状态色为语义来源；深浅主题成对映射，不保留业务区独立蓝灰色板与官方黑灰表面混用 |
+| 填充与分区 | 沿用官方同层级的 surface、透明度、阴影与分隔方式；避免无语义的多层实心色块、大面积高饱和背景或新增任意深色边框 |
+| 字体 | 字体栈、字号、字重、行高按官方层级统一，中文回退字体一致；金额、比例及现金流使用 tabular numbers，用户字号设置不能造成裁切 |
+| 控件 | 按钮高度、内边距、图标线宽、命中区与主次操作层级一致；普通工具不与主要提交动作使用同等强调 |
+| 状态 | 默认、hover、active、focus-visible、disabled、loading、error 在全产品遵循同一语义；保留键盘可见焦点，状态不能只靠颜色区分 |
+| 布局 | 复用官方对齐、间距及视觉密度逻辑；根据业务内容组织表单、表格和导航，不用绝对定位、负间距对截图拼位置 |
+| 图标与导航 | 同级入口采用相同图标体系与尺寸；收起侧栏用图标及tooltip/无障碍名称，展开后文案横排，禁止单字竖排或裸文字按钮混入图标栏 |
+| 浮层 | 标题、关闭、正文与底部操作区协调；优先统一浮层基础组件，处理焦点进入/返回、Escape及菜单外部关闭；关闭动作仍遵循原业务确认规则 |
 
-| Typographic Role | CSS Size Variable | Computed Default Value | Weight | Line Height | Usage |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Display** | `--text-display` | `calc(28px * var(--font-scale))` | `600` | `36px` | Main headers |
-| **Page Title** | `--text-page-title` | `calc(22px * var(--font-scale))` | `600` | `30px` | Primary view titles |
-| **Section Title** | `--text-section-title` | `calc(16px * var(--font-scale))` | `600` | `24px` | Card / Sidebar headers |
-| **Body** | `--text-body` | `calc(14px * var(--font-scale))` | `400` | `22px` | Paragraphs and text blocks |
-| **Body Strong** | `--text-body-strong` | `calc(14px * var(--font-scale))` | `600` | `22px` | Bold body items |
-| **Label** | `--text-label` | `calc(13px * var(--font-scale))` | `500` | `20px` | Form and field labels |
-| **Caption** | `--text-caption` | `calc(12px * var(--font-scale))` | `400` | `18px` | Metadata and helper tips |
-| **Metric** | `--text-metric` | `calc(22px * var(--font-scale))` | `600` | `30px` | Dashboard indicators |
+## 4. 共享实现与主题设置
 
-#### Numerical Presentation
-All financial columns, cashflow tables, NPV graphs, percentage badges, and calculator inputs must incorporate the `.numeric-value` utility to enforce:
-```css
-font-variant-numeric: tabular-nums;
-```
-This ensures numbers align vertically, facilitating visual audits of financial ledgers.
+建立全产品共享的设计 token 和基础组件层，再接入主应用 React 与 dsh 扩展的不同承载方式。允许技术适配层不同，视觉值和交互规范必须来自同一来源。
 
-### 2.4 Radii & Corner Standards
-- **Standard Corners (`ROUND_FOUR`)**: Base border-radius uses `var(--radius)` (mapped to Tailwind `rounded-lg` / `rounded-xl`).
-- **Inner elements** use computed radii `calc(var(--radius) - 2px)` (`rounded-md`) or `calc(var(--radius) - 4px)` (`rounded-sm`) to avoid corner overlap.
-- **Glassmorphism**: Floating panels, modals, and backdrop drop-shadow menus utilize a backdrop blur filter (`backdrop-blur-sm` or `backdrop-filter: blur(12px)`) combined with a semi-transparent surface background (`bg-background/80` or `bg-card/95`).
+现有 `--primary`、`--card`、`--radius`、字号/密度变量和 Tailwind class 可作为过渡兼容接口，但需要映射到新基准。不得把旧值继续复制到各页、给所有组件共用一个半径，或依赖层叠的局部覆盖维持表面一致。不得直接修改 node_modules 或生成的 WebUI bundle。
 
-### 2.5 Theme Presets
-Lamber supports five light theme presets and a unified dark theme framework:
+深浅模式、字号、密度和高对比偏好需要统一的生效规则与跨窗口同步。现有五套主题及自定义强调色是迁移输入，不能自动删除用户偏好；逐项明确如何映射到 dsh 基准。不能映射的项目记录兼容方案，不继续把旧主题当作另一套并行设计标准。状态色的业务含义和可读性不能被品牌自定义覆盖。
 
-1. **Lamber 默认 (`lamber`)**: Slate light grey background (`#f8fafc`) + Royal blue accent (`#2563eb`). Traditional corporate engineering style.
-2. **石墨灰 (`graphite`)**: Pure neutral grey background (`#f1f3f5`) + Deep charcoal accent (`#343a40`). Low-contrast professional view.
-3. **海军蓝 (`navy`)**: Deep blue-tinted grey background (`#f4f6f9`) + Navy blue accent (`#1e3a8a`). Government / enterprise project layout.
-4. **森林绿 (`forest`)**: Sage-green-tinted background (`#f4f9f4`) + Forest green accent (`#15803d`). Distinguished branding.
-5. **暖石色 (`warmStone`)**: Warm brown-grey background (`#f7f5f2`) + Warm clay accent (`#5c5346`). High-readability low-fatigue layout.
+主题及外观偏好仍属于应用配置，不写入项目数据库，不参与计算、业务状态、权限或文档内容生成。
 
-#### Dark Mode Base
-To maintain design boundaries and contrast, all presets in dark mode utilize a single shared background base (`#0f172a` / `#1e293b`) with slight primary/accent tone adjustments matched to their theme IDs (e.g., `#3b82f6` for Lamber vs `#15803d`-like accents for Forest).
+## 5. 页面与业务边界
 
-### 2.6 Font Size Scaling Presets
-To facilitate screen compatibility and low-vision accessibility, typographic styles scale dynamically through `--font-scale`:
+- AI 工作区：完整官方 WebUI 为视觉锚点，新增项目入口、工具菜单、审批和业务卡片向它靠拢。
+- 主应用：项目看板、ICT/智算、模板、数据/预设与设置逐项采用共享控件、色彩、字体和间距，不维持旧设计体系作为长期目标。
+- 页面迁移保留业务导航、字段、公式、表格精度、缺项判定、项目绑定、审批、保存及生成流程。仅因视觉调整不得改业务动作或授权。
+- 密集表格保留清楚的行列对应、完整数值与独立横向滚动；0容差核验、用户目标和达成值精度不因布局改变。
+- 已有未完成的业务验收继续独立记录；视觉对齐不能将其自动勾选通过。
 
-- **紧凑 (`compact`)**: `0.93` scaling factor. Ideal for small displays or dense financial logs.
-- **标准 (`standard`)**: `1.00` scaling factor. Default.
-- **舒适 (`comfortable`)**: `1.08` scaling factor. For comfortable daily reading.
-- **大字号 (`large`)**: `1.16` scaling factor. Optimized for high-DPI viewports.
+## 6. 迁移与验收
 
-Typographic line-heights are dynamically scaled (`lh * var(--font-scale)`) proportionally to prevent character overlaps.
+先建立同版本官方基准及共享映射，修复 AI 内明显不一致的扩展，再将同一套基准用于主应用共享控件和各业务页面。过渡期旧页面是待迁移状态，不是被认可的第二套风格。
 
-### 2.7 Interface Density Presets
-Spacing values adapt dynamically based on three interface densities via CSS variables:
+每批提供同主题、同字号、同视口下的整改前后整窗截图，并与官方基准对照圆角、填充、排版、位置和主次层级。覆盖深浅模式、宽窄窗口、长名称、大字号、高 DPI、键盘状态与浮层；同时验证相关原业务动作未改变。不能仅以 lint/build、功能可用或没有溢出判定美观与一致性通过。
 
-- **紧凑 (`compact`)**: Card padding `1rem` (p-4), form control height `2rem` (h-8), table cell vertical padding `0.5rem` (8px). Designed for maximum data-density.
-- **标准 (`standard`)**: Card padding `1.5rem` (p-6), form control height `2.25rem` (h-9), table cell vertical padding `0.75rem` (12px). Default.
-- **宽松 (`comfortable`)**: Card padding `2rem` (p-8), form control height `2.5rem` (h-10), table cell vertical padding `1rem` (16px). Maximized breathing room.
+全产品验收要求从主窗口进入 AI，再返回项目、测算、模板及设置时具有连续一致的视觉体验。页面清单逐项标为待迁移/已实现/已验收，不得以 AI 窗口验收代替全局完成。
 
-### 2.8 Runtime DOM Application
-The active settings are applied via `document.documentElement` data attributes and CSS variables:
-- Attributes: `data-theme`, `data-color-mode`, `data-density`.
-- Toggled Classes: `.dark` for Tailwind theme compilers.
-- Variables: Writes variables directly into `style` properties, which guarantees immediate styling changes without app reloading.
-
-### 2.9 Advanced Customization & Contrast Validation (Phase 3)
-
-Lamber Phase 3 introduces safe user-customizable accent colors, WCAG-compliant contrast checking, and a dedicated high-contrast preference mode:
-
-#### Custom Accent Color Selection & Boundaries
-- Users can choose from a set of pre-calculated high-contrast recommended palettes (Business Blue, Navy, Teal, Forest, Amber, Graphite) or input a custom hex value through a native HTML5 color picker.
-- **Scope Limit**: The custom color only overrides the theme's accent elements (primary, primary-foreground, primary-soft, ring, accent, accent-foreground). Other layout tokens (background, foreground, card, borders, popover) and state colors (success, warning, destructive) are not editable to prevent theme fragmentation.
-
-#### Contrast Checking & Automatic HSL Derivation
-- All custom accent selections are validated against WCAG AA standards.
-- In **Light Mode**, the primary accent is checked against white background (`#FFFFFF`). If the contrast ratio is below the minimum threshold (4.5:1 for standard, 7.0:1 for high contrast), the system automatically darkens the HSL lightness (`L`) until it meets the target.
-- In **Dark Mode**, the primary accent is checked against dark background (`#0F172A`). If the contrast ratio is below the minimum threshold, the system automatically lightens the HSL lightness (`L`) until it meets the target.
-- `primary-foreground` is dynamically chosen between light slate (`210 40% 98%`) and dark slate (`222 47% 11%`) based on which text color provides higher contrast against the adjusted primary background.
-- Warning banners in the settings panel alert the user when their chosen custom color has been auto-adjusted to comply with accessibility rules.
-
-#### High Contrast Preference Mode
-- When `contrastPreference === "high"`, the application layers high contrast overrides onto standard presets:
-  - **Light High Contrast**: Sets pure white backgrounds (`#FFFFFF`), near-black text (`#0F172A` / `#000000`), darker secondary and muted foregrounds, and thick high-visibility borders (`#4B5563`).
-  - **Dark High Contrast**: Sets pure black backgrounds (`#000000`), pure white text (`#FFFFFF`), bright visible borders, and highly distinct success/warning/destructive badges.
-  - Accent contrast ratio threshold is raised to a strict 7.0:1.
-
-#### Preset Dark Mode Refinements
-- The five presets (`lamber`, `graphite`, `navy`, `forest`, `warmStone`) feature distinct, non-overlapping dark mode surface values (e.g. graphite uses pure neutral dark greys, navy uses deep dark blue greys, forest uses dark green greys, and warmStone uses dark brown-tinted greys). This ensures proper layout hierarchy and visual identity is preserved even in dark modes.
-
-### 2.10 Functional Bounds
-The appearance system represents user preferences. It is strictly forbidden to:
-- Write preferences to workspace project SQLite tables.
-- Support free-form font file uploads.
-- Allow changes to financial calculations, cashflows, NPV, or document content generation based on appearance parameters.
-- Direct theme imports/exports are currently not implemented.
-
-
+具体范围及清单见 [AI UI 升级与全局设计对齐任务书](./docs/tasks/TASK_BOOK_ai_webui_upgrade.md)；实现历史见 [appearance 模块](./docs/modules/appearance.md)。本轮仅更新规范和任务书，未实施全产品视觉改造。

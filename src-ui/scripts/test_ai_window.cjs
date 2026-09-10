@@ -21,11 +21,12 @@ const main = { workArea: { position: { x: 0, y: 50 }, size: { width: 2940, heigh
 const upper = { workArea: { position: { x: 0, y: -2160 }, size: { width: 3840, height: 2100 } } };
 const size = { width: 1560, height: 1360 };
 const plain = value => JSON.parse(JSON.stringify(value));
-function fixture({ existing = true, position = { x: 838, y: -1604 }, saved = null, fail = false } = {}) {
+function fixture({ existing = true, position = { x: 838, y: -1604 }, saved = null, fail = false, failOpen = false } = {}) {
   const calls = [], storage = new Map(saved ? [[geometry.AI_WINDOW_POSITION_KEY, JSON.stringify(saved)]] : []);
   const handlers = new Map();
   let exists = existing, rejectShow = fail, creates = 0;
   const target = {
+    onMoved: async handler => { handlers.set('moved', handler); return () => handlers.delete('moved'); },
     once: async (event, handler) => { handlers.set(event, handler); return () => handlers.delete(event); },
     unminimize: async () => calls.push('unminimize'),
     outerPosition: async () => position, outerSize: async () => size, scaleFactor: async () => 2,
@@ -44,6 +45,7 @@ function fixture({ existing = true, position = { x: 838, y: -1604 }, saved = nul
     globals: { window: { __TAURI_INTERNALS__: {} }, localStorage: {
       getItem: key => storage.get(key) ?? null, setItem: (key,value) => storage.set(key,value),
     }},
+    '@tauri-apps/api/core': { invoke: async command => { assert.equal(command, 'ai_open_webui'); if (failOpen) throw new Error('native creation failure'); if (!exists) { creates++; exists = true; } } },
     '@tauri-apps/api/event': { emit: async () => {}, emitTo: async () => {} },
     '@tauri-apps/api/webviewWindow': { WebviewWindow },
     '@tauri-apps/api/window': { availableMonitors: async () => [main], currentMonitor: async () => main, PhysicalPosition: Point, PhysicalSize: Size },
@@ -77,26 +79,22 @@ async function mainTest() {
   assert.equal(a,b,'concurrent opens share native creation lifecycle');
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(create.creates(),1);
-  assert.equal(create.calls[0][1].visible,false);
-  assert.equal(create.calls[0][1].x,undefined,'never pass unchecked saved coordinates into native creation');
-  create.handlers.get('tauri://created')({payload:null});
   await a;
   assert.ok(create.calls.find(call => call[0] === 'position')[1].y >= 50);
   const physical = fixture({ existing:false, saved:{version:2,x:500,y:100} });
   const physicalOpen = physical.openAiAssistantWindow('hub');
   await new Promise(resolve => setImmediate(resolve));
-  physical.handlers.get('tauri://created')({payload:null});
   await physicalOpen;
   assert.deepEqual(physical.calls.find(call => call[0] === 'position')[1], {x:500,y:100}, 'physical cache must not be scaled twice');
+  physical.handlers.get('moved')({ payload: { x: 640, y: 220 } });
+  assert.deepEqual(JSON.parse(physical.storage.get(geometry.AI_WINDOW_POSITION_KEY)), { version: 2, x: 640, y: 220 });
+  physical.handlers.get('tauri://destroyed')();
   assert.equal(physical.handlers.size,0,'native lifecycle listeners cleaned up');
   const fail = fixture({fail:true});
   await assert.rejects(() => fail.openAiAssistantWindow('hub'), /native show failure/);
   fail.recover(); await fail.openAiAssistantWindow('hub');
-  const failCreate = fixture({existing:false});
-  const pending = failCreate.openAiAssistantWindow('hub');
-  await new Promise(resolve => setImmediate(resolve));
-  failCreate.handlers.get('tauri://error')({payload:'native creation failure'});
-  await assert.rejects(() => pending,/native creation failure/);
+  const failCreate = fixture({existing:false, failOpen:true});
+  await assert.rejects(() => failCreate.openAiAssistantWindow('hub'), /native creation failure/);
   console.log('AI window: reported negative coordinates, connected upper monitor, visible-position preservation, oversize, invalid cache, minimized reuse, creation lifecycle, concurrent clicks and retry after native failure passed.');
 }
 mainTest().catch(error => { console.error(error); process.exitCode=1; });

@@ -1005,8 +1005,10 @@ fn the_approval_prompt_contract_matches_the_frontend_dialog() {
     );
     assert!(dialog.contains("target: getCurrentWebviewWindow().label"), "审批请求不得订阅Any目标，否则浮窗和主窗同时弹出");
     assert!(dialog.contains("ai://approval-settled"));
+    let review = frontend_source("components/ai/ApprovalReview.tsx");
+    assert!(dialog.contains("<ApprovalReview") && dialog.contains("current={current}"));
     for field in ["requestId", "toolName", "reason", "args", "timeoutSeconds"] {
-        assert!(dialog.contains(field), "弹窗未使用审批事件字段 `{field}`");
+        assert!(review.contains(field), "弹窗未使用审批事件字段 `{field}`");
     }
 
     // The response command and its parameter names, as Tauri will deserialize them.
@@ -1015,7 +1017,7 @@ fn the_approval_prompt_contract_matches_the_frontend_dialog() {
         "弹窗未调用 ai_resolve_approval"
     );
     assert!(
-        dialog.contains("requestId:") && dialog.contains("approved"),
+        review.contains("requestId:") && review.contains("approved") && dialog.contains("resolve={args => invoke"),
         "弹窗未按 ai_resolve_approval(requestId, approved) 传参"
     );
 }
@@ -1029,15 +1031,19 @@ fn the_approval_dialog_is_mounted_on_every_agent_reachable_route() {
         app.contains("<AgentApprovalDialog />"),
         "App 未挂载审批弹窗"
     );
-    // All three render paths must host the existing dialog, including floating chat.
+    // Native diagnostic routes retain their listener; official WebUI owns its single queue.
     assert!(
-        app.matches("<AgentApprovalDialog />").count() >= 3,
-        "审批弹窗必须挂在主界面、Agent 联调台和 AI 浮窗三条渲染路径上"
+        app.matches("<AgentApprovalDialog />").count() == 2,
+        "原生审批仅挂在主界面与 Agent 联调台"
     );
     assert!(
         app.contains("#/agent-lab"),
         "缺少 Agent 联调台路由，审批弹窗在真实应用里无法被触发"
     );
+
+    let webui = frontend_source("ai/webui/client.tsx");
+    assert!(webui.contains("<ApprovalReview") && webui.contains("'pending'"));
+    assert!(!app.contains("AiFloatingWindow") && !app.contains("#/ai-assistant"));
 
     // Without a caller for ai_send_prompt no approval can ever be raised.
     let lab = frontend_source("components/ai/AgentLabView.tsx");
@@ -2586,3 +2592,26 @@ mod template_read_tests;
 
 #[path = "benefit_access_tests.rs"]
 mod benefit_access_tests;
+
+#[test]
+fn pending_approval_keeps_original_database_after_recorder_replacement() {
+    let (_, original) = audit_db("original-workspace");
+    let (_, next) = audit_db("next-workspace");
+    let spool = std::env::temp_dir().join(format!("lamber-audit-scope-{}", uuid::Uuid::new_v4()));
+    let gate = Arc::new(ApprovalGate::new(Duration::from_secs(20)));
+    gate.set_recorder(approval_log::bound_workspace_recorder(original.clone(), spool.clone()));
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+    let asking_gate = gate.clone();
+    let asking = std::thread::spawn(move || super::approval::handle_request(&asking_gate, approval_question("write_test_marker"), |_| { ready_tx.send(()).unwrap(); }));
+    ready_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+    // Deterministically detach/replace first; pending requests already own their recorder.
+    gate.clear_recorder();
+    gate.set_recorder(approval_log::bound_workspace_recorder(next.clone(), spool.clone()));
+    assert_eq!(gate.shutdown(), 1);
+    assert!(!asking.join().unwrap().approved);
+    let rows = approval_log::recent(&original, 10).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].decided_by, "shutdown");
+    assert!(approval_log::recent(&next, 10).unwrap().is_empty());
+    assert!(!spool.exists());
+}

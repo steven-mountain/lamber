@@ -1,3 +1,4 @@
+import { listen } from '@tauri-apps/api/event';
 import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { openAiAssistantWindow } from '../../services/aiAssistantWindow';
@@ -74,6 +75,7 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
   const launcherRef = useRef<HTMLButtonElement | null>(null);
   const positionRef = useRef(position);
   const dragStateRef = useRef<DragState | null>(null);
+  const suppressClickRef = useRef(false);
   const queuedPositionRef = useRef<FloatingPosition | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
@@ -104,6 +106,14 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
       }
     });
   };
+
+  useEffect(() => {
+    if (!('__TAURI_INTERNALS__' in window)) return;
+    let disposed = false; let stop: (() => void) | undefined;
+    void listen<string>('lamber-ai-startup-error', event => setOpenError(`AI 重启失败：${event.payload}`))
+      .then(unlisten => { if (disposed) unlisten(); else stop = unlisten; }).catch(console.error);
+    return () => { disposed = true; stop?.(); };
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -137,6 +147,7 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
+    suppressClickRef.current = false;
     event.currentTarget.setPointerCapture(event.pointerId);
     const currentPosition = positionRef.current;
     dragStateRef.current = {
@@ -171,9 +182,9 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
     scheduleLauncherPositionRender(nextPosition);
   };
 
-  const finishPointerInteraction = async (
+  const finishPointerInteraction = (
     event: ReactPointerEvent<HTMLButtonElement>,
-    openWindowWhenClick: boolean
+    cancelled: boolean
   ) => {
     const dragState = dragStateRef.current;
     if (!dragState || dragState.pointerId !== event.pointerId) return;
@@ -189,9 +200,7 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
     renderLauncherPositionImmediately(nextPosition);
     savePosition(AI_LAUNCHER_POSITION_KEY, nextPosition);
 
-    if (openWindowWhenClick && !dragState.moved) {
-      await openAiWindow();
-    }
+    suppressClickRef.current = cancelled || dragState.moved;
   };
 
   return (
@@ -207,16 +216,14 @@ export default function AiFloatingLauncher({ currentView }: AiFloatingLauncherPr
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={(event) => {
-        void finishPointerInteraction(event, true);
+        finishPointerInteraction(event, false);
       }}
       onPointerCancel={(event) => {
-        void finishPointerInteraction(event, false);
+        finishPointerInteraction(event, true);
       }}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          openAiWindow();
-        }
+      onClick={() => {
+        if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+        void openAiWindow();
       }}
       className="group fixed left-0 top-0 z-50 h-14 w-14 touch-none rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
       style={{ transform: getLauncherTransform(positionRef.current || position), willChange: 'transform' }}

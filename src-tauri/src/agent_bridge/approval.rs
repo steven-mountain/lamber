@@ -238,12 +238,18 @@ impl ApprovalGate {
 
     /// Install the sink that persists settled questions.
     ///
-    /// Set once at launch. A recorder that panics or fails must not affect the
+    /// Set for the current runtime; each request captures its own recorder.
+    /// A recorder that panics or fails must not affect the
     /// decision, so its errors are the recorder's own responsibility.
     pub fn set_recorder(&self, recorder: ApprovalRecorder) {
         if let Ok(mut slot) = self.recorder.lock() {
             *slot = Some(recorder);
         }
+    }
+
+    /// Release the runtime's database handle. Pending requests retain their own.
+    pub fn clear_recorder(&self) {
+        if let Ok(mut recorder) = self.recorder.lock() { *recorder = None; }
     }
 
     /// Park the calling thread until the user answers, or the timeout elapses.
@@ -266,11 +272,14 @@ impl ApprovalGate {
         prompt: &ApprovalPrompt,
         announce: impl FnOnce(&ApprovalPrompt),
     ) -> ApprovalDecision {
+        // Keep the recorder of the originating runtime even if a new Host starts.
+        let recorder = self.recorder.lock().ok().and_then(|r| r.clone());
         let request_id = prompt.request_id.clone();
         let requested_at = chrono::Utc::now().to_rfc3339();
         let deadline = Instant::now() + self.timeout;
         let Ok(mut state) = self.slots.lock() else {
             return self.settle(
+                recorder.as_ref(),
                 prompt,
                 &requested_at,
                 ApprovalDecision::denied("审批状态锁已中毒，按拒绝处理"),
@@ -281,6 +290,7 @@ impl ApprovalGate {
         if state.closed {
             drop(state);
             return self.settle(
+                recorder.as_ref(),
                 prompt,
                 &requested_at,
                 ApprovalDecision::denied("AI 运行时正在关闭，按拒绝处理"),
@@ -307,7 +317,7 @@ impl ApprovalGate {
                         let decided_by = slot.decided_by;
                         state.slots.remove(&request_id);
                         drop(state);
-                        return self.settle(prompt, &requested_at, decision, decided_by);
+                        return self.settle(recorder.as_ref(), prompt, &requested_at, decision, decided_by);
                     }
                 }
                 // Only `resolve`, `shutdown` and this function touch the map, and
@@ -315,6 +325,7 @@ impl ApprovalGate {
                 None => {
                     drop(state);
                     return self.settle(
+                recorder.as_ref(),
                         prompt,
                         &requested_at,
                         ApprovalDecision::denied("审批请求已失效，按拒绝处理"),
@@ -328,6 +339,7 @@ impl ApprovalGate {
                 state.slots.remove(&request_id);
                 drop(state);
                 return self.settle(
+                recorder.as_ref(),
                     prompt,
                     &requested_at,
                     ApprovalDecision::denied(format!(
@@ -341,6 +353,7 @@ impl ApprovalGate {
                 Ok((next, _)) => state = next,
                 Err(_) => {
                     return self.settle(
+                recorder.as_ref(),
                         prompt,
                         &requested_at,
                         ApprovalDecision::denied("审批状态锁已中毒，按拒绝处理"),
@@ -354,6 +367,7 @@ impl ApprovalGate {
     /// Hand one settled question to the recorder and return the decision unchanged.
     fn settle(
         &self,
+        recorder: Option<&ApprovalRecorder>,
         prompt: &ApprovalPrompt,
         requested_at: &str,
         mut decision: ApprovalDecision,
@@ -368,7 +382,6 @@ impl ApprovalGate {
                 decision = ApprovalDecision::denied(error);
             }
         }
-        let recorder = self.recorder.lock().ok().and_then(|r| r.clone());
         if let Some(recorder) = recorder {
             recorder(&ApprovalRecord {
                 request_id: prompt.request_id.clone(),
@@ -439,6 +452,18 @@ impl ApprovalGate {
         });
         slot.decided_by = DecidedBy::User;
         self.signal.notify_all();
+        Ok(())
+    }
+
+    /// Cancel an unanswered request without recording a user approval or rejection.
+    pub fn cancel_request(&self, request_id:&str, reason:&str)->Result<(),String> {
+        let mut state=self.slots.lock().map_err(|_|"审批状态不可用")?;
+        let slot=state.slots.get_mut(request_id).ok_or("审批已结束")?;
+        if slot.decision.is_none() {
+            slot.decision=Some(ApprovalDecision::denied(reason));
+            slot.decided_by=DecidedBy::Shutdown;
+            self.signal.notify_all();
+        }
         Ok(())
     }
 

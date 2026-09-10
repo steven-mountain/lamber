@@ -41,6 +41,20 @@ export function assertAgentPackageMetadata(packageJson, packageLock) {
   }
 }
 
+/** Verify the installed official graph against the lock before packaging any UI. */
+export function assertDshRuntimeTree(root, packageLock) {
+  const packages = Object.entries(packageLock.packages ?? {}).filter(([path]) => /(?:^|\/)node_modules\/@deepseek-ai\/dsh(?:-[^/]+)?$/.test(path));
+  if (!packages.some(([path]) => path === 'node_modules/@deepseek-ai/dsh-web-app')) throw new Error('Locked runtime is missing the official WebUI bundle.');
+  for (const [path, metadata] of packages) {
+    if (metadata.version !== DSH_VERSION) throw new Error(`Official dsh version mismatch: ${path} (${metadata.version}).`);
+    const file = join(root, path, 'package.json');
+    if (!existsSync(file)) throw new Error(`Bundled runtime is missing ${path}.`);
+    const installed = JSON.parse(readFileSync(file, 'utf8'));
+    if (installed.version !== metadata.version) throw new Error(`Installed dsh version mismatch: ${path} (${installed.version}).`);
+  }
+  return packages.length;
+}
+
 function runChecked(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: ROOT,
@@ -65,6 +79,7 @@ export function prepareAgentRuntime() {
     "node.exe",
     "node_modules",
     "dsh-tool-lamber",
+    "webui",
     "dsh-home-template",
     "patch.yml",
     "package.json",
@@ -92,6 +107,8 @@ export function prepareAgentRuntime() {
     recursive: true,
   });
   assertPluginContract(pluginTarget, readJson("agent-bridge/bridge-contract.json"));
+  runChecked(process.execPath, [join(ROOT, "scripts", "build-webui-client.mjs")]);
+  cpSync(join(AGENT_PACKAGE_DIR, "webui"), join(AGENT_RUNTIME_DIR, "webui"), { recursive: true });
   cpSync(join(AGENT_PACKAGE_DIR, "dsh-home-template"), join(AGENT_RUNTIME_DIR, "dsh-home-template"), {
     recursive: true,
   });
@@ -108,6 +125,11 @@ export function prepareAgentRuntime() {
     "node.exe",
     "node_modules/@deepseek-ai/dsh/lib/bin.js",
     "dsh-tool-lamber/lib/index.js",
+    "webui/lamber-brand/lib/client.js",
+    "webui/lamber-host/host-policy.js",
+    "webui/lamber-host/gateway.js",
+    "webui/lamber-host/business-presentation.generated.js",
+    "node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js",
     "dsh-home-template/profiles/acp/package.json",
     "patch.yml",
   ]) {
@@ -115,6 +137,7 @@ export function prepareAgentRuntime() {
       throw new Error(`Bundled dsh runtime is missing ${required}.`);
     }
   }
+  assertDshRuntimeTree(AGENT_RUNTIME_DIR, packageLock);
   runChecked(
     join(AGENT_RUNTIME_DIR, "node.exe"),
     [join(AGENT_RUNTIME_DIR, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"), "--version"],

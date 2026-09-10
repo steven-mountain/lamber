@@ -1,0 +1,92 @@
+{
+  "date": "2026-09-10",
+  "environment": "isolated com.cmcc.benefitcalc.webui-test; synthetic workspaces; controlled local model",
+  "normalEntry": "Main native window -> ordinary AI button -> complete official WebUI",
+  "automated": {
+    "rustPassed": 110,
+    "rustIgnored": 23,
+    "frontendGroupsPassed": 17,
+    "lint": "passed",
+    "productionBuild": "passed",
+    "tauriDev": "actual compile and launch passed",
+    "officialHost": "effective adapters, wire DTOs, streams, settings, byte-identical client faces and child cleanup passed"
+  },
+  "coldRestore": {
+    "method": "native UI close/reopen through normal button",
+    "userTurns": 2,
+    "toolCalls": 4,
+    "bodyAndBindingRestoredWithoutViewToggle": true,
+    "fixtureConstraint": "Every tool invocation has a unique ID across turns; invalid old repeated-ID fixture excluded."
+  },
+  "workspaceSwitch": {
+    "method": "native workspace picker during pending editable approval",
+    "decision": "shutdown/rejected",
+    "originalTemplateTablesUnchanged": true,
+    "auditWrittenToOriginalWorkspace": true,
+    "newWorkspaceAuditUnchanged": true,
+    "oldPortClosed": true
+  },
+  "inquiry": {
+    "method": "official business card -> original main-window generator -> manual edits/upload/save -> native meeting form and read-only SQLite check",
+    "templateVersion": 4,
+    "incomeLimit": 1272000,
+    "generatedAmounts": [
+      678000,
+      722452,
+      773609
+    ],
+    "savedRows": [
+      {
+        "vendorName": "合成验证供应商甲",
+        "amount": 680000,
+        "taxRate": 6,
+        "remark": "最低",
+        "images": [
+          {
+            "assetId": "asset_5dab0dcc6a9eb71f",
+            "width": 128,
+            "height": 80
+          }
+        ]
+      },
+      {
+        "vendorName": "厂商B",
+        "amount": 722452,
+        "taxRate": 6,
+        "remark": "",
+        "images": []
+      },
+      {
+        "vendorName": "厂商C",
+        "amount": 773609,
+        "taxRate": 6,
+        "remark": "",
+        "images": []
+      }
+    ],
+    "assets": [
+      {
+        "name": "合成蓝图.png",
+        "mimeType": "image/png",
+        "bytes": 225,
+        "width": 128,
+        "height": 80,
+        "fileExists": true
+      }
+    ],
+    "zeroTolerance": "Three 0.01 differences in original pre-selection fixture rejected before opening template action; used existing exact post-selection fixture for success path. No bypass.",
+    "financialSnapshots": "Original native stage switch appended pre-selection v7; input and output exactly equal to v6. Existing D v4/v6 comparison remains unchanged."
+  },
+  "visual": {
+    "darkMode": "official and business surfaces observed at 16px",
+    "narrowInquiry": "500x760; internal scroll; editable fields, saved image, close and save reachable",
+    "clipboard": "Synthetic image copied from macOS Preview and pasted with Cmd+V into official composer; pending thumbnail observed and removed without sending"
+  },
+  "remaining": [
+    "Real provider business/configuration validation",
+    "Full IME, DPI/font-size and narrow long-approval matrix",
+    "Network interruption and unexpected-crash matrix",
+    "Windows NSIS install",
+    "Human acceptance"
+  ]
+}

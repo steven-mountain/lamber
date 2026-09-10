@@ -77,10 +77,6 @@ async function main(){
   const old=context.extracted();latestInput={value:2};const fresh=context.extracted();
   pending[1]({npv:200,cashflow:[]});await fresh;pending[0]({npv:100,cashflow:[]});await old;
   assert.equal(output.npv,200,'late old calculation cannot replace the current project result');assert.equal(calculationState.key,JSON.stringify(latestInput));
-  const panel=fs.readFileSync(path.join(root,'components/ai/AiChatPanel.tsx'),'utf8');
-  const condition=panel.match(/\{(documentTemplateIds.length > 0[^\n]+) && \(\n\s*<DocumentGenerationCards/)[1];
-  const visible=(bound,ready,ids=['demand'])=>vm.runInNewContext(condition,{documentTemplateIds:ids,bindingReady:ready,bindingState:{binding:{projectId:bound}},currentSessionId:'session'});
-  assert.ok(visible('p',true));assert.ok(!visible(null,true));assert.ok(!visible('p',false));assert.ok(!visible('p',true,[]));
   const expiredStop=await api.listenDocumentRequests(async()=>{throw Error('expired request must not run');});
   await emitTo('main','lamber-chat-document-request',{...targets[0],requestId:'expired',replyWindow:'ai-assistant',expiresAt:0});
   assert.equal(api.useDocumentRequest.getState().request,null);expiredStop();

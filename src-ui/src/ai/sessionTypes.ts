@@ -6,11 +6,8 @@ export const DEFAULT_AI_SESSION_TITLE = '新会话';
 
 export type AiSessionTitleSource = 'default' | 'manual' | 'generated';
 
-/**
- * Frontend-owned conversation container.
- *
- * `harnessSessionId` mirrors the durable Rust-owned ACP mapping.
- * Historical display stays here because ACP resume does not replay messages.
+/** Retired frontend history schema, retained only for lossless read-only migration.
+ * Frontend project/harness mirrors never authorize a restored WebUI session.
  */
 export interface AiSession {
   id: string;

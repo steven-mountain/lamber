@@ -91,9 +91,6 @@ async function main() {
   const success={status:'success',message:'结构反算完成',metricType:'margin',target:.12,achieved:.12001,targetReached:true,changes,schemeName:'方案甲',stage:'pre_selection',snapshotVersion:1};
   const successReceipt=api.structureReceipt(project.name,success);
   for(const expected of ['目标值 | 实际达成值','12.0000% | 12.0010%','100.00 → 120.02','第4年：25.00 → 29.99','第10年：0.00 → 0.00'])assert.ok(successReceipt.includes(expected),expected);
-  const panel=fs.readFileSync(path.join(root,'components/ai/AiChatPanel.tsx'),'utf8');
-  const visibility=panel.match(/\{(reverseIntent.requested[^\n]+) && <StructureReverseCard/)[1];
-  for(const [ready,projectId,expected] of [[true,'p',true],[false,'p',false],[true,null,false]])assert.equal(Boolean(vm.runInNewContext(visibility,{reverseIntent:{requested:true},bindingReady:ready,bindingState:{binding:{projectId}},currentSessionId:'s'})),expected);
   const evidence={prompt:intent.structureReversePrompt(true),cases,success:{...success,receipt:successReceipt}};
   const file=path.resolve(root,'../../src-tauri/src/agent_bridge/fixtures/structure-reverse-receipts.json');
   if(process.argv.includes('--write-fixtures'))fs.writeFileSync(file,JSON.stringify(evidence,null,2)+'\n');

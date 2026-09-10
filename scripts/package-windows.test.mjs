@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   assertAgentPackageMetadata,
+  assertDshRuntimeTree,
   bumpVersion,
   replaceCargoLockVersion,
   replaceCargoTomlVersion,
@@ -78,5 +79,24 @@ test('packaging rejects old and mismatched compiled binaries and stale plugin ou
     writeFileSync(binary, 'legacy executable');
     assert.throws(() => assertBinaryContract(root, binary), /缺少桥接契约/);
     assert.throws(() => assertPluginContract(root, { ...contract, version: 99 }), /打包已停止/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test('packaging checks every official UI package against both lock and installed versions', () => {
+  const root = mkdtempSync(join(tmpdir(), 'lamber-webui-versions-'));
+  const names = ['dsh', 'dsh-web-app', 'dsh-client-ui-conversation'];
+  const lock = { packages: Object.fromEntries(names.map(name => [`node_modules/@deepseek-ai/${name}`, { version: '0.1.2-alpha.5' }])) };
+  try {
+    for (const path of Object.keys(lock.packages)) { mkdirSync(join(root, path), { recursive: true }); writeFileSync(join(root, path, 'package.json'), JSON.stringify({ version: '0.1.2-alpha.5' })); }
+    assert.equal(assertDshRuntimeTree(root, lock), 3);
+    const ui = 'node_modules/@deepseek-ai/dsh-client-ui-conversation';
+    writeFileSync(join(root, ui, 'package.json'), JSON.stringify({ version: '0.1.2-alpha.4' }));
+    assert.throws(() => assertDshRuntimeTree(root, lock), /Installed dsh version mismatch/);
+    lock.packages[ui].version = '0.1.2-alpha.4';
+    assert.throws(() => assertDshRuntimeTree(root, lock), /Official dsh version mismatch/);
+    lock.packages[ui].version = '0.1.2-alpha.5';
+    rmSync(join(root, ui), { recursive: true });
+    assert.throws(() => assertDshRuntimeTree(root, lock), /missing/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

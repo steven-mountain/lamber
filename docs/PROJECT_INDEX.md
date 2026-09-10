@@ -38,8 +38,8 @@ Lamber 是一个基于 **Tauri + React + Rust** 架构的销售支撑桌面工�
    * 后端扫描：[scanner.rs](../src-tauri/src/project_files/scanner.rs)
    * 工作空间维护：[workspace_maintenance.rs](../src-tauri/src/workspace_maintenance.rs)
 5. **AI 顾问 (AI Assistant)**
-   * 前端：[AiChatPanel.tsx](../src-ui/src/components/ai/AiChatPanel.tsx)
-   * 多会话状态：[useAiSessionStore.ts](../src-ui/src/store/useAiSessionStore.ts)
+   * 官方界面扩展：[client.tsx](../src-ui/src/ai/webui/client.tsx)
+   * 原生 Host：[webui.rs](../src-tauri/src/agent_bridge/webui.rs)；活动会话由官方 dsh 管理
    * 模块文档：[ai-session-workspace.md](./modules/ai-session-workspace.md)
    * 上下文构建：[buildAiChatContext.ts](../src-ui/src/ai/context/buildAiChatContext.ts)
 6. **AI Agent 工具执行桥接 (Agent Bridge · deepseek-harness)**

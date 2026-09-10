@@ -1,3 +1,4 @@
+import { webBusinessTransport } from './webBusinessTransport';
 import type { TemplateListAction, ListSnapshot } from './templateListTypes';
 import { invoke } from '@tauri-apps/api/core';
 import { emitTo, listen } from '@tauri-apps/api/event';
@@ -30,6 +31,8 @@ export async function assertDocumentBinding(target: Pick<DocumentTarget, 'sessio
 
 /** Reads only the trusted bound project, without page context or a model invocation. */
 export async function loadDocumentTargets(sessionId: string, templateIds: readonly string[]): Promise<DocumentTarget[]> {
+  const remote = webBusinessTransport();
+  if (remote) return remote('documents', { sessionId, templateIds });
   const binding = await invoke<{workspaceId: string; projectId: string | null; projectName?: string} | null>('ai_get_session_binding', { sessionId });
   if (!binding?.projectId) return [];
   const base = { sessionId, workspaceId: binding.workspaceId, projectId: binding.projectId, projectName: binding.projectName || binding.projectId };
@@ -65,6 +68,8 @@ export async function requestDocumentGeneration(target: DocumentTarget): Promise
   return result;
 }
 export async function requestTemplateAction(target: DocumentTarget, action?: TemplateListAction): Promise<TemplateActionResult> {
+  const remote = webBusinessTransport();
+  if (remote) return remote('template-action', { sessionId: target.sessionId, target, action });
   await assertDocumentBinding(target);
   const { completion: _, ...identity } = target;
   const request: DocumentRequest = { ...identity, action, requestId: crypto.randomUUID(), replyWindow: getCurrentWindow().label, expiresAt: Date.now() + 15_000 };
